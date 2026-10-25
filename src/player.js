@@ -91,7 +91,7 @@ export class Player {
     this.bobT += dt * sp * 1.9;
     const prev = this.stepT;
     this.stepT = Math.floor(this.bobT / Math.PI);
-    if (this.stepT !== prev && sp > 1) sfx.step();
+    if (this.stepT !== prev && sp > 1) sfx.step(this.sprinting);
 
     // 後座力回復
     const rec = this.recoilBank * Math.min(1, dt * 5);

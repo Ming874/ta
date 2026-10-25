@@ -42,6 +42,7 @@ export class WeaponSystem {
     this.kickRot = 0;
     this.bobT = 0;
     this.flashT = 0;
+    this.sinceShot = 9; // 距上一發的秒數(槍機/滑套動畫用)
     this.onFire = null; // (def, id) => void
     this.onEmptyDry = null;
     this.swayX = 0;
@@ -121,6 +122,7 @@ export class WeaponSystem {
   update(dt, input, speedNorm, sprinting, look) {
     const d = this.def, a = this.ammo, m = this.models[this.current];
     this.cooldown = Math.max(0, this.cooldown - dt);
+    this.sinceShot += dt;
     this.raise = Math.max(0, this.raise - dt / 0.35);
 
     if (this.reloading > 0) {
@@ -142,6 +144,7 @@ export class WeaponSystem {
         this.kickZ += d.kick;
         this.kickRot += d.kick * 3.2;
         this.flashT = 0.05;
+        this.sinceShot = 0;
         sfx.shot(this.current);
         if (this.onFire) this.onFire(d, this.current, speedNorm);
         if (a.mag === 0 && a.reserve > 0) setTimeout(() => this.startReload(), 250);
@@ -176,9 +179,9 @@ export class WeaponSystem {
       rx += 0.5 * s;
       rz += 0.35 * s;
       px -= 0.03 * s;
-      // 左輪:甩出彈巢
-      if (this.current === 'revolver' && m.info.drum) m.info.drum.rotation.y = Math.sin(t * 20) * 0.1;
     }
+    // 滑套後座、槍機往復、換彈時彈匣/彈巢動作(各槍在 models.js 定義)
+    if (m.info.anim) m.info.anim(this.sinceShot, this.reloading > 0 ? 1 - this.reloading / this.reloadTotal : -1, a.mag === 0);
     m.root.position.set(px, py, pz);
     m.root.rotation.set(rx, ry, rz);
 

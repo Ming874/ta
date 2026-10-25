@@ -1,150 +1,68 @@
-// 以 WebAudio 即時合成所有音效(不需任何音檔)
-let ctx = null;
-let master = null;
-let reverb = null;
-let noiseBuf = null;
+// 以 WebAudio 即時合成所有音效與配樂(不需任何音檔)
+// 架構:audio/core(混音、殘響、3D)、audio/foley(槍枝與動作擬音)、audio/voices(殭屍語音合成)、audio/music(配樂與環境)
+import { A, ensure, setListener, attach } from './audio/core.js';
+import { foley } from './audio/foley.js';
+import { voices } from './audio/voices.js';
+import { startMusic, setMood, autoMood, setTension, setHealth, addPain } from './audio/music.js';
 
-function ensure() {
-  if (ctx) return ctx;
-  const AC = window.AudioContext || window.webkitAudioContext;
-  if (!AC) return null;
-  ctx = new AC();
-  master = ctx.createGain();
-  master.gain.value = 0.8;
-  const comp = ctx.createDynamicsCompressor();
-  master.connect(comp);
-  comp.connect(ctx.destination);
-  // 室內殘響
-  const len = ctx.sampleRate * 1.6;
-  const ir = ctx.createBuffer(2, len, ctx.sampleRate);
-  for (let c = 0; c < 2; c++) {
-    const d = ir.getChannelData(c);
-    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
-  }
-  reverb = ctx.createConvolver();
-  reverb.buffer = ir;
-  const rg = ctx.createGain();
-  rg.gain.value = 0.35;
-  reverb.connect(rg);
-  rg.connect(master);
-  noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
-  const nd = noiseBuf.getChannelData(0);
-  for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
-  return ctx;
-}
-
+// AudioContext 只在使用者互動後(resume)建立;在那之前所有 sfx.* 都不做事
 export function resume() {
   const c = ensure();
   if (c && c.state === 'suspended') c.resume();
 }
 
-function out(node, wet = 0.3) {
-  node.connect(master);
-  if (wet > 0) {
-    const s = ctx.createGain();
-    s.gain.value = wet;
-    node.connect(s);
-    s.connect(reverb);
-  }
-}
-
-function noise(dur, type, f0, f1, vol, wet = 0.3, delay = 0, q = 1) {
-  if (!ensure()) return;
-  const t = ctx.currentTime + delay;
-  const src = ctx.createBufferSource();
-  src.buffer = noiseBuf;
-  src.loop = true;
-  const f = ctx.createBiquadFilter();
-  f.type = type;
-  f.Q.value = q;
-  f.frequency.setValueAtTime(f0, t);
-  f.frequency.exponentialRampToValueAtTime(Math.max(f1, 20), t + dur);
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(vol, t);
-  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  src.connect(f);
-  f.connect(g);
-  out(g, wet);
-  src.start(t, Math.random());
-  src.stop(t + dur + 0.05);
-}
-
-function tone(type, f0, f1, dur, vol, wet = 0.2, delay = 0) {
-  if (!ensure()) return;
-  const t = ctx.currentTime + delay;
-  const o = ctx.createOscillator();
-  o.type = type;
-  o.frequency.setValueAtTime(f0, t);
-  o.frequency.exponentialRampToValueAtTime(Math.max(f1, 10), t + dur);
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(vol, t);
-  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  o.connect(g);
-  out(g, wet);
-  o.start(t);
-  o.stop(t + dur + 0.05);
-}
-
-const SHOT = {
-  pistol: { crack: 5200, dur: 0.16, vol: 0.55, thump: 160, tdur: 0.1 },
-  revolver: { crack: 3600, dur: 0.34, vol: 0.9, thump: 90, tdur: 0.22 },
-  ak47: { crack: 4200, dur: 0.24, vol: 0.85, thump: 85, tdur: 0.16 },
-  m4a1: { crack: 6000, dur: 0.2, vol: 0.7, thump: 110, tdur: 0.13 },
+// 包一層:沒有 context 時直接略過,任何合成錯誤也不往外丟
+const safe = (fn) => (...args) => {
+  if (!A.ctx) return;
+  try { fn(...args); } catch (e) { if (import.meta.env?.DEV) console.warn('[audio]', e); }
 };
 
 export const sfx = {
-  shot(id) {
-    const s = SHOT[id] || SHOT.pistol;
-    noise(s.dur, 'lowpass', s.crack, 300, s.vol, 0.45);
-    noise(0.04, 'highpass', 3000, 1000, s.vol * 0.7, 0.2);
-    tone('sine', s.thump, 38, s.tdur, s.vol * 0.9, 0.2);
-  },
-  dry() { tone('square', 1800, 1500, 0.03, 0.12, 0); },
-  reload(id) {
-    const slow = id === 'revolver' ? 1.4 : 1;
-    tone('square', 900, 400, 0.05, 0.14, 0.05);
-    noise(0.05, 'bandpass', 2500, 1500, 0.2, 0.05, 0.35 * slow, 3);
-    tone('square', 700, 300, 0.06, 0.16, 0.05, 0.9 * slow);
-    noise(0.07, 'bandpass', 1800, 900, 0.22, 0.05, 1.35 * slow, 2);
-  },
-  hit() { noise(0.1, 'lowpass', 900, 200, 0.5, 0.1); tone('sine', 140, 50, 0.1, 0.4, 0.05); },
-  headshot() { noise(0.12, 'bandpass', 1400, 400, 0.6, 0.2, 0, 2); tone('triangle', 900, 200, 0.12, 0.25, 0.1); },
-  wall() { noise(0.08, 'bandpass', 3500, 1200, 0.2, 0.2, 0, 2); },
-  zombieDie() { tone('sawtooth', 190, 55, 0.7, 0.28, 0.35); noise(0.5, 'lowpass', 600, 120, 0.25, 0.2); },
-  groan(dist = 8) {
-    const v = Math.max(0, 0.28 - dist * 0.012);
-    if (v <= 0.01) return;
-    const f = 70 + Math.random() * 40;
-    tone('sawtooth', f * 1.6, f, 1.1, v, 0.5);
-    noise(1.0, 'bandpass', 380, 220, v * 0.9, 0.4, 0, 6);
-  },
-  attack() { tone('sawtooth', 220, 90, 0.35, 0.25, 0.3); },
-  hurt() { tone('sine', 100, 40, 0.35, 0.8, 0.2); noise(0.25, 'lowpass', 500, 100, 0.5, 0.2); },
-  coin(i = 0) { tone('sine', 1200 + (i % 5) * 120, 1800 + (i % 5) * 120, 0.12, 0.12, 0.2); tone('sine', 2400, 3000, 0.1, 0.05, 0.2, 0.05); },
-  buy() { tone('triangle', 600, 900, 0.15, 0.2, 0.2); tone('triangle', 900, 1400, 0.2, 0.2, 0.2, 0.12); },
-  deny() { tone('square', 200, 150, 0.2, 0.2, 0); },
-  step() { noise(0.09, 'lowpass', 500, 150, 0.22, 0.25); },
-  switch() { noise(0.06, 'bandpass', 2000, 1000, 0.18, 0.05, 0, 2); tone('square', 500, 300, 0.05, 0.1, 0.05, 0.04); },
-  roundStart() { tone('sawtooth', 110, 55, 1.4, 0.25, 0.6); tone('sine', 55, 40, 1.8, 0.4, 0.5); },
-  roundEnd() { tone('triangle', 440, 440, 0.4, 0.15, 0.5); tone('triangle', 660, 660, 0.6, 0.15, 0.5, 0.2); },
-  ambient() {
-    // 低頻環境嗡鳴 + 偶爾的遠處聲響
-    if (!ensure()) return;
-    const o = ctx.createOscillator();
-    o.type = 'sawtooth';
-    o.frequency.value = 48;
-    const f = ctx.createBiquadFilter();
-    f.type = 'lowpass';
-    f.frequency.value = 120;
-    const g = ctx.createGain();
-    g.gain.value = 0.05;
-    o.connect(f);
-    f.connect(g);
-    out(g, 0.2);
-    o.start();
-    setInterval(() => {
-      if (Math.random() < 0.5) noise(0.6, 'lowpass', 400, 80, 0.06, 0.9);
-      else tone('sine', 90 + Math.random() * 60, 50, 0.9, 0.05, 0.9);
-    }, 7000);
-  },
+  // ---- 武器 / 玩家 / 介面 ----
+  shot: safe((id) => foley.shot(id)),
+  dry: safe(() => foley.dry()),
+  reload: safe((id) => foley.reload(id)),
+  switch: safe(() => foley.switch()),
+  step: safe((sprint = false) => foley.step(sprint)),
+  hurt: safe(() => { foley.hurt(); addPain(0.5); }),
+  knock: safe(() => { foley.knock(); addPain(0.7); }),
+  hit: safe(() => foley.hit()),
+  headshot: safe(() => foley.headshot()),
+  wall: safe(() => foley.wall()),
+  coin: safe((i = 0) => foley.coin(i)),
+  buy: safe(() => foley.buy()),
+  deny: safe(() => foley.deny()),
+  roundStart: safe(() => { foley.roundStart(); autoMood('fight'); }),
+  roundEnd: safe(() => { foley.roundEnd(); autoMood('break'); }),
+
+  // ---- 殭屍語音(3D) ----
+  groan: safe((type, pos) => voices.groan(type, pos)),
+  zAttack: safe((type, pos) => voices.attack(type, pos)),
+  zPain: safe((type, pos) => voices.pain(type, pos)),
+  zDie: safe((type, pos) => voices.die(type, pos)),
+  shriek: safe((pos) => voices.shriek(pos)),
+  roar: safe((pos) => voices.roar(pos)),
+  gurgle: safe((pos) => voices.gurgle(pos)),
+  crawl: safe((pos) => foley.crawl(pos)),
+
+  // ---- 殭屍動作(3D) ----
+  bite: safe((pos) => foley.bite(pos)),
+  zStep: safe((type, pos) => foley.zStep(type, pos)),
+  stomp: safe((pos) => foley.stomp(pos)),
+  wallImpact: safe((pos) => foley.wallImpact(pos)),
+  thud: safe((pos, heavy = false) => foley.thud(pos, heavy)),
+  spit: safe((pos) => foley.spit(pos)),
+  splash: safe((pos) => foley.splash(pos)),
+  sizzle: safe((pos) => foley.sizzle(pos)),
+  burst: safe((pos) => foley.burst(pos)),
+
+  // ---- 聆聽者 / 配樂(context 未建立時也可呼叫,狀態會先記下) ----
+  listener(x, y, z, yaw) { try { setListener(x, y, z, yaw); } catch { /* 忽略 */ } },
+  setMood(mood) { setMood(mood); },
+  setTension(x) { setTension(x); },
+  setHealth(r) { setHealth(r); }, // 可選:玩家血量比例 0..1(低血量時出現心跳)
+  ambient: safe(() => startMusic()),
 };
+
+// 除錯/測試用(OfflineAudioContext 量測)
+export const _internal = { A, attach, foley, voices, startMusic };

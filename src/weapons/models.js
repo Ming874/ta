@@ -1,214 +1,991 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { mergeGeometries, toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
-// 槍模座標:原點在握把,槍口朝 -Z,上方為 +Y,單位公尺。
+// 槍模座標:原點在握把頂端,槍口朝 -Z,上方為 +Y,單位公尺(真實尺寸)。
+// 建模時用「f = 往槍口方向的距離」描述側面輪廓,z = -f。
 // 配色依真槍:
-//   Glock 17  黑色聚合物槍身 + 深灰氮化滑套
-//   Colt Python 藍鋼(blued)槍身 + 胡桃木握把
-//   AK-47     磷化黑鋼 + 胡桃木護木/槍托/握把
-//   M4A1      黑色陽極氧化鋁 + 黑色聚合物
+//   Glock 17  黑色聚合物槍身(點刻紋握把) + 深灰氮化滑套
+//   Colt Python 皇家藍鋼(royal blue) + 方格紋胡桃木握把 + 金色小馬徽
+//   AK-47(AKM) 磷化黑鋼 + 漆面樺木積層護木/槍托/握把 + 肋條鋼彈匣
+//   M4A1      黑色硬陽極鋁 + 黑色聚合物 + 四面皮卡汀尼導軌(RIS)
+// 同材質零件會合併成一個 mesh(每把槍約 10–20 個 draw call)。
 
-function woodTexture(base, dark) {
-  const c = document.createElement('canvas');
-  c.width = 128;
-  c.height = 128;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = base;
-  ctx.fillRect(0, 0, 128, 128);
-  for (let i = 0; i < 70; i++) {
-    ctx.strokeStyle = dark;
-    ctx.globalAlpha = 0.08 + Math.random() * 0.18;
-    ctx.lineWidth = 0.6 + Math.random() * 1.6;
-    ctx.beginPath();
-    const y = Math.random() * 128;
-    ctx.moveTo(0, y);
-    ctx.bezierCurveTo(40, y + (Math.random() - 0.5) * 8, 90, y + (Math.random() - 0.5) * 8, 128, y + (Math.random() - 0.5) * 6);
-    ctx.stroke();
+const HALF = Math.PI / 2;
+
+// ---------- 程式貼圖 ----------
+let seed = 9137;
+const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+const smooth = (a, b, v) => { const t = clamp01((v - a) / (b - a)); return t * t * (3 - 2 * t); };
+
+// 可平鋪的值雜訊 fbm(cx/cy 為最粗一層的格數,兩者不同可做出拉長的紋理)
+function fbm(W, H, cx, cy, oct) {
+  const out = new Float32Array(W * H);
+  let amp = 1, tot = 0;
+  for (let o = 0; o < oct; o++, amp *= 0.5) {
+    const nx = cx << o, ny = cy << o;
+    const g = new Float32Array(nx * ny);
+    for (let i = 0; i < g.length; i++) g[i] = rnd();
+    for (let y = 0; y < H; y++) {
+      const fy = (y / H) * ny, iy = fy | 0, ty = fy - iy, sy = ty * ty * (3 - 2 * ty);
+      const r0 = iy * nx, r1 = ((iy + 1) % ny) * nx;
+      for (let x = 0; x < W; x++) {
+        const fx = (x / W) * nx, ix = fx | 0, tx = fx - ix, sx = tx * tx * (3 - 2 * tx), ix1 = (ix + 1) % nx;
+        const a = g[r0 + ix], b = g[r0 + ix1], c = g[r1 + ix], d = g[r1 + ix1];
+        out[y * W + x] += amp * (a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy);
+      }
+    }
+    tot += amp;
   }
+  for (let i = 0; i < out.length; i++) out[i] /= tot;
+  return out;
+}
+
+// fn(x, y, i) 回傳 [r,g,b](0..255)
+function paint(W, H, fn) {
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(W, H);
+  const d = img.data;
+  for (let y = 0, i = 0; y < H; y++) {
+    for (let x = 0; x < W; x++, i++) {
+      const [r, g, b] = fn(x, y, i);
+      d[i * 4] = r;
+      d[i * 4 + 1] = g;
+      d[i * 4 + 2] = b;
+      d[i * 4 + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
+function tex(c, srgb = false) {
   const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 8;
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
 
-const M = {
-  steel: new THREE.MeshStandardMaterial({ color: 0x2b2d2c, roughness: 0.55, metalness: 0.85 }),
-  steelWorn: new THREE.MeshStandardMaterial({ color: 0x4a4c4a, roughness: 0.4, metalness: 0.9 }),
-  slide: new THREE.MeshStandardMaterial({ color: 0x33373a, roughness: 0.42, metalness: 0.8 }),
-  polymer: new THREE.MeshStandardMaterial({ color: 0x242424, roughness: 0.8, metalness: 0.05 }),
-  anodized: new THREE.MeshStandardMaterial({ color: 0x232324, roughness: 0.5, metalness: 0.55 }),
-  blued: new THREE.MeshStandardMaterial({ color: 0x1c2631, roughness: 0.22, metalness: 0.95 }),
-  walnut: new THREE.MeshStandardMaterial({ map: woodTexture('#6a3a1c', '#2a1206'), color: 0xc2b0a0, roughness: 0.55 }),
-  walnutDark: new THREE.MeshStandardMaterial({ map: woodTexture('#4e2813', '#220d04'), color: 0xc2b0a0, roughness: 0.5 }),
-  glove: new THREE.MeshStandardMaterial({ color: 0x33342f, roughness: 0.85 }),
-  sleeve: new THREE.MeshStandardMaterial({ color: 0x353d2f, roughness: 1 }),
-  skin: new THREE.MeshStandardMaterial({ color: 0xb98a6f, roughness: 0.8 }),
-};
+const mix = (a, b, t) => a + (b - a) * t;
+const mix3 = (a, b, t) => [mix(a[0], b[0], t), mix(a[1], b[1], t), mix(a[2], b[2], t)];
+const hex3 = (h) => [(h >> 16) & 255, (h >> 8) & 255, h & 255];
 
-function mk(parent, geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) {
-  const m = new THREE.Mesh(geo, mat);
-  m.position.set(x, y, z);
-  m.rotation.set(rx, ry, rz);
-  m.castShadow = false;
-  parent.add(m);
+// 木紋:沿 u 方向的年輪 + 纖維 + 導管孔;checker>0 時另外刻出方格紋(左輪握把)
+function woodTextures(dark, mid, light, rings, checker = 0) {
+  const W = 512, H = 512;
+  const warp = fbm(W, H, 2, 3, 4);
+  const fiber = fbm(W, H, 2, 96, 3);
+  const pore = fbm(W, H, 8, 160, 2);
+  const blot = fbm(W, H, 3, 3, 3);
+  const D = hex3(dark), Mi = hex3(mid), L = hex3(light);
+  const height = new Float32Array(W * H);
+  const map = paint(W, H, (x, y, i) => {
+    const w = (y / H) * rings + warp[i] * 1.3 + fiber[i] * 0.2;
+    const ring = w - Math.floor(w);
+    const late = Math.exp(-(((ring - 0.82) / 0.09) ** 2));
+    let c = mix3(Mi, L, clamp01((blot[i] - 0.35) * 1.6) * 0.55);
+    c = mix3(c, D, clamp01(late * 0.38 + (fiber[i] - 0.45) * 0.75));
+    const p = pore[i] < 0.28 ? (0.28 - pore[i]) * 1.6 : 0;
+    c = mix3(c, D, p);
+    let h = 0.6 + (fiber[i] - 0.5) * 0.5 - late * 0.25 - p * 0.6;
+    if (checker) {
+      const P = checker;
+      const a = ((x + y) % P) / P, b = ((x - y + 4096) % P) / P;
+      const tri = Math.min(1 - Math.abs(2 * a - 1), 1 - Math.abs(2 * b - 1));
+      const groove = smooth(0.0, 0.35, tri);
+      c = mix3(mix3(D, [0, 0, 0], 0.4), c, 0.62 + groove * 0.38);
+      h = h * 0.25 + groove * 0.75;
+    }
+    height[i] = h;
+    return c;
+  });
+  const bump = paint(W, H, (x, y, i) => { const v = clamp01(height[i]) * 255; return [v, v, v]; });
+  return { map: tex(map, true), bump: tex(bump) };
+}
+
+// 金屬:微刮痕、拉絲與斑駁,用作 roughness/bump
+function metalTexture() {
+  const S = 256;
+  const blot = fbm(S, S, 4, 4, 4);
+  const brush = fbm(S, S, 2, 64, 3);
+  const c = paint(S, S, (x, y, i) => {
+    const v = 150 + (blot[i] - 0.5) * 70 + (brush[i] - 0.5) * 60;
+    return [v, v, v];
+  });
+  const ctx = c.getContext('2d');
+  for (let k = 0; k < 90; k++) { // 細刮痕
+    const x = rnd() * S, y = rnd() * S, a = (rnd() - 0.5) * 0.6, l = 6 + rnd() * 40;
+    ctx.strokeStyle = `rgba(${rnd() < 0.5 ? '90,90,90' : '220,220,220'},${0.25 + rnd() * 0.35})`;
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l);
+    ctx.stroke();
+  }
+  return tex(c);
+}
+
+// 聚合物點刻紋(Glock 握把、AR 握把)
+function stippleTexture() {
+  const S = 256;
+  const n = fbm(S, S, 16, 16, 2);
+  const c = paint(S, S, (x, y, i) => { const v = 110 + n[i] * 60; return [v, v, v]; });
+  const ctx = c.getContext('2d');
+  for (let k = 0; k < 2600; k++) {
+    const x = rnd() * S, y = rnd() * S, r = 0.8 + rnd() * 1.8, v = rnd() < 0.5 ? 40 + rnd() * 40 : 190 + rnd() * 60;
+    for (const ox of [0, S, -S]) for (const oy of [0, S, -S]) { // 邊界重複,保持可平鋪
+      if (ox && (x + ox < -4 || x + ox > S + 4)) continue;
+      if (oy && (y + oy < -4 || y + oy > S + 4)) continue;
+      ctx.fillStyle = `rgb(${v},${v},${v})`;
+      ctx.beginPath();
+      ctx.arc(x + ox, y + oy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  return tex(c);
+}
+
+// 斜紋布(手套、袖子)
+function fabricTextures() {
+  const S = 256;
+  const n = fbm(S, S, 6, 6, 4);
+  const thread = fbm(S, S, 64, 4, 2);
+  const h = new Float32Array(S * S);
+  const map = paint(S, S, (x, y, i) => {
+    const tw = 0.5 + 0.5 * Math.sin(((x + y) / 4) * Math.PI * 2) * (((x >> 2) & 1) ? 1 : 0.6);
+    const v = 0.72 + tw * 0.12 + (n[i] - 0.5) * 0.3 + (thread[i] - 0.5) * 0.1;
+    h[i] = tw * 0.7 + thread[i] * 0.3;
+    const g = clamp01(v) * 255;
+    return [g, g, g];
+  });
+  const bump = paint(S, S, (x, y, i) => { const v = h[i] * 255; return [v, v, v]; });
+  return { map: tex(map, true), bump: tex(bump) };
+}
+
+// 簡易環境貼圖(等距柱狀):昏暗病房、天花板日光燈管 → 金屬才有反射
+function envTexture() {
+  const W = 512, H = 256;
+  const n = fbm(W, H, 8, 4, 4);
+  const c = paint(W, H, (x, y, i) => {
+    const v = y / H;
+    let col = v < 0.5 ? mix3([112, 120, 114], [84, 90, 86], v / 0.5) : mix3([70, 72, 66], [34, 34, 32], (v - 0.5) / 0.5);
+    col = mix3(col, [col[0] * 1.3, col[1] * 1.3, col[2] * 1.25], n[i]);
+    return col;
+  });
+  const ctx = c.getContext('2d');
+  const tube = (x, y, w, h, a) => {
+    const g = ctx.createLinearGradient(0, y - h * 3, 0, y + h * 3);
+    g.addColorStop(0, 'rgba(220,240,230,0)');
+    g.addColorStop(0.5, `rgba(235,250,240,${a})`);
+    g.addColorStop(1, 'rgba(220,240,230,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - 6, y - h * 3, w + 12, h * 6);
+    ctx.fillStyle = `rgba(255,255,255,${a})`;
+    ctx.fillRect(x, y - h / 2, w, h);
+  };
+  tube(40, 40, 120, 5, 1);
+  tube(300, 30, 90, 5, 0.95);
+  tube(200, 72, 70, 4, 0.7);
+  tube(420, 64, 60, 4, 0.6);
+  ctx.fillStyle = 'rgba(160,150,120,0.35)'; // 走廊盡頭暖色
+  ctx.fillRect(110, 112, 60, 22);
+  const t = new THREE.CanvasTexture(c);
+  t.mapping = THREE.EquirectangularReflectionMapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+const ENV = envTexture();
+const METAL = metalTexture();
+const STIPPLE = stippleTexture();
+const AKWOOD = woodTextures(0x1e0e08, 0x48261a, 0x603422, 26);
+const PYWOOD = woodTextures(0x2a140a, 0x55301a, 0x74452a, 12, 11);
+const FABRIC = fabricTextures();
+
+// uv:每公尺幾個貼圖週期(盒狀投影)
+function std(o, uv = 12, env = 1) {
+  const m = new THREE.MeshStandardMaterial({ envMap: ENV, envMapIntensity: env, ...o });
+  m.userData.uv = uv;
   return m;
 }
-const B = (w, h, d) => new THREE.BoxGeometry(w, h, d);
-const C = (r, len, seg = 14) => new THREE.CylinderGeometry(r, r, len, seg);
-const HALF = Math.PI / 2;
+function metal(color, rough, metalness, env = 1, bump = 0.6) {
+  return std({ color, roughness: rough, metalness, roughnessMap: METAL, bumpMap: METAL, bumpScale: bump }, 9, env);
+}
 
-// ---------- 各槍 ----------
+const M = {
+  slide: metal(0x3d4145, 0.4, 0.65, 1.1),
+  steel: metal(0x3a3c3d, 0.5, 0.6, 1),
+  worn: metal(0x7a7d80, 0.3, 0.95, 1.2, 0.3),
+  blued: metal(0x1b2534, 0.16, 1, 1.5, 0.15),
+  anodized: metal(0x323438, 0.46, 0.35, 0.9, 0.4),
+  magSteel: metal(0x383939, 0.55, 0.5, 0.9),
+  usgi: metal(0x3c403c, 0.62, 0.35, 0.8),
+  dark: std({ color: 0x050505, roughness: 0.9, metalness: 0 }, 12, 0.2),
+  polymer: std({ color: 0x272828, roughness: 0.82, metalness: 0, bumpMap: STIPPLE, bumpScale: 1.2, roughnessMap: STIPPLE }, 40, 0.6),
+  polySmooth: std({ color: 0x1c1d1e, roughness: 0.62, metalness: 0.05, bumpMap: METAL, bumpScale: 0.3 }, 14, 0.7),
+  rubber: std({ color: 0x141414, roughness: 0.95, metalness: 0, bumpMap: STIPPLE, bumpScale: 0.8 }, 30, 0.3),
+  white: std({ color: 0xe9e6da, roughness: 0.5, emissive: 0x2a2a26 }, 12, 0.5),
+  red: std({ color: 0xc8281c, roughness: 0.4, emissive: 0x3a0604 }, 12, 0.5),
+  gold: std({ color: 0xdcae4c, roughness: 0.28, metalness: 1 }, 12, 1.4),
+  copper: std({ color: 0xb8714a, roughness: 0.32, metalness: 1 }, 12, 1.2),
+  akWood: new THREE.MeshPhysicalMaterial({ map: AKWOOD.map, color: 0x8a7c74, bumpMap: AKWOOD.bump, bumpScale: 0.35, roughness: 0.5, clearcoat: 0.7, clearcoatRoughness: 0.28, envMap: ENV, envMapIntensity: 0.9 }),
+  pyWood: std({ map: PYWOOD.map, color: 0x8a7c74, bumpMap: PYWOOD.bump, bumpScale: 3, roughness: 0.55 }, 16, 0.8),
+  glove: std({ map: FABRIC.map, color: 0x34352f, bumpMap: FABRIC.bump, bumpScale: 0.8, roughness: 0.92 }, 40, 0.35),
+  knuckle: std({ color: 0x1c1d1c, roughness: 0.55, bumpMap: STIPPLE, bumpScale: 0.6 }, 30, 0.5),
+  leather: std({ color: 0x3a352d, roughness: 0.7, bumpMap: STIPPLE, bumpScale: 0.4 }, 40, 0.4),
+  sleeveIn: std({ color: 0x15170f, roughness: 1 }, 12, 0.1),
+  sleeve: std({ map: FABRIC.map, color: 0x47503d, bumpMap: FABRIC.bump, bumpScale: 0.8, roughness: 1 }, 30, 0.3),
+};
+M.akWood.userData.uv = 4;
+
+// ---------- 幾何工具 ----------
+// 圓角多邊形:pts = [[x, y, 圓角半徑], ...]
+function roundPath(pts, path = new THREE.Shape()) {
+  const n = pts.length;
+  const P = (i) => pts[(i + n) % n];
+  for (let i = 0; i < n; i++) {
+    const [x, y, r = 0] = P(i);
+    if (!r) {
+      if (i === 0) path.moveTo(x, y);
+      else path.lineTo(x, y);
+      continue;
+    }
+    const [ax, ay] = P(i - 1), [bx, by] = P(i + 1);
+    const la = Math.hypot(ax - x, ay - y), lb = Math.hypot(bx - x, by - y);
+    const t = Math.min(r, la / 2, lb / 2);
+    const x1 = x + ((ax - x) / la) * t, y1 = y + ((ay - y) / la) * t;
+    const x2 = x + ((bx - x) / lb) * t, y2 = y + ((by - y) / lb) * t;
+    if (i === 0) path.moveTo(x1, y1);
+    else path.lineTo(x1, y1);
+    path.quadraticCurveTo(x, y, x2, y2);
+  }
+  path.closePath();
+  return path;
+}
+
+function extrudeShape(pts, depth, o) {
+  const b = o.bevel ?? Math.min(0.0015, depth * 0.3);
+  const shape = roundPath(pts);
+  if (o.holes) for (const h of o.holes) shape.holes.push(roundPath(h, new THREE.Path()));
+  const d = Math.max(1e-5, depth - 2 * b);
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: d, bevelEnabled: b > 0, bevelThickness: b, bevelSize: b, bevelOffset: -b, bevelSegments: o.seg ?? 2, curveSegments: o.cs ?? 5,
+  });
+  geo.translate(0, 0, -d / 2);
+  return geo;
+}
+
+// 側面輪廓 [f, y, r] 擠出成厚度 w(沿 X 置中於 o.x)
+function side(pts, w, o = {}) {
+  const geo = extrudeShape(pts, w, o);
+  geo.rotateY(HALF); // shape x(f) → -z,擠出方向 → x
+  if (o.x) geo.translate(o.x, 0, 0);
+  return geo;
+}
+
+// 截面 [x, y, r] 沿槍管方向擠出,從 f0 到 f1
+function sect(pts, f0, f1, o = {}) {
+  const geo = extrudeShape(pts, f1 - f0, o);
+  geo.translate(0, 0, -(f0 + f1) / 2);
+  return geo;
+}
+
+// 車削件:prof = [[f, r], ...](逆時針:由軸心出發、沿外壁往前、再回到軸心)
+function lathe(prof, seg = 24, y = 0, x = 0) {
+  const geo = new THREE.LatheGeometry(prof.map(([f, r]) => new THREE.Vector2(r, f)), seg);
+  geo.rotateX(-HALF);
+  geo.translate(x, y, 0);
+  return geo;
+}
+
+function box(w, h, d, x, y, f, r = 0.0004) {
+  const geo = r > 0 ? new RoundedBoxGeometry(w, h, d, 2, Math.min(r, w / 2, h / 2, d / 2) * 0.999) : new THREE.BoxGeometry(w, h, d);
+  geo.translate(x, y, -f);
+  return geo;
+}
+const cylX = (r, len, x, y, f, seg = 14) => new THREE.CylinderGeometry(r, r, len, seg).rotateZ(HALF).translate(x, y, -f);
+const cylY = (r, len, x, y, f, seg = 14) => new THREE.CylinderGeometry(r, r, len, seg).translate(x, y, -f);
+const cylZ = (r, f0, f1, x, y, seg = 16) => new THREE.CylinderGeometry(r, r, f1 - f0, seg).rotateX(HALF).translate(x, y, -(f0 + f1) / 2);
+const rot = (geo, rx, ry, rz, px = 0, py = 0, pf = 0) => {
+  geo.translate(-px, -py, pf);
+  geo.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rx, ry, rz)));
+  return geo.translate(px, py, -pf);
+};
+
+// 對每個三角形依法線主軸做盒狀 UV 投影(公尺 × s)
+function boxUV(g, s) {
+  const p = g.attributes.position.array;
+  const uv = new Float32Array((p.length / 3) * 2);
+  for (let i = 0; i < p.length; i += 9) {
+    const ux = p[i + 3] - p[i], uy = p[i + 4] - p[i + 1], uz = p[i + 5] - p[i + 2];
+    const vx = p[i + 6] - p[i], vy = p[i + 7] - p[i + 1], vz = p[i + 8] - p[i + 2];
+    const X = Math.abs(uy * vz - uz * vy), Y = Math.abs(uz * vx - ux * vz), Z = Math.abs(ux * vy - uy * vx);
+    for (let k = 0; k < 3; k++) {
+      const j = i + k * 3, o = (j / 3) * 2;
+      let u, v;
+      if (X >= Y && X >= Z) { u = p[j + 2]; v = p[j + 1]; }
+      else if (Y >= Z) { u = p[j + 2]; v = p[j]; }
+      else { u = p[j]; v = p[j + 1]; }
+      uv[o] = u * s;
+      uv[o + 1] = v * s;
+    }
+  }
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+}
+
+function prep(g) {
+  if (g.index) g = g.toNonIndexed();
+  for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal') g.deleteAttribute(k);
+  g.clearGroups();
+  g.scale(100, 100, 100); // toCreasedNormals 以 0.01 單位量化頂點,先放大避免毫米級零件被合併
+  g = toCreasedNormals(g, 0.62);
+  g.scale(0.01, 0.01, 0.01);
+  return g;
+}
+
+// 依材質收集幾何,最後合併成每材質一個 mesh
+class Kit {
+  constructor() { this.map = new Map(); }
+  add(mat, ...geos) {
+    let l = this.map.get(mat);
+    if (!l) this.map.set(mat, (l = []));
+    l.push(...geos);
+  }
+  build(parent) {
+    for (const [mat, list] of this.map) {
+      const geo = mergeGeometries(list.map(prep));
+      boxUV(geo, mat.userData.uv ?? 12);
+      geo.computeBoundingSphere();
+      parent.add(new THREE.Mesh(geo, mat));
+    }
+    this.map.clear();
+    return parent;
+  }
+}
+
+// 沿方向 (df, dy) 走 s 的 2D 點
+const at = (p, d, s, q = [0, 0], t = 0) => [p[0] + d[0] * s + q[0] * t, p[1] + d[1] * s + q[1] * t];
+const groupAt = (parent, x, y, f) => { const g = new THREE.Group(); g.position.set(x, y, -f); parent.add(g); return g; };
+
+// 彎曲彈匣側面:前緣圓弧半徑 R、以槍口方向 (fc,yc) 為圓心
+function arcBand(fc, yc, r0, r1, a0, a1, n = 18) {
+  const pts = [];
+  for (let i = 0; i <= n; i++) { const a = a0 + ((a1 - a0) * i) / n; pts.push([fc + Math.cos(a) * r1, yc + Math.sin(a) * r1]); }
+  for (let i = n; i >= 0; i--) { const a = a0 + ((a1 - a0) * i) / n; pts.push([fc + Math.cos(a) * r0, yc + Math.sin(a) * r0]); }
+  return pts;
+}
+
+// 皮卡汀尼導軌(頂面朝 +Y,之後可旋轉到側面/底面)
+function picatinny(k, mat, f0, f1, base) {
+  const W = 0.0106, H = 0.0094;
+  const profile = (h) => [[-W * 0.78, 0, 0], [W * 0.78, 0, 0], [W * 0.78, h * 0.35, 0], [W, h * 0.55, 0.0004], [W * 0.82, h, 0.0005], [-W * 0.82, h, 0.0005], [-W, h * 0.55, 0.0004], [-W * 0.78, h * 0.35, 0]];
+  const geos = [sect(profile(H - 0.003), f0, f1, { bevel: 0.0004, seg: 1 })];
+  for (let f = f0 + 0.003; f + 0.0052 <= f1 - 0.001; f += 0.01) geos.push(sect(profile(H), f, f + 0.0052, { bevel: 0.0004, seg: 1 }));
+  for (const g of geos) { g.applyMatrix4(base); k.add(mat, g); }
+}
+
+// ---------- 手 ----------
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+// 以基底向量擺放:手指(伸直時)指向 fingerDir、掌心朝 palmN,原點在手腕
+function handBasis(wrist, fingerDir, palmN) {
+  const z = fingerDir.clone().normalize().negate();
+  const y = palmN.clone().normalize().negate();
+  y.addScaledVector(z, -y.dot(z)).normalize();
+  const x = new THREE.Vector3().crossVectors(y, z);
+  return new THREE.Matrix4().makeBasis(x, y, z).setPosition(wrist);
+}
+
+const FINGERS = [ // [x, z, 長度(近/中/遠), 粗細]
+  [-0.0285, -0.084, [0.043, 0.026, 0.021], 1.0],
+  [-0.0095, -0.087, [0.047, 0.029, 0.022], 1.02],
+  [0.0095, -0.085, [0.044, 0.027, 0.021], 0.98],
+  [0.0275, -0.078, [0.035, 0.021, 0.018], 0.86],
+];
+
+// side: 1=右手 -1=左手;pose.curl[i]=[掌指, 近端, 遠端] 彎曲角,pose.spread[i]
+// pose.thumb={dir:[x,y,z](以右手座標表示:-x=拇指側、-y=掌心側、-z=指尖方向), roll, curl:[a,b]}
+function buildHand(k, side, place, pose) {
+  const s = side;
+  const add = (mat, geo, m) => { geo.applyMatrix4(m); k.add(mat, geo); };
+  const P = (x, y, z) => new THREE.Matrix4().makeTranslation(x, y, z);
+  const R = (rx, ry, rz) => new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rx, ry * s, rz * s));
+  // 手掌、掌心皮革、指節護甲、袖口
+  const palm = new RoundedBoxGeometry(0.08, 0.029, 0.082, 4, 0.0135);
+  const pp = palm.attributes.position;
+  for (let i = 0; i < pp.count; i++) { // 往手腕收窄、手背微拱
+    const t = clamp01((pp.getZ(i) + 0.041) / 0.082);
+    pp.setX(i, pp.getX(i) * (1 - t * 0.14));
+    pp.setY(i, pp.getY(i) + (pp.getY(i) > 0 ? 0.004 * (1 - (pp.getX(i) / 0.04) ** 2) : 0));
+  }
+  add(M.glove, palm, place.clone().multiply(P(0, 0, -0.047)));
+  add(M.glove, new RoundedBoxGeometry(0.034, 0.03, 0.052, 2, 0.012), place.clone().multiply(P(-0.024 * s, -0.004, -0.032)).multiply(R(0, 0.25, 0))); // 拇指球
+  add(M.leather, new RoundedBoxGeometry(0.066, 0.006, 0.062, 2, 0.0028), place.clone().multiply(P(0.002 * s, -0.0135, -0.05)));
+  const cuff = new THREE.CylinderGeometry(0.0292, 0.0302, 0.05, 20, 1, true).rotateX(HALF).scale(1.12, 0.88, 1);
+  add(M.glove, cuff, place.clone().multiply(P(0, 0.001, 0.013)));
+  add(M.knuckle, new RoundedBoxGeometry(0.036, 0.0035, 0.026, 2, 0.0016), place.clone().multiply(P(0.006 * s, 0.0262, 0.012)));
+  // 四指:三節,關節處球形重疊
+  FINGERS.forEach(([fx, fz, L, th], i) => {
+    const c = pose.curl[i];
+    add(M.knuckle, new THREE.SphereGeometry(0.0085 * th, 12, 8).scale(1.05, 0.62, 1), place.clone().multiply(P(fx * s, 0.0135, fz + 0.004)));
+    let m = place.clone().multiply(P(fx * s, 0.001, fz)).multiply(R(0, pose.spread[i], 0));
+    for (let j = 0; j < 3; j++) {
+      m = m.clone().multiply(R(-c[j], 0, 0));
+      const r = (0.0102 - j * 0.0007) * th;
+      const seg = new THREE.CapsuleGeometry(r, L[j], 4, 12).rotateX(HALF).translate(0, 0, -L[j] / 2);
+      add(M.glove, seg, m);
+      if (j === 0) add(M.knuckle, new RoundedBoxGeometry(r * 1.25, 0.0032, L[j] * 0.5, 2, 0.0015), m.clone().multiply(P(0, r * 0.9, -L[j] * 0.52)));
+      if (j === 2) add(M.leather, new THREE.SphereGeometry(r * 0.96, 10, 8).scale(1, 0.9, 1.05), m.clone().multiply(P(0, -0.001, -L[j])));
+      m = m.multiply(P(0, 0, -L[j]));
+    }
+  });
+  // 拇指
+  const t = pose.thumb;
+  const q = new THREE.Quaternion().setFromUnitVectors(V(0, 0, -1), V(t.dir[0] * s, t.dir[1], t.dir[2]).normalize());
+  let m = place.clone().multiply(P(-0.032 * s, -0.007, -0.024)).multiply(new THREE.Matrix4().makeRotationFromQuaternion(q)).multiply(R(0, 0, t.roll ?? 0));
+  const TL = [0.036, 0.031, 0.026];
+  for (let j = 0; j < 3; j++) {
+    if (j > 0) m = m.clone().multiply(R(-t.curl[j - 1], 0, 0));
+    const r = [0.0128, 0.0108, 0.0098][j];
+    add(M.glove, new THREE.CapsuleGeometry(r, TL[j], 4, 12).rotateX(HALF).translate(0, 0, -TL[j] / 2), m);
+    if (j === 2) add(M.leather, new THREE.SphereGeometry(r * 0.97, 10, 8), m.clone().multiply(P(0, -0.001, -TL[j])));
+    m = m.multiply(P(0, 0, -TL[j]));
+  }
+}
+
+// 前臂袖子:從手套袖口往手肘;開口內縮(暗色內裡)、反摺袖口、繞軸扭轉的皺褶
+function buildSleeve(k, wrist, elbow, side) {
+  const dir = new THREE.Vector3().subVectors(elbow, wrist);
+  const len = dir.length();
+  const prof = [[0, 0.0298], [0.003, 0.0338], [0.011, 0.0356], [0.021, 0.0352], [0.029, 0.0346]];
+  for (let i = 1; i <= 14; i++) {
+    const f = 0.029 + (i / 14) * (len - 0.029);
+    prof.push([f, 0.0346 + (f / len) * 0.012 + Math.sin(i * 1.7) * 0.001]);
+  }
+  prof.push([len, 0]);
+  const orient = new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, -1), dir.clone().normalize()));
+  orient.setPosition(wrist);
+  const geo = lathe(prof, 24);
+  const p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), f = -p.getZ(i), a = Math.atan2(y, x);
+    const w = 1 + (f > 0.03 ? 0.06 * Math.sin(a * 3 + f * 38 * side) + 0.035 * Math.sin(a * 5 - f * 61) : 0.012 * Math.sin(a * 7));
+    p.setXYZ(i, x * w * 1.1, y * w * 0.92, p.getZ(i));
+  }
+  k.add(M.sleeve, geo.applyMatrix4(orient));
+  k.add(M.sleeveIn, lathe([[0.035, 0], [0, 0.0298]], 24).scale(1.1, 0.92, 1).applyMatrix4(orient));
+}
+
+const GRIP_CURL = [[1.3, 1.35, 0.45], [1.42, 1.4, 0.45], [1.45, 1.4, 0.45], [1.5, 1.35, 0.45]];
+const TRIGGER_CURL = [0.5, 1.05, 0.5];
+
+// 右手握持角度為 a(握把後傾)的握把;c=握把中心頂端 (f,y),depth=握把前後厚度
+function rightGripHand(k, a, c, depth, halfW, opt = {}) {
+  const d = V(0, -Math.cos(a), Math.sin(a)); // 沿握把往下
+  const p = V(0, -Math.sin(a), -Math.cos(a)); // 垂直握把往前
+  const center = V(0, c[1], -c[0]).addScaledVector(d, opt.s ?? 0.042);
+  const wrist = center.clone().addScaledVector(p, depth * 0.5 + 0.009 - 0.084 + (opt.reach ?? 0)).add(V(halfW + 0.0135, 0, 0));
+  const place = handBasis(wrist, p, V(-1, 0, 0));
+  const curl = GRIP_CURL.map((v) => v.slice());
+  curl[0] = opt.index ?? TRIGGER_CURL;
+  buildHand(k, 1, place, { curl, spread: [0.2, 0, 0.04, 0.1], thumb: opt.thumb ?? { dir: [-0.3, -0.55, -0.78], roll: 0, curl: [0.2, 0.25] } });
+  const w = new THREE.Vector3(0, 0, 0.034).applyMatrix4(place);
+  buildSleeve(k, w, w.clone().add(opt.elbow ?? V(0.1, -0.24, 0.4)), 1);
+  return { place, d, p };
+}
+
+// 左手托住長槍護木:c=托握點(護木底部中心),朝向往右包覆
+function leftForeHand(k, f, yBottom, halfW, opt = {}) {
+  const palmCenter = V(-halfW * 0.55, yBottom - 0.012, -f);
+  const fingerDir = V(1, 0.35, -0.12).normalize();
+  const palmN = V(0.45, 1, 0).normalize();
+  const wrist = palmCenter.clone().addScaledVector(fingerDir, -0.047);
+  const place = handBasis(wrist, fingerDir, palmN);
+  buildHand(k, -1, place, {
+    curl: [[0.55, 1.2, 0.55], [0.6, 1.25, 0.6], [0.62, 1.25, 0.6], [0.7, 1.2, 0.55]],
+    spread: [0.08, 0.02, -0.03, -0.1],
+    thumb: { dir: [-0.75, -0.35, -0.55], roll: 0, curl: [0.15, 0.2] },
+  });
+  const w = new THREE.Vector3(0, 0, 0.034).applyMatrix4(place);
+  buildSleeve(k, w, w.clone().add(opt.elbow ?? V(-0.2, -0.26, 0.42)), -1);
+}
+
+// 手槍:左手包住右手指外側(拇指朝前)
+function leftSupportHand(k, a, c, depth, halfW) {
+  const d = V(0, -Math.cos(a), Math.sin(a));
+  const p = V(0, -Math.sin(a), -Math.cos(a));
+  const center = V(0, c[1], -c[0]).addScaledVector(d, 0.05);
+  const wrist = center.clone().addScaledVector(p, depth * 0.5 + 0.032 - 0.084).add(V(-(halfW + 0.026), 0, 0));
+  const place = handBasis(wrist, p, V(1, 0, 0));
+  buildHand(k, -1, place, {
+    curl: [[1.3, 1.3, 0.45], [1.35, 1.35, 0.45], [1.4, 1.35, 0.45], [1.45, 1.3, 0.45]],
+    spread: [0.0, 0.0, 0.05, 0.12],
+    thumb: { dir: [-0.35, -0.1, -0.93], roll: 0, curl: [0.1, 0.15] },
+  });
+  const w = new THREE.Vector3(0, 0, 0.034).applyMatrix4(place);
+  buildSleeve(k, w, w.clone().add(V(-0.1, -0.48, 0.12)), -1);
+}
+
+// ---------- Glock 17 ----------
 function buildPistol(g) {
-  mk(g, B(0.032, 0.034, 0.19), M.slide, 0, 0.03, -0.075);
-  mk(g, B(0.034, 0.008, 0.19), M.slide, 0, 0.048, -0.075); // 滑套頂部倒角
-  mk(g, B(0.028, 0.022, 0.15), M.polymer, 0, 0.004, -0.055);
-  mk(g, B(0.032, 0.105, 0.05), M.polymer, 0, -0.05, 0.027, -0.25);
-  mk(g, B(0.034, 0.012, 0.056), M.polymer, 0, -0.108, 0.048, -0.25); // 彈匣底板
-  mk(g, B(0.012, 0.006, 0.05), M.polymer, 0, -0.016, -0.075); // 扳機護圈
-  mk(g, B(0.012, 0.03, 0.006), M.polymer, 0, -0.03, -0.1);
-  mk(g, B(0.006, 0.02, 0.006), M.steelWorn, 0, -0.008, -0.052, 0.2); // 扳機
-  mk(g, C(0.0052, 0.004), M.steel, 0, 0.03, -0.171, HALF);
-  mk(g, B(0.018, 0.008, 0.012), M.steel, 0, 0.052, 0.012); // 照門
-  mk(g, B(0.006, 0.008, 0.01), M.steel, 0, 0.054, -0.165); // 準星
-  mk(g, B(0.003, 0.008, 0.05), M.steelWorn, 0.0165, 0.032, -0.07); // 滑套紋路
-  return { muzzle: new THREE.Vector3(0, 0.03, -0.18), length: 0.2 };
+  const k = new Kit(), ks = new Kit(), km = new Kit();
+  const slide = new THREE.Group(), mag = new THREE.Group();
+  g.add(slide, mag);
+  const SW = 0.0128, SB = 0.0165, ST = 0.0455, BORE = 0.031;
+
+  // 滑套:頂部兩側倒角的截面
+  ks.add(M.slide, sect([[-SW, SB, 0.0005], [SW, SB, 0.0005], [SW, 0.0402, 0.0012], [0.0093, ST, 0.0014], [-0.0093, ST, 0.0014], [-SW, 0.0402, 0.0012]], -0.024, 0.1612, { bevel: 0.0014 }));
+  for (const sx of [-1, 1]) {
+    for (let i = 0; i < 8; i++) ks.add(M.dark, box(0.0008, 0.019, 0.0012, sx * (SW - 0.0002), 0.0285, -0.0205 + i * 0.0029, 0)); // 後防滑紋
+    for (let i = 0; i < 6; i++) ks.add(M.dark, box(0.0008, 0.015, 0.0011, sx * (SW - 0.0002), 0.0295, 0.121 + i * 0.0028, 0)); // 前防滑紋
+  }
+  // 退殼口 + 槍管節套
+  ks.add(M.dark, box(0.0142, 0.003, 0.041, 0.0022, ST - 0.0013, 0.056, 0));
+  ks.add(M.worn, box(0.0116, 0.003, 0.0365, 0.0016, ST - 0.0012, 0.0545, 0.0005));
+  ks.add(M.dark, box(0.0012, 0.0085, 0.041, SW - 0.0003, 0.0395, 0.056, 0));
+  ks.add(M.worn, box(0.001, 0.0062, 0.033, SW - 0.0001, 0.0392, 0.0565, 0.0003));
+  ks.add(M.worn, box(0.0014, 0.0035, 0.012, SW + 0.0002, 0.0405, 0.029, 0.0004)); // 抽殼鉤
+  // 照門(白色 U 框)與準星(白點)
+  ks.add(M.polySmooth, box(0.016, 0.0024, 0.009, 0, ST + 0.0011, -0.016, 0.0006));
+  for (const sx of [-1, 1]) {
+    ks.add(M.polySmooth, box(0.0058, 0.0058, 0.0078, sx * 0.0051, ST + 0.0032, -0.0165, 0.0006));
+    ks.add(M.white, box(0.0009, 0.0036, 0.0006, sx * 0.0026, ST + 0.0036, -0.0207, 0));
+  }
+  ks.add(M.white, box(0.0058, 0.0009, 0.0006, 0, ST + 0.0021, -0.0207, 0));
+  ks.add(M.polySmooth, box(0.0034, 0.0052, 0.0055, 0, ST + 0.0024, 0.152, 0.0007));
+  ks.add(M.white, cylZ(0.0011, 0.1488, 0.1494, 0, ST + 0.0032, 12));
+  // 槍口:槍管冠部、膛線暗孔、復進簧導桿
+  ks.add(M.worn, lathe([[0.15, 0], [0.15, 0.0068], [0.1611, 0.0068], [0.1617, 0.0062], [0.1617, 0.0046], [0.1555, 0.0046], [0.1555, 0]], 24, BORE));
+  ks.add(M.dark, cylZ(0.0045, 0.1555, 0.1558, 0, BORE, 16));
+  ks.add(M.polySmooth, lathe([[0.15, 0], [0.15, 0.0042], [0.1612, 0.0042], [0.1616, 0.0034], [0.1616, 0]], 18, 0.0212));
+  ks.build(slide);
+
+  // 槍身(聚合物):握把後傾 22°,前握把指凹
+  const A = (22 * Math.PI) / 180;
+  const d = [-Math.sin(A), -Math.cos(A)], p = [Math.cos(A), -Math.sin(A)];
+  const F0 = [0.019, -0.01], B0 = at(F0, p, -0.05);
+  const F = (s, bump = 0) => [...at(F0, d, s, p, bump), 0.008];
+  const B = (s) => at(B0, d, s);
+  const frame = [
+    [-0.021, 0.0165, 0.001], [-0.0335, 0.0135, 0.003], [-0.031, 0.0082, 0.003], [...at(B(0.012), p, 0.0005), 0.008],
+    [...B(0.045), 0.02], [...at(B(0.079), p, -0.0018), 0.003], [...at(F(0.08), p, 0.0016), 0.003],
+    [...F(0.068), 0.01], [...F(0.036, 0.0012), 0.03], F(0.01),
+    [...F0, 0.004], [0.022, -0.0042, 0.002], [0.073, -0.0042, 0.001], [0.0745, -0.0015, 0.0015], [0.1505, -0.0015, 0.002], [0.1578, 0.0035, 0.003], [0.1578, 0.0165, 0.001],
+  ];
+  k.add(M.polymer, side(frame, 0.0286, { bevel: 0.0026, seg: 3 }));
+  // 護弓(方形前緣)
+  k.add(M.polymer, side([[0.02, -0.002], [0.0758, -0.002, 0.001], [0.0765, -0.0125, 0.002], [0.0742, -0.0218, 0.004], [0.066, -0.0248, 0.004], [0.026, -0.0248, 0.007], [0.0172, -0.0152, 0.004]], 0.0118, {
+    bevel: 0.0018, holes: [[[0.0262, -0.0046, 0.002], [0.0662, -0.0046, 0.002], [0.0675, -0.0122, 0.003], [0.0646, -0.0193, 0.003], [0.029, -0.0193, 0.005], [0.0228, -0.0126, 0.003]]],
+  }));
+  // 扳機(含安全片)
+  k.add(M.polySmooth, side([[0.0405, -0.003], [0.0465, -0.003], [0.0456, -0.0105, 0.004], [0.0428, -0.0175, 0.0015], [0.0398, -0.0172, 0.0015], [0.0412, -0.0105, 0.004]], 0.0062, { bevel: 0.0012 }));
+  k.add(M.dark, side([[0.0442, -0.0058], [0.0476, -0.0062], [0.0464, -0.0138, 0.003], [0.0436, -0.0152, 0.001]], 0.0018, { bevel: 0.0004 }));
+  // 下導軌(防塵蓋底部)與溝槽
+  for (const sx of [-1, 1]) k.add(M.dark, box(0.0007, 0.0012, 0.064, sx * 0.0141, 0.0012, 0.117, 0));
+  k.add(M.dark, box(0.0288, 0.0014, 0.0035, 0, -0.0006, 0.128, 0));
+  // 銷、滑套卡榫、分解桿、彈匣釋放鈕
+  for (const [f, y] of [[-0.011, 0.0045], [0.037, 0.0045], [0.0595, 0.0105]]) k.add(M.worn, cylX(0.0017, 0.0294, 0, y, f, 12));
+  k.add(M.steel, side([[0.033, 0.0138], [0.0605, 0.0138, 0.001], [0.0605, 0.0104, 0.001], [0.038, 0.0094], [0.033, 0.0104]], 0.0012, { x: -0.0148, bevel: 0.0003 }));
+  k.add(M.steel, side([[0.0655, 0.0148], [0.0708, 0.0148, 0.0006], [0.0702, 0.0098, 0.0008], [0.066, 0.0098, 0.0008]], 0.0312, { bevel: 0.0004 }));
+  k.add(M.polySmooth, rot(box(0.0026, 0.0072, 0.0058, -0.0148, -0.0108, 0.0205, 0.0008), -A, 0, 0, -0.0148, -0.0108, 0.0205));
+  k.build(g);
+
+  // 彈匣(換彈時沿握把滑出)
+  const C0 = at(at(F0, p, -0.025), p, 0.003);
+  const mc = (s, t) => at(C0, d, s, p, t);
+  km.add(M.polySmooth, side([mc(-0.012, -0.0165), mc(-0.012, 0.0165), [...mc(0.079, 0.0165), 0.002], [...mc(0.079, -0.0165), 0.002]], 0.022, { bevel: 0.001 }));
+  km.add(M.worn, side([mc(-0.0135, -0.012), mc(-0.0135, 0.004), [...mc(-0.011, 0.006), 0.001], [...mc(-0.011, -0.014), 0.001]], 0.012, { bevel: 0.0004 })); // 頂端子彈
+  km.add(M.polymer, side([
+    at(B(0.08), p, -0.0016), at(F(0.08), p, 0.0016), [...at(F(0.0875), p, 0.0018), 0.002], [...at(B(0.0875), p, -0.0034), 0.0025],
+  ], 0.0262, { bevel: 0.0016 }));
+  km.build(mag);
+
+  return {
+    muzzle: new THREE.Vector3(0, BORE, -0.163), length: 0.2, slide, mag,
+    grip: { a: A, c: [0.019 - 0.025 * Math.cos(A), -0.01 + 0.025 * Math.sin(A)], depth: 0.05, halfW: 0.0143 },
+    anim(shot, reload, empty) {
+      const lock = empty && (reload < 0 || reload < 0.86);
+      const k1 = shot < 0.085 ? Math.sin((shot / 0.085) * Math.PI) : 0;
+      slide.position.z = lock ? 0.026 : k1 * 0.026;
+      const out = reload < 0 ? 0 : smooth(0.08, 0.3, reload) * (1 - smooth(0.52, 0.78, reload));
+      mag.position.set(0, -Math.cos(A) * out * 0.2, Math.sin(A) * out * 0.2);
+    },
+  };
 }
 
+// ---------- Colt Python 6" ----------
 function buildRevolver(g) {
-  mk(g, B(0.032, 0.07, 0.1), M.blued, 0, 0.012, -0.015);
-  const drum = mk(g, C(0.03, 0.055, 18), M.blued, 0, 0.022, -0.045, HALF);
-  for (let i = 0; i < 6; i++) { // 彈巢溝槽
-    const a = (i / 6) * Math.PI * 2;
-    mk(g, C(0.0075, 0.057, 8), M.steel, Math.cos(a) * 0.026, 0.022 + Math.sin(a) * 0.026, -0.045, HALF);
+  const k = new Kit(), kd = new Kit(), kc = new Kit();
+  const BORE = 0.034, CY = 0.0195, CR = 0.0205;
+  // 槍身框架(含彈巢窗口)
+  k.add(M.blued, side([
+    [-0.012, 0.047, 0.004], [0.0838, 0.047, 0.0015], [0.0838, -0.0058, 0.002], [0.061, -0.0092, 0.004], [0.0125, -0.0102, 0.003],
+    [0.0062, -0.04, 0.012], [-0.008, -0.068, 0.012], [-0.017, -0.08, 0.005], [-0.043, -0.082, 0.006],
+    [-0.048, -0.062, 0.016], [-0.0365, -0.03, 0.02], [-0.0262, 0.01, 0.012], [-0.0222, 0.03, 0.006],
+  ], 0.0244, { bevel: 0.0022, seg: 3, holes: [[[0.0262, -0.0028, 0.002], [0.0742, -0.0028, 0.002], [0.0742, 0.0412, 0.002], [0.0262, 0.0412, 0.002]]] }));
+  k.add(M.blued, side([[0.0165, -0.002], [0.0262, -0.002], [0.0262, 0.0405], [0.0165, 0.0405, 0.004], [0.011, 0.02, 0.006]], 0.0372, { bevel: 0.003, seg: 3 })); // 後擋板
+  k.add(M.dark, box(0.0079, 0.0012, 0.054, 0, 0.0472, 0.054, 0)); // 頂條消光紋
+  // 照門(可調)
+  k.add(M.blued, side([[0.0015, 0.0468], [0.0262, 0.0468], [0.0248, 0.0508, 0.001], [0.0062, 0.0532, 0.001], [0.0015, 0.0532, 0.0005]], 0.0122, { bevel: 0.0008 }));
+  for (const sx of [-1, 1]) k.add(M.blued, box(0.0042, 0.0042, 0.0042, sx * 0.0038, 0.0552, 0.0034, 0.0005));
+  k.add(M.worn, cylX(0.0014, 0.0135, 0, 0.0505, 0.019, 10));
+  // 槍管、全長下護套、通風肋、準星
+  k.add(M.blued, lathe([[0.08, 0], [0.08, 0.0098], [0.2288, 0.0098], [0.2302, 0.0086], [0.2302, 0.0047], [0.223, 0.0047], [0.223, 0]], 28, BORE));
+  k.add(M.dark, cylZ(0.0046, 0.2229, 0.2232, 0, BORE, 16));
+  k.add(M.blued, side([[0.0836, 0.031], [0.2288, 0.031], [0.2296, 0.0115, 0.008], [0.2235, 0.0038, 0.004], [0.0836, 0.0038]], 0.0192, { bevel: 0.0042, seg: 3 }));
+  const vents = [];
+  for (let i = 0; i < 6; i++) vents.push([[0.097 + i * 0.0205, 0.0447, 0.0016], [0.112 + i * 0.0205, 0.0447, 0.0016], [0.112 + i * 0.0205, 0.0482, 0.0016], [0.097 + i * 0.0205, 0.0482, 0.0016]]);
+  k.add(M.blued, side([[0.0836, 0.0405], [0.2265, 0.0405], [0.2265, 0.0526, 0.0012], [0.0836, 0.0526]], 0.0086, { bevel: 0.0008, holes: vents }));
+  k.add(M.dark, box(0.0055, 0.0004, 0.13, 0, 0.0527, 0.157, 0)); // 肋條頂部防眩紋
+  k.add(M.blued, side([[0.2045, 0.0524], [0.2262, 0.0524], [0.2262, 0.0606, 0.0012], [0.222, 0.0612, 0.0008]], 0.0032, { bevel: 0.0005 }));
+  k.add(M.red, box(0.0034, 0.0028, 0.0022, 0, 0.0582, 0.2185, 0.0003));
+  // 握把護弓、扳機、擊錘、彈巢釋放鈕、側板螺絲
+  k.add(M.blued, side([[0.009, -0.006], [0.0625, -0.006], [0.0595, -0.016, 0.006], [0.049, -0.0305, 0.01], [0.022, -0.0325, 0.01], [0.0095, -0.022, 0.006]], 0.0094, {
+    bevel: 0.0016, holes: [[[0.0165, -0.0105, 0.003], [0.0545, -0.0105, 0.004], [0.046, -0.0255, 0.008], [0.0245, -0.0265, 0.008], [0.0168, -0.0195, 0.004]]],
+  }));
+  k.add(M.worn, side([[0.0305, -0.008], [0.0362, -0.008], [0.0352, -0.016, 0.005], [0.0302, -0.0232, 0.0015], [0.0278, -0.0226, 0.0015], [0.0312, -0.0158, 0.005]], 0.0068, { bevel: 0.0012 }));
+  k.add(M.blued, side([[-0.0175, 0.0255], [-0.0058, 0.0315], [-0.0082, 0.0462], [-0.0198, 0.0572, 0.004], [-0.0348, 0.0602, 0.005], [-0.0372, 0.0548, 0.003], [-0.0222, 0.0462, 0.004], [-0.0205, 0.031]], 0.0082, { bevel: 0.0014 }));
+  for (let i = 0; i < 5; i++) k.add(M.dark, box(0.0084, 0.0006, 0.0011, 0, 0.0598 - i * 0.0011, -0.031 + i * 0.0024, 0)); // 擊錘防滑紋
+  k.add(M.worn, side([[0.0028, 0.0225], [0.0142, 0.0225, 0.0015], [0.0142, 0.0305, 0.0015], [0.0028, 0.0305]], 0.003, { x: -0.0134, bevel: 0.0006 }));
+  for (const [f, y] of [[-0.004, 0.0045], [0.018, -0.0045], [-0.0165, 0.02]]) {
+    k.add(M.worn, cylX(0.0028, 0.0012, 0.0125, y, f, 16));
+    k.add(M.dark, box(0.0006, 0.0006, 0.0048, 0.0132, y, f, 0));
   }
-  mk(g, C(0.011, 0.2, 14), M.blued, 0, 0.034, -0.19, HALF); // 槍管
-  mk(g, C(0.016, 0.13, 14), M.blued, 0, 0.016, -0.15, HALF); // 下方護套(full lug)
-  mk(g, B(0.009, 0.007, 0.2), M.blued, 0, 0.049, -0.19); // 通風肋
-  mk(g, B(0.007, 0.012, 0.012), M.steel, 0, 0.059, -0.285); // 準星
-  mk(g, B(0.018, 0.014, 0.014), M.steel, 0, 0.057, 0.032); // 照門
-  mk(g, B(0.008, 0.026, 0.022), M.steelWorn, 0, 0.056, 0.045, 0.5); // 擊錘
-  mk(g, B(0.036, 0.115, 0.052), M.walnut, 0, -0.068, 0.045, -0.3); // 木握把
-  mk(g, B(0.009, 0.008, 0.075), M.blued, 0, -0.03, -0.01); // 扳機護圈
-  mk(g, B(0.006, 0.022, 0.008), M.steelWorn, 0, -0.01, 0.0, 0.2);
-  return { muzzle: new THREE.Vector3(0, 0.034, -0.3), length: 0.3, drum };
-}
+  // 方格紋胡桃木握把 + 金色小馬徽 + 握把螺絲
+  const grip = [[0.0098, -0.0118, 0.004], [0.0035, -0.04, 0.014], [-0.009, -0.07, 0.014], [-0.0175, -0.0855, 0.008], [-0.045, -0.0878, 0.012], [-0.0508, -0.062, 0.018], [-0.0385, -0.026, 0.02], [-0.0295, 0.0085, 0.006], [-0.0175, 0.0065, 0.004], [0.006, -0.006, 0.004]];
+  k.add(M.pyWood, side(grip, 0.0372, { bevel: 0.0055, seg: 4 }));
+  for (const sx of [-1, 1]) {
+    k.add(M.gold, cylX(0.0046, 0.0012, sx * 0.0184, -0.0205, -0.0158, 24));
+    k.add(M.worn, cylX(0.0032, 0.0012, sx * 0.0183, -0.048, -0.024, 16));
+  }
+  k.build(g);
 
+  // 彈巢擺出組:樞軸在彈巢左下方(沿 Z),換彈時繞 Z 軸往左擺出
+  const PX = -0.0105, PY = 0.0028;
+  const drum = groupAt(g, PX, PY, 0);
+  const spin = groupAt(drum, -PX, CY - PY, 0);
+  // 彈巢:帶凹槽的截面擠出(6 個彈膛孔),後段無凹槽
+  const fl = [];
+  for (let i = 0; i < 96; i++) {
+    const a = (i / 96) * Math.PI * 2;
+    const flute = Math.pow(Math.max(0, Math.cos(6 * (a - Math.PI / 2 - Math.PI / 6))), 18);
+    const r = CR - flute * 0.0032;
+    fl.push([Math.cos(a) * r, Math.sin(a) * r]);
+  }
+  const chambers = [];
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI / 2 + (i * Math.PI) / 3, ring = [];
+    for (let j = 0; j < 20; j++) { const b = (j / 20) * Math.PI * 2; ring.push([Math.cos(a) * 0.0145 + Math.cos(b) * 0.0046, Math.sin(a) * 0.0145 + Math.sin(b) * 0.0046]); }
+    chambers.push(ring);
+  }
+  kc.add(M.blued, sect(fl, 0.0352, 0.0712, { bevel: 0.0012, seg: 2, holes: chambers, cs: 2 }));
+  kc.add(M.blued, lathe([[0.0272, 0], [0.0272, CR - 0.001], [0.0282, CR], [0.0354, CR], [0.0354, 0]], 48));
+  for (let i = 0; i < 6; i++) { // 彈巢止動槽、彈頭
+    const a = Math.PI / 2 + Math.PI / 6 + (i * Math.PI) / 3;
+    kc.add(M.dark, rot(box(0.0034, 0.0012, 0.0052, Math.cos(a) * CR, Math.sin(a) * CR, 0.0322, 0), 0, 0, a - HALF, Math.cos(a) * CR, Math.sin(a) * CR, 0.0322));
+    const b = Math.PI / 2 + (i * Math.PI) / 3;
+    kc.add(M.copper, lathe([[0.058, 0], [0.058, 0.0044], [0.0655, 0.0043], [0.068, 0.0028], [0.068, 0]], 12, Math.sin(b) * 0.0145, Math.cos(b) * 0.0145));
+    kc.add(M.dark, cylZ(0.0012, 0.0679, 0.0682, Math.cos(b) * 0.0145, Math.sin(b) * 0.0145, 8));
+  }
+  kc.add(M.worn, lathe([[0.0712, 0], [0.0712, 0.0042], [0.0722, 0.0042], [0.0722, 0]], 16)); // 中心軸
+  kc.build(spin);
+  // 退殼桿(收在下護套內)、彈巢臂
+  kd.add(M.worn, cylZ(0.0026, 0.0722, 0.156, -PX, CY - PY, 12));
+  kd.add(M.worn, lathe([[0.156, 0], [0.156, 0.0036], [0.162, 0.0036], [0.163, 0.0028], [0.163, 0]], 16, CY - PY, -PX));
+  kd.add(M.blued, box(0.007, 0.012, 0.004, 0.003, (CY - PY) / 2, 0.0735, 0.001));
+  kd.build(drum);
+
+  let shots = 0, last = 9;
+  return {
+    muzzle: new THREE.Vector3(0, BORE, -0.232), length: 0.3, drum,
+    grip: { a: (28 * Math.PI) / 180, c: [-0.012, -0.004], depth: 0.046, halfW: 0.0186 },
+    anim(shot, reload) {
+      if (shot < last) shots++;
+      last = shot;
+      const sw = reload < 0 ? 0 : smooth(0.05, 0.2, reload) * (1 - smooth(0.8, 0.94, reload));
+      drum.rotation.z = sw * 1.25;
+      spin.rotation.z = ((shots + Math.min(1, shot / 0.09)) * Math.PI) / 3 + (reload < 0 ? 0 : smooth(0.6, 0.85, reload) * Math.PI * 2);
+    },
+  };
+}
+// ---------- AK-47(AKM) ----------
 function buildAK(g) {
-  mk(g, B(0.04, 0.07, 0.4), M.steel, 0, 0.03, -0.17); // 機匣
-  mk(g, B(0.036, 0.012, 0.3), M.steel, 0, 0.074, -0.19, -0.02); // 防塵蓋
-  mk(g, B(0.03, 0.008, 0.04), M.steel, 0, 0.078, 0.0); // 照門座
-  mk(g, C(0.0095, 0.34, 12), M.steelWorn, 0, 0.045, -0.5, HALF); // 槍管
-  mk(g, C(0.012, 0.22, 12), M.steel, 0, 0.073, -0.46, HALF); // 導氣管
-  mk(g, B(0.03, 0.02, 0.1), M.walnut, 0, 0.078, -0.46); // 上護木
-  mk(g, B(0.042, 0.052, 0.2), M.walnut, 0, 0.015, -0.42); // 下護木
-  mk(g, B(0.03, 0.045, 0.04), M.steel, 0, 0.075, -0.64); // 準星座
-  mk(g, B(0.004, 0.03, 0.006), M.steel, 0, 0.1, -0.64);
-  mk(g, B(0.03, 0.036, 0.03), M.steel, 0, 0.048, -0.62); // 氣塊
-  mk(g, C(0.013, 0.05, 10), M.steel, 0, 0.045, -0.7, HALF); // 槍口制退器
-  mk(g, B(0.036, 0.1, 0.05), M.walnutDark, 0, -0.058, 0.015, -0.28); // 握把
-  mk(g, B(0.038, 0.07, 0.3), M.walnut, 0, 0.0, 0.2, 0.06); // 槍托
-  mk(g, B(0.04, 0.12, 0.02), M.steelWorn, 0, -0.012, 0.358, 0.06); // 鋼製底板
-  mk(g, B(0.012, 0.006, 0.07), M.steel, 0, -0.025, -0.05); // 扳機護圈
-  mk(g, B(0.006, 0.022, 0.006), M.steelWorn, 0, -0.012, -0.06, 0.2);
-  mk(g, B(0.012, 0.016, 0.05), M.steelWorn, 0.026, 0.045, -0.08); // 拉機柄
-  // 彎彈匣
-  let px = -0.14, py = -0.005, rot = 0;
-  for (let i = 0; i < 4; i++) {
-    const len = 0.075;
-    const dy = -Math.cos(rot) * len, dz = -Math.sin(rot) * len;
-    mk(g, B(0.03, len + 0.004, 0.056), M.steel, 0, py + dy / 2, px + dz / 2, rot);
-    py += dy;
-    px += dz;
-    rot += 0.18;
+  const k = new Kit(), kb = new Kit(), km = new Kit();
+  const BORE = 0.045;
+  // 沖壓機匣
+  k.add(M.steel, side([[-0.048, 0.006, 0.002], [-0.048, 0.0555, 0.002], [0.2065, 0.0555, 0.002], [0.2122, 0.0495, 0.002], [0.2122, 0.002, 0.002], [0.146, -0.0028, 0.002], [0.08, -0.0028, 0.002], [0.062, 0.0005], [-0.03, 0.0005, 0.002]], 0.0372, { bevel: 0.0014 }));
+  // 防塵蓋(拱形截面 + 橫肋)與復進簧卡榫
+  const arch = (w, top) => {
+    const pts = [[-w, 0.052], [w, 0.052]];
+    for (let i = 0; i <= 12; i++) { const a = (i / 12) * Math.PI; pts.push([Math.cos(a) * w, 0.061 + Math.sin(a) * (top - 0.061)]); }
+    return pts;
+  };
+  k.add(M.steel, sect(arch(0.0194, 0.0728), -0.051, 0.196, { bevel: 0.0012, cs: 2 }));
+  for (const f of [-0.032, -0.018, -0.004, 0.01]) k.add(M.steel, sect(arch(0.0199, 0.0736), f, f + 0.0045, { bevel: 0.0012, cs: 2 }));
+  k.add(M.worn, lathe([[-0.059, 0], [-0.059, 0.0042], [-0.0565, 0.0052], [-0.05, 0.0052], [-0.05, 0]], 18, 0.0625));
+  // 表尺座、表尺板(帶缺口)
+  k.add(M.steel, side([[0.19, 0.051], [0.2425, 0.051], [0.2425, 0.0625, 0.002], [0.2, 0.0742, 0.003], [0.19, 0.0742, 0.002]], 0.031, { bevel: 0.0015 }));
+  k.add(M.steel, rot(box(0.0205, 0.0026, 0.083, 0, 0.0768, 0.25, 0.0008), 0.045, 0, 0, 0, 0.0768, 0.29));
+  for (const sx of [-1, 1]) k.add(M.steel, box(0.0072, 0.0058, 0.0036, sx * 0.0068, 0.0815, 0.2105, 0.0006));
+  k.add(M.worn, box(0.0245, 0.0045, 0.008, 0, 0.0792, 0.243, 0.0008)); // 表尺游標
+  // 上護木(木)+ 導氣管、導氣箍、前段
+  k.add(M.akWood, sect([[-0.0172, 0.055, 0.004], [0.0172, 0.055, 0.004], [0.0182, 0.068, 0.009], [0.012, 0.0815, 0.006], [-0.012, 0.0815, 0.006], [-0.0182, 0.068, 0.009]], 0.2445, 0.404, { bevel: 0.003, seg: 3 }));
+  k.add(M.steel, lathe([[0.4, 0], [0.4, 0.0108], [0.462, 0.0108], [0.462, 0]], 22, 0.0688));
+  for (const sx of [-1, 1]) for (let i = 0; i < 3; i++) k.add(M.dark, cylX(0.0016, 0.0218, sx * 0.0003, 0.0688, 0.425 + i * 0.011, 10));
+  k.add(M.steel, side([[0.455, 0.0342], [0.4925, 0.0342, 0.002], [0.4965, 0.05], [0.4965, 0.0782, 0.004], [0.463, 0.0802, 0.004], [0.455, 0.075]], 0.0262, { bevel: 0.0018 }));
+  k.add(M.steel, new THREE.TorusGeometry(0.0072, 0.0016, 8, 16).rotateY(HALF).translate(-0.0145, 0.04, -0.474)); // 前背帶環
+  // 槍管、準星座(帶護耳)、刺刀座、通條、制退器
+  k.add(M.steel, lathe([[0.2, 0], [0.2, 0.0106], [0.31, 0.0102], [0.59, 0.0093], [0.59, 0]], 24, BORE));
+  k.add(M.steel, lathe([[0.558, 0], [0.558, 0.0138], [0.5925, 0.0138], [0.5925, 0]], 24, BORE));
+  k.add(M.steel, side([[0.569, 0.05], [0.5905, 0.05], [0.5875, 0.0882, 0.002], [0.5745, 0.0882, 0.002]], 0.0132, { bevel: 0.0012 }));
+  for (const sx of [-1, 1]) k.add(M.steel, side([[0.5715, 0.07], [0.5895, 0.07], [0.5895, 0.1022, 0.0045], [0.5735, 0.1022, 0.0045]], 0.0028, { x: sx * 0.0086, bevel: 0.0006 }));
+  k.add(M.worn, cylY(0.0014, 0.017, 0, 0.0955, 0.5815, 10));
+  k.add(M.steel, box(0.012, 0.0062, 0.018, 0, 0.0285, 0.578, 0.001));
+  k.add(M.worn, cylZ(0.0029, 0.435, 0.585, 0, 0.0262, 10));
+  k.add(M.worn, lathe([[0.585, 0], [0.585, 0.0042], [0.5935, 0.0042], [0.595, 0.003], [0.595, 0]], 14, 0.0262));
+  k.add(M.steel, lathe([[0.592, 0], [0.592, 0.0118], [0.6265, 0.0118], [0.6295, 0.0098], [0.6295, 0.0052], [0.62, 0.0052], [0.62, 0]], 24, BORE));
+  k.add(M.dark, cylZ(0.0051, 0.6198, 0.6202, 0, BORE, 14));
+  k.add(M.dark, box(0.0236, 0.0055, 0.0035, 0, BORE + 0.0085, 0.627, 0)); // 斜切制退口
+  // 下護木(木,掌部隆起)+ 護木箍
+  k.add(M.akWood, side([[0.2122, 0.0525, 0.003], [0.4195, 0.0525, 0.003], [0.4195, 0.0052, 0.006], [0.396, -0.0012, 0.012], [0.36, -0.0072, 0.04], [0.262, -0.0072, 0.04], [0.226, -0.0012, 0.01], [0.2122, 0.0035, 0.004]], 0.0506, { bevel: 0.0085, seg: 4 }));
+  k.add(M.steel, side([[0.4195, -0.0002], [0.4335, -0.0002], [0.4335, 0.0548, 0.002], [0.4195, 0.0548]], 0.0522, { bevel: 0.0016 }));
+  k.add(M.steel, side([[0.421, 0.03], [0.4325, 0.03], [0.4325, 0.046], [0.421, 0.046]], 0.003, { x: 0.0272, bevel: 0.0006 }));
+  k.add(M.steel, side([[0.2045, 0.002], [0.2165, 0.002], [0.2165, 0.054], [0.2045, 0.054]], 0.0518, { bevel: 0.0015 }));
+  // 槍托(木)+ 鋼製托底板 + 背帶環、上下托尾鐵片
+  const stock = [[-0.044, 0.0548, 0.004], [-0.2985, 0.0365, 0.006], [-0.3045, 0.0295, 0.003], [-0.3115, -0.0855, 0.004], [-0.2955, -0.0905, 0.006], [-0.17, -0.043, 0.07], [-0.08, -0.008, 0.03], [-0.044, 0.0045, 0.004]];
+  k.add(M.akWood, side(stock, 0.0405, { bevel: 0.0085, seg: 4 }));
+  k.add(M.steel, side([[-0.3035, 0.0372, 0.002], [-0.3105, 0.0374, 0.002], [-0.3185, -0.0872, 0.003], [-0.3115, -0.0915, 0.002]], 0.0425, { bevel: 0.0015 }));
+  k.add(M.steel, box(0.024, 0.003, 0.034, 0, 0.0535, -0.057, 0.001));
+  k.add(M.steel, new THREE.TorusGeometry(0.0085, 0.0018, 8, 16).rotateY(HALF).translate(-0.0215, -0.058, 0.262));
+  // 握把(木)與底部螺絲
+  const grip = [[0.0235, 0.0005, 0.002], [-0.0245, 0.0005, 0.002], [-0.0335, -0.03, 0.022], [-0.0505, -0.0965, 0.006], [-0.0405, -0.1045, 0.006], [-0.0098, -0.1035, 0.008], [0.0035, -0.06, 0.03], [0.0165, -0.02, 0.02]];
+  k.add(M.akWood, side(grip, 0.0325, { bevel: 0.0068, seg: 4 }));
+  k.add(M.worn, rot(cylY(0.0045, 0.003, 0, -0.1035, -0.025, 16), 0, 0, 0));
+  // 護弓(沖壓鋼條)、彈匣卡榫、扳機、快慢機、鉚釘、彈匣導槽凹痕
+  k.add(M.steel, side([[0.0155, 0.0006], [0.0845, 0.0006], [0.0845, -0.0105, 0.002], [0.0785, -0.0335, 0.008], [0.0262, -0.0342, 0.01], [0.0155, -0.0185, 0.006]], 0.0102, {
+    bevel: 0.0012, holes: [[[0.0262, -0.004, 0.002], [0.0742, -0.004, 0.002], [0.0705, -0.0272, 0.006], [0.0302, -0.0275, 0.006], [0.0262, -0.0165, 0.004]]],
+  }));
+  k.add(M.steel, side([[0.0795, -0.002], [0.0855, -0.002], [0.0855, -0.0215, 0.002], [0.0795, -0.0195, 0.002]], 0.0162, { bevel: 0.0008 }));
+  k.add(M.worn, side([[0.0405, 0.0], [0.0462, 0.0], [0.0452, -0.0122, 0.005], [0.0402, -0.0222, 0.0015], [0.0372, -0.0215, 0.0015], [0.0405, -0.0102, 0.004]], 0.0072, { bevel: 0.0012 }));
+  k.add(M.steel, side([[-0.0375, 0.0362, 0.008], [-0.019, 0.0526, 0.002], [0.1185, 0.0545, 0.002], [0.1225, 0.0395, 0.003], [0.1115, 0.0372, 0.003], [0.1045, 0.0458, 0.002], [-0.019, 0.0448], [-0.0305, 0.034]], 0.0026, { x: 0.0199, bevel: 0.0006 }));
+  k.add(M.steel, cylX(0.0085, 0.0026, 0.0201, 0.0408, -0.0292, 22));
+  for (const [f, y] of [[-0.0405, 0.012], [-0.0405, 0.042], [-0.02, 0.0132], [0.0305, 0.0128], [0.176, 0.0105], [0.188, 0.0105], [0.2, 0.0105], [0.176, 0.036], [0.2, 0.036], [0.135, 0.004]]) {
+    k.add(M.worn, cylX(0.0021, 0.0386, 0, y, f, 12));
   }
-  return { muzzle: new THREE.Vector3(0, 0.045, -0.73), length: 0.9 };
+  for (const sx of [-1, 1]) k.add(M.steel, box(0.0016, 0.012, 0.038, sx * 0.0186, 0.021, 0.116, 0.003));
+  k.add(M.dark, box(0.0012, 0.0118, 0.088, 0.0181, 0.0462, 0.104, 0)); // 退殼口
+  k.build(g);
+
+  // 槍機(含拉機柄,開火時後座)
+  const bolt = new THREE.Group();
+  g.add(bolt);
+  kb.add(M.worn, box(0.0018, 0.0098, 0.084, 0.0177, 0.0462, 0.104, 0.0006));
+  kb.add(M.worn, cylX(0.0038, 0.017, 0.0272, 0.0468, 0.1555, 12));
+  kb.add(M.worn, lathe([[0, 0], [0, 0.0058], [0.008, 0.0066], [0.0142, 0.0052], [0.0158, 0]], 16).rotateY(-HALF).translate(0.0335, 0.0468, -0.1555));
+  kb.build(bolt);
+
+  // 彎彈匣(30 發,肋條鋼板)
+  const mag = groupAt(g, 0, 0.002, 0.146);
+  const R2 = 0.33, R1 = R2 + 0.061, fc = R2, yc = 0;
+  const a0 = Math.PI, a1 = Math.PI + 0.54;
+  km.add(M.magSteel, side(arcBand(fc, yc, R2, R1, a0 - 0.035, a1, 20), 0.0242, { bevel: 0.0018, cs: 2 }));
+  for (const r of [R2 + 0.013, R2 + 0.0295, R2 + 0.046]) km.add(M.magSteel, side(arcBand(fc, yc, r, r + 0.0042, a0 + 0.06, a1 - 0.03, 16), 0.0266, { bevel: 0.0012, cs: 2 }));
+  const bot = (r, a) => [fc + Math.cos(a) * r, yc + Math.sin(a) * r];
+  const [p0, p1] = [bot(R2 - 0.002, a1), bot(R1 + 0.003, a1)];
+  const n = [Math.cos(a1 + HALF) * -0.0065, Math.sin(a1 + HALF) * -0.0065];
+  km.add(M.magSteel, side([[p1[0] + 0.0015, p1[1]], [p0[0], p0[1]], [p0[0] + n[0], p0[1] + n[1], 0.002], [p1[0] + n[0] + 0.0015, p1[1] + n[1], 0.002]], 0.0272, { bevel: 0.0015 }));
+  km.add(M.magSteel, box(0.016, 0.006, 0.004, 0, 0.0012, -0.0012, 0.001));
+  km.build(mag);
+
+  return {
+    muzzle: new THREE.Vector3(0, BORE, -0.632), length: 0.95, bolt, mag,
+    grip: { a: (18 * Math.PI) / 180, c: [-0.0005, 0.0005], depth: 0.047, halfW: 0.0163 },
+    fore: { f: 0.33, y: -0.0072, halfW: 0.0253 },
+    anim(shot, reload) {
+      const c = shot < 0.07 ? Math.sin((shot / 0.07) * Math.PI) : 0;
+      bolt.position.z = c * 0.075;
+      const t = reload < 0 ? 0 : reload;
+      const tilt = smooth(0.08, 0.2, t) * (1 - smooth(0.62, 0.78, t));
+      const drop = smooth(0.18, 0.36, t) * (1 - smooth(0.5, 0.66, t));
+      mag.rotation.x = tilt * 0.45;
+      mag.position.y = 0.002 - drop * 0.3;
+    },
+  };
 }
 
+// ---------- M4A1(RIS 四面導軌) ----------
 function buildM4(g) {
-  mk(g, B(0.038, 0.062, 0.21), M.anodized, 0, -0.012, -0.03); // 下機匣
-  mk(g, B(0.04, 0.052, 0.27), M.anodized, 0, 0.042, -0.1); // 上機匣
-  mk(g, B(0.03, 0.024, 0.22), M.anodized, 0, 0.086, -0.09); // 提把
-  mk(g, B(0.022, 0.012, 0.03), M.steel, 0, 0.1, 0.0); // 照門
-  mk(g, B(0.014, 0.016, 0.015), M.steel, 0, 0.1, -0.18);
-  mk(g, C(0.029, 0.26, 16), M.anodized, 0, 0.044, -0.37, HALF); // 護木
-  for (let i = 0; i < 6; i++) mk(g, C(0.0305, 0.006, 16), M.steel, 0, 0.044, -0.27 - i * 0.04, HALF); // 護木紋路
-  mk(g, C(0.0085, 0.2, 10), M.steelWorn, 0, 0.044, -0.58, HALF); // 槍管
-  mk(g, B(0.014, 0.05, 0.022), M.steel, 0, 0.075, -0.5); // 準星座
-  mk(g, B(0.004, 0.022, 0.006), M.steel, 0, 0.102, -0.5);
-  mk(g, C(0.014, 0.065, 12), M.steel, 0, 0.044, -0.665, HALF); // 消焰器
-  mk(g, C(0.017, 0.2, 12), M.polymer, 0, 0.02, 0.24, HALF); // 緩衝管
-  mk(g, B(0.042, 0.09, 0.18), M.polymer, 0, 0.0, 0.3, 0.05); // 伸縮槍托
-  mk(g, B(0.044, 0.1, 0.02), M.polymer, 0, -0.005, 0.395, 0.05);
-  mk(g, B(0.034, 0.1, 0.05), M.polymer, 0, -0.06, 0.04, -0.35); // 握把
-  mk(g, B(0.03, 0.125, 0.052), M.anodized, 0, -0.108, -0.075, 0.1); // STANAG 彈匣
-  mk(g, B(0.012, 0.006, 0.07), M.anodized, 0, -0.04, -0.03);
-  mk(g, B(0.006, 0.022, 0.006), M.steelWorn, 0, -0.018, -0.02, 0.2);
-  mk(g, B(0.016, 0.012, 0.04), M.steelWorn, 0, 0.074, 0.04); // 拉柄
-  mk(g, B(0.006, 0.02, 0.045), M.steelWorn, 0.022, 0.032, -0.04); // 彈出口蓋
-  return { muzzle: new THREE.Vector3(0, 0.044, -0.7), length: 0.83 };
+  const k = new Kit(), kb = new Kit(), km = new Kit();
+  const BORE = 0.0405;
+  // 下機匣(含彈匣井、緩衝管座)
+  k.add(M.anodized, side([[-0.0685, 0.0225], [0.1125, 0.0225], [0.1125, 0.0095, 0.003], [0.1072, -0.032, 0.002], [0.098, -0.0342, 0.002], [0.0418, -0.0342, 0.002], [0.0392, -0.0052, 0.002], [-0.031, -0.0052, 0.002], [-0.0515, 0.0005, 0.006], [-0.0685, 0.0085, 0.006]], 0.0252, { bevel: 0.0016 }));
+  k.add(M.anodized, side([[0.0405, -0.0335], [0.1075, -0.0335], [0.1072, -0.0362, 0.001], [0.0405, -0.0362, 0.001]], 0.0292, { bevel: 0.0012 })); // 彈匣井口外擴
+  // 上機匣(平頂)+ 前進助推器 + 拋殼擋
+  k.add(M.anodized, side([[-0.0685, 0.0222], [0.1135, 0.0222], [0.1135, 0.0598, 0.0015], [-0.0685, 0.0598, 0.0015]], 0.0282, { bevel: 0.0016 }));
+  k.add(M.anodized, side([[-0.06, 0.035], [-0.026, 0.035], [-0.016, 0.044, 0.006], [-0.026, 0.0565, 0.004], [-0.06, 0.0565, 0.004]], 0.012, { x: 0.0165, bevel: 0.003 }));
+  k.add(M.anodized, lathe([[-0.064, 0], [-0.064, 0.0074], [-0.058, 0.0074], [-0.058, 0]], 20, 0.0468, 0.0215));
+  k.add(M.worn, lathe([[-0.0705, 0], [-0.0705, 0.0066], [-0.0642, 0.0068], [-0.0642, 0]], 20, 0.0468, 0.0215));
+  for (let i = 0; i < 4; i++) k.add(M.dark, rot(box(0.0006, 0.0136, 0.0058, 0.0215, 0.0468, -0.0672, 0), 0, 0, (i * Math.PI) / 4, 0.0215, 0.0468, -0.0672));
+  k.add(M.anodized, side([[-0.026, 0.038], [-0.008, 0.038], [-0.011, 0.054, 0.003], [-0.026, 0.056, 0.003]], 0.008, { x: 0.0158, bevel: 0.002 }));
+  // 拋殼口(防塵蓋打開下垂)
+  k.add(M.dark, box(0.0012, 0.0142, 0.066, 0.0136, 0.0418, 0.027, 0));
+  k.add(M.anodized, rot(box(0.0012, 0.013, 0.064, 0.0152, 0.0285, 0.027, 0.0004), 0, 0, 0.55, 0.0142, 0.0348, 0.027));
+  // 拉機柄
+  k.add(M.anodized, side([[-0.077, 0.0512], [-0.0655, 0.0512], [-0.0655, 0.0592, 0.001], [-0.077, 0.0592, 0.001]], 0.042, { bevel: 0.0014 }));
+  k.add(M.anodized, side([[-0.068, 0.0512], [-0.012, 0.0512], [-0.012, 0.0585], [-0.068, 0.0585]], 0.0106, { bevel: 0.001 }));
+  // 頂部導軌 + 機械瞄具(折疊照門)
+  picatinny(k, M.anodized, -0.064, 0.1125, new THREE.Matrix4().makeTranslation(0, 0.0598, 0));
+  k.add(M.anodized, side([[-0.054, 0.069], [-0.0185, 0.069], [-0.0215, 0.0765, 0.002], [-0.049, 0.0782, 0.002], [-0.054, 0.074]], 0.0262, { bevel: 0.0015 }));
+  for (const sx of [-1, 1]) k.add(M.anodized, side([[-0.0475, 0.075], [-0.036, 0.075], [-0.0375, 0.0975, 0.003], [-0.0475, 0.0975, 0.003]], 0.0032, { x: sx * 0.0092, bevel: 0.0007 }));
+  k.add(M.steel, lathe([[-0.0445, 0], [-0.0445, 0.0058], [-0.0405, 0.0058], [-0.0405, 0]], 20, 0.091));
+  k.add(M.dark, cylZ(0.0018, -0.0447, -0.0403, 0, 0.091, 12));
+  k.add(M.steel, box(0.0105, 0.016, 0.0034, 0, 0.0825, -0.0425, 0.0008));
+  // 握把(A2,點刻紋)
+  k.add(M.polymer, side([[0.0205, -0.0018], [-0.0225, -0.0018], [-0.0305, -0.03, 0.01], [-0.0525, -0.0985, 0.008], [-0.0405, -0.1065, 0.006], [-0.0115, -0.1045, 0.008], [-0.0018, -0.0705, 0.012], [0.0045, -0.0548, 0.004], [0.0022, -0.0462, 0.006], [0.0122, -0.0222, 0.012], [0.0205, -0.0102]], 0.0302, { bevel: 0.006, seg: 3 }));
+  // 護弓、扳機、快慢機、槍機卡榫、彈匣釋放鈕、分解銷
+  k.add(M.anodized, side([[0.0115, -0.0035], [0.0465, -0.0035], [0.0465, -0.0302, 0.003], [0.0105, -0.0345, 0.004]], 0.0102, { bevel: 0.0012, holes: [[[0.0162, -0.0078, 0.002], [0.0415, -0.0078, 0.002], [0.0415, -0.0258, 0.002], [0.0162, -0.0288, 0.002]]] }));
+  k.add(M.worn, side([[0.0262, -0.0038], [0.0318, -0.0038], [0.0308, -0.0142, 0.005], [0.0262, -0.0232, 0.0015], [0.0234, -0.0225, 0.0015], [0.0265, -0.0128, 0.004]], 0.0062, { bevel: 0.0012 }));
+  k.add(M.steel, cylX(0.0068, 0.0022, -0.0138, 0.0118, -0.0092, 22));
+  k.add(M.steel, side([[-0.0115, 0.0098], [0.0058, 0.0108], [0.0068, 0.0138, 0.0012], [-0.0115, 0.0142]], 0.0024, { x: -0.0152, bevel: 0.0005 }));
+  k.add(M.steel, side([[0.0645, 0.0062], [0.0815, 0.0062, 0.002], [0.0815, 0.0225, 0.002], [0.0705, 0.0225]], 0.0028, { x: -0.0138, bevel: 0.0006 }));
+  k.add(M.worn, cylX(0.0045, 0.0034, 0.0135, 0.0025, 0.0305, 18));
+  k.add(M.anodized, lathe([[0, 0.0045], [0, 0.0078], [0.0028, 0.0078], [0.0028, 0.0045]], 22).rotateY(-HALF).translate(0.0124, 0.0025, -0.0305));
+  for (const [f, y] of [[-0.0405, 0.0142], [0.1065, 0.0178], [0.0102, 0.0072], [0.0305, 0.0072]]) k.add(M.worn, cylX(0.0026, 0.0278, 0, y, f, 14));
+  // RIS 護木(四面導軌,左/下裝防滑蓋)
+  const ris = [[-0.0198, 0.0207, 0.004], [0.0198, 0.0207, 0.004], [0.0198, 0.0603, 0.004], [-0.0198, 0.0603, 0.004]];
+  k.add(M.anodized, sect(ris, 0.1155, 0.2925, { bevel: 0.0015 }));
+  const R = (rz, y, x) => new THREE.Matrix4().makeTranslation(x, y, 0).multiply(new THREE.Matrix4().makeRotationZ(rz));
+  picatinny(k, M.anodized, 0.1195, 0.2885, R(0, 0.0603, 0));
+  picatinny(k, M.anodized, 0.1195, 0.2885, R(-HALF, BORE, 0.0198));
+  for (const [rz, x, y] of [[HALF, -0.0198 - 0.0048, BORE], [Math.PI, 0, 0.0207 - 0.0048]]) { // 防滑蓋(帶橫肋)
+    const m = R(rz, y, x);
+    const cover = sect([[-0.0122, -0.0045, 0.002], [0.0122, -0.0045, 0.002], [0.0122, 0.003, 0.002], [-0.0122, 0.003, 0.002]], 0.124, 0.285, { bevel: 0.0014 });
+    k.add(M.polySmooth, cover.applyMatrix4(m));
+    for (let f = 0.13; f < 0.282; f += 0.008) k.add(M.polySmooth, box(0.022, 0.002, 0.0034, 0, 0.0038, f, 0.0008).applyMatrix4(m));
+  }
+  k.add(M.anodized, lathe([[0.108, 0], [0.108, 0.0305], [0.1132, 0.0322], [0.1182, 0.0322], [0.1182, 0]], 28, BORE)); // 三角環
+  k.add(M.anodized, lathe([[0.2905, 0], [0.2905, 0.0262], [0.2985, 0.0215], [0.2985, 0]], 28, BORE)); // 護木前蓋
+  // 槍管(M203 段差)、導氣管、A2 準星座、消焰器
+  k.add(M.steel, lathe([[0.29, 0], [0.29, 0.0092], [0.352, 0.0092], [0.354, 0.0078], [0.386, 0.0078], [0.388, 0.0092], [0.4935, 0.0088], [0.4935, 0]], 24, BORE));
+  k.add(M.steel, cylZ(0.0026, 0.292, 0.305, 0, BORE + 0.012, 10));
+  k.add(M.steel, lathe([[0.2995, 0], [0.2995, 0.0142], [0.3335, 0.0142], [0.3335, 0]], 24, BORE));
+  k.add(M.steel, side([[0.3005, 0.0515], [0.3325, 0.0515], [0.3325, 0.0722], [0.3195, 0.0722], [0.3045, 0.058]], 0.0162, { bevel: 0.0014 }));
+  for (const sx of [-1, 1]) k.add(M.steel, side([[0.3045, 0.0565], [0.3325, 0.0565], [0.3325, 0.0985, 0.003], [0.3215, 0.0985, 0.003]], 0.0032, { x: sx * 0.0081, bevel: 0.0007 }));
+  k.add(M.worn, box(0.0026, 0.0168, 0.0026, 0, 0.0805, 0.3265, 0.0004));
+  k.add(M.steel, box(0.0118, 0.0068, 0.02, 0, 0.0262, 0.318, 0.001));
+  k.add(M.steel, new THREE.TorusGeometry(0.0078, 0.0018, 8, 16).rotateY(HALF).translate(0, 0.0178, -0.322));
+  k.add(M.steel, lathe([[0.4915, 0], [0.4915, 0.0108], [0.4955, 0.0108], [0.4955, 0]], 20, BORE));
+  k.add(M.steel, lathe([[0.4955, 0], [0.4955, 0.0112], [0.5345, 0.0112], [0.5365, 0.0098], [0.5365, 0.0062], [0.527, 0.0062], [0.527, 0]], 28, BORE));
+  k.add(M.dark, cylZ(0.0061, 0.5268, 0.5272, 0, BORE, 14));
+  for (let i = 0; i < 5; i++) {
+    const a = HALF + (i - 2) * (Math.PI / 3);
+    const x = Math.cos(a) * 0.0109, y = BORE + Math.sin(a) * 0.0109;
+    k.add(M.dark, rot(box(0.003, 0.0014, 0.024, x, y, 0.519, 0), 0, 0, a - HALF, x, y, 0.519));
+  }
+  // 緩衝管、城堡螺帽、背帶板、伸縮托
+  k.add(M.anodized, lathe([[-0.258, 0], [-0.258, 0.0142], [-0.0685, 0.0142], [-0.0685, 0]], 24, BORE));
+  k.add(M.steel, lathe([[-0.0775, 0], [-0.0775, 0.0182], [-0.0705, 0.0182], [-0.0705, 0]], 24, BORE));
+  for (let i = 0; i < 6; i++) k.add(M.dark, rot(box(0.0035, 0.004, 0.0072, 0, BORE + 0.0168, -0.074, 0), 0, 0, (i * Math.PI) / 3, 0, BORE, -0.074));
+  k.add(M.steel, lathe([[-0.0705, 0], [-0.0705, 0.0222], [-0.0688, 0.0222], [-0.0688, 0]], 24, BORE));
+  k.add(M.polySmooth, sect([[-0.0205, BORE - 0.0178, 0.006], [0.0205, BORE - 0.0178, 0.006], [0.0205, BORE + 0.0185, 0.008], [-0.0205, BORE + 0.0185, 0.008]], -0.2985, -0.163, { bevel: 0.004, seg: 3 }));
+  k.add(M.polySmooth, side([[-0.178, 0.03], [-0.2985, 0.03], [-0.3005, -0.066, 0.004], [-0.2835, -0.0688, 0.006], [-0.196, 0.022, 0.012]], 0.0262, { bevel: 0.0035, seg: 3 }));
+  k.add(M.polySmooth, side([[-0.205, 0.016], [-0.29, 0.016], [-0.291, -0.055, 0.003], [-0.282, -0.057, 0.004]], 0.0292, { bevel: 0.0025 }));
+  k.add(M.rubber, side([[-0.2965, 0.0612, 0.004], [-0.3095, 0.0612, 0.004], [-0.3135, -0.0715, 0.004], [-0.3005, -0.0722, 0.004]], 0.0442, { bevel: 0.003 }));
+  for (let i = 0; i < 9; i++) k.add(M.rubber, box(0.045, 0.0018, 0.004, 0, 0.05 - i * 0.0135, -0.31 + i * 0.0004, 0.0008));
+  k.add(M.polySmooth, side([[-0.172, 0.016], [-0.21, 0.016], [-0.212, 0.008, 0.002], [-0.176, 0.008, 0.002]], 0.012, { bevel: 0.002 }));
+  k.build(g);
+
+  // 槍機框(從拋殼口可見)
+  const bolt = new THREE.Group();
+  g.add(bolt);
+  kb.add(M.worn, box(0.0016, 0.0118, 0.062, 0.0128, 0.0418, 0.027, 0.0005));
+  kb.add(M.dark, box(0.0012, 0.0024, 0.03, 0.0132, 0.0388, 0.038, 0));
+  kb.build(bolt);
+
+  // STANAG 鋁彈匣(微彎)
+  const mag = groupAt(g, 0, 0, 0);
+  const R2 = 0.95, fc = 0.105 + R2, yc = -0.004;
+  const a1 = Math.PI + 0.19;
+  km.add(M.usgi, side(arcBand(fc, yc, R2, R2 + 0.0632, Math.PI - 0.03, a1, 10), 0.0222, { bevel: 0.0015, cs: 2 }));
+  for (const r of [R2 + 0.012, R2 + 0.046]) km.add(M.usgi, side(arcBand(fc, yc, r, r + 0.006, Math.PI + 0.045, a1 - 0.012, 8), 0.0242, { bevel: 0.0012, cs: 2 }));
+  const bp = (r) => [fc + Math.cos(a1) * r, yc + Math.sin(a1) * r];
+  const [q0, q1] = [bp(R2 - 0.002), bp(R2 + 0.0652)];
+  km.add(M.polySmooth, side([[q1[0], q1[1]], [q0[0], q0[1]], [q0[0] - 0.001, q0[1] - 0.007, 0.002], [q1[0] - 0.001, q1[1] - 0.007, 0.002]], 0.0262, { bevel: 0.0016 }));
+  km.build(mag);
+
+  return {
+    muzzle: new THREE.Vector3(0, BORE, -0.538), length: 0.84, bolt, mag,
+    grip: { a: (24 * Math.PI) / 180, c: [-0.0012, -0.0018], depth: 0.044, halfW: 0.0151 },
+    fore: { f: 0.215, y: 0.0107, halfW: 0.0285 },
+    anim(shot, reload, empty) {
+      const c = shot < 0.055 ? Math.sin((shot / 0.055) * Math.PI) : 0;
+      const lock = empty && (reload < 0 || reload < 0.88);
+      bolt.position.z = lock ? 0.05 : c * 0.05;
+      const drop = reload < 0 ? 0 : smooth(0.1, 0.3, reload) * (1 - smooth(0.52, 0.76, reload));
+      mag.position.y = -drop * 0.3;
+    },
+  };
 }
 
 const BUILDERS = { pistol: buildPistol, revolver: buildRevolver, ak47: buildAK, m4a1: buildM4 };
 
 // ---------- 手臂 ----------
-function limb(parent, from, to, w, h) {
-  const dir = new THREE.Vector3().subVectors(to, from);
-  const len = dir.length();
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(w * 0.5, w * 0.62, len, 10), M.sleeve);
-  m.position.copy(from).addScaledVector(dir, 0.5);
-  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
-  parent.add(m);
-  return m;
+function buildHands(g, id, info) {
+  const k = new Kit();
+  const gr = info.grip;
+  if (id === 'pistol' || id === 'revolver') {
+    rightGripHand(k, gr.a, gr.c, gr.depth, gr.halfW, { elbow: V(0.07, -0.5, 0.12) });
+    leftSupportHand(k, gr.a, gr.c, gr.depth, gr.halfW);
+  } else {
+    rightGripHand(k, gr.a, gr.c, gr.depth, gr.halfW, { elbow: V(0.15, -0.3, 0.28), thumb: { dir: [-0.2, -0.7, -0.68], roll: 0, curl: [0.25, 0.3] } });
+    leftForeHand(k, info.fore.f, info.fore.y, info.fore.halfW);
+  }
+  k.build(g);
 }
 
-function buildHands(g, id) {
-  // 右手:包住握把
-  const rg = new THREE.Group();
-  g.add(rg);
-  const rz = id === 'ak47' ? 0.03 : id === 'm4a1' ? 0.05 : id === 'revolver' ? 0.05 : 0.035;
-  mk(rg, B(0.052, 0.09, 0.07), M.glove, 0.004, -0.052, rz);
-  mk(rg, B(0.028, 0.02, 0.05), M.glove, -0.026, 0.0, rz - 0.01); // 虎口/拇指
-  mk(rg, B(0.012, 0.014, 0.05), M.glove, -0.02, -0.002, -0.055); // 食指搭在扳機護圈
-  mk(rg, B(0.05, 0.05, 0.07), M.glove, 0.01, -0.095, rz + 0.01); // 掌根
-  limb(rg, new THREE.Vector3(0.012, -0.07, rz + 0.045), new THREE.Vector3(0.1, -0.3, rz + 0.5), 0.075, 0.075);
-  // 左手:長槍扶護木,短槍托住握把
-  const lg = new THREE.Group();
-  g.add(lg);
-  let lp;
-  if (id === 'ak47') lp = new THREE.Vector3(0, -0.032, -0.4);
-  else if (id === 'm4a1') lp = new THREE.Vector3(0, -0.03, -0.33);
-  else lp = new THREE.Vector3(-0.04, -0.06, -0.0);
-  if (id === 'ak47' || id === 'm4a1') {
-    mk(lg, B(0.075, 0.05, 0.095), M.glove, lp.x, lp.y, lp.z);
-    mk(lg, B(0.02, 0.04, 0.07), M.glove, lp.x - 0.04, lp.y + 0.03, lp.z); // 拇指
-    limb(lg, new THREE.Vector3(lp.x - 0.01, lp.y - 0.02, lp.z + 0.05), new THREE.Vector3(-0.2, -0.3, lp.z + 0.5), 0.075, 0.075);
-  } else {
-    mk(lg, B(0.04, 0.08, 0.07), M.glove, lp.x, lp.y, lp.z + 0.03);
-    limb(lg, new THREE.Vector3(lp.x - 0.01, lp.y - 0.03, lp.z + 0.06), new THREE.Vector3(-0.25, -0.32, 0.45), 0.075, 0.075);
+const cache = {};
+function built(id) {
+  if (!cache[id]) {
+    const gun = new THREE.Group();
+    const info = BUILDERS[id](gun);
+    const rest = []; // 活動零件的初始姿勢(展示槍要用未作動的狀態)
+    gun.traverse((o) => rest.push([o.position.clone(), o.quaternion.clone()]));
+    cache[id] = { gun, info, rest, used: false };
   }
-  return { rg, lg };
+  return cache[id];
 }
 
 // 建立第一人稱用的武器模型(含雙手)
 export function createWeaponModel(id) {
+  const c = built(id);
+  const gun = c.used ? c.gun.clone() : c.gun;
+  c.used = true;
   const root = new THREE.Group();
-  const gun = new THREE.Group();
   root.add(gun);
-  const info = BUILDERS[id](gun);
   const hands = new THREE.Group();
   root.add(hands);
-  buildHands(hands, id);
+  buildHands(hands, id, c.info);
   const muzzle = new THREE.Object3D();
-  muzzle.position.copy(info.muzzle);
+  muzzle.position.copy(c.info.muzzle);
   root.add(muzzle);
-  return { root, gun, hands, muzzle, info };
+  return { root, gun, hands, muzzle, info: c.info };
 }
 
-// 商店展示用:只有槍
+// 商店展示用:只有槍(與第一人稱共用幾何)
 export function createDisplayGun(id) {
-  const g = new THREE.Group();
-  BUILDERS[id](g);
-  g.traverse((o) => { if (o.isMesh) { o.castShadow = true; } });
+  const c = built(id);
+  const g = c.gun.clone();
+  let i = 0;
+  g.traverse((o) => {
+    const r = c.rest[i++];
+    if (r) { o.position.copy(r[0]); o.quaternion.copy(r[1]); }
+    if (o.isMesh) o.castShadow = true;
+  });
   return g;
 }
 
@@ -239,6 +1016,7 @@ export async function tryLoadGLB(model, id) {
     wrapper.position.set(-center.x, -box3.max.y + 0.05 - 0.0, -center.z - model.info.length * 0.28);
     model.gun.clear();
     model.gun.add(wrapper);
+    model.info.anim = null;
     return true;
   } catch {
     return false;

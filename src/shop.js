@@ -55,7 +55,7 @@ export class Shop {
       wrap.scale.setScalar(s);
       wrap.position.set(SHOP_X - 1.5 + i * 1.5, 1.28, SHOP_Z);
       wrap.rotation.y = Math.PI / 2;
-      gun.position.z = id === 'revolver' ? 0.12 : id === 'ak47' ? 0.25 : 0.2;
+      gun.position.z = id === 'revolver' ? 0.09 : id === 'ak47' ? 0.155 : 0.115; // 讓槍身重心落在支架上
       this.group.add(wrap);
       this.guns.push(wrap);
       const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.12, 0.28, 8), topMat);

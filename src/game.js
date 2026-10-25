@@ -10,7 +10,10 @@ import { buildHospital } from './map/hospital.js';
 import { makeBloodSplat } from './map/textures.js';
 import { Player } from './player.js';
 import { WeaponSystem, WEAPONS, ORDER } from './weapons/weapon.js';
-import { Zombie } from './zombie.js';
+import { Zombie } from './zombies/zombie.js';
+import { roster } from './zombies/types.js';
+import { prewarm } from './zombies/model.js';
+import { Hazards } from './zombies/hazards.js';
 import { Coins } from './coins.js';
 import { Shop } from './shop.js';
 import { UI } from './ui.js';
@@ -110,6 +113,9 @@ export class Game {
       this.ui.coinGain(n);
     };
     this.zombies = [];
+    this.queue = [];
+    this.hazards = new Hazards(this.scene);
+    this.zctx = { player: this.player, world: this.world, zombies: this.zombies, hazards: this.hazards, game: this };
     this.shop = null;
 
     // 槍口閃光燈(照亮環境)
@@ -143,6 +149,7 @@ export class Game {
     this.resize();
 
     this.resetRun();
+    this.setMood('menu');
     this.ui.setHP(this.player.hp, this.player.maxHp);
     this.updateAmmoHud();
   }
@@ -165,6 +172,7 @@ export class Game {
     this.blood = new THREE.MeshBasicMaterial({ color: 0x6a0808 });
     this.spark = new THREE.MeshBasicMaterial({ color: 0xffb060 });
     this.dust = new THREE.MeshBasicMaterial({ color: 0x8a8578 });
+    this.bile = new THREE.MeshBasicMaterial({ color: 0x9aa828 });
     for (let i = 0; i < 160; i++) {
       const m = new THREE.Mesh(geo, this.blood);
       m.visible = false;
@@ -175,13 +183,13 @@ export class Game {
   }
 
   burst(pos, normal, kind, n) {
-    const mat = kind === 'blood' ? this.blood : kind === 'spark' ? this.spark : this.dust;
+    const mat = { blood: this.blood, spark: this.spark, bile: this.bile }[kind] || this.dust;
     for (let i = 0; i < n; i++) {
       const p = this.particles[this.pIdx++ % this.particles.length];
       p.m.material = mat;
       p.m.visible = true;
       p.m.position.copy(pos);
-      const sp = kind === 'blood' ? 2.6 : 3.2;
+      const sp = kind === 'blood' || kind === 'bile' ? 2.6 : 3.2;
       p.v.set((Math.random() - 0.5) * sp, Math.random() * sp * 0.7, (Math.random() - 0.5) * sp).addScaledVector(normal, sp * 0.5);
       p.life = 0.35 + Math.random() * 0.4;
       p.m.scale.setScalar(kind === 'blood' ? 0.8 + Math.random() : 0.6 + Math.random() * 0.6);
@@ -252,11 +260,14 @@ export class Game {
     if (hits.length && hits[0].distance < wallDist) {
       const h = hits[0];
       const z = h.object.userData.zombie;
-      const head = h.object.userData.part === 'head';
-      const dmg = def.damage * (head ? 2 : 1);
+      const part = h.object.userData.part;
+      const head = part === 'head';
       end.copy(h.point);
-      const killed = z.damage(dmg);
-      this.burst(h.point, dir.clone().negate(), 'blood', head ? 14 : 8);
+      const killed = z.damage(def.damage, part);
+      const n = dir.clone().negate();
+      if (part === 'armor') { this.burst(h.point, n, 'spark', 5); this.burst(h.point, n, 'blood', 3); }
+      else this.burst(h.point, n, 'blood', head ? 14 : 8);
+      if (z.type === 'bloater') this.burst(h.point, n, 'bile', 6);
       this.ui.hitMarker(head);
       (head ? sfx.headshot : sfx.hit)();
       if (killed) this.onKill(z);
@@ -279,9 +290,36 @@ export class Game {
   }
 
   onKill(z) {
-    this.coins.drop(z.pos.x, z.pos.z, 5);
-    this.addPool(z.pos.x, z.pos.z);
-    z.corpse = 6;
+    this.coins.drop(z.pos.x, z.pos.z, z.T.coins);
+    if (z.type !== 'bloater') this.addPool(z.pos.x, z.pos.z);
+    z.corpse = z.type === 'brute' ? 9 : 6;
+  }
+
+  // 膿腫者死亡時爆開:傷害周圍的玩家與殭屍,留下毒氣
+  explode(z) {
+    const E = z.T.explode, c = z.pos, p = this.player;
+    const at = new THREE.Vector3(c.x, 1.0, c.z);
+    this.hazards.flash(at, 6);
+    this.hazards.gas(c.x, c.z);
+    this.burst(at, new THREE.Vector3(0, 1, 0), 'bile', 40);
+    this.burst(at, new THREE.Vector3(0, 1, 0), 'blood', 30);
+    this.addPool(c.x, c.z);
+    this.muzzleLight.position.copy(at);
+    this.muzzleLight.intensity = 30;
+    sfx.burst(z.vp);
+    const d = Math.hypot(p.pos.x - c.x, p.pos.z - c.z);
+    if (d < E.radius && p.hp > 0) {
+      p.hurt(Math.round(E.player * (1 - d / E.radius) + 5), this.time);
+      p.shake = Math.max(p.shake, 0.7);
+      this.ui.damageFlash();
+      this.ui.setHP(p.hp, p.maxHp);
+      if (p.hp <= 0) this.die();
+    }
+    for (const o of this.zombies) {
+      if (o === z || !o.alive) continue;
+      const od = Math.hypot(o.pos.x - c.x, o.pos.z - c.z);
+      if (od < E.radius && o.damage(E.zombie * (1 - od / E.radius) + 10, 'body')) this.onKill(o);
+    }
   }
 
   // ---------- 流程 ----------
@@ -291,6 +329,7 @@ export class Game {
     this.coins.clear();
     for (const p of this.pools) this.scene.remove(p.mesh);
     this.pools.length = 0;
+    this.hazards.clear();
     if (this.shop) { this.shop.dispose(); this.shop = null; }
     this.player.hp = this.player.maxHp;
     this.player.coins = 0;
@@ -307,6 +346,12 @@ export class Game {
     this.ui.setHP(this.player.hp, this.player.maxHp);
   }
 
+  setMood(m) {
+    if (this.mood === m) return;
+    this.mood = m;
+    sfx.setMood(m);
+  }
+
   begin() {
     resumeAudio();
     if (!this.ambientStarted) { sfx.ambient(); this.ambientStarted = true; }
@@ -317,7 +362,8 @@ export class Game {
 
   startRound(n) {
     this.round = n;
-    this.toSpawn = 5 + 3 * (n - 1);
+    this.queue = roster(n);
+    this.toSpawn = this.queue.length;
     this.spawnTimer = 3;
     this.maxAlive = Math.min(12, 6 + Math.floor(n / 2));
     this.phase = 'fighting';
@@ -336,20 +382,23 @@ export class Game {
     return this.toSpawn + this.zombies.filter((z) => z.alive).length;
   }
 
-  spawnZombie() {
+  spawnZombie(type = this.queue.shift() || 'walker') {
     const p = this.player.pos;
     const pts = this.world.spawns.map((s) => ({ s, d: Math.hypot(s.x - p.x, s.z - p.z) }));
     let cand = pts.filter((q) => q.d > 14);
     if (!cand.length) cand = [pts.sort((a, b) => b.d - a.d)[0]];
     const s = cand[(Math.random() * cand.length) | 0].s;
-    const z = new Zombie(this.scene, s.x + (Math.random() - 0.5) * 1.2, s.z + (Math.random() - 0.5) * 1.2, this.round);
+    const z = new Zombie(this.scene, s.x + (Math.random() - 0.5) * 1.2, s.z + (Math.random() - 0.5) * 1.2, this.round, type);
     this.zombies.push(z);
-    this.toSpawn--;
+    this.toSpawn = Math.max(0, this.toSpawn - 1);
+    if (type === 'brute') this.ui.banner('巨屍出現', '牠會咆哮後衝鋒 · 引牠撞牆再攻擊頭部', 3500);
+    return z;
   }
 
   endRound() {
     this.phase = 'collecting';
     this.ui.banner(`第 ${this.round} 回合結束`, '收集金幣中…', 3000);
+    this.setMood('break');
     sfx.roundEnd();
     this.player.hp = Math.min(this.player.maxHp, this.player.hp + 25);
     this.ui.setHP(this.player.hp, this.player.maxHp);
@@ -357,6 +406,7 @@ export class Game {
       if (this.state !== 'playing') return;
       if (this.round % 5 === 0) {
         this.phase = 'shop';
+        this.setMood('shop');
         this.shop = new Shop(this.scene, this.world);
         this.ui.banner('武器商店開放', '前往醫院大門(南側玄關)購買武器', 5000);
       } else {
@@ -411,6 +461,7 @@ export class Game {
 
   die() {
     this.state = 'dead';
+    this.setMood('dead');
     document.exitPointerLock();
     this.input.fireHeld = false;
     document.getElementById('deadinfo').innerHTML = `你撐到了第 <b>${this.round}</b> 回合<br />累積金幣 ${this.player.coins}`;
@@ -425,8 +476,9 @@ export class Game {
     this.updateParticles(dt);
 
     if (this.state !== 'playing') {
-      // 選單/死亡:鏡頭保持,只更新場景動畫
+      // 選單/死亡:鏡頭保持,只更新場景動畫;順便預先建好殭屍模型
       this.coins.update(dt, this.player);
+      prewarm();
       return;
     }
 
@@ -436,7 +488,10 @@ export class Game {
     const p = this.player;
     p.update(dt, true);
     this.world.updateFlow(p.pos.x, p.pos.z);
+    sfx.listener(p.pos.x, 1.65, p.pos.z, p.yaw);
+    sfx.setHealth(p.hp / p.maxHp);
 
+    if (this.phase !== 'fighting') prewarm(); // 回合間的空檔繼續預建殭屍模型
     const w = this.weapons;
     w.update(dt, this.input, p.speedNorm, p.sprinting, this.look);
     this.updateAmmoHud();
@@ -454,7 +509,7 @@ export class Game {
     // 殭屍更新
     for (let i = this.zombies.length - 1; i >= 0; i--) {
       const z = this.zombies[i];
-      const dmg = z.update(dt, p, this.world, this.zombies);
+      const dmg = z.update(dt, this.zctx);
       if (dmg > 0 && p.hp > 0) {
         p.hurt(dmg, this.time);
         this.ui.damageFlash();
@@ -466,6 +521,20 @@ export class Game {
         if (z.corpse <= 0) { z.dispose(); this.zombies.splice(i, 1); }
       }
     }
+
+    const hz = this.hazards.update(dt, p, this.world);
+    if (hz > 0 && p.hp > 0) {
+      p.hurt(hz, this.time);
+      this.ui.damageFlash();
+      this.ui.setHP(p.hp, p.maxHp);
+      if (p.hp <= 0) { this.die(); return; }
+    }
+
+    // 配樂氣氛:最近的殭屍越近越緊張;巨屍在場時切換 boss 配樂
+    let near = 99, boss = false;
+    for (const z of this.zombies) if (z.alive) { near = Math.min(near, z.dist); boss ||= z.type === 'brute'; }
+    sfx.setTension(Math.max(0, Math.min(1, 1 - (near - 1.5) / 12)));
+    if (this.phase === 'fighting') this.setMood(boss ? 'boss' : 'fight');
 
     this.coins.update(dt, p);
     this.ui.setZombies(this.phase === 'fighting' ? this.zombiesLeft() : 0);
