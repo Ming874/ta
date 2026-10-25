@@ -35,13 +35,13 @@ const M = {
   steel: new THREE.MeshStandardMaterial({ color: 0x2b2d2c, roughness: 0.55, metalness: 0.85 }),
   steelWorn: new THREE.MeshStandardMaterial({ color: 0x4a4c4a, roughness: 0.4, metalness: 0.9 }),
   slide: new THREE.MeshStandardMaterial({ color: 0x33373a, roughness: 0.42, metalness: 0.8 }),
-  polymer: new THREE.MeshStandardMaterial({ color: 0x1b1b1b, roughness: 0.8, metalness: 0.05 }),
-  anodized: new THREE.MeshStandardMaterial({ color: 0x1a1a1b, roughness: 0.5, metalness: 0.55 }),
+  polymer: new THREE.MeshStandardMaterial({ color: 0x242424, roughness: 0.8, metalness: 0.05 }),
+  anodized: new THREE.MeshStandardMaterial({ color: 0x232324, roughness: 0.5, metalness: 0.55 }),
   blued: new THREE.MeshStandardMaterial({ color: 0x1c2631, roughness: 0.22, metalness: 0.95 }),
-  walnut: new THREE.MeshStandardMaterial({ map: woodTexture('#7b4521', '#3a1b08'), roughness: 0.55 }),
-  walnutDark: new THREE.MeshStandardMaterial({ map: woodTexture('#5b2e17', '#2a1006'), roughness: 0.5 }),
-  glove: new THREE.MeshStandardMaterial({ color: 0x1d1e1d, roughness: 0.9 }),
-  sleeve: new THREE.MeshStandardMaterial({ color: 0x3c4536, roughness: 1 }),
+  walnut: new THREE.MeshStandardMaterial({ map: woodTexture('#6a3a1c', '#2a1206'), color: 0xc2b0a0, roughness: 0.55 }),
+  walnutDark: new THREE.MeshStandardMaterial({ map: woodTexture('#4e2813', '#220d04'), color: 0xc2b0a0, roughness: 0.5 }),
+  glove: new THREE.MeshStandardMaterial({ color: 0x33342f, roughness: 0.85 }),
+  sleeve: new THREE.MeshStandardMaterial({ color: 0x353d2f, roughness: 1 }),
   skin: new THREE.MeshStandardMaterial({ color: 0xb98a6f, roughness: 0.8 }),
 };
 
@@ -154,9 +154,9 @@ const BUILDERS = { pistol: buildPistol, revolver: buildRevolver, ak47: buildAK, 
 function limb(parent, from, to, w, h) {
   const dir = new THREE.Vector3().subVectors(to, from);
   const len = dir.length();
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, len), M.sleeve);
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(w * 0.5, w * 0.62, len, 10), M.sleeve);
   m.position.copy(from).addScaledVector(dir, 0.5);
-  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir.normalize());
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
   parent.add(m);
   return m;
 }

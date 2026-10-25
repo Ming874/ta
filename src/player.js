@@ -24,7 +24,7 @@ export class Player {
     this.lastHurt = -10;
 
     // 手電筒
-    this.flashlight = new THREE.SpotLight(0xfff1d6, 140, 28, 0.52, 0.55, 1.6);
+    this.flashlight = new THREE.SpotLight(0xfff1d6, 75, 30, 0.62, 0.95, 1.8);
     this.flashlight.castShadow = true;
     this.flashlight.shadow.mapSize.set(1024, 1024);
     this.flashlight.shadow.camera.near = 0.2;

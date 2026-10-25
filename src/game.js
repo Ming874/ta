@@ -42,6 +42,22 @@ const PostShader = {
     }`,
 };
 
+// 清掉 HDR 緩衝裡偶發的 NaN/Inf,避免 Bloom 把整個畫面染成全黑
+const SanitizeShader = {
+  uniforms: { tDiffuse: { value: null } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+  fragmentShader: `
+    uniform sampler2D tDiffuse; varying vec2 vUv;
+    void main(){
+      vec4 c = texture2D(tDiffuse, vUv);
+      if (!(c.r >= 0.0 && c.r < 60.0)) c.r = 0.0;
+      if (!(c.g >= 0.0 && c.g < 60.0)) c.g = 0.0;
+      if (!(c.b >= 0.0 && c.b < 60.0)) c.b = 0.0;
+      c.a = 1.0;
+      gl_FragColor = c;
+    }`,
+};
+
 export class Game {
   constructor(canvas) {
     this.canvas = canvas;
@@ -64,15 +80,15 @@ export class Game {
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x050606);
-    this.scene.fog = new THREE.FogExp2(0x0a0d0c, 0.03);
+    this.scene.fog = new THREE.FogExp2(0x0a0d0c, 0.022);
     this.camera = new THREE.PerspectiveCamera(75, 1, 0.05, 90);
     this.scene.add(this.camera);
 
     // 手持武器獨立一層,避免穿牆
     this.weaponScene = new THREE.Scene();
     this.weaponCamera = new THREE.PerspectiveCamera(52, 1, 0.01, 5);
-    this.weaponScene.add(new THREE.HemisphereLight(0xc4d0cc, 0x2a241d, 1.35));
-    const key = new THREE.DirectionalLight(0xfff0dc, 1.7);
+    this.weaponScene.add(new THREE.HemisphereLight(0xc4d0cc, 0x3a342d, 2.4));
+    const key = new THREE.DirectionalLight(0xfff0dc, 2.6);
     key.position.set(-1.5, 2.5, 1.2);
     this.weaponScene.add(key);
     this.weaponLight = new THREE.PointLight(0xffa850, 0, 3, 2);
@@ -116,6 +132,7 @@ export class Game {
     wp.clear = false;
     wp.clearDepth = true;
     this.composer.addPass(wp);
+    this.composer.addPass(new ShaderPass(SanitizeShader));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.32, 0.6, 0.92);
     this.composer.addPass(this.bloom);
     this.post = new ShaderPass(PostShader);
@@ -222,7 +239,9 @@ export class Game {
     this.weaponLight.intensity = 6;
     setTimeout(() => { this.weaponLight.intensity = 0; }, 45);
 
-    const live = this.zombies.filter((z) => z.alive).flatMap((z) => z.meshes);
+    const liveZ = this.zombies.filter((z) => z.alive);
+    for (const z of liveZ) z.root.updateMatrixWorld(true);
+    const live = liveZ.flatMap((z) => z.meshes);
     this.ray.set(origin, dir);
     this.ray.near = 0;
     this.ray.far = 90;

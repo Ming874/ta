@@ -16,8 +16,8 @@ export function hpColor(hp) {
   return a.map((v, i) => Math.round(v + (b[i] - v) * t));
 }
 
-const skinColors = [0x8f9a85, 0x9aa38e, 0x84907a, 0xa39a86];
-const shirtColors = [0x6d7d86, 0x56705f, 0x4a4338, 0x7b6f63, 0x3f4b57, 0x8a8f86];
+const skinColors = [0x6a7562, 0x707a66, 0x62705a, 0x75705f];
+const shirtColors = [0x44525a, 0x3c4e42, 0x362f27, 0x544b41, 0x2b3540, 0x5a5e56];
 const pantColors = [0x2f3338, 0x3a3f33, 0x4b4a46, 0x25282c];
 const mat = (c, r = 0.9) => new THREE.MeshStandardMaterial({ color: c, roughness: r });
 const skinMats = skinColors.map((c) => mat(c, 0.75));
@@ -47,7 +47,7 @@ function makeBar() {
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false }));
-  sprite.scale.set(0.8, 0.1, 1);
+  sprite.scale.set(1.0, 0.13, 1);
   sprite.renderOrder = 10;
   return { c, tex, sprite };
 }

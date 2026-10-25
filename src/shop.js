@@ -68,10 +68,10 @@ export class Shop {
     sign.position.set(SHOP_X, 2.5, SHOP_Z + 0.25);
     sign.rotation.y = Math.PI;
     this.group.add(sign);
-    const light = new THREE.PointLight(0x7dff9a, 22, 12, 1.6);
+    const light = new THREE.PointLight(0x7dff9a, 9, 10, 1.8);
     light.position.set(SHOP_X, 2.2, SHOP_Z - 0.8);
     this.group.add(light);
-    const warm = new THREE.PointLight(0xffd9a0, 8, 8, 1.6);
+    const warm = new THREE.PointLight(0xffd9a0, 3, 8, 1.8);
     warm.position.set(SHOP_X, 1.6, SHOP_Z - 2);
     this.group.add(warm);
     this.light = light;
@@ -81,7 +81,7 @@ export class Shop {
 
   update(dt, t) {
     this.guns.forEach((g, i) => { g.rotation.y = Math.PI / 2 + Math.sin(t * 0.6 + i) * 0.5; });
-    this.light.intensity = 20 + Math.sin(t * 3) * 2;
+    this.light.intensity = 9 + Math.sin(t * 3);
   }
 
   near(player) {

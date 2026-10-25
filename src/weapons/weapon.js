@@ -8,22 +8,22 @@ export const WEAPONS = {
   pistol: {
     name: '手槍', desc: 'Glock 17 · 半自動', price: 0, damage: 25, rpm: 380, auto: false,
     mag: 17, reserveStart: 85, reserveCap: 136, reload: 1.5, spread: 0.007, kick: 0.035, pitch: 0.011,
-    hold: [0.15, -0.17, -0.36], slot: 1,
+    hold: [0.1, -0.1, -0.4], slot: 1,
   },
   revolver: {
     name: '左輪', desc: 'Colt Python · 357 Magnum', price: 100, damage: 70, rpm: 130, auto: false,
     mag: 6, reserveStart: 30, reserveCap: 48, reload: 2.6, spread: 0.005, kick: 0.075, pitch: 0.03,
-    hold: [0.15, -0.18, -0.33], slot: 2,
+    hold: [0.1, -0.105, -0.38], slot: 2,
   },
   ak47: {
     name: 'AK-47', desc: '7.62×39mm · 全自動', price: 250, damage: 35, rpm: 600, auto: true,
     mag: 30, reserveStart: 90, reserveCap: 180, reload: 2.5, spread: 0.014, kick: 0.05, pitch: 0.016,
-    hold: [0.16, -0.2, -0.44], slot: 3,
+    hold: [0.17, -0.17, -0.66], slot: 3,
   },
   m4a1: {
     name: 'M4A1', desc: '5.56×45mm · 全自動', price: 400, damage: 30, rpm: 780, auto: true,
     mag: 30, reserveStart: 90, reserveCap: 180, reload: 2.1, spread: 0.01, kick: 0.036, pitch: 0.011,
-    hold: [0.16, -0.19, -0.42], slot: 4,
+    hold: [0.17, -0.17, -0.62], slot: 4,
   },
 };
 
@@ -165,7 +165,7 @@ export class WeaponSystem {
     const bx = Math.sin(this.bobT) * bobAmp;
     const by = Math.abs(Math.cos(this.bobT)) * bobAmp * 0.9;
     let px = d.hold[0] + bx + this.swayX, py = d.hold[1] - by + this.swayY, pz = d.hold[2] + this.kickZ;
-    let rx = this.kickRot, ry = 0, rz = 0;
+    let rx = this.kickRot + 0.03, ry = 0.07, rz = 0;
 
     if (sprinting) { px += -0.05; py += -0.06; rx += 0.1; ry += 0.55; }
     if (this.raise > 0) { py -= this.raise * 0.35; rx -= this.raise * 0.8; }

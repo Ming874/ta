@@ -247,7 +247,7 @@ export function buildHospital(world) {
 
   // ---------- 玄關(商店位置)與大門 ----------
   const doorZ = world.sizeZ - CELL - 0.02;
-  const glass = new THREE.Mesh(new THREE.PlaneGeometry(7.6, 2.7), new THREE.MeshStandardMaterial({ color: 0x99aab0, emissive: 0x8aa0aa, emissiveIntensity: 0.9, roughness: 0.2 }));
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(7.6, 2.7), new THREE.MeshStandardMaterial({ color: 0x55646c, emissive: 0x4a5f6e, emissiveIntensity: 0.35, roughness: 0.2 }));
   glass.position.set(30, 1.45, doorZ);
   glass.rotation.y = Math.PI;
   group.add(glass);
@@ -257,7 +257,7 @@ export function buildHospital(world) {
   for (const [x, y, a] of [[28.4, 1.0, 0.12], [31.2, 1.6, -0.08], [29.8, 0.6, 0.05]]) {
     box(3.0, 0.2, 0.05, matWood, x, y, doorZ - 0.12, 0, 0, a); // 封門木板
   }
-  const outside = new THREE.PointLight(0x8aa6c0, 6, 10, 2);
+  const outside = new THREE.PointLight(0x8aa6c0, 3, 10, 2);
   outside.position.set(30, 2, world.sizeZ - CELL - 0.5);
   group.add(outside);
 
@@ -323,7 +323,7 @@ export function buildHospital(world) {
     m.position.set(x, H - 0.04, z);
     group.add(m);
     if (on) {
-      const light = new THREE.PointLight(0xdbeadf, 9, 16, 1.6);
+      const light = new THREE.PointLight(0xdbeadf, 16, 18, 1.5);
       light.position.set(x, H - 0.4, z);
       group.add(light);
       flickers.push({ light, mesh: m, base: light.intensity, baseEm: m.material.emissiveIntensity, flicker: !!fl, phase: rnd() * 10 });
@@ -333,7 +333,7 @@ export function buildHospital(world) {
     }
   }
 
-  const hemi = new THREE.HemisphereLight(0x7e8d88, 0x1c1a16, 0.28);
+  const hemi = new THREE.HemisphereLight(0x8a9a94, 0x24201a, 1.3);
   group.add(hemi);
 
   return {

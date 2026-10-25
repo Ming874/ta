@@ -72,7 +72,7 @@ export function makeWallTexture() {
   // 油漆剝落:露出灰泥與磚
   for (let i = 0; i < 16; i++) {
     const x = rnd() * W, y = rnd() * H, r = rr(14, 55);
-    ctx.fillStyle = rnd() < 0.55 ? '#b7b2a2' : '#7d5e4f';
+    ctx.fillStyle = rnd() < 0.6 ? '#a9a695' : '#6a625a';
     ctx.beginPath();
     for (let k = 0; k < 9; k++) {
       const a = (k / 9) * Math.PI * 2, rad = r * rr(0.55, 1.15);
