@@ -178,7 +178,7 @@ export function createPhysics(game, opts = {}) {
   function rebuildStatic(layout) {
     staticDesc = buildStatic(game.world, layout);
     stats.statics = staticDesc.boxes.length / 10 + staticDesc.hulls.length;
-    cmds.push(['static', staticDesc.boxes, staticDesc.hulls]);
+    cmds.push(['static', staticDesc.boxes, staticDesc.hulls, 0.8, true]);
     if (debugObj) { debug(false); debug(true); }
   }
   P.rebuildStatic = (layout) => { if (backend) rebuildStatic(layout); };
@@ -446,7 +446,7 @@ export function createPhysics(game, opts = {}) {
       push(h.rec, h.point, dir, Math.min(70, Math.max(4, damage * 0.9)));
       game.burst?.(h.point, n, 'blood', 6, h.point.y - 1);
     } else {
-      push(h.rec, h.point, dir, Math.min(40, Math.max(0.4, damage * 0.14)));
+      push(h.rec, h.point, dir, Math.min(45, Math.max(0.5, damage * 0.22)));
       game.burst?.(h.point, n, 'spark', 3, h.point.y - 1);
       game.burst?.(h.point, n, 'dust', 3, h.point.y - 1);
     }
@@ -456,7 +456,7 @@ export function createPhysics(game, opts = {}) {
   let blastsThisFrame = [];
   function impulseAt(pos, radius = 4, strength = 8) {
     if (!P.ready) return;
-    cmds.push(['blast', pos.x, pos.y, pos.z, radius, strength, 0.6]);
+    cmds.push(['blast', pos.x, pos.y, pos.z, radius, strength, 0.4]);
     blastsThisFrame.push([pos.x, pos.y, pos.z]);
   }
 
@@ -563,11 +563,13 @@ export function createPhysics(game, opts = {}) {
       a.push(id, x, y, z, vx, vz, r, h, m, brute);
     };
     const pl = game.players || [game.player];
-    for (const p of pl) if (p && p.pos && p.alive !== false) add(p, p.pos.x, p.pos.y, p.pos.z, p.vx || 0, p.vz || 0, 0.33, 1.8, 85, 0);
+    // 推力上限(N):人約 450N(推得動椅子紙箱、推不動櫃子);巨屍 4000N(衝鋒時連病床都撞得飛)
+    for (const p of pl) if (p && p.pos && p.alive !== false) add(p, p.pos.x, p.pos.y, p.pos.z, p.vx || 0, p.vz || 0, 0.33, 1.8, 450, 0);
     const lp = game.player?.pos;
     if (lp) for (const z of game.zombies || []) {
       if (!z.alive || Math.abs(z.pos.x - lp.x) + Math.abs(z.pos.z - lp.z) > CHAR_R) continue;
-      add(z, z.pos.x, z.pos.y, z.pos.z, z.vel?.x || 0, z.vel?.z || 0, (z.T?.radius ?? 0.34) * 0.9, z.type === 'crawler' ? 0.55 : (z.headH ?? 1.6) + 0.12, 70 * (z.T?.mass ?? 1), z.type === 'brute' ? 1 : 0);
+      const brute = z.type === 'brute';
+      add(z, z.pos.x, z.pos.y, z.pos.z, z.vel?.x || 0, z.vel?.z || 0, (z.T?.radius ?? 0.34) * 0.9, z.type === 'crawler' ? 0.55 : (z.headH ?? 1.6) + 0.12, brute ? 4000 : 380 * (z.T?.mass ?? 1), brute ? 1 : 0);
     }
     return new Float32Array(a);
   }

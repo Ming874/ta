@@ -37,7 +37,7 @@ export function shapeVolume(s, i = 0) {
 }
 
 const FAR2 = 32 * 32; // 離玩家超過這個距離的道具強制休眠
-const CHAR_STRIDE = 10; // 角色推擠資料:id, x, y, z, vx, vz, 半徑, 身高, 質量, 推得動重物(0/1)
+const CHAR_STRIDE = 10; // 角色推擠資料:id, x, y, z, vx, vz, 半徑, 身高, 推力上限(N), 推得動重物(0/1)
 
 export function createCore(R) {
   const world = new R.World({ x: 0, y: -9.81, z: 0 });
@@ -50,13 +50,12 @@ export function createCore(R) {
   const colSlot = new Map(); // collider handle → slot
   const statics = new Map(); // 靜態盒 id → collider
   const rags = new Map(); // 布娃娃 id → { slots, mass, calm, t, maxT, done }
-  const proxies = new Map(); // 角色 id → { body, tx, ty, tz, seen }
   const prev = new Float32Array(SLOTS * 7), cur = new Float32Array(SLOTS * 7);
   const touched = new Int32Array(SLOTS).fill(-9), listed = new Int32Array(SLOTS).fill(-1), lastHit = new Int32Array(SLOTS).fill(-99);
   const list = [];
   const events = [];
   const focus = { x: 0, y: 0, z: 0, ok: false };
-  let steps = 0, frame = 0, acc = 0, alpha = 0, frameSteps = 0, stepMs = 0, active = 0, seen = 0;
+  let steps = 0, frame = 0, acc = 0, alpha = 0, frameSteps = 0, stepMs = 0, active = 0;
   const tv = { x: 0, y: 0, z: 0 }, tq = { x: 0, y: 0, z: 0, w: 1 }, tw = { x: 0, y: 0, z: 0 };
   const ZERO = { x: 0, y: 0, z: 0 };
   const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -74,15 +73,17 @@ export function createCore(R) {
 
   // ---------- 靜態場景 ----------
   // boxes:Float32Array,每 10 個數 = 中心(3) + 半長(3) + 旋轉四元數(4);hulls:凸包頂點陣列(樓梯坡道)
-  function addStatic(boxes, hulls, friction = 0.8) {
+  const staticCols = [];
+  function addStatic(boxes, hulls, friction = 0.8, replace = false) {
+    if (replace) { for (const c of staticCols) world.removeCollider(c, false); staticCols.length = 0; }
     for (let i = 0; i + 9 < boxes.length; i += 10) {
       const d = R.ColliderDesc.cuboid(boxes[i + 3], boxes[i + 4], boxes[i + 5]).setTranslation(boxes[i], boxes[i + 1], boxes[i + 2]);
       if (boxes[i + 9] !== 1) { tq.x = boxes[i + 6]; tq.y = boxes[i + 7]; tq.z = boxes[i + 8]; tq.w = boxes[i + 9]; d.setRotation(tq); }
-      world.createCollider(d.setFriction(friction).setRestitution(0.05).setCollisionGroups(GROUPS.static));
+      staticCols.push(world.createCollider(d.setFriction(friction).setRestitution(0.05).setCollisionGroups(GROUPS.static)));
     }
     for (const h of hulls || []) {
       const d = R.ColliderDesc.convexHull(h instanceof Float32Array ? h : new Float32Array(h));
-      if (d) world.createCollider(d.setFriction(1.0).setRestitution(0.02).setCollisionGroups(GROUPS.static));
+      if (d) staticCols.push(world.createCollider(d.setFriction(1.0).setRestitution(0.02).setCollisionGroups(GROUPS.static)));
     }
   }
   function addStaticBox(id, cx, cy, cz, hx, hy, hz) {
@@ -238,38 +239,50 @@ export function createCore(R) {
     }
   }
 
-  // ---------- 角色推擠膠囊 ----------
-  // 每幀以速度追上角色位置的動態膠囊(有質量、鎖旋轉、無重力、只碰道具):依質量比推開輕物,
-  // 被夾在牆邊時膠囊自己讓開,不會像運動學剛體一樣把道具硬擠穿牆
+  // ---------- 角色推擠 ----------
+  // 角色(玩家/殭屍)不是剛體:每步以角色膠囊做形狀相交查詢,對重疊的輕道具施加「有上限」的推力
+  // (人推得動椅子、紙箱,但推不動櫃子,也不會隔著椅子把櫃子硬推走);巨屍的上限很高,連重物也推得動
+  const pushers = [], capCache = new Map(), ROT0 = { x: 0, y: 0, z: 0, w: 1 }, cpos = { x: 0, y: 0, z: 0 }, ipt = { x: 0, y: 0, z: 0 };
+  const Q_CHAR = ig(BIT.CHAR, BIT.LIGHT), Q_BRUTE = ig(BIT.BRUTE, BIT.LIGHT | BIT.HEAVY);
   function setChars(arr) {
-    seen++;
+    pushers.length = 0;
     for (let i = 0; i + CHAR_STRIDE <= arr.length; i += CHAR_STRIDE) {
-      const id = arr[i], r = arr[i + 6], h = arr[i + 7];
-      let px = proxies.get(id);
-      const ty = arr[i + 2] + h / 2;
-      if (!px) {
-        const d = R.RigidBodyDesc.dynamic().setTranslation(arr[i + 1], ty, arr[i + 3]).lockRotations().setGravityScale(0).setLinearDamping(0).setUserData(-1);
-        const body = world.createRigidBody(d);
-        const hh = Math.max(0.05, h / 2 - r);
-        const vol = Math.PI * r * r * 2 * hh + (4 / 3) * Math.PI * r * r * r;
-        world.createCollider(R.ColliderDesc.capsule(hh, r).setDensity(arr[i + 8] / vol).setFriction(0.3).setCollisionGroups(arr[i + 9] ? GROUPS.brute : GROUPS.char), body);
-        px = { body, tx: 0, ty: 0, tz: 0, seen: 0 };
-        proxies.set(id, px);
-      }
-      px.tx = arr[i + 1]; px.ty = ty; px.tz = arr[i + 3]; px.seen = seen;
+      const r = arr[i + 6], h = arr[i + 7], hh = Math.max(0.05, h / 2 - r);
+      const key = Math.round(hh * 100) * 1000 + Math.round(r * 100);
+      let shape = capCache.get(key);
+      if (!shape) { shape = new R.Capsule(hh, r); capCache.set(key, shape); }
+      pushers.push({ x: arr[i + 1], y: arr[i + 2] + h / 2, z: arr[i + 3], vx: arr[i + 4], vz: arr[i + 5], cap: arr[i + 8], heavy: arr[i + 9] > 0, shape });
       if (i === 0) { focus.x = arr[i + 1]; focus.y = arr[i + 2]; focus.z = arr[i + 3]; focus.ok = true; }
     }
-    for (const [id, px] of proxies) if (px.seen !== seen) { world.removeRigidBody(px.body); proxies.delete(id); }
   }
-  function driveChars() {
-    for (const px of proxies.values()) {
-      const b = px.body, t = b.translation(tv);
-      const dx = px.tx - t.x, dy = px.ty - t.y, dz = px.tz - t.z;
-      const d2 = dx * dx + dy * dy + dz * dz;
-      if (d2 > 1) { tw.x = px.tx; tw.y = px.ty; tw.z = px.tz; b.setTranslation(tw, true); b.setLinvel(ZERO, true); continue; }
-      if (d2 < 1e-6) { if (!b.isSleeping()) b.setLinvel(ZERO, false); continue; }
-      tw.x = dx / H; tw.y = dy / H; tw.z = dz / H;
-      b.setLinvel(tw, true);
+  let curPusher = null;
+  function pushOne(col) {
+    const c = curPusher, b = col.parent();
+    if (!b || !b.isDynamic()) return true;
+    const s = b.userData;
+    if (s === undefined || s < 0) return true;
+    cpos.x = c.x; cpos.y = c.y; cpos.z = c.z;
+    const ct = col.contactShape(c.shape, cpos, ROT0, 0);
+    const depth = ct ? Math.max(0, -ct.distance) : 0;
+    const t = b.translation(tv);
+    let nx = t.x - c.x, nz = t.z - c.z;
+    const l = Math.hypot(nx, nz);
+    if (l < 1e-3) { const sp = Math.hypot(c.vx, c.vz) || 1; nx = c.vx / sp; nz = c.vz / sp; } else { nx /= l; nz /= l; }
+    const want = Math.max(0, c.vx * nx + c.vz * nz) * 1.05 + depth * 10;
+    if (want < 0.02) return true;
+    const lv = b.linvel(tw), dv = want - (lv.x * nx + lv.z * nz);
+    if (dv <= 0) return true;
+    const J = Math.min(b.mass() * dv, c.cap * H);
+    if (ct) { ipt.x = ct.point1.x; ipt.y = ct.point1.y; ipt.z = ct.point1.z; } else { ipt.x = t.x; ipt.y = t.y; ipt.z = t.z; }
+    tv.x = nx * J; tv.y = 0; tv.z = nz * J;
+    b.applyImpulseAtPoint(tv, ipt, true);
+    return true;
+  }
+  function pushChars() {
+    for (const c of pushers) {
+      curPusher = c;
+      cpos.x = c.x; cpos.y = c.y; cpos.z = c.z;
+      world.intersectionsWithShape(cpos, ROT0, c.shape, pushOne, undefined, c.heavy ? Q_BRUTE : Q_CHAR);
     }
   }
 
@@ -326,7 +339,7 @@ export function createCore(R) {
     for (const b of far) b.sleep();
   }
   function substep() {
-    driveChars();
+    pushChars();
     world.step(queue);
     steps++;
     active = 0;
@@ -373,7 +386,7 @@ export function createCore(R) {
     if (!cmds) return;
     for (const c of cmds) {
       switch (c[0]) {
-        case 'static': addStatic(c[1], c[2], c[3]); break;
+        case 'static': addStatic(c[1], c[2], c[3], c[4]); break;
         case 'sbox': addStaticBox(c[1], c[2], c[3], c[4], c[5], c[6], c[7]); break;
         case 'sboxdel': removeStaticBox(c[1]); break;
         case 'body': addBody(c[1], c[2], c[3], c[4], c[5], c[6]); break;
@@ -402,6 +415,6 @@ export function createCore(R) {
 
   return {
     world, exec, step, output, takeEvents, setChars,
-    stats: () => ({ bodies: live.size, active, rags: rags.size, proxies: proxies.size, steps, stepMs }),
+    stats: () => ({ bodies: live.size, active, rags: rags.size, pushers: pushers.length, steps, stepMs }),
   };
 }
