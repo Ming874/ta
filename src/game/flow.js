@@ -20,10 +20,8 @@ export const flowMethods = {
     p.grenades = 0;
     p.medkits = 0;
     p.coins = 0;
-    p.pos.set(st.x, st.y || 0, st.z);
-    p.yaw = st.yaw || 0;
-    p.pitch = 0;
-    p.vx = p.vz = 0;
+    if (p.place) p.place(st.x, st.y || 0, st.z, st.yaw || 0); // 位置 + 清掉速度/跳躍/蹲姿
+    else { p.pos.set(st.x, st.y || 0, st.z); p.yaw = st.yaw || 0; p.pitch = 0; p.vx = p.vz = 0; }
     // 重新給武器(只剩手槍)
     this.weapons.inv = {};
     this.weapons.give('pistol');
@@ -69,20 +67,24 @@ export const flowMethods = {
     return this.toSpawn + this.zombies.filter((z) => z.alive).length;
   },
 
-  // 出生點:優先「沿路徑 18~50m、玩家看不到」的點,找不到再逐步放寬
+  // 出生點:優先「沿導航路徑 18~50m、玩家看不到」的點(3D 視線;35m 外有霧遮擋不算看得到);
+  // 符合的少於 3 個時,依路徑距離由近到遠補到 3 個(最遠 80m),都沒有再逐步放寬
   pickSpawn() {
     const w = this.world;
     const players = this.players.filter((p) => p.alive !== false);
     const scored = w.spawns.map((s) => {
-      const ed = Math.min(...players.map((p) => Math.hypot(s.x - p.pos.x, s.z - p.pos.z) + Math.abs((s.y || 0) - p.pos.y) * 2));
-      const fdRaw = w.flowDistance ? w.flowDistance(s.x, s.y || 0, s.z) : Infinity;
+      const sy = s.y || 0;
+      const ed = Math.min(...players.map((p) => Math.hypot(s.x - p.pos.x, s.z - p.pos.z) + Math.abs(sy - p.pos.y) * 2));
+      const fdRaw = w.flowDistance ? w.flowDistance(s.x, sy, s.z) : Infinity;
       const fd = Number.isFinite(fdRaw) ? fdRaw : ed;
-      const seen = players.some((p) => Math.abs((s.y || 0) - p.pos.y) < 2.5 && w.hasLineOfSight(s.x, (s.y || 0) + 1.5, s.z, p.pos.x, p.pos.y + 1.6, p.pos.z));
+      const seen = players.some((p) => Math.hypot(s.x - p.pos.x, sy - p.pos.y, s.z - p.pos.z) < 35 && w.hasLineOfSight(s.x, sy + 1.5, s.z, p.pos.x, p.pos.y + 1.6, p.pos.z));
       return { s, ed, fd, seen, reach: Number.isFinite(fdRaw) };
     });
+    const pool = scored.filter((q) => q.reach && q.ed > 12 && q.fd >= 18 && !q.seen).sort((a, b) => a.fd - b.fd);
+    let near = pool.filter((q) => q.fd <= 50);
+    if (near.length < 3) near = pool.slice(0, 3).filter((q) => q.fd <= 80);
+    if (near.length) return near[(Math.random() * near.length) | 0].s;
     const tiers = [
-      (q) => q.reach && q.ed > 12 && q.fd >= 18 && q.fd <= 50 && !q.seen,
-      (q) => q.reach && q.ed > 12 && q.fd <= 75 && !q.seen,
       (q) => q.ed > 10 && !q.seen,
       (q) => q.ed > 8,
       () => true,

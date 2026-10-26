@@ -67,6 +67,7 @@ export class Zombie {
     this.want = { x: 0, z: 0, speed: 0, face: null, instant: false };
     this.flinch = 0; this.flinchV = 0; this.roll = 0; this.rollV = 0; this.headKick = 0;
     this.rootY = 0; this.rootPitch = 0; this.rootRoll = 0;
+    this.tiltF = 0; this.tiltS = 0; this.onStair = -1; // 樓梯坡度造成的身體傾斜(趴地/倒地時)
     this.jawT = 0;
     this.pull = 0;
     this.stepN = 0;
@@ -199,18 +200,25 @@ export class Zombie {
     const { world, zombies } = ctx;
     const player = (this.target = this.pickTarget(ctx));
     const toX = player.pos.x - this.pos.x, toZ = player.pos.z - this.pos.z;
-    const dist = Math.hypot(toX, toZ) || 1e-3;
-    this.dist = dist;
+    const hd = Math.hypot(toX, toZ) || 1e-3; // 水平距離
+    const dy = player.pos.y - this.pos.y;
+    this.dist = hd;
+    this.dy = dy;
+    this.d3 = Math.sqrt(hd * hd + dy * dy);
+    // 同一樓層(高度差 < 1.2m)才算得上近戰距離;隔樓層時行為判斷用的距離視為很遠
+    const same = dy < 1.2 && dy > -1.2;
+    const dist = same ? hd : hd + 40;
     this.losT -= dt;
     if (this.losT <= 0) {
       this.losT = 0.15 + Math.random() * 0.1;
-      this.los = dist < 18 && world.hasLineOfSight(this.pos.x, this.pos.y + 1.4, this.pos.z, player.pos.x, player.pos.y + 1.4, player.pos.z);
+      this.los = this.d3 < 18 && world.hasLineOfSight(this.pos.x, this.pos.y + 1.4, this.pos.z, player.pos.x, player.pos.y + 1.4, player.pos.z);
     }
     const w = this.want;
-    if (dist < 4 && this.los) { w.x = toX / dist; w.z = toZ / dist; }
+    // 看得到且路徑幾乎是直線時直接衝向玩家,否則沿導航場走(會上下樓梯)
+    if (same && this.los && (hd < 4 || (hd < 14 && world.flowDistance(this.pos.x, this.pos.y, this.pos.z) <= hd * 1.09 + 0.5))) { w.x = toX / hd; w.z = toZ / hd; }
     else {
       const f = world.flowDir(this.pos.x, this.pos.y, this.pos.z, this._dir || (this._dir = { x: 0, z: 0 }));
-      if (f) { w.x = f.x; w.z = f.z; } else { w.x = toX / dist; w.z = toZ / dist; }
+      if (f) { w.x = f.x; w.z = f.z; } else { w.x = toX / hd; w.z = toZ / hd; }
     }
     w.speed = this.speed;
     w.face = null;
@@ -220,7 +228,11 @@ export class Zombie {
     this.attackCd -= dt;
     this.specialCd -= dt;
 
-    const dealt = this['_think_' + this.type](dt, ctx, dist, toX, toZ, w);
+    const think = this._thinkFn || (this._thinkFn = this['_think_' + this.type]); // 快取方法,避免每幀組字串
+    const dealt = think.call(this, dt, ctx, dist, toX, toZ, w);
+    // 樓梯上放慢(衝鋒/飛撲除外)
+    this.onStair = world.stairAt ? world.stairAt(this.pos.x, this.pos.y, this.pos.z) : -1;
+    if (this.onStair >= 0 && !w.instant && this.state !== 'charge') w.speed *= 0.86;
 
     // ---- 移動 ----
     if (w.instant) { this.vel.x = w.x * w.speed; this.vel.z = w.z * w.speed; }
@@ -229,11 +241,12 @@ export class Zombie {
       this.vel.x += (w.x * w.speed - this.vel.x) * k;
       this.vel.z += (w.z * w.speed - this.vel.z) * k;
     }
-    for (const o of zombies) {
+    for (let i = 0; i < zombies.length; i++) {
+      const o = zombies[i];
       if (o === this || !o.alive) continue;
       const ax = this.pos.x - o.pos.x, az = this.pos.z - o.pos.z, rr = this.T.radius + o.T.radius;
       const d2 = ax * ax + az * az;
-      if (d2 < rr * rr && d2 > 1e-4) {
+      if (d2 < rr * rr && d2 > 1e-4 && Math.abs(o.pos.y - this.pos.y) < 1.5) {
         const d = Math.sqrt(d2), push = (rr - d) * 80 * dt * (o.T.mass / (o.T.mass + this.T.mass));
         this.vel.x += (ax / d) * push;
         this.vel.z += (az / d) * push;
@@ -243,27 +256,29 @@ export class Zombie {
     this.pos.x += this.vel.x * dt;
     this.pos.z += this.vel.z * dt;
     const ex = this.pos.x, ez = this.pos.z;
-    world.resolve(this.pos, Math.min(this.T.radius, 0.42));
+    world.resolve(this.pos, Math.min(this.T.radius, 0.42)); // 水平碰撞 + pos.y 貼地(上下樓梯)
     const moved = Math.hypot(ex - ox, ez - oz);
     this.blocked = moved > 1e-4 && Math.hypot(this.pos.x - ex, this.pos.z - ez) > moved * 0.5;
     const minD = this.T.radius + 0.38;
     const pd = Math.hypot(this.pos.x - player.pos.x, this.pos.z - player.pos.z);
-    if (pd < minD) {
+    if (pd < minD && same) {
       const nx = (this.pos.x - player.pos.x) / (pd || 1), nz = (this.pos.z - player.pos.z) / (pd || 1);
       this.pos.x = player.pos.x + nx * minD;
       this.pos.z = player.pos.z + nz * minD;
+      world.resolve(this.pos, Math.min(this.T.radius, 0.42));
     }
 
     // ---- 朝向 ----
     const sp = Math.hypot(this.vel.x, this.vel.z);
     this.speedNow = sp;
-    const target = w.face ?? (dist < 5 ? Math.atan2(toX, toZ) : sp > 0.1 ? Math.atan2(this.vel.x, this.vel.z) : this.heading);
+    const target = w.face ?? (same && hd < 5 ? Math.atan2(toX, toZ) : sp > 0.1 ? Math.atan2(this.vel.x, this.vel.z) : this.heading);
     this.heading += wrapA(target - this.heading) * Math.min(1, dt * this.T.turn);
 
     // ---- 動畫 ----
-    this.mesh.castShadow = dist < 11; // 遠處的不進陰影貼圖,省一半繪製量
+    this.mesh.castShadow = this.d3 < 11; // 遠處的不進陰影貼圖,省一半繪製量
+    this._slope(world, this.type === 'crawler' ? 1 : 0, dt);
     this._resetPose();
-    this['_pose_' + this.type](dt, ctx, dist, toX, toZ);
+    (this._poseFn || (this._poseFn = this['_pose_' + this.type])).call(this, dt, ctx, dist, toX, toZ);
     this._reactions(dt);
     this._applyRoot();
     // 腳步(巨屍用重踏,爬行者用拖行,另外處理)
@@ -406,7 +421,7 @@ export class Zombie {
     let dealt = 0;
     switch (this.state) {
       case 'chase':
-        if (this.los && dist > S.min && dist < S.max && this.specialCd <= 0) this.go('spit');
+        if (this.los && this.d3 > S.min && this.d3 < S.max && this.specialCd <= 0) this.go('spit'); // 可以對不同樓層吐(3D 距離)
         else if (dist < T.reach && this.attackCd <= 0) { this.go('attack'); say('zAttack', this.type, this.vp); }
         if (dist < T.reach - 0.15) w.speed = 0;
         break;
@@ -447,7 +462,7 @@ export class Zombie {
         w.speed = 0;
         w.face = Math.atan2(toX, toZ);
         if (this.st > 0.3 && this.st < 1.0) shake(0.12, 22);
-        if (this.st > 1.15) { this.charge = { x: toX / dist, z: toZ / dist, hit: false }; this.go('charge'); }
+        if (this.st > 1.15) { this.charge = { x: toX / this.dist, z: toZ / this.dist, hit: false }; this.go('charge'); }
         break;
       case 'charge':
         w.x = this.charge.x; w.z = this.charge.z;
@@ -750,9 +765,25 @@ export class Zombie {
     b.head.rotation.z += this.roll * 0.5;
   }
 
+  // 地面坡度(樓梯):amt = 套用比例(趴地/倒地 = 1);沿面向的坡度 → tiltF(上坡抬頭),左右坡度 → tiltS
+  _slope(world, amt, dt) {
+    let f = 0, s = 0;
+    if (amt > 0 && world.normalAt) {
+      const n = world.normalAt(this.pos.x, this.pos.z, this.pos.y, this._n || (this._n = { x: 0, y: 1, z: 0 }));
+      if (n.y < 0.999) {
+        const sh = Math.sin(this.heading), ch = Math.cos(this.heading);
+        f = -Math.atan(-(n.x * sh + n.z * ch) / n.y) * amt;
+        s = Math.atan(-(n.x * ch - n.z * sh) / n.y) * amt;
+      }
+    }
+    const k = Math.min(1, dt * 10);
+    this.tiltF += (f - this.tiltF) * k;
+    this.tiltS += (s - this.tiltS) * k;
+  }
+
   _applyRoot() {
     this.root.position.set(this.pos.x, this.pos.y + this.rootY, this.pos.z);
-    this.root.rotation.set(this.rootPitch, this.heading, this.rootRoll);
+    this.root.rotation.set(this.rootPitch + this.tiltF, this.heading, this.rootRoll + this.tiltS);
   }
 
   // ======================= 死亡 =======================
@@ -825,6 +856,7 @@ export class Zombie {
         break;
       }
     }
+    this._slope(ctx.world, kind === 'flat' ? 1 : clamp(e ?? 0, 0, 1), dt); // 倒在樓梯上時順著坡面
     if (this.corpse !== undefined && this.corpse < 1.5) this.rootY -= (1.5 - this.corpse) * 0.3;
     this._applyRoot();
   }

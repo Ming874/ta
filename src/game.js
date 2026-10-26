@@ -2,6 +2,7 @@ import * as THREE from 'three';
 
 import { World } from './map/collision.js';
 import { buildHospital } from './map/hospital.js';
+import { buildBlockout } from './map/blockout.js';
 import { Player } from './player.js';
 import { WeaponSystem } from './weapons/weapon.js';
 import { prewarm } from './zombies/model.js';
@@ -55,16 +56,28 @@ export class Game {
     this.weaponScene.add(this.weaponLight);
 
     // ---- 世界 ----
+    // 網址帶 ?blockout 時用灰盒場景;正式場景建構失敗時也退回灰盒(並撤銷失敗前登記的碰撞盒)
     this.world = new World();
-    this.hospital = buildHospital(this.world, this.world.layout, this.scene);
+    const nBoxes = this.world.boxes.length;
+    let built = null;
+    if (!new URLSearchParams(location.search).has('blockout')) {
+      try { built = buildHospital(this.world, this.world.layout, this.scene); } catch (e) {
+        console.warn('[world] 場景建構失敗,改用灰盒:', e);
+        this.world.truncateBoxes(nBoxes);
+        built = null;
+      }
+    }
+    this.hospital = built && built.group ? built : buildBlockout(this.world, this.world.layout, this.scene);
     this.scene.add(this.hospital.group);
-    this.world.buildNav();
+    this.world.buildNav(); // 場景與道具的碰撞盒都登記好之後才建導航
 
     this.player = new Player(this.camera, this.world);
     this.players = [this.player]; // 多人時會加入遠端玩家(殭屍追最近的)
     this.weapons = new WeaponSystem(this.weaponScene);
     this.weapons.onFire = (def, id, speed) => this.fire(def, id, speed);
     this.coins = new Coins(this.scene);
+    this.coins.player = this.player;
+    this.coins.world = this.world;
     this.coins.onGain = (n) => {
       this.player.coins += n;
       this.ui.setCoins(this.player.coins);
@@ -104,9 +117,12 @@ export class Game {
     this.post.uniforms.aspect.value = w / h;
   }
 
-  // 導航場的目標:所有活著且未倒地的玩家
+  // 導航場的目標:所有活著且未倒地的玩家(重複使用同一個陣列,不每幀配置)
   flowTargets() {
-    return this.players.filter((p) => p.alive !== false && !p.downed).map((p) => p.pos);
+    const out = this._flowT || (this._flowT = []);
+    out.length = 0;
+    for (let i = 0; i < this.players.length; i++) { const p = this.players[i]; if (p.alive !== false && !p.downed) out.push(p.pos); }
+    return out;
   }
 
   // ---------- 主更新 ----------
@@ -130,7 +146,7 @@ export class Game {
     p.update(dt, true);
     const targets = this.flowTargets();
     if (targets.length) this.world.updateFlow(targets);
-    sfx.listener(p.pos.x, p.pos.y + 1.65, p.pos.z, p.yaw);
+    sfx.listener(p.pos.x, p.pos.y + (p.eyeH || 1.65), p.pos.z, p.yaw);
     sfx.setHealth(p.hp / p.maxHp);
 
     if (this.phase !== 'fighting') prewarm(); // 回合間的空檔繼續預建殭屍模型
@@ -140,7 +156,8 @@ export class Game {
 
     // 殭屍生成
     if (this.phase === 'fighting') {
-      const alive = this.zombies.filter((z) => z.alive).length;
+      let alive = 0;
+      for (let i = 0; i < this.zombies.length; i++) if (this.zombies[i].alive) alive++;
       this.spawnTimer -= dt;
       if (this.toSpawn > 0 && alive < this.maxAlive && this.spawnTimer <= 0) {
         this.spawnZombie();
