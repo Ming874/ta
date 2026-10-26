@@ -5,6 +5,10 @@ import {
   headGeo, flip, smoothNormals,
 } from './anatomy.js';
 import { materials } from './materials.js';
+import { caps } from '../sys/caps.js';
+import { createPool } from '../sys/workers.js';
+import { unpack } from '../sys/pack.js';
+import { idle } from '../sys/sched.js';
 
 // 每個變體 = 一組固定種子生成的身材、皮膚、傷口、服裝,合併成單一 SkinnedMesh 幾何(依材質分組)。
 // 先以 1.0 比例(身高約 1.79m)建模,最後整體縮放 P.s。
@@ -97,7 +101,14 @@ function bloodAmt(list, x, y, z) {
 }
 
 // ---------- 主建模 ----------
-export function buildVariant(type, seed, opt = {}) {
+// buildShape:純幾何 + 骨架 + 命中盒(不碰材質與 DOM,可在 Worker 執行,見 model.worker.js);buildVariant = buildShape + 綁材質
+export function buildVariant(type, seed, opt = {}) { return bindMaterials(buildShape(type, seed, opt)); }
+export function bindMaterials(v) {
+  const M = materials();
+  v.materials = v.slots.map((s) => (s === 'eye' ? M.eye[v.type] || M.eye.walker : M[s]));
+  return v;
+}
+export function buildShape(type, seed, opt = {}) {
   const r = rng(seed);
   const P = BODY[type](r);
   P.fem = (type === 'walker' || type === 'runner') && r.chance(0.35) ? 1 : 0;
@@ -770,9 +781,9 @@ export function buildVariant(type, seed, opt = {}) {
   geo.scale(P.s, P.s, P.s);
   for (const b of rig.bones) { b.head.multiplyScalar(P.s); b.tail.multiplyScalar(P.s); }
   HC.multiplyScalar(P.s);
-  const M = materials();
+  geo.computeBoundingSphere(); // 實例化時直接給 SkinnedMesh,免得 three 逐頂點蒙皮重算(每隻殭屍 ~40k 頂點、數 MB 垃圾)
   return {
-    type, geometry: geo, materials: used.map((s) => (s === 'eye' ? M.eye[type] : M[s])), rig, P,
+    type, geometry: geo, slots: used, rig, P,
     legT: rig.bones[rig.index.thighL].head.distanceTo(rig.bones[rig.index.thighL].tail),
     legS: rig.bones[rig.index.shinL].head.distanceTo(rig.bones[rig.index.shinL].tail),
     hitboxes: hitboxes(rig, P, type),
@@ -812,24 +823,96 @@ function hitboxes(rig, P, type) {
 const PER_TYPE = { walker: 6, runner: 4, crawler: 4, bloater: 3, brute: 3 };
 const SEEDS = { walker: 1000, runner: 2000, crawler: 3000, bloater: 4000, brute: 5000 };
 const cache = {};
-export function getVariant(type) {
-  const list = cache[type] || (cache[type] = []);
-  if (list.length < PER_TYPE[type]) {
-    const v = buildVariant(type, SEEDS[type] + list.length * 7919);
-    list.push(v);
-    return v;
-  }
-  return list[(Math.random() * list.length) | 0];
+// 變體 k 用固定種子 → 每台機器、每個執行緒建出來都一樣(連線時可用 getVariant(type, k) 同步外觀)
+// 有 Worker:prewarm() 一次把全部變體平行丟給 Worker 池,主執行緒只組 BufferGeometry + 綁材質;
+// getVariant 取已建好的,一個都還沒好才同步建(備援)。沒有 Worker:完全照舊在主執行緒同步建。
+const seedOf = (type, k) => SEEDS[type] + k * 7919;
+const vstat = { worker: 0, sync: 0, syncMs: 0, pending: 0, t0: 0, tDone: 0 };
+const inflight = {};
+let pool;
+function modelPool() {
+  if (pool === undefined) pool = caps.useWorkers ? createPool(() => new Worker(new URL('./model.worker.js', import.meta.url), { type: 'module' }), { name: 'model', max: 6, idleMs: 8000 }) : null;
+  return pool && pool.available ? pool : null;
 }
-// 選單期間每幀建一個,開局時大多已完成,避免出怪卡頓
+function store(type, k, v) {
+  v.k = k;
+  (cache[type] || (cache[type] = []))[k] = v;
+  if (!vstat.tDone && readyCount() >= TOTAL) vstat.tDone = performance.now();
+  return v;
+}
+function buildSync(type, k) {
+  const t = performance.now();
+  if (!vstat.t0) vstat.t0 = t;
+  const v = store(type, k, buildVariant(type, seedOf(type, k)));
+  vstat.sync++;
+  vstat.syncMs += performance.now() - t;
+  return v;
+}
+function request(type, k) {
+  const key = type + ':' + k;
+  if (cache[type]?.[k] || inflight[key]) return inflight[key];
+  const p = modelPool();
+  if (!p) return null;
+  vstat.pending++;
+  if (!vstat.t0) vstat.t0 = performance.now();
+  return (inflight[key] = p.call('build', [type, seedOf(type, k)]).then((data) => {
+    if (!cache[type]?.[k]) { store(type, k, bindMaterials(unpack(data))); vstat.worker++; }
+    return cache[type][k];
+  }, (e) => { if (!p.failed) console.warn('[model] worker 建模失敗,改同步', e.message); return null; }).finally(() => { vstat.pending--; delete inflight[key]; }));
+}
+export function getVariant(type, k) {
+  const list = cache[type] || (cache[type] = []);
+  const n = PER_TYPE[type] || 1;
+  if (k != null) { k = ((k % n) + n) % n; return list[k] || buildSync(type, k); } // 指定變體
+  let ready = 0, miss = -1;
+  for (let i = 0; i < n; i++) if (list[i]) ready++; else if (miss < 0) miss = i;
+  if (ready && modelPool()) {
+    for (let i = 0; i < n; i++) if (!list[i]) request(type, i);
+    let pick = (Math.random() * ready) | 0;
+    for (let i = 0; i < n; i++) if (list[i] && pick-- === 0) return list[i];
+  }
+  if (miss >= 0) return buildSync(type, miss); // 照舊:前 n 次各建一個新的
+  return list[(Math.random() * n) | 0];
+}
+// 選單期間預建:有 Worker 時第一次呼叫就全部平行送出;沒有時每次排一個到 requestIdleCallback 同步建
 const ORDER = ['walker', 'walker', 'walker', 'runner', 'crawler', 'bloater', 'brute', 'walker', 'walker', 'walker', 'runner', 'runner', 'runner', 'crawler', 'crawler', 'crawler', 'bloater', 'bloater', 'brute', 'brute'];
-export function prewarm() {
+const TOTAL = Object.values(PER_TYPE).reduce((a, b) => a + b, 0);
+const readyCount = () => { let n = 0; for (const t in cache) for (const v of cache[t]) if (v) n++; return n; };
+function nextMissing() {
   const seen = {};
   for (const t of ORDER) {
-    seen[t] = (seen[t] || 0) + 1;
-    if ((cache[t]?.length || 0) < Math.min(seen[t], PER_TYPE[t])) { getVariant(t); return true; }
+    const k = (seen[t] = (seen[t] ?? -1) + 1);
+    if (k < PER_TYPE[t] && !cache[t]?.[k]) return [t, k];
   }
-  return false;
+  return null;
+}
+let dispatched = false, idleQueued = false;
+export function prewarm() {
+  if (modelPool()) {
+    if (!dispatched) {
+      dispatched = true;
+      materials(); // 順便讓貼圖 Worker 開始畫
+      const seen = {};
+      for (const t of ORDER) { const k = (seen[t] = (seen[t] ?? -1) + 1); if (k < PER_TYPE[t]) request(t, k); }
+    }
+    return vstat.pending > 0;
+  }
+  const m = nextMissing();
+  if (m && !idleQueued) {
+    idleQueued = true;
+    idle(() => { idleQueued = false; const q = nextMissing(); if (q) buildSync(q[0], q[1]); });
+  }
+  return !!m;
+}
+// 全部變體建好時 resolve(測試/啟動流程用)
+export function whenWarm() {
+  return new Promise((res) => {
+    const tick = () => { prewarm(); if (readyCount() >= TOTAL) res(variantStats()); else setTimeout(tick, 16); };
+    tick();
+  });
+}
+export function variantStats() {
+  return { ready: readyCount(), total: TOTAL, pending: vstat.pending, worker: vstat.worker, sync: vstat.sync, syncMs: Math.round(vstat.syncMs), warmMs: vstat.tDone && vstat.t0 ? Math.round(vstat.tDone - vstat.t0) : null, pool: pool ? pool.info() : null };
 }
 
 // 依變體建立一個可動的實例:SkinnedMesh + 骨架 + 命中盒
@@ -845,6 +928,7 @@ export function instantiate(v) {
     } else bones[i].position.copy(b.head);
   });
   const mesh = new THREE.SkinnedMesh(v.geometry, v.materials);
+  if (v.geometry.boundingSphere) mesh.boundingSphere = v.geometry.boundingSphere.clone();
   mesh.add(bones[0]);
   mesh.bind(new THREE.Skeleton(bones));
   mesh.castShadow = true;
