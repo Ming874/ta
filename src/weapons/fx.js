@@ -320,7 +320,7 @@ function decalAtlas() {
   // 0 混凝土:深色中心 + 崩落碎口 + 粉塵暈
   cell(0, () => {
     x.fillStyle = radial(0, 110, [[0, rgba(150, 150, 150, 0.35)], [1, rgba(150, 150, 150, 0)]]); x.fillRect(-128, -128, 256, 256);
-    chips(26, 14, 46, () => rgba(90 + rnd() * 40, 88 + rnd() * 40, 84 + rnd() * 40, 0.85), 9);
+    chips(26, 14, 46, () => { const v = 80 + rnd() * 50; return rgba(v, v * 0.98, v * 0.94, 0.85); }, 9);
     x.fillStyle = radial(0, 30, [[0, rgba(5, 5, 5, 1)], [0.55, rgba(20, 20, 18, 1)], [1, rgba(60, 58, 55, 0.0)]]); x.beginPath(); x.arc(0, 0, 30, 0, 6.28); x.fill();
     cracks(5, 70, 1.6, rgba(60, 60, 58, 0.6));
   });
@@ -438,6 +438,7 @@ class Decals {
     this.mesh.count = this.used;
     this.mesh.instanceMatrix.needsUpdate = true;
     this.aCell.needsUpdate = true;
+    this.aFade.needsUpdate = true;
     // 池子快滿時,讓最舊的幾個加速淡出
     if (this.used >= this.cap - 10) for (let k = 0; k < 6; k++) { const j = (this.next + k) % this.cap; this.life[j] = Math.min(this.life[j], 1.5 + k * 0.4); }
   }
@@ -647,8 +648,8 @@ export class WeaponFX {
     const decal = (cell, size) => this.decals.add(p, n, size * rand(0.85, 1.15) * (0.75 + power * 0.6), cell, 50);
     switch (mat) {
       case 'flesh': // 血霧 + 血滴
-        for (let i = 0; i < 3 + power * 4; i++) this.smoke.spawn(p.x, p.y, p.z, (rnd() - 0.5) * 0.8 - d.x * 0.6, (rnd() - 0.5) * 0.6, (rnd() - 0.5) * 0.8 - d.z * 0.6, 0.06, 0.32 * k, 0.32, 0.02, 0.02, 0.55, 0.5 * rand(0.7, 1.3), -0.3, 3, 0.04);
-        spray(6 + power * 8, 2.6, 1.6, (vx, vy, vz) => this.debris.spawn(p.x, p.y, p.z, vx, vy, vz, 0.012, 0.012, 0.016, 0x4a0606, rand(0.5, 1.4), fl, 0, 0.3, 9.8, 4));
+        for (let i = 0; i < 3 + power * 4; i++) this.smoke.spawn(p.x, p.y, p.z, (rnd() - 0.5) * 0.8 + d.x * 0.5, (rnd() - 0.5) * 0.6, (rnd() - 0.5) * 0.8 + d.z * 0.5, 0.05, 0.3 * k, 0.15, 0.012, 0.01, 0.5, 0.5 * rand(0.7, 1.3), -0.3, 3, 0.04);
+        spray(6 + power * 8, 2.6, 1.6, (vx, vy, vz) => { const s = rand(0.005, 0.01); this.debris.spawn(p.x, p.y, p.z, vx, vy, vz, s, s, s * 1.5, 0x320404, rand(0.5, 1.4), fl, 0, 0.3, 9.8, 4); });
         return;
       case 'water':
         for (let i = 0; i < 10 * k; i++) this.debris.spawn(p.x, p.y + 0.02, p.z, (rnd() - 0.5) * 1.2, rand(1.5, 3.6) * k, (rnd() - 0.5) * 1.2, 0.012, 0.02, 0.012, 0x9fb4b8, rand(0.4, 0.9), fl - 0.05, 0, 0.2);

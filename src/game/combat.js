@@ -122,8 +122,8 @@ export const combatMethods = {
     // 爆炸閃光衰減
     if (this._boom > 0) {
       this._boom = Math.max(0, this._boom - dt);
-      const k = this._boom / 0.5;
-      this.boomLight.intensity = 140 * k * k * (0.85 + Math.random() * 0.3);
+      const k = this._boom / 0.35;
+      this.boomLight.intensity = 85 * k * k * (0.85 + Math.random() * 0.3);
     } else this.boomLight.intensity = 0;
     this._updateNades(dt);
     this._updateGore(dt);
@@ -396,8 +396,9 @@ export const combatMethods = {
       while (e.acc >= 1) {
         e.acc -= 1;
         const sp = (2.2 + Math.random() * 1.8) * e.power * (0.5 + k);
-        fx.debris.spawn(_p.x, _p.y, _p.z, _u.x * sp + rand(-0.4, 0.4), _u.y * sp + rand(-0.2, 0.4), _u.z * sp + rand(-0.4, 0.4), 0.014, 0.014, 0.02, 0x520707, rand(0.6, 1.4), fl, 0, 0.3, 9.8, 4);
-        if (Math.random() < 0.18) fx.smoke.spawn(_p.x, _p.y, _p.z, _u.x * sp * 0.3, _u.y * sp * 0.3, _u.z * sp * 0.3, 0.05, 0.22, 0.3, 0.02, 0.02, 0.4, 0.5, -0.4, 3, 0.04);
+        const ds = rand(0.006, 0.011);
+        fx.debris.spawn(_p.x, _p.y, _p.z, _u.x * sp + rand(-0.4, 0.4), _u.y * sp + rand(-0.2, 0.4), _u.z * sp + rand(-0.4, 0.4), ds, ds, ds * 1.6, 0x320404, rand(0.6, 1.4), fl, 0, 0.3, 9.8, 4);
+        if (Math.random() < 0.18) fx.smoke.spawn(_p.x, _p.y, _p.z, _u.x * sp * 0.3, _u.y * sp * 0.3, _u.z * sp * 0.3, 0.05, 0.22, 0.13, 0.01, 0.01, 0.45, 0.5, -0.4, 3, 0.04);
       }
     }
   },
@@ -422,8 +423,8 @@ export const combatMethods = {
         this._goreAdd(z, parent, _a, _b, g.kind === 'head' ? 1.8 : g.kind === 'headBlood' ? 0.9 : 1.1, g.kind === 'head' ? 75 : 45, g.kind === 'head' ? 1.25 : 0.8);
         parent.updateWorldMatrix(true, false);
         _p.copy(_a).applyMatrix4(parent.matrixWorld);
-        for (let i = 0; i < (g.kind === 'head' ? 26 : 14); i++) this.wfx.debris.spawn(_p.x, _p.y, _p.z, rand(-2, 2), rand(0.5, 3.5), rand(-2, 2), rand(0.02, 0.05), rand(0.015, 0.035), rand(0.02, 0.05), Math.random() < 0.7 ? 0x4a0808 : 0x6b3a32, rand(2, 4), this.wfx.floor(_p.x, _p.y, _p.z), 0.15, 0.6, 9.8, 14);
-        this.wfx.smoke.spawn(_p.x, _p.y, _p.z, 0, 0.4, 0, 0.1, 0.7, 0.32, 0.02, 0.02, 0.6, 0.9, -0.2, 2, 0.03);
+        for (let i = 0; i < (g.kind === 'head' ? 22 : 12); i++) { const s = rand(0.012, 0.032); this.wfx.debris.spawn(_p.x, _p.y, _p.z, rand(-2, 2), rand(0.5, 3.5), rand(-2, 2), s, s * rand(0.6, 1), s * rand(0.8, 1.3), Math.random() < 0.7 ? 0x2c0505 : 0x4a2620, rand(2, 4), this.wfx.floor(_p.x, _p.y, _p.z), 0.15, 0.6, 9.8, 14); }
+        this.wfx.smoke.spawn(_p.x, _p.y, _p.z, 0, 0.4, 0, 0.1, 0.6, 0.14, 0.012, 0.01, 0.55, 0.9, -0.2, 2, 0.03);
       }
     }
     if (killer === this.player) {
@@ -481,11 +482,11 @@ export const combatMethods = {
     if (opts.fx !== false) {
       // 閃光、火球、煙柱、地面揚塵、碎屑、火花、餘燼、焦痕
       this.boomLight.position.set(c.x, c.y + 0.7, c.z);
-      this._boom = 0.5;
-      this.boomLight.intensity = 140;
-      fx.fire.spawn(c.x, c.y + 0.4, c.z, 0, 0.5, 0, 0.6, 4.6 * size, 7, 5, 3.2, 1, 0.14, 0, 0, 0.01);
-      for (let i = 0; i < 12; i++) fx.fire.spawn(c.x + rand(-0.3, 0.3), c.y + 0.3 + rand(0, 0.5), c.z + rand(-0.3, 0.3), rand(-3.5, 3.5) * size, rand(0.5, 4) * size, rand(-3.5, 3.5) * size, 0.3, rand(1.4, 2.5) * size, 3.6, 1.7, 0.55, 1, rand(0.25, 0.5), 1.2, 3.5, 0.04);
-      for (let i = 0; i < 22; i++) fx.smoke.spawn(c.x + rand(-0.6, 0.6), c.y + rand(0.2, 1.3), c.z + rand(-0.6, 0.6), rand(-1.6, 1.6), rand(0.6, 2.8), rand(-1.6, 1.6), 0.6, rand(2.2, 4.2) * size, 0.08, 0.075, 0.07, 0.78, rand(3, 6), 0.35, 1.1, 0.07);
+      this._boom = 0.35;
+      this.boomLight.intensity = 85;
+      fx.fire.spawn(c.x, c.y + 0.4, c.z, 0, 0.5, 0, 0.5, 3.2 * size, 3.2, 2, 0.9, 0.9, 0.11, 0, 0, 0.01);
+      for (let i = 0; i < 9; i++) fx.fire.spawn(c.x + rand(-0.3, 0.3), c.y + 0.3 + rand(0, 0.5), c.z + rand(-0.3, 0.3), rand(-3.2, 3.2) * size, rand(0.5, 3.5) * size, rand(-3.2, 3.2) * size, 0.3, rand(1.2, 2.2) * size, 1.9, 0.75, 0.2, 0.75, rand(0.22, 0.45), 1.2, 3.5, 0.04);
+      for (let i = 0; i < 24; i++) fx.smoke.spawn(c.x + rand(-0.6, 0.6), c.y + rand(0.2, 1.3), c.z + rand(-0.6, 0.6), rand(-1.6, 1.6), rand(0.6, 2.8), rand(-1.6, 1.6), 0.6, rand(2.2, 4.2) * size, 0.06, 0.055, 0.05, 0.85, rand(3.5, 6.5), 0.35, 1.1, 0.12);
       for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2; fx.smoke.spawn(c.x + Math.cos(a) * 0.4, gy + 0.15, c.z + Math.sin(a) * 0.4, Math.cos(a) * 6 * size, 0.2, Math.sin(a) * 6 * size, 0.3, rand(1.2, 2) * size, 0.3, 0.28, 0.25, 0.5, rand(1.5, 2.6), 0.15, 2.4, 0.05); }
       for (let i = 0; i < 46; i++) { const s = rand(0.01, 0.045); fx.debris.spawn(c.x, c.y + 0.2, c.z, rand(-7, 7) * size, rand(2, 9) * size, rand(-7, 7) * size, s, s * rand(0.5, 1), s * rand(0.6, 1.2), Math.random() < 0.5 ? 0x2a2622 : 0x5a5650, rand(2.5, 5), gy, 0.35, 0.3, 9.8, 22); }
       for (let i = 0; i < 60; i++) fx.glow.spawn(c.x, c.y + 0.3, c.z, rand(-11, 11) * size, rand(1, 11) * size, rand(-11, 11) * size, 6, 3, 1, rand(0.3, 0.9), rand(0.008, 0.016), gy, 9.8, 0.9);
@@ -582,7 +583,7 @@ export const combatMethods = {
       if (g.t >= g.fuse) {
         this.scene.remove(g.mesh);
         this.nades.splice(i, 1);
-        this.explodeAt(_p.copy(g.p).addScaledVector(_up, 0.1), 6.5, 175, { owner: g.owner, kind: 'grenade' });
+        this.explodeAt(_p.copy(g.p).addScaledVector(_up, 0.1), 7, 230, { owner: g.owner, kind: 'grenade' });
         continue;
       }
       if (!g.rest) {
@@ -663,7 +664,7 @@ export const combatMethods = {
       const hx = Math.sin(z.heading), hz = Math.cos(z.heading);
       const tx = _o.x - z.pos.x, tz = _o.z - z.pos.z, tl = Math.hypot(tx, tz) || 1;
       const back = (hx * tx + hz * tz) / tl < -0.35;
-      const dmg = 70 * (back ? 2.2 : 1) * (part === 'armor' ? 1 / Math.max(0.3, z.T.bodyArmor || 1) : 1); // 小刀無視巨屍護甲
+      const dmg = 70 * (back ? 2.2 : 1); // 背刺 ×2.2;小刀無視巨屍護甲(護甲部位當身體)
       HIT.bone = bone; HIT.point.copy(_p); HIT.dir.copy(_f); HIT.dmg = dmg * (part === 'head' ? 2 : 1); HIT.range = 1; HIT.weapon = 'knife'; HIT.explosive = false; HIT.melee = true;
       this._impulse(z, _p, _f, 120);
       z.vel.x += _f.x * 2.2; z.vel.z += _f.z * 2.2;

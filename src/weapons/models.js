@@ -1329,7 +1329,7 @@ function knifeGeos(k) {
 function grenadeGeos(k, withPin = true) {
   const R = 0.0318;
   k.add(M.olive, new THREE.SphereGeometry(R, 28, 20).scale(1, 1.06, 1));
-  k.add(M.yellow, new THREE.TorusGeometry(R * 0.73, 0.0012, 6, 32).rotateX(HALF).translate(0, R * 0.72, 0));
+  k.add(M.yellow, new THREE.TorusGeometry(R * 0.86, 0.0006, 6, 32).rotateX(HALF).translate(0, R * 0.52, 0));
   k.add(M.olive, cylY(0.0118, 0.012, 0, R + 0.002, 0, 20));
   k.add(M.park, cylY(0.0098, 0.018, 0, R + 0.012, 0, 18)); // 引信
   k.add(M.park, cylY(0.0062, 0.006, 0, R + 0.024, 0, 14));
@@ -1412,7 +1412,7 @@ export function createWeaponModel(id) {
 export function createKnifeModel() {
   const k = new Kit();
   knifeGeos(k);
-  rightGripHand(k, 0, [-0.002, -0.006], 0.028, 0.0098, { s: 0.05, reach: 0.006, elbow: V(0.12, -0.26, 0.36), index: [1.25, 1.35, 0.45], thumb: { dir: [-0.15, -0.95, -0.25], roll: 0, curl: [0.3, 0.35] } });
+  rightGripHand(k, 0, [0.002, -0.006], 0.028, 0.0098, { s: 0.05, reach: 0.006, elbow: V(0.1, -0.38, 0.26), index: [1.25, 1.35, 0.45], thumb: { dir: [-0.15, -0.95, -0.25], roll: 0, curl: [0.3, 0.35] } });
   const root = new THREE.Group();
   k.build(root);
   const tip = new THREE.Object3D();
@@ -1449,7 +1449,7 @@ export function createGrenadeProjectile() {
     const k = new Kit();
     const R = 0.0318;
     k.add(M.olive, new THREE.SphereGeometry(R, 20, 14).scale(1, 1.06, 1));
-    k.add(M.yellow, new THREE.TorusGeometry(R * 0.73, 0.0012, 6, 24).rotateX(HALF).translate(0, R * 0.72, 0));
+    k.add(M.yellow, new THREE.TorusGeometry(R * 0.86, 0.0006, 6, 24).rotateX(HALF).translate(0, R * 0.52, 0));
     k.add(M.park, cylY(0.0098, 0.03, 0, R + 0.008, 0, 14));
     nadeProto = new THREE.Group();
     k.build(nadeProto);
