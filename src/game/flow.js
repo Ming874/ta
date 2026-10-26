@@ -11,6 +11,7 @@ export const flowMethods = {
     this.coins.clear();
     this.clearPools();
     this.hazards.clear();
+    this.physics?.reset(); // 物理:道具回原位、清掉布娃娃與碎片(src/physics)
     if (this.shop) { this.shop.dispose(); this.shop = null; }
     const p = this.player, st = this.world.start;
     p.hp = p.maxHp;

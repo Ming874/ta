@@ -39,6 +39,8 @@ export const combatMethods = {
     const hits = this.ray.intersectObjects(liveZ.flatMap((z) => z.meshes), false);
     const wallDist = this.world.rayDistance(origin.x, origin.y, origin.z, dir.x, dir.y, dir.z, 90);
     const end = new THREE.Vector3();
+    // 物理(src/physics):彈道上的可動道具/屍體被打飛;輕道具不擋子彈,重道具本來就在 World 碰撞盒裡
+    this.physics?.shot(origin, dir, hits.length && hits[0].distance < wallDist ? hits[0].distance : wallDist, def.damage);
 
     if (hits.length && hits[0].distance < wallDist) {
       const h = hits[0];
@@ -53,12 +55,13 @@ export const combatMethods = {
       if (z.type === 'bloater') this.burst(h.point, n, 'bile', 6, z.pos.y);
       this.ui.hitMarker(head);
       (head ? sfx.headshot : sfx.hit)();
-      if (killed) this.onKill(z);
+      if (killed) this.onKill(z, this.player, { point: h.point, dir, force: def.damage }); // 擊殺那一發的方向/力道給布娃娃
     } else {
       end.copy(origin).addScaledVector(dir, wallDist);
       const n = dir.clone().negate();
       this.burst(end, n, 'spark', 4);
       this.burst(end, n, 'dust', 4);
+      this.physics?.chips(end, n, 5); // 物理碎屑
       sfx.wall();
     }
 
@@ -66,13 +69,14 @@ export const combatMethods = {
     this.updateAmmoHud();
   },
 
-  // killer:擊殺者(多人時金幣歸屬用)
-  onKill(z, killer = this.player) {
+  // killer:擊殺者(多人時金幣歸屬用);hit:擊殺的那一下 { point, dir, force } 或 { blast, radius, strength }(布娃娃衝量用,可省略)
+  onKill(z, killer = this.player, hit = null) {
     this.coins.drop(z.pos.x, z.pos.y, z.pos.z, z.T.coins);
     if (z.type !== 'bloater') this.addPool(z.pos.x, z.pos.y, z.pos.z);
     z.corpse = z.type === 'brute' ? 9 : 6;
     z.killer = killer;
     this.kills = (this.kills || 0) + 1;
+    this.physics?.ragdoll(z, hit); // 物理布娃娃(src/physics);物理不可用時沿用 zombie.js 的死亡動畫
   },
 
   // 膿腫者死亡時爆開:傷害周圍的玩家與殭屍,留下毒氣(不同樓層幾乎不受影響)
@@ -95,10 +99,14 @@ export const combatMethods = {
         if (pl === p) p.addShake(0.7);
       }
     }
+    const blast = { blast: at, radius: E.radius, strength: 9 };
     for (const o of this.zombies) {
       if (o === z || !o.alive) continue;
       const od = dist(o.pos);
-      if (od < E.radius && o.damage(E.zombie * (1 - od / E.radius) + 10, 'body')) this.onKill(o, z.killer);
+      if (od < E.radius && o.damage(E.zombie * (1 - od / E.radius) + 10, 'body')) this.onKill(o, z.killer, blast);
     }
+    // 物理:膽腫者爆開後倒下,周圍的道具、屍體被炸開(src/physics)
+    this.physics?.ragdoll(z, blast);
+    this.physics?.impulseAt(at, E.radius * 1.6, 9);
   },
 };
