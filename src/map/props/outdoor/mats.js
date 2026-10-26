@@ -326,7 +326,7 @@ const DECAL_TEX = lazy(() => {
   inCell('burn', () => { softBlob(ctx, 128, 128, 120, '6,5,4', 0.9); softBlob(ctx, 128, 128, 70, '0,0,0', 0.7); });
   inCell('vomit', () => { for (let k = 0; k < 20; k++) softBlob(ctx, 128 + rr(-70, 70), 128 + rr(-50, 50), rr(10, 40), '70,72,30', 0.7); });
   inCell('wax', () => { for (let k = 0; k < 14; k++) softBlob(ctx, 128 + rr(-90, 90), 128 + rr(-90, 90), rr(6, 22), '220,210,180', 0.85); });
-  inCell('ashes', () => { for (let k = 0; k < 50; k++) softBlob(ctx, 128 + rr(-100, 100), 128 + rr(-100, 100), rr(6, 30), `${rr(40, 90) | 0},${rr(40, 88) | 0},${rr(40, 86) | 0}`, 0.7); });
+  inCell('ashes', () => { for (let k = 0; k < 50; k++) { const g = rr(40, 95) | 0; softBlob(ctx, 128 + rr(-100, 100), 128 + rr(-100, 100), rr(6, 30), `${g},${g - 2},${g - 4}`, 0.7); } });
   inCell('paw', () => { for (let k = 0; k < 6; k++) { const x = 30 + k * 38, y = 128 + (k % 2 ? 20 : -20); ctx.fillStyle = 'rgba(70,8,6,0.85)'; ctx.beginPath(); ctx.arc(x, y, 9, 0, 7); ctx.fill(); for (const a of [-0.7, -0.25, 0.25, 0.7]) { ctx.beginPath(); ctx.arc(x + Math.sin(a) * 13, y - Math.cos(a) * 13, 4, 0, 7); ctx.fill(); } } });
   inCell('water2', () => { softBlob(ctx, 128, 128, 120, '10,12,12', 0.55); });
   inCell('stain2', () => { for (let k = 0; k < 8; k++) softBlob(ctx, 128 + rr(-60, 60), 128 + rr(-60, 60), rr(30, 70), '40,30,20', 0.35); });
@@ -489,12 +489,12 @@ export function initMats() {
   pl('po_granite', 0x2c2c2e, 0.35); pl('po_firebrick', 0x8a5a3e, 0.95); pl('po_soot', 0x0e0c0a, 1); pl('po_orange', 0xd85a12, 0.5); pl('po_reflect', 0xe8e8e0, 0.3);
   pl('po_bag_black', 0x0e0e10, 0.35, 0.1); pl('po_bag_red', 0x9a1410, 0.4); pl('po_bag_yellow', 0xc8a418, 0.45); pl('po_bodybag', 0x14161c, 0.3, 0.1);
   pl('po_fabric_dirty', 0x8a8270, 1); pl('po_fabric_pink', 0xa87a80, 1); pl('po_suitcase', 0x2a3a4a, 0.5); pl('po_suitcase2', 0x5a2a2a, 0.5);
-  pl('po_mattress', 0x9aa8a0, 0.95); pl('po_line_white', 0xc8c8c0, 0.85); pl('po_line_yellow', 0xb8962a, 0.85);
+  pl('po_cable', 0x0c0c0c, 0.6); pl('po_mattress', 0x9aa8a0, 0.95); pl('po_line_white', 0xc8c8c0, 0.85); pl('po_line_yellow', 0xb8962a, 0.85);
   pl('po_skin_doll', 0xd8c0b0, 0.6); pl('po_hair', 0x2a1a10, 0.9); pl('po_pole', 0x2e3432, 0.55, 0.6); pl('po_green_paint', 0x2a4a3a, 0.6, 0.4);
   pl('po_play_red', 0x8a2a22, 0.6); pl('po_play_yellow', 0xb8902a, 0.6); pl('po_play_blue', 0x2a4a7a, 0.6);
   pl('po_puddle', 0x0a0c0c, 0.02, 0.5, { raw: { envMap: env, envMapIntensity: 1.2, transparent: true, opacity: 0.88, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 } });
   pl('po_water_dark', 0x0c1414, 0.04, 0.4, { raw: { envMap: env, envMapIntensity: 0.8, transparent: true, opacity: 0.9, depthWrite: false } });
   pl('po_lamp_glass', 0xb0a080, 0.2, 0, { em: 0xff9a40, ei: 1.6 }); pl('po_lamp_off', 0x8a8478, 0.2, 0.2);
-  pl('po_bulb', 0xfff0c8, 0.3, 0, { em: 0xffc070, ei: 2.2 }); pl('po_ember', 0x501008, 0.9, 0, { em: 0xff4a10, ei: 1.6 });
+  pl('po_bulb', 0xfff0c8, 0.3, 0, { em: 0xffc070, ei: 2.2 }); pl('po_candle_flame', 0xffd080, 1, 0, { em: 0xffa040, ei: 3 }); pl('po_ember', 0x501008, 0.9, 0, { em: 0xff4a10, ei: 1.6 });
 }
 export const dustTexture = GRIME;

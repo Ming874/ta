@@ -609,7 +609,7 @@ export function buildVehicle(kind, opt = {}) {
     if (fu) { u0 += uw; uw = -uw; }
     if (fv) { v0 += vh; vh = -vh; }
     const c = Math.cos(rot), s = Math.sin(rot);
-    P.add('po_decal', decalGrid((u, v) => { const lx2 = (u - 0.5) * sx, lz = (v - 0.5) * sz; const x = xc + lx2 * c - lz * s, z = zc + lx2 * s + lz * c; const y = x > gh.cowl[0] || x < cabR ? yTop(x, z) + S.crown * (1 - (z / hwAt(x)) ** 2) * 0.9 + 0.004 : roofY(x) + S.crown * 0.8 * (1 - (z / zSide(x, roofY(x))) ** 2) + 0.004; return new V3(x, y, z); }, [u0, v0, uw, vh], 6, 6, true));
+    P.add('po_decal', decalGrid((u, v) => { const lx2 = (u - 0.5) * sx, lz = (v - 0.5) * sz; const x = clamp(xc + lx2 * c - lz * s, -hl + 0.02, hl - 0.02), z = zc + lx2 * s + lz * c; const y = x > gh.cowl[0] || x < cabR ? yTop(x, z) + S.crown * Math.max(0, 1 - (z / Math.max(0.1, hwAt(x))) ** 2) * 0.9 + 0.004 : roofY(x) + S.crown * 0.8 * Math.max(0, 1 - (z / Math.max(0.1, zSide(x, roofY(x)))) ** 2) + 0.004; return new V3(x, y, z); }, [u0, v0, uw, vh], 6, 6, true));
   };
   // 車窗內側貼花(血手印等):bay 為窗位、(u,v) 為窗內相對位置
   const winDecal = (name, b, side, u, v, size) => {

@@ -390,3 +390,48 @@ export function edgeInfo(ctx, li, c, r) {
 }
 // 隨機打散
 export function shuffle(rng, a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+// ---------- 動畫實例池(風扇、鞦韆、漂浮物…:每幀由 fn 計算局部變換)----------
+// add(base, fn):fn(t, out:Matrix4) 寫入局部動畫矩陣(相對 base);全部實例共用一個 draw call(每材質)
+const _am = new THREE.Matrix4();
+class AnimPool {
+  constructor(ctx, name, parts, cap) {
+    this.items = [];
+    this.last = -1;
+    this.meshes = parts.map(({ geo, mat: m }) => {
+      const im = new THREE.InstancedMesh(geo, resolve(m), cap);
+      im.name = `po_anim_${name}`;
+      im.count = 0;
+      im.castShadow = !im.material.transparent;
+      im.receiveShadow = true;
+      im.frustumCulled = false;
+      im.onBeforeRender = () => this.update();
+      ctx.add(im, { static: false, collide: false });
+      return im;
+    });
+  }
+  add(base, fn) {
+    this.items.push({ base: base.clone(), fn });
+    for (const im of this.meshes) { im.count = this.items.length; im.setMatrixAt(this.items.length - 1, base); im.instanceMatrix.needsUpdate = true; }
+  }
+  update() {
+    const t = performance.now() / 1000;
+    if (t === this.last) return;
+    this.last = t;
+    for (let i = 0; i < this.items.length; i++) {
+      const it = this.items[i];
+      _am.identity();
+      it.fn(t, _am);
+      _tmp.multiplyMatrices(it.base, _am);
+      for (const im of this.meshes) im.setMatrixAt(i, _tmp);
+    }
+    for (const im of this.meshes) im.instanceMatrix.needsUpdate = true;
+  }
+}
+export function animPool(ctx, name, build, cap = 16) {
+  let ps = POOLS.get(ctx);
+  if (!ps) POOLS.set(ctx, (ps = new Map()));
+  let p = ps.get('anim_' + name);
+  if (!p) { const parts = build(); p = new AnimPool(ctx, name, parts instanceof Parts ? parts.list() : parts, cap); ps.set('anim_' + name, p); }
+  return p;
+}
