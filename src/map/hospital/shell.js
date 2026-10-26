@@ -43,6 +43,17 @@ export function createShellContext(L, B) {
     return Math.min(L.LEVEL_H, cy - y);
   };
   K.levelTop = nL - 1;
+  // 某格(牆面朝向的那一側)應該用哪種牆面:外牆 / 中庭外牆 / 區域配方
+  K.sideStyle = (li, nc, nr) => {
+    const lvId = L.levels[li].id;
+    if (K.outdoorAt(li, nc, nr)) return { recipe: L.inBuilding(nc, nr) ? COURT : FACADE, zone: null, kind: 'facade' };
+    const nch = L.charAt(li, nc, nr);
+    const sz = K.spaceZone(li, nc, nr);
+    const zone = sz ? sz.zone : null;
+    const zl = sz ? L.levels[sz.li].id : lvId;
+    const recipe = wallRecipe(zone || (nch === '=' || nch === '+' ? L.zoneAt(li, nc, nr - 1) || L.zoneAt(li, nc, nr + 1) || L.zoneAt(li, nc - 1, nr) || L.zoneAt(li, nc + 1, nr) : null), zl);
+    return { recipe, zone, kind: 'room' };
+  };
   // 門的資料:通行軸、高度、是否雙開
   const doorCache = new Map();
   K.door = (li, c, r) => {
@@ -91,7 +102,7 @@ export function buildFloors(K) {
       else if (ch === '|') key = fenceGround(L, li, c, r);
       else if (ch === '+') { const s = L.zoneAt(li, c, r + 1) || L.zoneAt(li, c, r - 1) || L.zoneAt(li, c + 1, r) || L.zoneAt(li, c - 1, r); key = floorKey(zone || s, lv.id); if (K.outdoorAt(li, c, r)) key = 'concrete'; }
       else key = floorKey(zone, lv.id);
-      if (zone?.theme === 'fire_escape') key = 'metal_grate';
+      if (zone?.theme === 'fire_escape') key = lv.id === '1F' ? (ch === '"' ? 'grass' : 'gravel') : 'metal_grate';
       if (!zone && ch === ',' && lv.id === '3F') key = 'roof_gravel';
       if (zone?.theme === 'ramp') key = 'concrete';
       const t = xf(zone, key);
@@ -137,15 +148,11 @@ export function buildWalls(K) {
           spans = [[0, d.axis ? d.h : top]]; recipe = REVEAL; kind = 'reveal';
           if (ch === 'W') spans = [[0, Math.min(L.WINDOW_SILL, d.h)], [L.WINDOW_TOP, d.axis ? Math.max(L.WINDOW_TOP, d.h) : top]].filter(([a, b]) => b > a + 0.01);
         } else {
-          const out = K.outdoorAt(li, nc, nr);
           if (boundary) { recipe = BOUNDARY; kind = 'boundary'; }
-          else if (out) { recipe = L.inBuilding(nc, nr) ? COURT : FACADE; kind = 'facade'; }
           else {
-            const sz = K.spaceZone(li, nc, nr);
-            zone = sz ? sz.zone : null;
-            const zl = sz ? L.levels[sz.li].id : lv.id;
-            recipe = wallRecipe(zone || (nch === '=' ? L.zoneAt(li, nc, nr - 1) || L.zoneAt(li, nc, nr + 1) : null), zl);
-            kind = ch === 'E' ? 'elevator' : 'room';
+            const st = K.sideStyle(li, nc, nr);
+            recipe = st.recipe; zone = st.zone; kind = st.kind;
+            if (kind === 'room' && ch === 'E') kind = 'elevator';
           }
           spans = ch === 'W' ? [[0, L.WINDOW_SILL], [L.WINDOW_TOP, top]] : [[0, top]];
           if (zone?.ceil === 'vault') spans = [[0, top + 0.6]];

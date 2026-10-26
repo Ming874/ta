@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { surf } from './surfaces.js';
+import { TRIM } from './texdefs.js';
 
 // 幾何收集器:依 (樓層, 材質鍵) 分桶,最後每桶合成一個網格(大幅減少 draw call)。
 // 牆面 UV 用世界座標公尺(材質貼圖 repeat = 1/尺寸),頂點色做色調與髒污漸層。
@@ -17,6 +18,17 @@ class IBuf {
 }
 
 const _v = new THREE.Vector3(), _n = new THREE.Vector3(), _m3 = new THREE.Matrix3();
+// 純色收邊材質合併成三種(霧面/亮面/金屬),顏色烘進頂點色 → 每層少十幾個 draw call
+const TRIM_BUCKET = {};
+for (const [k, [hex, rough, metal = 0]] of Object.entries(TRIM)) {
+  const c = new THREE.Color(hex);
+  TRIM_BUCKET[k] = { b: metal >= 0.5 ? 'TRIM_METAL' : rough < 0.45 ? 'TRIM_GLOSS' : 'TRIM_MATTE', c: [c.r, c.g, c.b] };
+}
+// 水平面材質(地板/天花板):不投手電筒陰影(只投月光陰影)
+export const HORIZONTAL = new Set(['tile_ward', 'tile_ward_b', 'tile_lobby', 'terrazzo', 'linoleum', 'linoleum_b', 'linoleum_c', 'linoleum_d', 'tile_white_floor',
+  'concrete', 'concrete_paint', 'concrete_wet', 'wood_floor', 'wood_gym', 'wood_parquet', 'wood_old', 'carpet', 'carpet_kids', 'padded_floor', 'stone', 'asphalt',
+  'paving', 'gravel', 'grass', 'soil', 'roof_gravel', 'metal_grate', 'ceil_tile', 'ceil_tile_b', 'ceil_plaster', 'ceil_concrete', 'ceil_wood', 'vault_stone', 'runner']);
+export const NO_FLASH_SHADOW_LAYER = 1;
 export class Buckets {
   constructor() { this.map = new Map(); this.tris = 0; }
   get(li, key) {
@@ -27,14 +39,15 @@ export class Buckets {
   }
   // 任意四邊形:a,b,c,d 逆時針(從正面看),uv 為 [u,v]×4,col 為 [r,g,b] 或每角一組
   quad(li, key, a, b, c, d, nrm, uv, col = WHITE) {
-    const B = this.get(li, key), base = B.v;
+    const tb = TRIM_BUCKET[key], mul = tb ? tb.c : WHITE;
+    const B = this.get(li, tb ? tb.b : key), base = B.v;
     const P = [a, b, c, d];
     for (let k = 0; k < 4; k++) {
       B.p.push3(P[k][0], P[k][1], P[k][2]);
       B.n.push3(nrm[0], nrm[1], nrm[2]);
       B.u.push2(uv[k][0], uv[k][1]);
       const cc = col.length === 4 ? col[k] : col;
-      B.c.push3(cc[0], cc[1], cc[2]);
+      B.c.push3(cc[0] * mul[0], cc[1] * mul[1], cc[2] * mul[2]);
     }
     B.i.push(base, base + 1, base + 2, base, base + 2, base + 3);
     B.v += 4; this.tris += 2;
@@ -72,7 +85,9 @@ export class Buckets {
   }
   // 任意 BufferGeometry(經過 matrix 變換);uvScale:把幾何原本的 0..1 UV 放大(公尺)
   geo(li, key, g, matrix, { col = WHITE, uvScale = 1 } = {}) {
-    const B = this.get(li, key), base = B.v;
+    const tb = TRIM_BUCKET[key];
+    if (tb) col = [col[0] * tb.c[0], col[1] * tb.c[1], col[2] * tb.c[2]];
+    const B = this.get(li, tb ? tb.b : key), base = B.v;
     const pos = g.attributes.position, nor = g.attributes.normal, uv = g.attributes.uv;
     _m3.getNormalMatrix(matrix);
     for (let k = 0; k < pos.count; k++) {
@@ -105,6 +120,7 @@ export class Buckets {
       m.castShadow = shadow && !material.transparent;
       m.receiveShadow = true;
       m.matrixAutoUpdate = false;
+      if (HORIZONTAL.has(B.key)) m.layers.set(NO_FLASH_SHADOW_LAYER);
       m.updateMatrix();
       groups[B.li].add(m);
       meshes.push(m);

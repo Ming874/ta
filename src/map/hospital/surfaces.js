@@ -86,20 +86,63 @@ export const SURFACES = {
   ceil_concrete: S('concrete', 2.6, { tint: 0x8c8882 }),
   ceil_wood: S('wood_panel', 2.1, { tint: 0x8a7264, sat: 0.6 }),
   vault_stone: S('stone_wall', 2.5, { tint: 0xb8b0a0 }),
+  // ---- 門窗、欄杆、金屬 ----
+  steel_brushed: S('steel', 1.0, { metal: 1, rough: 0.55 }),
+  steel_dirty: S('steel', 0.8, { metal: 0.85, rough: 0.9, tint: 0xb0aea6 }),
+  rust: S('rust', 2.2, { metal: 0.3 }),
+  iron: S('rust', 1.2, { metal: 0.5, tint: 0x4a4440, sat: 0.4, rough: 0.8 }),
+  door_wood: S('wood_old', 2.0, { tint: 0x9a7458, rot: Math.PI / 2 }),
+  door_dark: S('wood_panel', 2.1, { tint: 0x7a6050, sat: 0.6 }),
+  door_mint: S('metal_painted', 1.4, { tint: 0x9cc4b0, sat: 0.4, rough: 0.75 }),
+  door_cream: S('metal_painted', 1.4, { tint: 0xd8ccb0, sat: 0.3, rough: 0.75 }),
+  door_gray: S('metal_painted', 1.2, { tint: 0x7c8488, sat: 0.3, rough: 0.8 }),
+  door_red: S('metal_painted', 1.2, { tint: 0xa8443a, sat: 0.7, rough: 0.7 }),
+  door_white: S('metal_painted', 1.3, { tint: 0xe4e2da, sat: 0.5, rough: 0.7 }),
+  door_teal: S('metal_painted', 1.3, { tint: 0x5f8f8a, sat: 0.45, rough: 0.75 }),
+  board: S('wood_old', 1.8, { tint: 0xb4a490 }),
+  runner: S('carpet', 0.8, { tint: 0x9a3a32, sat: 0.7 }),
+  chainlink: S('chainlink', 1.0, { metal: 0.8, alphaTest: 0.45, side: 2 }),
+  glass: { gen: 'glass' },
+  blinds: { gen: 'blinds' },
+  curtain: { gen: 'curtain' },
+  bush: { gen: 'bush' },
 };
 
-// 飽和度調整(共用同一個 onBeforeCompile → 共用 shader 程式,每個材質自己的 uSat)
-function satHook(shader) {
+// 結構材質的共用 shader 修改(共用同一個 onBeforeCompile → 共用 shader 程式;每個材質自己的 uniform):
+//  uSat 飽和度;uNoTile 防重複取樣(低頻雜訊決定每一塊用哪個偏移,兩個偏移之間交叉淡化 → 看不出貼圖重複)
+const NOTILE = `
+uniform float uSat;
+uniform float uNoTile;
+float ntHash( vec2 p ) { return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 ); }
+float ntNoise( vec2 p ) { vec2 i = floor( p ), f = fract( p ); f = f * f * ( 3.0 - 2.0 * f );
+  return mix( mix( ntHash( i ), ntHash( i + vec2( 1.0, 0.0 ) ), f.x ), mix( ntHash( i + vec2( 0.0, 1.0 ) ), ntHash( i + vec2( 1.0, 1.0 ) ), f.x ), f.y ); }
+vec4 ntTex( sampler2D t, vec2 uv ) {
+  if ( uNoTile < 0.5 ) return texture2D( t, uv );
+  float k = ntNoise( uv * 0.43 ) * 0.7 + ntNoise( uv * 1.31 + 17.0 ) * 0.3;
+  float l = k * 7.0; float f = fract( l ); float ia = floor( l );
+  vec2 oa = sin( vec2( 3.0, 7.0 ) * ia ), ob = sin( vec2( 3.0, 7.0 ) * ( ia + 1.0 ) );
+  vec2 dx = dFdx( uv ), dy = dFdy( uv );
+  return mix( textureGrad( t, uv + oa, dx, dy ), textureGrad( t, uv + ob, dx, dy ), smoothstep( 0.25, 0.75, f ) );
+}
+`;
+function structHook(shader) {
   shader.uniforms.uSat = this.userData.uSat;
+  shader.uniforms.uNoTile = this.userData.uNoTile;
+  const C = THREE.ShaderChunk;
   shader.fragmentShader = shader.fragmentShader
-    .replace('void main() {', 'uniform float uSat;\nvoid main() {')
+    .replace('void main() {', NOTILE + 'void main() {')
     .replace('#include <map_fragment>', `#ifdef USE_MAP
-	vec4 sampledDiffuseColor = texture2D( map, vMapUv );
+	vec4 sampledDiffuseColor = ntTex( map, vMapUv );
 	float satL = dot( sampledDiffuseColor.rgb, vec3( 0.299, 0.587, 0.114 ) );
 	sampledDiffuseColor.rgb = max( mix( vec3( satL ), sampledDiffuseColor.rgb, uSat ), 0.0 );
 	diffuseColor *= sampledDiffuseColor;
-#endif`);
+#endif`)
+    .replace('#include <normal_fragment_maps>', C.normal_fragment_maps.replace('texture2D( normalMap, vNormalMapUv )', 'ntTex( normalMap, vNormalMapUv )'))
+    .replace('#include <roughnessmap_fragment>', C.roughnessmap_fragment.replace('texture2D( roughnessMap, vRoughnessMapUv )', 'ntTex( roughnessMap, vRoughnessMapUv )'))
+    .replace('#include <aomap_fragment>', C.aomap_fragment.replace('texture2D( aoMap, vAoMapUv )', 'ntTex( aoMap, vAoMapUv )'));
 }
+// 有規則圖樣(磁磚、磚、石塊、棋盤、木板)的貼圖不能打亂
+const PATTERNED = new Set(['tile_ward', 'tile_lobby', 'tile_white', 'tile_wall', 'brick', 'stone_wall', 'wood_panel', 'ceiling_tile', 'metal_grate', 'paving', 'wood_floor', 'wood_old', 'concrete_wall', 'carpet', 'chainlink', 'stone']);
 
 const cache = new Map();
 export function surf(key) {
@@ -121,14 +164,15 @@ export function surf(key) {
     if (set.alpha) { m.alphaMap = pbrTex(def.pbr, 'opacity', o); m.alphaTest = def.alphaTest ?? 0.5; }
     if (def.side === 2) m.side = THREE.DoubleSide;
     m.userData.uSat = { value: def.sat ?? 1 };
-    m.onBeforeCompile = satHook;
+    m.userData.uNoTile = { value: def.noTile ?? (PATTERNED.has(def.pbr) ? 0 : 1) };
+    m.onBeforeCompile = structHook;
     // PBR 下載失敗 → 換成程式貼圖
     const fb = def.fb || key;
     if (PROC[fb]) onPbrFail(def.pbr, () => {
       const p = procTextures(fb);
       m.map = p.tex; m.normalMap = null; m.roughnessMap = null; m.aoMap = null; m.alphaMap = null;
       if (p.bump) { m.bumpMap = p.bump; m.bumpScale = PROC[fb].bump ?? 1; }
-      m.color.set(0xffffff); m.userData.uSat.value = 1; m.roughness = PROC[fb].rough ?? 0.85;
+      m.color.set(0xffffff); m.userData.uSat.value = 1; m.userData.uNoTile.value = 0; m.roughness = PROC[fb].rough ?? 0.85;
       m.needsUpdate = true;
     });
   } else if (def?.gen || PROC[key]) {
@@ -138,6 +182,10 @@ export function surf(key) {
     if (p.bump) { m.bumpMap = p.bump; m.bumpScale = pd.bump ?? 1; }
     if (pd.alphaTest) m.alphaTest = pd.alphaTest;
     if (pd.side === 2) m.side = THREE.DoubleSide;
+    if (pd.transparent) { m.transparent = true; m.depthWrite = false; m.envMapIntensity = pd.env ?? 1.5; }
+  } else if (key === 'TRIM_MATTE' || key === 'TRIM_GLOSS' || key === 'TRIM_METAL') {
+    const [r, mt] = { TRIM_MATTE: [0.78, 0], TRIM_GLOSS: [0.3, 0.05], TRIM_METAL: [0.42, 0.85] }[key];
+    m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: r, metalness: mt, vertexColors: true });
   } else {
     const d = TRIM[key] || [0xff00ff, 1];
     m = new THREE.MeshStandardMaterial({ color: d[0], roughness: d[1], metalness: d[2] ?? 0, vertexColors: true });

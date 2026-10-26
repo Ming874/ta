@@ -636,6 +636,87 @@ function ceilWood(R, o) { // 格子木天花(院長室/禮拜堂)
 }
 
 // ======================================================================
+// 門窗用的透明貼圖
+// ======================================================================
+function glassSheet(R) { // 2×2 種玻璃:髒污完整、蛛網裂、破洞、只剩碎片
+  const N = 512, h = N / 2;
+  const c = mkCanvas(N, N), x = c.getContext('2d');
+  x.clearRect(0, 0, N, N);
+  for (let k = 0; k < 4; k++) {
+    const ox = (k % 2) * h, oy = ((k / 2) | 0) * h;
+    x.save(); x.beginPath(); x.rect(ox, oy, h, h); x.clip();
+    x.fillStyle = 'rgba(150,165,160,0.32)'; x.fillRect(ox, oy, h, h);
+    for (let i = 0; i < 18; i++) blob(x, ox + R() * h, oy + R() * h, R.r(10, 60), 'rgba(90,86,70,1)', R.r(0.08, 0.3));
+    const g = x.createLinearGradient(ox, oy, ox, oy + h); g.addColorStop(0, 'rgba(60,56,46,0)'); g.addColorStop(1, 'rgba(60,56,46,0.35)'); x.fillStyle = g; x.fillRect(ox, oy, h, h);
+    for (let i = 0; i < 6; i++) { x.strokeStyle = 'rgba(255,255,255,0.12)'; x.lineWidth = R.r(4, 14); const px = ox + R() * h; x.beginPath(); x.moveTo(px, oy); x.lineTo(px + 40, oy + h); x.stroke(); }
+    const cx = ox + h * R.r(0.35, 0.65), cy = oy + h * R.r(0.35, 0.65);
+    if (k === 1 || k === 2) { // 蛛網裂紋
+      x.strokeStyle = 'rgba(235,240,235,0.75)'; x.lineWidth = 1.2;
+      const rays = R.i(9, 14);
+      for (let i = 0; i < rays; i++) { let a = (i / rays) * 6.28 + R.r(-0.2, 0.2), px = cx, py = cy; x.beginPath(); x.moveTo(px, py); for (let s2 = 0; s2 < 8; s2++) { a += R.r(-0.2, 0.2); px += Math.cos(a) * R.r(10, 22); py += Math.sin(a) * R.r(10, 22); x.lineTo(px, py); } x.stroke(); }
+      for (let ring = 1; ring < 5; ring++) { x.beginPath(); for (let i = 0; i <= rays; i++) { const a = (i / rays) * 6.28, r2 = ring * R.r(12, 20); x.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2); } x.stroke(); }
+    }
+    if (k === 2 || k === 3) { // 破洞:清成透明,邊緣尖角
+      x.globalCompositeOperation = 'destination-out';
+      x.beginPath();
+      const n = 16, rad = k === 3 ? h * 0.62 : h * R.r(0.18, 0.3);
+      for (let i = 0; i < n; i++) { const a = (i / n) * 6.28, r2 = rad * (i % 2 ? R.r(0.35, 0.7) : R.r(0.9, 1.3)); x.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2); }
+      x.closePath(); x.fill();
+      x.globalCompositeOperation = 'source-over';
+    }
+    x.restore();
+  }
+  return { c, hc: null, w: N, h: N };
+}
+function blindsSheet(R) { // 百葉窗(有的葉片掉了、歪了)
+  const W = 256, H = 512;
+  const c = mkCanvas(W, H), x = c.getContext('2d');
+  x.clearRect(0, 0, W, H);
+  const n = 36, sh = H / n;
+  for (let i = 0; i < n; i++) {
+    if (R() < 0.12) continue;
+    const y = i * sh, tilt = R() < 0.15 ? R.r(-10, 10) : 0, cut = R() < 0.1 ? R.r(0.3, 0.8) * W : W;
+    x.save(); x.translate(0, y + sh * 0.5); x.rotate(tilt * 0.01);
+    const g = x.createLinearGradient(0, -sh * 0.35, 0, sh * 0.35); g.addColorStop(0, '#d8d4c4'); g.addColorStop(1, '#8c887a');
+    x.fillStyle = g; x.fillRect(0, -sh * 0.32, cut, sh * 0.64);
+    x.fillStyle = 'rgba(60,50,30,0.25)'; for (let k = 0; k < 3; k++) x.fillRect(R() * W, -sh * 0.3, R.r(10, 50), sh * 0.6);
+    x.restore();
+  }
+  x.fillStyle = '#6a6458'; x.fillRect(W * 0.2, 0, 2, H); x.fillRect(W * 0.8, 0, 2, H);
+  return { c, hc: null, w: W, h: H };
+}
+function curtainSheet(R) { // 破爛的布簾(下緣撕裂)
+  const W = 256, H = 512;
+  const c = mkCanvas(W, H), x = c.getContext('2d');
+  x.clearRect(0, 0, W, H);
+  x.fillStyle = '#9fb2a8'; x.fillRect(0, 0, W, H);
+  for (let i = 0; i < 14; i++) { const px = (i / 14) * W; const g = x.createLinearGradient(px, 0, px + W / 14, 0); g.addColorStop(0, 'rgba(0,0,0,0.25)'); g.addColorStop(0.5, 'rgba(255,255,255,0.1)'); g.addColorStop(1, 'rgba(0,0,0,0.25)'); x.fillStyle = g; x.fillRect(px, 0, W / 14, H); }
+  for (let i = 0; i < 20; i++) blob(x, R() * W, R() * H, R.r(10, 50), 'rgba(80,60,30,1)', R.r(0.1, 0.35));
+  for (let i = 0; i < 4; i++) blob(x, R() * W, R.r(0.4, 1) * H, R.r(8, 24), 'rgba(80,10,8,1)', R.r(0.3, 0.6));
+  x.globalCompositeOperation = 'destination-out';
+  x.beginPath(); x.moveTo(0, H);
+  for (let px = 0; px <= W; px += 8) x.lineTo(px, H * R.r(0.55, 0.98));
+  x.lineTo(W, H); x.closePath(); x.fill();
+  for (let i = 0; i < 6; i++) { x.beginPath(); jagged(x, R() * W, R.r(0.2, 0.8) * H, R.r(6, 22), R, 9, 1.3); x.fill(); }
+  x.globalCompositeOperation = 'source-over';
+  return { c, hc: null, w: W, h: H };
+}
+function bushSheet(R) { // 枯灌木叢剪影(alpha):枝條 + 零星枯葉
+  const W = 512, H = 256;
+  const c = mkCanvas(W, H), x = c.getContext('2d');
+  x.clearRect(0, 0, W, H);
+  const branch = (px, py, a, len, w, d) => {
+    const ex = px + Math.cos(a) * len, ey = py + Math.sin(a) * len;
+    x.strokeStyle = `rgb(${40 + R() * 20},${34 + R() * 14},${26 + R() * 10})`; x.lineWidth = w; x.lineCap = 'round';
+    x.beginPath(); x.moveTo(px, py); x.quadraticCurveTo((px + ex) / 2 + R.r(-8, 8), (py + ey) / 2 + R.r(-8, 8), ex, ey); x.stroke();
+    if (d > 0) for (let k = 0; k < 3; k++) branch(ex, ey, a + R.r(-0.7, 0.7), len * R.r(0.55, 0.8), w * 0.68, d - 1);
+    else for (let k = 0; k < 4; k++) { x.fillStyle = R() < 0.5 ? `rgba(${70 + R() * 40},${60 + R() * 30},${30 + R() * 10},0.95)` : `rgba(${44 + R() * 20},${56 + R() * 20},28,0.95)`; x.beginPath(); x.ellipse(ex + R.r(-6, 6), ey + R.r(-6, 6), R.r(2.5, 5), R.r(1.5, 3), R() * 3, 0, 6.28); x.fill(); }
+  };
+  for (let i = 0; i < 26; i++) branch(R() * W, H, -Math.PI / 2 + R.r(-0.7, 0.7), R.r(40, 90), R.r(2, 5), 3);
+  return { c, hc: null, w: W, h: H };
+}
+
+// ======================================================================
 // 鍵 → 產生器與材質參數。size = [u 公尺, v 公尺];room = true 表示 v 從地面起算(不重複)
 // ======================================================================
 const P = (gen, size, opt = {}) => ({ gen, size, ...opt });
@@ -713,6 +794,11 @@ export const SURF = {
   ceil_concrete: P((R) => ceilConcrete(R, {}), [2.4, 2.4], { rough: 0.95, bump: 1 }),
   ceil_wood: P((R) => ceilWood(R, {}), [1.2, 1.2], { rough: 0.6, bump: 1.5 }),
   vault_stone: P((R) => stoneWall(R, { base: '#5a554c' }), [3, 3], { rough: 0.9, bump: 2.4 }),
+  // ---- 透明/鏤空 ----
+  glass: P((R) => glassSheet(R), [1, 1], { rough: 0.12, transparent: 1, side: 2, env: 2, ph: '#8a9690' }),
+  blinds: P((R) => blindsSheet(R), [1, 1], { rough: 0.7, alphaTest: 0.5, side: 2, ph: '#b0aca0' }),
+  curtain: P((R) => curtainSheet(R), [1, 1], { rough: 0.95, alphaTest: 0.5, side: 2, ph: '#9fb2a8' }),
+  bush: P((R) => bushSheet(R), [1, 1], { rough: 1, alphaTest: 0.4, side: 2, ph: '#3a3426' }),
 };
 // 純色收邊材質(踢腳板、腰線、扶手、門框…)
 export const TRIM = {
@@ -721,6 +807,7 @@ export const TRIM = {
   trim_green: [0x40584a, 0.5, 0.2], trim_gray: [0x5a5e60, 0.55, 0.3], trim_stone: [0x8a8478, 0.75], trim_brass: [0x8a6a30, 0.35, 0.9],
   trim_red: [0x7a2620, 0.55], trim_yellow: [0xb8902a, 0.6], trim_concrete: [0x77756e, 0.95], trim_rust: [0x5a3420, 0.85, 0.4],
   trim_dark: [0x1c1d1e, 0.7, 0.3], trim_plenum: [0x0c0c0c, 1], trim_marble: [0xbab2a2, 0.25],
+  glass_dark: [0x1a2224, 0.12, 0.3], trim_soot: [0x0e0d0c, 1],
 };
 
 // 依鍵產生畫布(主執行緒同步備援與 Worker 都呼叫這裡)

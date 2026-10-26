@@ -6,8 +6,8 @@ self.onmessage = async (e) => {
   const { id, key, kind } = e.data;
   try {
     const s = kind === 'atlas' ? paintAtlas(key) : paintSurface(key);
-    const color = await createImageBitmap(s.c, { imageOrientation: 'flipY' });
-    const bump = s.hc ? await createImageBitmap(s.hc, { imageOrientation: 'flipY' }) : null;
+    const color = await createImageBitmap(s.c, { imageOrientation: 'flipY', premultiplyAlpha: 'none' });
+    const bump = s.hc ? await createImageBitmap(s.hc, { imageOrientation: 'flipY', premultiplyAlpha: 'none' }) : null;
     self.postMessage({ id, key, color, bump, meta: s.meta || null }, bump ? [color, bump] : [color]);
   } catch (err) {
     self.postMessage({ id, key, error: String(err && err.stack || err) });
