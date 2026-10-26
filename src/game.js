@@ -15,6 +15,7 @@ import { roster } from './zombies/types.js';
 import { prewarm } from './zombies/model.js';
 import { Hazards } from './zombies/hazards.js';
 import { Coins } from './coins.js';
+import { Pickups } from './pickups.js';
 import { Shop } from './shop.js';
 import { UI } from './ui.js';
 import { sfx, resume as resumeAudio } from './audio.js';
@@ -112,6 +113,7 @@ export class Game {
       this.ui.setCoins(this.player.coins);
       this.ui.coinGain(n);
     };
+    this.pickups = new Pickups(this.scene, this.world); // 殭屍掉落的彈藥/醫療包
     this.zombies = [];
     this.queue = [];
     this.hazards = new Hazards(this.scene);
@@ -291,6 +293,7 @@ export class Game {
 
   onKill(z) {
     this.coins.drop(z.pos.x, z.pos.z, z.T.coins);
+    this.pickups.roll(z, this);
     if (z.type !== 'bloater') this.addPool(z.pos.x, z.pos.z);
     z.corpse = z.type === 'brute' ? 9 : 6;
   }
@@ -327,6 +330,7 @@ export class Game {
     for (const z of this.zombies) z.dispose();
     this.zombies.length = 0;
     this.coins.clear();
+    this.pickups.clear();
     for (const p of this.pools) this.scene.remove(p.mesh);
     this.pools.length = 0;
     this.hazards.clear();
@@ -537,6 +541,7 @@ export class Game {
     if (this.phase === 'fighting') this.setMood(boss ? 'boss' : 'fight');
 
     this.coins.update(dt, p);
+    this.pickups.update(dt, this);
     this.ui.setZombies(this.phase === 'fighting' ? this.zombiesLeft() : 0);
 
     // 回合狀態
