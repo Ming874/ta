@@ -115,6 +115,7 @@ export class Game {
     this.hospital.update(this.time, dt, this.player);
     this.post.uniforms.time.value = this.time % 100;
     this.updateParticles(dt);
+    this.updateCombat(dt); // 武器:開鏡視野、準心/狙擊鏡、手榴彈、彈殼與彈孔等特效(src/game/combat.js)
 
     if (this.state !== 'playing') {
       // 選單/死亡:鏡頭保持,只更新場景動畫;順便預先建好殭屍模型

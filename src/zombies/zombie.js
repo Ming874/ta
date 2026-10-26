@@ -11,6 +11,20 @@ const wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const TAU = Math.PI * 2;
 const say = (name, ...a) => sfx[name](...a);
 
+// 斷口截面(血肉 + 骨頭),所有殭屍共用幾何與材質
+let STUMP = null;
+const _UP = new THREE.Vector3(0, 1, 0), _dir = new THREE.Vector3();
+function stumpParts() {
+  if (!STUMP) {
+    STUMP = {
+      geo: new THREE.SphereGeometry(1, 14, 10),
+      meat: new THREE.MeshStandardMaterial({ color: 0x4a0907, roughness: 0.38, metalness: 0.05, emissive: 0x120101 }),
+      bone: new THREE.MeshStandardMaterial({ color: 0xd9cfb6, roughness: 0.55 }),
+    };
+  }
+  return STUMP;
+}
+
 // 血條顏色:滿血綠 → 2/3 橘 → 1/3 紅(中間線性漸變)
 const GREEN = [46, 204, 64];
 const ORANGE = [255, 159, 26];
@@ -155,7 +169,8 @@ export class Zombie {
   cross(t) { return this.st0 < t && this.st >= t; }
 
   // part:'head' | 'body' | 'armor' | 'arm' | 'leg';回傳是否擊殺
-  damage(amount, part = 'body') {
+  // hit(可省略,只在呼叫期間有效):{ bone 命中盒所在骨骼, point, dir, dmg 實際傷害, range 射擊距離, weapon, explosive, melee }
+  damage(amount, part = 'body', hit = null) {
     if (!this.alive) return false;
     let m = part === 'head' ? 2 : 1;
     if (part === 'armor') m = this.T.bodyArmor ?? 1;
@@ -168,7 +183,7 @@ export class Zombie {
     this.rollV += (Math.random() - 0.5) * 9 * k;
     if (part === 'head') this.headKick = Math.min(1.2, this.headKick + 0.7 * heavy);
     this.drawBar();
-    if (this.hp <= 0) { this.die(part); return true; }
+    if (this.hp <= 0) { this.die(part, hit); return true; }
     if (this.t - (this.painT ?? -9) > 0.7) { this.painT = this.t; say('zPain', this.type, this.vp); }
     if (part === 'leg') {
       if (this.type === 'runner' && dmg >= 20 && (this.state === 'chase' || this.state === 'attack')) this.go('trip');
@@ -177,7 +192,7 @@ export class Zombie {
     return false;
   }
 
-  die(part) {
+  die(part, hit = null) {
     this.alive = false;
     this.dying = 1e-4;
     this.bar.sprite.visible = false;
@@ -190,6 +205,53 @@ export class Zombie {
     this.landed = false;
     this.exploded = false;
     this.rootY = Math.max(0, this.rootY);
+    this.killPart = part;
+    this._gib(part, hit);
+  }
+
+  // ---- 斷頭/斷肢(擊殺時):把該骨骼縮到 0(連帶子骨骼與命中盒),斷口加一塊血肉截面;噴血由戰鬥系統依 this.gore 處理 ----
+  _gib(part, hit) {
+    this.gore = null;
+    const b = this.b;
+    const boom = !!(hit && hit.explosive);
+    if ((part === 'head' && !boom) || (boom && Math.random() < 0.15)) {
+      if (this.type === 'brute') { this.gore = { kind: 'headBlood', bone: 'neck', child: 'head' }; return; } // 巨屍頭太硬:只噴血
+      b.head.scale.setScalar(0);
+      this._stump('neck', 'head', 0.052);
+      this.gore = { kind: 'head', bone: 'neck', child: 'head' };
+      if (this.deathKind === 'kneel' && Math.random() < 0.5) this.deathKind = 'back';
+      return;
+    }
+    const dmg = hit ? hit.dmg || 0 : 0;
+    const strong = dmg >= 55 || (hit && hit.weapon === 'shotgun' && hit.range < 5) || boom;
+    if (!strong || (part !== 'arm' && part !== 'leg' && !boom) || Math.random() > (boom ? 0.55 : 0.7)) return;
+    const s = Math.random() < 0.5 ? 'L' : 'R';
+    let bone = hit && hit.bone && b[hit.bone] ? hit.bone : null;
+    if (boom || !bone) bone = Math.random() < 0.5 && !this.V.P.legless ? 'shin' + s : 'forearm' + s;
+    if (/^hand/.test(bone)) bone = bone.replace('hand', 'forearm');
+    if (/^foot/.test(bone)) bone = bone.replace('foot', 'shin');
+    if (/^upperArm|^thigh/.test(bone) && Math.random() < 0.5) bone = bone.replace('upperArm', 'forearm').replace('thigh', 'shin'); // 一半機率只斷前段
+    const bb = b[bone];
+    if (!bb || !bb.parent || bb.scale.x === 0) return;
+    bb.scale.setScalar(0);
+    this._stump(bb.parent.name, bone, /^thigh/.test(bone) ? 0.07 : /^shin|^upperArm/.test(bone) ? 0.05 : 0.04);
+    this.gore = { kind: 'limb', bone: bb.parent.name, child: bone };
+    if (/^thigh|^shin/.test(bone) && this.deathKind === 'kneel') this.deathKind = 'front';
+  }
+
+  _stump(parent, child, r) {
+    const S = stumpParts();
+    const pb = this.b[parent], cb = this.b[child];
+    const g = new THREE.Group();
+    g.position.copy(cb.position);
+    g.quaternion.setFromUnitVectors(_UP, _dir.copy(cb.position).normalize());
+    const meat = new THREE.Mesh(S.geo, S.meat);
+    meat.scale.set(r, r * 0.45, r);
+    const bone = new THREE.Mesh(S.geo, S.bone);
+    bone.scale.set(r * 0.32, r * 0.5, r * 0.32);
+    bone.position.y = r * 0.12;
+    g.add(meat, bone);
+    pb.add(g);
   }
 
   // ctx = { player, world, zombies, hazards, game };回傳本幀對玩家的近戰傷害
