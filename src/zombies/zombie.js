@@ -228,7 +228,8 @@ export class Zombie {
     this.attackCd -= dt;
     this.specialCd -= dt;
 
-    const dealt = this['_think_' + this.type](dt, ctx, dist, toX, toZ, w);
+    const think = this._thinkFn || (this._thinkFn = this['_think_' + this.type]); // 快取方法,避免每幀組字串
+    const dealt = think.call(this, dt, ctx, dist, toX, toZ, w);
     // 樓梯上放慢(衝鋒/飛撲除外)
     this.onStair = world.stairAt ? world.stairAt(this.pos.x, this.pos.y, this.pos.z) : -1;
     if (this.onStair >= 0 && !w.instant && this.state !== 'charge') w.speed *= 0.86;
@@ -277,7 +278,7 @@ export class Zombie {
     this.mesh.castShadow = this.d3 < 11; // 遠處的不進陰影貼圖,省一半繪製量
     this._slope(world, this.type === 'crawler' ? 1 : 0, dt);
     this._resetPose();
-    this['_pose_' + this.type](dt, ctx, dist, toX, toZ);
+    (this._poseFn || (this._poseFn = this['_pose_' + this.type])).call(this, dt, ctx, dist, toX, toZ);
     this._reactions(dt);
     this._applyRoot();
     // 腳步(巨屍用重踏,爬行者用拖行,另外處理)

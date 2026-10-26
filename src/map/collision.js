@@ -148,7 +148,7 @@ export class World {
     this.flowMs = 0; // 最近一輪距離場的總計算耗時(可能分成數幀)
     this.flowSliceMs = 0; // 最近一次 updateFlow 呼叫的耗時
     this.flowRuns = 0; // 已完成的輪數
-    this.flowBudget = 16384; // 每次呼叫最多處理的節點數
+    this.flowBudget = 16384; // 每次呼叫最多處理的節點數(整數;要一次算完可設 0x3fffffff)
   }
 
   // ======================================================================
@@ -695,7 +695,7 @@ export class World {
     this.navBuildMs = performance.now() - t0;
     // 先從起點完整算一次(預熱 JIT,第一幀就有可用的距離場)
     const st = this.start;
-    if (st) { const b = this.flowBudget; this.flowBudget = Infinity; this.updateFlow([{ x: st.x, y: st.y, z: st.z }]); this.flowBudget = b; }
+    if (st) { const b = this.flowBudget; this.flowBudget = 0x3fffffff; this.updateFlow([{ x: st.x, y: st.y, z: st.z }]); this.flowBudget = b; } // 整數預算(避免 JIT 型別回饋變成浮點)
     this._nRun = -1;
     return this;
   }
