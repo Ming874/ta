@@ -580,6 +580,15 @@ function leftSupportHand(k, a, c, depth, halfW) {
   buildSleeve(k, w, w.clone().add(V(-0.1, -0.48, 0.12)), -1);
 }
 
+// 換彈時左手離開護木去抓彈匣(跟著彈匣下去再上來),結束前回到護木
+function leftToMag(st, t, x, y, z) {
+  const L = st && st.left;
+  if (!L) return;
+  const h = st.palm, g = smooth(0.03, 0.13, t) * (1 - smooth(0.7, 0.84, t));
+  L.position.set(h.x + (x - h.x) * g, h.y + (y - h.y) * g, h.z + (z - h.z) * g);
+  L.rotation.set(-0.15 * g, 0.35 * g, -1.35 * g);
+}
+
 // ---------- Glock 17 ----------
 function buildPistol(g) {
   const k = new Kit(), ks = new Kit(), km = new Kit();
@@ -858,7 +867,7 @@ function buildAK(g) {
     sight: { rear: [0.2105, 0.0858], front: [0.5815, 0.093], eye: 0.17 },
     grip: { a: (18 * Math.PI) / 180, c: [-0.0005, 0.0005], depth: 0.047, halfW: 0.0163 },
     fore: { f: 0.33, y: -0.0072, halfW: 0.0253 },
-    anim(shot, reload) {
+    anim(shot, reload, empty, st) {
       const c = shot < 0.07 ? Math.sin((shot / 0.07) * Math.PI) : 0;
       bolt.position.z = c * 0.075;
       const t = reload < 0 ? 0 : reload;
@@ -866,6 +875,7 @@ function buildAK(g) {
       const drop = smooth(0.18, 0.36, t) * (1 - smooth(0.5, 0.66, t));
       mag.rotation.x = tilt * 0.45;
       mag.position.y = 0.002 - drop * 0.3;
+      leftToMag(st, t, -0.036, -0.105 - drop * 0.3, -0.15 + tilt * 0.02);
     },
   };
 }
@@ -975,12 +985,13 @@ function buildM4(g) {
     sight: { rear: [-0.0425, 0.091], front: [0.3265, 0.0889], eye: 0.13 },
     grip: { a: (24 * Math.PI) / 180, c: [-0.0012, -0.0018], depth: 0.044, halfW: 0.0151 },
     fore: { f: 0.215, y: 0.0107, halfW: 0.0285 },
-    anim(shot, reload, empty) {
+    anim(shot, reload, empty, st) {
       const c = shot < 0.055 ? Math.sin((shot / 0.055) * Math.PI) : 0;
       const lock = empty && (reload < 0 || reload < 0.88);
       bolt.position.z = lock ? 0.05 : c * 0.05;
       const drop = reload < 0 ? 0 : smooth(0.1, 0.3, reload) * (1 - smooth(0.52, 0.76, reload));
       mag.position.y = -drop * 0.3;
+      leftToMag(st, reload < 0 ? 0 : reload, -0.032, -0.105 - drop * 0.3, -0.075);
     },
   };
 }

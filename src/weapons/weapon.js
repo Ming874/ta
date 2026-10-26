@@ -135,6 +135,7 @@ export class WeaponSystem {
     this.shell = null; // 霰彈逐發裝填狀態 {phase, t, u, loaded, stop, chamber}
     this.action = null; // 小刀/手榴彈動作 {kind, t, dur, done}
     this.autoReload = 0;
+    this.fireQueue = 0;
     this.lowAmmoWarned = false;
     this._st = { pump: 0, phase: null, u: 0, left: null, palm: null }; // 傳給槍模動畫的狀態(重複使用)
 
@@ -220,6 +221,7 @@ export class WeaponSystem {
     this.pumpT = 9;
     this.pumped = true;
     this.autoReload = 0;
+    this.fireQueue = 0;
     this.lowAmmoWarned = false;
     if (!instant) sfx.switch();
   }
@@ -340,9 +342,13 @@ export class WeaponSystem {
 
     // ---- 開火 ----
     const canShoot = this.reloading <= 0 && this.raise < 0.4 && !sprinting && !this.action && (!d.pump || this.pumped);
-    const wantFire = d.auto ? input.fireHeld : input.firePressed;
     if (this.shell && input.firePressed && a.mag > 0 && this.shell.phase === 'shell') this.shell.stop = true; // 裝填中按開火:裝完這顆就停
+    // 半自動:冷卻/泵動/裝填中的點擊先記下,一可以開火就打出(手感更跟手)
+    if (!d.auto && input.firePressed && !(this.cooldown <= 0 && canShoot)) this.fireQueue = this.shell && this.shell.stop ? 0.9 : 0.22;
+    this.fireQueue = Math.max(0, (this.fireQueue || 0) - dt);
+    const wantFire = d.auto ? input.fireHeld : input.firePressed || (this.fireQueue > 0 && this.cooldown <= 0 && canShoot && a.mag > 0);
     if (wantFire && this.cooldown <= 0 && canShoot) {
+      this.fireQueue = 0;
       if (a.mag > 0) {
         a.mag--;
         this.cooldown = 60 / d.rpm;
