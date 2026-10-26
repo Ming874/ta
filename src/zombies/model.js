@@ -900,7 +900,7 @@ export function prewarm() {
   const m = nextMissing();
   if (m && !idleQueued) {
     idleQueued = true;
-    idle(() => { idleQueued = false; const q = nextMissing(); if (q) buildSync(q[0], q[1]); });
+    idle(() => { idleQueued = false; const q = nextMissing(); if (q) buildSync(q[0], q[1]); }, 250);
   }
   return !!m;
 }

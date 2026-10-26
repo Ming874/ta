@@ -4,7 +4,7 @@ const ric = typeof requestIdleCallback === 'function'
   : (cb) => setTimeout(() => { const t = performance.now(); cb({ didTimeout: false, timeRemaining: () => Math.max(0, 8 - (performance.now() - t)) }); }, 1);
 
 // 單次:在下一個閒置時段執行 fn(deadline),回傳 Promise<fn 的結果>
-export function idle(fn, timeout = 3000) {
+export function idle(fn, timeout = 1000) {
   return new Promise((res, rej) => ric((dl) => { try { res(fn(dl)); } catch (e) { rej(e); } }, { timeout }));
 }
 

@@ -4,7 +4,7 @@ import { Quality } from './sys/quality.js';
 import { Perf } from './sys/perf.js';
 import { caps } from './sys/caps.js';
 import { idle } from './sys/sched.js';
-import { precompile } from './sys/warmup.js';
+import { precompile, precompilePasses, initPrograms, warmDraw, warmDrawScene, yieldNow } from './sys/warmup.js';
 import { backgroundTicker } from './sys/ticker.js';
 import { texStats, texturesReady } from './sys/texworker.js';
 import { prewarm, whenWarm, variantStats, getVariant, instantiate } from './zombies/model.js';
@@ -20,6 +20,7 @@ window.__game = game; // 除錯用:在瀏覽器 console 操作 __game
 
 // ---- 效能基礎建設 ----
 game.renderer.info.autoReset = false; // 一幀內多個 pass 的 draw call 合計(主迴圈每幀歸零)
+game.renderer.debug.checkShaderErrors = !import.meta.env.PROD; // 正式版不查 shader 錯誤日誌(那些查詢會同步等編譯完成)
 game.quality = new Quality(game); // 畫質預設檔 + 動態解析度(src/sys/quality.js)
 game.perf = new Perf(game); // F3 效能面板(src/sys/perf.js)
 prewarm(); // 殭屍變體:有 Worker 時立刻全部平行送到 Worker 池建模
@@ -81,20 +82,26 @@ document.addEventListener('visibilitychange', () => {
 
 // ---- 啟動:世界 shader 先在背景編好再開始畫(第一幀不會整個卡住),最多等 4 秒 ----
 async function boot() {
+  await yieldNow(); // 先讓模組執行完(DOMContentLoaded、選單可互動),編譯分批在之後的任務裡做
   const t = performance.now();
   try {
     const all = Promise.all([
       precompile(game, game.scene),
       precompile(game, game.weaponScene, { target: game.weaponScene, camera: game.weaponCamera, shadows: false }),
+      precompilePasses(game),
     ]);
     const res = await Promise.race([all, new Promise((r) => setTimeout(() => r(null), 4000))]);
-    if (res) game.perf.time('預編譯', performance.now() - t);
+    if (res) {
+      game.perf.time('預編譯', performance.now() - t);
+      // 選單畫面看不到的物件(背後、被擋住、隱藏中)的 program 也在閒置時先做第一次使用的初始化
+      all.then(([a, b]) => initPrograms(new Set([...a.programs, ...b.programs]))).then(() => idle(() => warmDrawScene(game), 500));
+    }
   } catch (e) { console.warn('[warmup]', e); }
   performance.measure('hz:precompile', { start: t });
   last = performance.now();
   if (!raf && !document.hidden) raf = requestAnimationFrame(frame);
   // 殭屍與常見特效材質:變體建好後在閒置時段預編譯,第一隻殭屍出現/第一槍不會頓一下
-  whenWarm().then(() => idle(warmRuntime)).catch((e) => console.warn('[warmup]', e));
+  whenWarm().then(() => idle(warmRuntime, 300)).catch((e) => console.warn('[warmup]', e));
 }
 boot();
 
@@ -104,15 +111,34 @@ async function warmRuntime() {
   const M = zombieMaterials();
   inst.mesh.material = [M.skin, M.cloth, M.gear, M.bone, M.hair, M.glow, ...Object.values(M.eye)]; // 只編譯、不渲染
   g.add(inst.mesh);
-  // 執行期才會建立的常見材質型態(曳光、血池/貼花、光暈 sprite、粒子)
+  // 執行期才會建立的常見材質型態(曳光、血池/貼花、光暈與血條 sprite、粒子):program 只看功能旗標(貼圖/霧…),不看顏色數值
   const tex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
   tex.colorSpace = THREE.SRGBColorSpace;
-  g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, -1)]), new THREE.LineBasicMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
-  g.add(new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })));
-  g.add(new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true })));
+  const line = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, -1)]), quad = new THREE.PlaneGeometry(1, 1);
+  for (const fog of [true, false]) {
+    g.add(new THREE.Line(line, new THREE.LineBasicMaterial({ fog, transparent: true })));
+    for (const map of [tex, null]) {
+      g.add(new THREE.Mesh(quad, new THREE.MeshBasicMaterial({ fog, map, transparent: true })));
+      g.add(new THREE.Sprite(new THREE.SpriteMaterial({ fog, map, transparent: true })));
+    }
+  }
   const res = await precompile(game, g);
-  inst.mesh.skeleton.dispose();
+  await initPrograms(res.programs);
   await texturesReady();
+  // 再真的畫一次(離屏):每種殭屍材質 × 蒙皮頂點格式、特效物件,連同陰影 pass
+  await idle(() => {
+    const v = getVariant('walker', 0), draws = new THREE.Group();
+    inst.mesh.material = v.materials;
+    draws.add(inst.mesh);
+    for (const m of [M.skin, M.cloth, M.gear, M.bone, M.hair, M.glow, ...Object.values(M.eye)]) {
+      const sm = new THREE.SkinnedMesh(v.geometry, m);
+      sm.bind(inst.mesh.skeleton, inst.mesh.bindMatrix);
+      draws.add(sm);
+    }
+    for (const o of [...g.children]) if (o !== inst.mesh) draws.add(o);
+    warmDraw(game, [draws]);
+  }, 300);
+  inst.mesh.skeleton.dispose();
   performance.mark('hz:warm');
   return res;
 }
