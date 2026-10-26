@@ -3,6 +3,7 @@ import { makeBloodSplat } from '../map/textures.js';
 
 // 粒子(血、火花、灰塵、膽汁)、曳光、地上的血池。以 mixin 方式掛到 Game 上
 let bloodMat = null;
+const _gn = { x: 0, y: 1, z: 0 }, _yUp = new THREE.Vector3(0, 1, 0), _v1 = new THREE.Vector3(), _q1 = new THREE.Quaternion();
 export const fxMethods = {
   makeParticles() {
     this.particles = [];
@@ -80,6 +81,12 @@ export const fxMethods = {
     m.rotation.x = -Math.PI / 2;
     m.rotation.z = Math.random() * 6.28;
     m.position.set(x, y + 0.015 + (this.pools.length % 20) * 0.0004, z);
+    const n = this.world.normalAt ? this.world.normalAt(x, z, y + 0.05, _gn) : null;
+    if (n && n.y < 0.999) { // 樓梯上:貼著坡面
+      _q1.setFromUnitVectors(_yUp, _v1.set(n.x, n.y, n.z));
+      m.quaternion.premultiply(_q1);
+      m.position.y += 0.05;
+    }
     m.scale.set(0.2, 0.2, 1);
     this.scene.add(m);
     this.pools.push({ mesh: m, grow: 0, size: 1.0 + Math.random() * 0.8 });

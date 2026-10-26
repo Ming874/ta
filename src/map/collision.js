@@ -229,7 +229,7 @@ export class World {
     const c0 = Math.max(0, Math.floor(b.minX / 2)), c1 = Math.min(W - 1, Math.floor(b.maxX / 2));
     const r0 = Math.max(0, Math.floor(b.minZ / 2)), r1 = Math.min(H - 1, Math.floor(b.maxZ / 2));
     for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) this.boxGrid[r * W + c].push(b);
-    if (this.navM) this.navDirty = true;
+    if (this.navM) this._navPatch(b); // 導航建好之後才加的(商店櫃台、捲門…):局部更新導航
     return b;
   }
 
@@ -237,7 +237,11 @@ export class World {
     const i = this.boxes.indexOf(b);
     if (i < 0) return;
     this.boxes.splice(i, 1);
-    for (const list of this.boxGrid) { const k = list.indexOf(b); if (k >= 0) list.splice(k, 1); }
+    const { W, H } = this;
+    const c0 = Math.max(0, Math.floor(b.minX / 2)), c1 = Math.min(W - 1, Math.floor(b.maxX / 2));
+    const r0 = Math.max(0, Math.floor(b.minZ / 2)), r1 = Math.min(H - 1, Math.floor(b.maxZ / 2));
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const list = this.boxGrid[r * W + c], k = list.indexOf(b); if (k >= 0) list.splice(k, 1); }
+    if (this.navM) this._navPatch(b);
   }
 
   // 移除從第 n 個之後加入的碰撞盒(場景建構失敗時回復用)
@@ -653,34 +657,12 @@ export class World {
       }
     }
     this.navM = M;
-    const find = (i, j, h) => {
-      if (i < 0 || j < 0 || i >= fw || j >= fh) return -1;
-      for (let li = 0; li < NL; li++) {
-        const g = li * FN + j * fw + i, v = gh[g];
-        if (v === v && Math.abs(v - h) <= NAV_STEP) return g;
-      }
-      return -1;
-    };
-    const info = (this.ninfo = new Uint16Array(G));
+    this.ninfo = new Uint16Array(G);
     const DOFF = (this.DOFF = new Int32Array(8));
     for (let d = 0; d < 8; d++) DOFF[d] = DJ[d] * fw + DI[d];
-    const xe = (this.xEdges = new Map());
+    this.xEdges = new Map();
     let E = 0;
-    for (let g = 0; g < G; g++) {
-      const h = gh[g];
-      if (h !== h) continue;
-      const r = g % FN, i = r % fw, j = (r / fw) | 0;
-      const xs = [];
-      for (let d = 0; d < 8; d++) {
-        const m = find(i + DI[d], j + DJ[d], h);
-        if (m < 0) continue;
-        if (d >= 4 && (find(i + DI[d], j, h) < 0 || find(i, j + DJ[d], h) < 0)) continue; // 不切角
-        E++;
-        if (m === g + DOFF[d]) info[g] |= 1 << d;
-        else xs.push(m * 4 + (d >= 4 ? 3 : 2)); // 跨層(樓梯頂端 ↔ 上層平台)
-      }
-      if (xs.length) { info[g] |= 256; xe.set(g, Int32Array.from(xs)); }
-    }
+    for (let g = 0; g < G; g++) E += this._navLinks(g);
     this.navE = E;
     this.dist = new Uint16Array(G).fill(INF); // 查詢用(最近一次算完的距離場)
     this._back = new Uint16Array(G).fill(INF); // 計算中
@@ -698,6 +680,58 @@ export class World {
     if (st) { const b = this.flowBudget; this.flowBudget = 0x3fffffff; this.updateFlow([{ x: st.x, y: st.y, z: st.z }]); this.flowBudget = b; } // 整數預算(避免 JIT 型別回饋變成浮點)
     this._nRun = -1;
     return this;
+  }
+
+  // 細格 (i,j) 上與高度 h 連續的節點;沒有回傳 -1
+  _navFind(i, j, h) {
+    const { fw, fh, FN, NL } = this, gh = this.gh;
+    if (i < 0 || j < 0 || i >= fw || j >= fh) return -1;
+    for (let li = 0; li < NL; li++) {
+      const g = li * FN + j * fw + i, v = gh[g];
+      if (v === v && Math.abs(v - h) <= NAV_STEP) return g;
+    }
+    return -1;
+  }
+
+  // 重算節點 g 的連線(同層 8 方向位元 + 跨層邊);回傳邊數
+  _navLinks(g) {
+    const info = this.ninfo, h = this.gh[g];
+    info[g] = 0;
+    this.xEdges.delete(g);
+    if (h !== h) return 0;
+    const { FN, fw, DOFF } = this, r = g % FN, i = r % fw, j = (r / fw) | 0;
+    let xs = null, E = 0;
+    for (let d = 0; d < 8; d++) {
+      const m = this._navFind(i + DI[d], j + DJ[d], h);
+      if (m < 0) continue;
+      if (d >= 4 && (this._navFind(i + DI[d], j, h) < 0 || this._navFind(i, j + DJ[d], h) < 0)) continue; // 不切角
+      E++;
+      if (m === g + DOFF[d]) info[g] |= 1 << d;
+      else (xs ||= []).push(m * 4 + (d >= 4 ? 3 : 2)); // 跨層(樓梯頂端 ↔ 上層平台)
+    }
+    if (xs) { info[g] |= 256; this.xEdges.set(g, Int32Array.from(xs)); }
+    return E;
+  }
+
+  // 碰撞盒 b 附近的導航節點與連線局部重建,並強制下一次 updateFlow 重算
+  _navPatch(b) {
+    const { W, WH, NL, fw, fh, FN } = this, gh = this.gh, m = NAV_R + FINE;
+    const i0 = Math.max(0, Math.floor((b.minX - m) / FINE)), i1 = Math.min(fw - 1, Math.floor((b.maxX + m) / FINE));
+    const j0 = Math.max(0, Math.floor((b.minZ - m) / FINE)), j1 = Math.min(fh - 1, Math.floor((b.maxZ + m) / FINE));
+    for (let li = 0; li < NL; li++) for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const g = li * FN + j * fw + i, idx = (j >> 2) * W + (i >> 2), was = gh[g] === gh[g];
+      let h = NaN;
+      if (this.walk[li * WH + idx] >= 0) {
+        const x = (i + 0.5) * FINE, z = (j + 0.5) * FINE, s = this._surf(li, idx, x, z);
+        if (this._navFree(x, z, s)) h = s;
+      }
+      gh[g] = h;
+      this.navM += (h === h ? 1 : 0) - (was ? 1 : 0);
+    }
+    for (let li = 0; li < NL; li++) for (let j = Math.max(0, j0 - 1); j <= Math.min(fh - 1, j1 + 1); j++) for (let i = Math.max(0, i0 - 1); i <= Math.min(fw - 1, i1 + 1); i++) this._navLinks(li * FN + j * fw + i);
+    // 跨層邊只連相鄰細格,另一端一定在上面重算的範圍(多一圈)內
+    this._nRun = -1;
+    if (this._bfsOn) this._bfsOn = false; // 進行中的這一輪作廢,下次重新開始
   }
 
   // 離 (x,y,z) 最近的導航節點(稠密索引):同一細格高度最接近者;沒有則在附近 rad 圈內找
