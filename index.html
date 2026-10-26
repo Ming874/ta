@@ -61,18 +61,6 @@
   .overlay .btn { margin-top: 22px; padding: 12px 36px; font-size: 20px; letter-spacing: 4px; color: #e8e8e0; background: #7a1a15; border: 1px solid #b4443a; cursor: pointer; font-family: inherit; }
   .overlay .btn:hover { background: #99241d; }
   .keys { margin-top: 18px; font-size: 14px; opacity: .7; line-height: 1.9; }
-  #shop { z-index: 11; background: rgba(0,0,0,.78); }
-  #shop .box { width: min(760px, 92vw); border: 1px solid #4b5a4b; background: rgba(14,18,14,.96); padding: 22px 28px; text-align: left; }
-  #shop h2 { margin: 0 0 4px; letter-spacing: 6px; color: #9fe0a0; font-size: 28px; }
-  #shop .bal { margin-bottom: 14px; color: #f2c84b; font-size: 18px; }
-  #shop .item { display: flex; align-items: center; gap: 16px; padding: 12px 0; border-top: 1px solid rgba(255,255,255,.1); }
-  #shop .item .nm { flex: 1; font-size: 20px; }
-  #shop .item .nm small { display: block; font-size: 13px; opacity: .6; margin-top: 2px; }
-  #shop .item .pr { color: #f2c84b; width: 90px; text-align: right; font-size: 18px; }
-  #shop button { font-family: inherit; font-size: 16px; padding: 8px 20px; cursor: pointer; background: #234a27; color: #e8f2e8; border: 1px solid #4a8a50; }
-  #shop button:disabled { background: #2a2a2a; border-color: #444; color: #777; cursor: not-allowed; }
-  #shop .foot { margin-top: 16px; display: flex; justify-content: space-between; align-items: center; font-size: 14px; opacity: .85; }
-  #shop .foot button { background: #7a1a15; border-color: #b4443a; }
 </style>
 </head>
 <body>
@@ -108,15 +96,6 @@
   <h1 style="color:#b02a22">你死了</h1>
   <p id="deadinfo"></p>
   <button class="btn" id="restartBtn">重新開始</button>
-</div>
-
-<div class="overlay" id="shop">
-  <div class="box">
-    <h2>武器商店</h2>
-    <div class="bal">金幣：<span id="shopcoins">0</span></div>
-    <div id="shopitems"></div>
-    <div class="foot"><span>E / Esc 關閉商店 · N 開始下一回合</span><button id="shopNext">開始下一回合</button></div>
-  </div>
 </div>
 
 <script type="module" src="/src/main.js"></script>

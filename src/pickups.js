@@ -4,26 +4,33 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { WEAPONS } from './weapons/weapon.js';
 import { sfx } from './audio.js';
 
-// 殭屍掉落物:彈藥箱、大彈藥箱、醫療包。
+// 殭屍掉落物(彈藥箱、大彈藥箱、醫療包、手榴彈)與補給點(彈藥櫃、醫療櫃)。
 // 掉落時從屍體彈出一道拋物線落地,之後懸浮旋轉;地面發光圓環 + 淡淡光柱方便在黑暗中找到。
-// 走近自動撿取(支援多樓層:比對腳下高度)。不使用任何動態光源。
+// 走近自動撿取(支援多樓層:比對腳下高度);滿了就不撿。不使用任何動態光源。
 
 // ---------- 掉落數值(集中調整) ----------
-// ammo / med 為機率;big = 必掉大彈藥箱(取代一般彈藥)
+// ammo / med / grenade 為每次擊殺的機率;big = 必掉大彈藥箱(取代一般彈藥)
 export const DROP_TABLE = {
-  walker: { ammo: 0.14, med: 0.04 },
-  runner: { ammo: 0.16, med: 0.05 },
-  crawler: { ammo: 0.14, med: 0.04 },
-  bloater: { ammo: 0.25, med: 0.1 },
-  brute: { ammo: 0, med: 0.6, big: true },
+  walker: { ammo: 0.16, med: 0.045, grenade: 0.012 },
+  runner: { ammo: 0.18, med: 0.05, grenade: 0.015 },
+  crawler: { ammo: 0.16, med: 0.05, grenade: 0.012 },
+  bloater: { ammo: 0.3, med: 0.12, grenade: 0.06 },
+  brute: { ammo: 0, med: 0.7, grenade: 0.5, big: true },
 };
 
 export const DROP_RULES = {
-  lowAmmoMul: 2.5, // 目前武器 彈匣+備彈 不到一個彈匣 → 彈藥機率 ×2.5
-  pity: 12, // 仁慈機制:連續沒掉彈藥的擊殺到第 12 殺必掉
+  lowAmmo: 1.5, // 目前武器 彈匣+備彈 少於 1.5 個彈匣…
+  lowAmmoMul: 2.5, // …彈藥機率 ×2.5
+  noAmmoMul: 4, // 備彈用完時 ×4
+  pity: 10, // 仁慈機制:連續 10 殺沒掉彈藥 → 必掉
   lowHp: 0.4, // 血量低於 40%…
-  lowHpMul: 2, // …醫療包機率 ×2
-  heal: 35, // 醫療包回復量
+  lowHpMul: 2.2, // …醫療包機率 ×2.2
+  critHp: 0.2, // 低於 20%…
+  critHpMul: 3.5, // …×3.5
+  medPity: 8, // 血量低於一半時,連續 8 殺沒掉醫療包 → 必掉
+  medMax: 4, // 地上未撿的醫療包上限(避免洗版)
+  heal: 35, // 醫療包回復量(滿血時改為收進背包)
+  grenadeCap: 6, medkitCap: 3,
   life: 35, // 存在秒數
   blink: 6, // 最後幾秒閃爍
   reach: 1.1, // 撿取水平距離
@@ -36,7 +43,10 @@ const LOOK = {
   ammo: { color: 0xffa52e, css: '#ffc35a', ring: 1.3, beam: 2.5, beamW: 0.55, glow: 0.95, hover: 0.42, scale: 1.12 },
   bigammo: { color: 0xffb83a, css: '#ffd27a', ring: 1.9, beam: 3.4, beamW: 0.8, glow: 1.4, hover: 0.5, scale: 1.08 },
   med: { color: 0x3cff86, css: '#7dffae', ring: 1.3, beam: 2.5, beamW: 0.55, glow: 0.95, hover: 0.44, scale: 1.1 },
+  grenade: { color: 0xe0ff6a, css: '#e4f58a', ring: 1.1, beam: 2.2, beamW: 0.45, glow: 0.8, hover: 0.4, scale: 2.1 },
 };
+// 彈匣容量(套用改裝):武器系統有 stat() 就用
+const magOf = (w, id) => (typeof w.stat === 'function' ? Math.round(w.stat(id, 'mag')) || WEAPONS[id].mag : Math.round(WEAPONS[id].mag * (w.mods?.[id]?.mag ?? 1)));
 
 const FLY = 0.62; // 拋物線飛行時間
 const ARC = 0.75; // 拋物線額外高度
@@ -344,8 +354,58 @@ function shared() {
     beam: new THREE.MeshBasicMaterial({ map: R.tex.beam, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
     glow: new THREE.SpriteMaterial({ map: R.tex.glow, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }),
   };
-  R.tmpl = { ammo: buildAmmoCan(), bigammo: buildBigCrate(), med: buildMedkit() };
+  R.mat.grenade = std({ map: grenadeTex(), roughness: 0.62, metalness: 0.25 });
+  R.mat.fuze = std({ color: 0x5c5f58, roughness: 0.42, metalness: 0.85 });
+  R.tmpl = { ammo: buildAmmoCan(), bigammo: buildBigCrate(), med: buildMedkit(), grenade: buildGrenade() };
   return R;
+}
+
+// 模型樣板的複本(商店展示櫃、UI 預覽用);userData.half = 中心到底部的距離
+export function pickupModel(kind) {
+  shared();
+  const t = R.tmpl[kind];
+  if (!t) return null;
+  const g = t.group.clone();
+  g.userData.half = t.half;
+  return g;
+}
+
+// M67 破片手榴彈:橄欖綠球體(黃色識別帶 + 模板字)、引信座、保險握片、拉環與插銷
+function grenadeTex() {
+  const S = 256;
+  const [c, x] = cv(S, S);
+  x.fillStyle = '#4b5434'; x.fillRect(0, 0, S, S);
+  blot(x, S, 30, 8, 40, '20,24,10', 0.06, 0.16);
+  blot(x, S, 20, 8, 30, '200,200,160', 0.03, 0.08);
+  x.fillStyle = '#c9a72a'; x.fillRect(0, S * 0.36, S, S * 0.05); // 黃色識別帶(球體 UV 的赤道附近)
+  x.fillStyle = 'rgba(230,220,150,.85)'; x.font = '700 15px Impact, "Arial Narrow", sans-serif'; x.textAlign = 'center';
+  x.fillText('GRENADE HAND FRAG M67', S * 0.5, S * 0.5);
+  x.fillText('LOT 12-07', S * 0.5, S * 0.57);
+  for (let i = 0; i < 70; i++) { // 刮痕
+    x.strokeStyle = `rgba(150,150,120,${rr(0.1, 0.35)})`; x.lineWidth = rr(0.5, 1.2);
+    const px = rnd() * S, py = rnd() * S, a = rnd() * 6.28, l = rr(3, 16);
+    x.beginPath(); x.moveTo(px, py); x.lineTo(px + Math.cos(a) * l, py + Math.sin(a) * l); x.stroke();
+  }
+  grain(x, S, 14);
+  return toTex(c);
+}
+function buildGrenade() {
+  const M = R.mat;
+  const body = new THREE.SphereGeometry(0.032, 20, 14);
+  body.scale(1, 1.1, 1);
+  const fz = [], lever = [], ring = [];
+  fz.push(at(cyl(0.0125, 0.026, 14), 0, 0.044)); // 引信座
+  fz.push(at(cyl(0.0095, 0.012, 12), 0, 0.061));
+  fz.push(at(cyl(0.004, 0.032, 8), 0, 0.053, 0, 0, 0, Math.PI / 2)); // 插銷
+  // 保險握片:沿球體側面往下彎
+  lever.push(at(tube([[0.004, 0.066, 0], [0.018, 0.064, 0], [0.03, 0.05, 0], [0.037, 0.025, 0], [0.038, 0, 0], [0.034, -0.018, 0]], 0.0035, 18)));
+  lever.push(at(rbox(0.008, 0.06, 0.012, 0.002, 1), 0.036, 0.012, 0, 0, 0, -0.08));
+  ring.push(at(new THREE.TorusGeometry(0.0125, 0.0018, 6, 18), -0.022, 0.053, 0, 0, Math.PI / 2, 0));
+  const g = new THREE.Group();
+  const b = new THREE.Mesh(body, M.grenade);
+  b.castShadow = true;
+  g.add(b, mesh(fz, M.fuze), mesh(lever, M.olive), mesh(ring, M.steel));
+  return { group: g, half: 0.035 };
 }
 
 // 軍綠色金屬彈藥箱(M19A1 風格):箱蓋、密封膠條、壓筋、鉸鏈、側邊凸輪扣環、提把、模板噴字
@@ -477,23 +537,46 @@ export class Pickups {
     this.world = world; // 可選:落點避開牆、貼地
     this.items = [];
     this.dry = 0; // 連續沒掉彈藥的擊殺數
+    this.medDry = 0; // 低血量時連續沒掉醫療包的擊殺數
+    this.stats = {}; // 各類型擊殺與掉落統計
     this.denyT = 0;
     this.warmed = false;
     this._v = new THREE.Vector3();
   }
 
-  // 擊殺時依類型擲骰(game.onKill 呼叫);回傳掉出的種類
-  roll(z, game) {
-    const T = DROP_TABLE[z.type] || DROP_TABLE.walker, Q = DROP_RULES;
+  // 目前的掉落機率(含仁慈機制);供 roll 與測試使用
+  chances(type, game) {
+    const T = DROP_TABLE[type] || DROP_TABLE.walker, Q = DROP_RULES;
     const w = game.weapons, a = w.ammo, p = game.player;
+    const cap = a ? magOf(w, w.current) : 1;
+    let am = 1;
+    if (a && a.reserve === 0 && a.mag < cap) am = Q.noAmmoMul;
+    else if (a && a.mag + a.reserve < cap * Q.lowAmmo) am = Q.lowAmmoMul;
+    const hr = p.hp / (p.maxHp || 100);
+    const mm = hr < Q.critHp ? Q.critHpMul : hr < Q.lowHp ? Q.lowHpMul : 1;
+    const medsOut = this.items.filter((it) => it.kind === 'med' && it.state !== 'take').length;
+    return {
+      ammo: T.big ? 0 : Math.min(1, T.ammo * am), med: medsOut >= Q.medMax ? 0 : Math.min(1, T.med * mm), grenade: T.grenade || 0,
+      ammoPity: !T.big && this.dry + 1 >= Q.pity, medPity: hr < 0.5 && this.medDry + 1 >= Q.medPity && medsOut < Q.medMax,
+    };
+  }
+
+  // 擊殺時依類型擲骰(擊殺流程呼叫);回傳掉出的種類
+  roll(z, game, rand = Math.random) {
+    const T = DROP_TABLE[z.type] || DROP_TABLE.walker;
+    const c = this.chances(z.type, game), p = game.player;
     const kinds = [];
     if (T.big) kinds.push('bigammo');
-    else {
-      const pa = T.ammo * (a && a.mag + a.reserve < w.def.mag ? Q.lowAmmoMul : 1);
-      if (this.dry + 1 >= Q.pity || Math.random() < pa) kinds.push('ammo');
-    }
+    else if (c.ammoPity || rand() < c.ammo) kinds.push('ammo');
     this.dry = kinds.length ? 0 : this.dry + 1;
-    if (Math.random() < T.med * (p.hp < p.maxHp * Q.lowHp ? Q.lowHpMul : 1)) kinds.push('med');
+    if (c.medPity || rand() < c.med) kinds.push('med');
+    if (p.hp < p.maxHp * 0.5) this.medDry = kinds.includes('med') ? 0 : this.medDry + 1;
+    if (rand() < c.grenade) kinds.push('grenade');
+    this.stats[z.type] ||= { kills: 0 };
+    const st = this.stats[z.type];
+    st.kills++;
+    for (const k of kinds) st[k] = (st[k] || 0) + 1;
+    if (game.noDrops) return kinds; // 測試/統計模式:只擲骰不生成
     const y = z.pos.y || 0;
     const h = z.type === 'crawler' ? 0.45 : z.type === 'brute' ? 1.45 : 1.05;
     const a0 = Math.random() * Math.PI * 2;
@@ -634,7 +717,7 @@ export class Pickups {
       it.glow.material.opacity = (0.3 + 0.08 * pulse) * (1 + far * 0.4) * Math.max(glowK, it.state === 'fly' ? 0.5 : 0) * vis;
 
       // 撿取
-      if (it.state !== 'idle' || p.hp <= 0) continue;
+      if (it.state !== 'idle' || p.hp <= 0 || p.downed) continue;
       const near = Math.hypot(p.pos.x - pos.x, p.pos.z - pos.z) < Q.reach && Math.abs(py - pos.y) < Q.reachY;
       if (!near) { it.denied = false; continue; }
       if (this.apply(it, game)) {
@@ -646,7 +729,7 @@ export class Pickups {
         it.denied = true;
         if (this.denyT <= 0) {
           this.denyT = 1.6;
-          game.ui.pickup(it.kind === 'med' ? '生命已滿' : '彈藥已滿', '#a3a39a');
+          game.ui.pickup(it.kind === 'med' ? '生命與醫療包都已滿' : it.kind === 'grenade' ? '手榴彈已滿' : '彈藥已滿', '#a3a39a');
           say('pickupDeny', 'deny');
         }
       }
@@ -655,26 +738,40 @@ export class Pickups {
 
   // 套用效果;已滿時回傳 false(留在地上)
   apply(it, game) {
-    const w = game.weapons, p = game.player, ui = game.ui, L = it.L;
+    const w = game.weapons, p = game.player, ui = game.ui, L = it.L, Q = DROP_RULES;
+    const count = () => { if (game.stats) game.stats.pickups = (game.stats.pickups || 0) + 1; };
     if (it.kind === 'med') {
-      const gain = Math.min(DROP_RULES.heal, p.maxHp - p.hp);
-      if (gain <= 0) return false;
-      p.hp += gain;
-      ui.setHP(p.hp, p.maxHp);
-      ui.pickup(`+${Math.round(gain)} 生命`, L.css, { icon: 'med', panel: 'health' });
+      const gain = Math.min(Q.heal, p.maxHp - p.hp);
+      if (gain > 0) { // 受傷:直接回血
+        p.hp += gain;
+        ui.setHP(p.hp, p.maxHp);
+        ui.pickup(`+${Math.round(gain)} 生命`, L.css, { icon: 'med', panel: 'health' });
+      } else if ((p.medkits || 0) < Q.medkitCap) { // 滿血:收進背包(按 H 使用)
+        p.medkits = (p.medkits || 0) + 1;
+        ui.pickup('醫療包 +1', L.css, { icon: 'med', sub: `按 H 使用 · 持有 ${p.medkits}/${Q.medkitCap}`, panel: 'medkit' });
+      } else return false;
+      count();
       say('pickupMed', 'switch');
       return true;
     }
-    const ids = Object.keys(w.inv).sort((a, b) => (b === w.current) - (a === w.current)); // 目前武器優先
+    if (it.kind === 'grenade') {
+      if ((p.grenades || 0) >= Q.grenadeCap) return false;
+      p.grenades = (p.grenades || 0) + 1;
+      ui.pickup('手榴彈 +1', L.css, { icon: 'grenade', sub: `按 G 投擲 · 持有 ${p.grenades}/${Q.grenadeCap}`, panel: 'grenade' });
+      count();
+      say('pickupItem', 'switch');
+      return true;
+    }
+    const ids = Object.keys(w.inv).filter((id) => WEAPONS[id]).sort((a, b) => (b === w.current) - (a === w.current)); // 目前武器優先
     if (it.kind === 'bigammo') {
-      if (ids.every((id) => w.inv[id].mag >= WEAPONS[id].mag && w.inv[id].reserve >= WEAPONS[id].reserveCap)) return false;
-      w.refillAll();
+      if (ids.every((id) => w.inv[id].mag >= magOf(w, id) && w.inv[id].reserve >= WEAPONS[id].reserveCap)) return false;
+      for (const id of ids) { w.inv[id].mag = Math.max(w.inv[id].mag, magOf(w, id)); w.inv[id].reserve = Math.max(w.inv[id].reserve, WEAPONS[id].reserveCap); }
       ui.pickup('大彈藥箱', L.css, { icon: 'ammo', sub: '所有武器彈藥補滿', panel: 'ammo' });
     } else {
       const got = [];
       for (const id of ids) {
-        const d = WEAPONS[id], a = w.inv[id];
-        const n = Math.min(id === w.current ? d.mag : Math.ceil(d.mag / 2), d.reserveCap - a.reserve);
+        const d = WEAPONS[id], a = w.inv[id], m = magOf(w, id);
+        const n = Math.min(id === w.current ? m : Math.ceil(m / 2), d.reserveCap - a.reserve);
         if (n > 0) { a.reserve += n; got.push(`+${n} ${d.name}`); }
       }
       if (!got.length) return false;
@@ -682,6 +779,7 @@ export class Pickups {
     }
     if (w.ammo.mag === 0) w.startReload(); // 空槍撿到彈藥直接換彈
     if (game.updateAmmoHud) game.updateAmmoHud();
+    count();
     say('pickupAmmo', 'switch');
     return true;
   }
@@ -698,6 +796,257 @@ export class Pickups {
   clear() {
     while (this.items.length) this._remove(this.items.length - 1);
     this.dry = 0;
+    this.medDry = 0;
+    this.stats = {};
     this.denyT = 0;
+  }
+}
+
+// =====================================================================
+// 補給點:world.supplies = [{ kind: 'ammo' | 'health', x, y, z, level }]
+// 實體模型(彈藥補給櫃 / 醫療櫃),E 鍵使用;每回合每位玩家一次,用完亮紅燈並顯示冷卻。
+// =====================================================================
+export const SUPPLY_RULES = { reach: 1.9, reachY: 1.3 };
+const SUP = {
+  ammo: { name: '彈藥補給櫃', color: 0xffb347, css: '#ffc35a', verb: '補充彈藥' },
+  health: { name: '醫療櫃', color: 0x5dff9a, css: '#7dffae', verb: '使用醫療櫃' },
+};
+
+function screenTex(kind, ready) {
+  const [c, x] = cv(256, 128);
+  x.fillStyle = '#050807'; x.fillRect(0, 0, 256, 128);
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillStyle = ready ? (kind === 'ammo' ? '#ffc35a' : '#7dffae') : '#ff5a4a';
+  x.font = '900 40px "Microsoft JhengHei", sans-serif';
+  x.fillText(ready ? (kind === 'ammo' ? '彈藥 OK' : '醫療 OK') : '冷卻中', 128, 48);
+  x.font = '700 22px "Microsoft JhengHei", sans-serif';
+  x.fillStyle = ready ? '#cfd8cf' : '#c98a80';
+  x.fillText(ready ? '按 E 補給' : '下一回合補充', 128, 96);
+  for (let y = 0; y < 128; y += 3) { x.fillStyle = 'rgba(0,0,0,.3)'; x.fillRect(0, y, 256, 1); }
+  return toTex(c);
+}
+
+function stencilPlate(lines, color, w = 512, h = 160) {
+  const [c, x] = cv(w, h);
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  for (const [t, size, y] of lines) { x.font = `900 ${size}px "Microsoft JhengHei", Impact, sans-serif`; x.fillStyle = color; x.fillText(t, w / 2, y * h); }
+  x.globalCompositeOperation = 'destination-out';
+  for (let i = 0; i < 700; i++) { x.globalAlpha = rr(0.2, 0.8); x.fillRect(rnd() * w, rnd() * h, rr(1, 3), rr(1, 3)); }
+  return toTex(c);
+}
+
+let SM = null; // 補給點共用材質
+function supplyMats() {
+  if (SM) return SM;
+  shared();
+  const std = (o) => new THREE.MeshStandardMaterial(o);
+  SM = {
+    dark: std({ color: 0x2a2d2b, roughness: 0.6, metalness: 0.5 }),
+    white: std({ color: 0xdedbd2, roughness: 0.42, metalness: 0.15 }),
+    glass: std({ color: 0xcfe3e8, roughness: 0.05, transparent: true, opacity: 0.2, depthWrite: false }),
+    inside: std({ color: 0x1a1d1c, roughness: 0.9 }),
+    ammoPlate: std({ map: stencilPlate([['彈藥 AMMO', 92, 0.42], ['每回合每人一次', 34, 0.82]], '#d6c15a'), transparent: true, depthWrite: false, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2 }),
+    medPlate: std({ map: stencilPlate([['醫療 MEDICAL', 84, 0.42], ['每回合每人一次', 34, 0.82]], '#b3121a'), transparent: true, depthWrite: false, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2 }),
+  };
+  return SM;
+}
+
+// 彈藥補給櫃:鋼製棧板 + 開放式軍綠鐵櫃,層架上放彈藥箱,頂上狀態燈
+function buildAmmoStation() {
+  const M = supplyMats(), g = new THREE.Group();
+  const W = 0.96, H = 1.28, D = 0.52, olive = [], dark = [], steel = [];
+  dark.push(at(new THREE.BoxGeometry(W + 0.06, 0.1, D + 0.06), 0, 0.05));
+  for (const x of [-0.42, 0, 0.42]) dark.push(at(new THREE.BoxGeometry(0.08, 0.04, D + 0.06), x, 0.12));
+  for (const s of [-1, 1]) olive.push(at(rbox(0.035, H, D, 0.008, 1), s * (W / 2 - 0.0175), 0.14 + H / 2));
+  olive.push(at(rbox(W, 0.035, D, 0.008, 1), 0, 0.14 + H - 0.0175));
+  olive.push(at(new THREE.BoxGeometry(W - 0.04, H - 0.04, 0.02), 0, 0.14 + H / 2, -D / 2 + 0.01));
+  for (const h of [0.16, 0.56, 0.95]) {
+    olive.push(at(new THREE.BoxGeometry(W - 0.06, 0.025, D - 0.04), 0, 0.14 + h));
+    steel.push(at(new THREE.BoxGeometry(W - 0.06, 0.03, 0.012), 0, 0.14 + h + 0.01, D / 2 - 0.03));
+  }
+  for (const s of [-1, 1]) steel.push(at(cyl(0.012, 0.18, 8), s * 0.3, 0.14 + H + 0.03, 0, 0, 0, Math.PI / 2)); // 提把
+  g.add(mesh(olive, R.mat.olive), mesh(dark, M.dark, false), mesh(steel, R.mat.steel, false));
+  // 層架上的彈藥箱
+  const put = (k, x, y, ry, s = 1) => { const o = R.tmpl[k].group.clone(); o.position.set(x, y + R.tmpl[k].half * s, 0.02); o.rotation.y = ry; o.scale.setScalar(s); g.add(o); };
+  put('bigammo', 0, 0.14 + 0.175, 0.04, 0.9);
+  put('ammo', -0.22, 0.14 + 0.575, 0.08); put('ammo', 0.2, 0.14 + 0.575, -0.06);
+  put('ammo', -0.18, 0.14 + 0.965, -0.1); put('med', 0.24, 0.14 + 0.965, 0.1, 0.55);
+  const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.19), M.ammoPlate);
+  plate.position.set(0, 0.14 + H - 0.12, D / 2 + 0.002);
+  g.add(plate);
+  return { g, W, D, H: H + 0.14, lampY: H + 0.2, screenAt: [W / 2 - 0.19, H - 0.08, D / 2 + 0.004] };
+}
+
+// 醫療櫃:鋼架上的白色鐵櫃,玻璃門內是急救箱,門板下半部紅十字
+function buildHealthStation() {
+  const M = supplyMats(), g = new THREE.Group();
+  const W = 0.78, H = 1.0, D = 0.34, Y0 = 0.66, white = [], dark = [], steel = [], red = [];
+  for (const x of [-1, 1]) for (const z of [-1, 1]) dark.push(at(new THREE.BoxGeometry(0.04, Y0, 0.04), x * (W / 2 - 0.04), Y0 / 2, z * (D / 2 - 0.04)));
+  dark.push(at(new THREE.BoxGeometry(W - 0.04, 0.03, D - 0.04), 0, 0.12));
+  dark.push(at(new THREE.BoxGeometry(W, 0.03, D), 0, Y0 - 0.015));
+  white.push(at(rbox(W, H, D, 0.015, 2), 0, Y0 + H / 2));
+  white.push(at(rbox(W - 0.03, H - 0.03, 0.025, 0.008, 1), 0, Y0 + H / 2, D / 2 + 0.012)); // 門板
+  steel.push(at(cyl(0.01, 0.16, 8), W / 2 - 0.07, Y0 + H * 0.55, D / 2 + 0.04)); // 把手
+  for (const yy of [0.62, 0.48]) steel.push(at(new THREE.BoxGeometry(0.03, 0.02, 0.03), W / 2 - 0.07, Y0 + H * yy, D / 2 + 0.03));
+  red.push(at(new THREE.BoxGeometry(0.2, 0.065, 0.006), 0, Y0 + 0.24, D / 2 + 0.027)); // 紅十字(門板下半)
+  red.push(at(new THREE.BoxGeometry(0.065, 0.2, 0.006), 0, Y0 + 0.24, D / 2 + 0.027));
+  g.add(mesh(white, M.white), mesh(dark, M.dark, false), mesh(steel, R.mat.steel, false), mesh(red, R.mat.red, false));
+  // 玻璃窗與內容物
+  const win = new THREE.Mesh(new THREE.PlaneGeometry(W - 0.16, H * 0.42), M.inside);
+  win.position.set(0, Y0 + H * 0.7, D / 2 + 0.025);
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(W - 0.16, H * 0.42), M.glass);
+  glass.position.set(0, Y0 + H * 0.7, D / 2 + 0.03);
+  glass.renderOrder = 2;
+  g.add(win, glass);
+  for (const x of [-0.15, 0.15]) {
+    const o = R.tmpl.med.group.clone();
+    o.scale.setScalar(0.42);
+    o.position.set(x, Y0 + H * 0.52 + R.tmpl.med.half * 0.42, D / 2 + 0.005);
+    g.add(o);
+  }
+  const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.17), M.medPlate);
+  plate.position.set(0, Y0 + 0.08, D / 2 + 0.027);
+  g.add(plate);
+  return { g, W, D, H: Y0 + H, lampY: Y0 + H + 0.05, screenAt: [0, Y0 + 0.46, D / 2 + 0.028], screenW: 0.3 };
+}
+
+export class Supplies {
+  constructor(scene, world, list = world.supplies || []) {
+    this.scene = scene;
+    this.world = world;
+    this.list = [];
+    this.t = 0;
+    for (const s of list) this.add(s);
+  }
+
+  add(s) {
+    shared();
+    const M = supplyMats();
+    const y = s.y || 0, w = this.world;
+    const B = s.kind === 'health' ? buildHealthStation() : buildAmmoStation();
+    // 朝向:附近有牆就背靠牆;否則面向最空曠的方向
+    const dirs = [[0, -1], [1, 0], [0, 1], [-1, 0]].map(([dx, dz]) => ({ dx, dz, d: w.rayDistance ? w.rayDistance(s.x, y + 0.5, s.z, dx, 0, dz, 6) : 6 }));
+    const wall = dirs.reduce((a, b) => (b.d < a.d ? b : a));
+    const open = dirs.reduce((a, b) => (b.d > a.d ? b : a));
+    const face = wall.d < 1.5 ? { dx: -wall.dx, dz: -wall.dz } : open;
+    const root = new THREE.Group();
+    let px = s.x, pz = s.z;
+    if (wall.d < 1.5) { const k = Math.max(0, wall.d - B.D / 2 - 0.06); px += wall.dx * k; pz += wall.dz * k; }
+    root.position.set(px, y, pz);
+    root.rotation.y = Math.atan2(face.dx, face.dz);
+    root.add(B.g);
+    // 狀態燈(自發光圓頂)與小螢幕
+    const lampMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 2, 0.6), toneMapped: false });
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.045, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), lampMat);
+    lamp.position.set(B.W / 2 - 0.12, B.lampY - 0.06, 0);
+    const base = new THREE.Mesh(cyl(0.05, 0.03, 12), M.dark);
+    base.position.set(B.W / 2 - 0.12, B.lampY - 0.075, 0);
+    const sw = B.screenW || 0.28;
+    const scrMat = new THREE.MeshBasicMaterial({ map: screenTex(s.kind, true), toneMapped: false });
+    const scr = new THREE.Mesh(new THREE.PlaneGeometry(sw, sw / 2), scrMat);
+    scr.position.set(...B.screenAt);
+    root.add(lamp, base, scr);
+    // 地面光圈(與掉落物同款,不用動態光源)
+    const ring = new THREE.Mesh(R.geo.ring, R.proto.ring.clone());
+    ring.material.color.set(SUP[s.kind === 'health' ? 'health' : 'ammo'].color);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(0, 0.025, B.D / 2 + 0.55);
+    ring.scale.setScalar(1.25);
+    root.add(ring);
+    root.traverse((o) => { if (o.isMesh) o.receiveShadow = true; });
+    this.scene.add(root);
+    const fw = Math.abs(Math.cos(root.rotation.y)) > 0.5;
+    const box = w.addBox ? w.addBox(px, pz, fw ? B.W : B.D, fw ? B.D : B.W, B.H, y) : null;
+    const st = {
+      ...s, y, kind: s.kind === 'health' ? 'health' : 'ammo', root, lampMat, scrMat, ring, box, used: new Set(), ready: true, pulse: Math.random() * 6,
+      front: { x: px + face.dx * (B.D / 2 + 0.6), z: pz + face.dz * (B.D / 2 + 0.6) },
+    };
+    this.list.push(st);
+    return st;
+  }
+
+  _state(st, ready) {
+    if (st.ready === ready) return;
+    st.ready = ready;
+    st.scrMat.map.dispose();
+    st.scrMat.map = screenTex(st.kind, ready);
+    st.lampMat.color.setRGB(...(ready ? [0.3, 2, 0.6] : [2.2, 0.15, 0.1]));
+  }
+
+  // 新回合:所有補給點重新可用
+  newRound() { for (const st of this.list) { st.used.clear(); this._state(st, true); } }
+  reset() { this.newRound(); }
+
+  canUse(st, p) { return !st.used.has(p.id ?? 'local'); }
+
+  // 玩家可互動的最近補給點
+  nearest(p) {
+    let best = null, bd = SUPPLY_RULES.reach;
+    for (const st of this.list) {
+      if (Math.abs((p.pos.y || 0) - st.y) > SUPPLY_RULES.reachY) continue;
+      const d = Math.min(Math.hypot(p.pos.x - st.root.position.x, p.pos.z - st.root.position.z) - 0.35, Math.hypot(p.pos.x - st.front.x, p.pos.z - st.front.z));
+      if (d < bd) { bd = d; best = st; }
+    }
+    return best;
+  }
+
+  promptFor(st, p) {
+    const S = SUP[st.kind];
+    return this.canUse(st, p) ? { text: `按 [E] ${S.verb}`, dim: false } : { text: `${S.name} · 已使用,下一回合補充`, dim: true };
+  }
+
+  // 使用;回傳 { ok, msg }
+  use(st, game) {
+    const p = game.player, w = game.weapons, ui = game.ui, S = SUP[st.kind];
+    if (!this.canUse(st, p)) { say('pickupDeny', 'deny'); return { ok: false, msg: '這個補給點本回合已使用過' }; }
+    if (st.kind === 'ammo') {
+      const ids = Object.keys(w.inv).filter((id) => WEAPONS[id]);
+      if (ids.every((id) => w.inv[id].mag >= magOf(w, id) && w.inv[id].reserve >= WEAPONS[id].reserveCap)) {
+        say('pickupDeny', 'deny');
+        ui.pickup('彈藥已滿', '#a3a39a');
+        return { ok: false, msg: '彈藥已滿' };
+      }
+      for (const id of ids) { w.inv[id].mag = Math.max(w.inv[id].mag, magOf(w, id)); w.inv[id].reserve = Math.max(w.inv[id].reserve, WEAPONS[id].reserveCap); }
+      if (game.updateAmmoHud) game.updateAmmoHud();
+      ui.pickup('彈藥補滿', S.css, { icon: 'ammo', sub: `${S.name} · 所有武器`, panel: 'ammo' });
+      say('pickupAmmo', 'switch');
+    } else {
+      const gain = p.maxHp - p.hp;
+      if (gain <= 0) { say('pickupDeny', 'deny'); ui.pickup('生命已滿', '#a3a39a'); return { ok: false, msg: '生命已滿' }; }
+      p.hp = p.maxHp;
+      ui.setHP(p.hp, p.maxHp);
+      ui.pickup(`+${Math.round(gain)} 生命`, S.css, { icon: 'med', sub: S.name, panel: 'health' });
+      say('heal', 'pickupMed');
+    }
+    st.used.add(p.id ?? 'local');
+    this._state(st, false);
+    if (game.net?.send) game.net.send('supplyUse', { i: this.list.indexOf(st) });
+    return { ok: true };
+  }
+
+  update(dt, game) {
+    this.t += dt;
+    const p = game.player;
+    for (const st of this.list) {
+      const d = Math.hypot(p.pos.x - st.root.position.x, p.pos.z - st.root.position.z), dy = Math.abs((p.pos.y || 0) - st.y);
+      const vis = d < 45 && dy < 5;
+      if (st.root.visible !== vis) st.root.visible = vis;
+      if (!vis) continue;
+      const ready = this.canUse(st, p);
+      if (ready !== st.ready) this._state(st, ready);
+      const k = 0.5 + 0.5 * Math.sin(this.t * 3 + st.pulse);
+      st.ring.material.opacity = ready ? 0.35 + 0.25 * k : 0;
+      st.ring.rotation.z += dt * 0.4;
+      if (!ready) st.lampMat.color.setRGB(1.2 + k, 0.1, 0.08);
+    }
+  }
+
+  dispose() {
+    for (const st of this.list) {
+      this.scene.remove(st.root);
+      if (st.box && this.world.removeBox) this.world.removeBox(st.box);
+      st.ring.material.dispose();
+    }
+    this.list.length = 0;
   }
 }

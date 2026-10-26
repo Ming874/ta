@@ -1,17 +1,72 @@
 import { Zombie } from '../zombies/zombie.js';
-import { roster } from '../zombies/types.js';
-import { Shop } from '../shop.js';
+import { roster, pace, TYPES } from '../zombies/types.js';
+import { Shop, shopTabs, purchase } from '../shop.js';
+import { Pickups, Supplies } from '../pickups.js';
 import { sfx, resume as resumeAudio } from '../audio.js';
+import { settings } from '../ui/settings.js';
 
-// 回合流程:重開、開始/結束回合、出怪、商店、死亡。以 mixin 方式掛到 Game 上
+// 回合流程:重開、開始/結束回合、出怪、休息與商店、補給、醫療包、擊殺獎勵、死亡結算。以 mixin 方式掛到 Game 上
+export const REST_TIME = 30; // 每回合結束後的休息(商店開放)秒數
+const HEAL = { time: 2, amount: 50 }; // 醫療包:2 秒內回 50
+const STREAK_GAP = 4; // 連殺:兩次擊殺間隔 4 秒內
+const BONUS = { head: 0.5, melee: 1 }; // 爆頭 / 近戰額外金幣(基礎金幣倍率)
+
 export const flowMethods = {
+  // 世界建構時呼叫(在 world.buildNav 之前):店面與補給點都會登記碰撞盒
+  buildGameplayWorld() {
+    this.shop = new Shop(this.scene, this.world, { game: this });
+    this.supplies = new Supplies(this.scene, this.world);
+  },
+
+  // 建構子最後呼叫一次:掉落物、按鍵、統計掛鉤、設定
+  initGameplay() {
+    if (this._gpInit) return;
+    this._gpInit = true;
+    if (!this.shop) this.buildGameplayWorld(); // 舊的建構流程沒呼叫時的保險
+    this.pickups = new Pickups(this.scene, this.world);
+    this.ui.attach(this);
+    settings.attach(this);
+    // 射擊統計(命中率):包住 onFire,命中標記在同一次呼叫裡觸發才算命中
+    const fire = this.weapons.onFire;
+    this.weapons.onFire = (...a) => {
+      if (this.state === 'playing') this.stats.shots++;
+      this._inFire = true;
+      this._shotHit = false;
+      try { return fire(...a); } finally { this._inFire = false; }
+    };
+    this.ui.onHit = () => {
+      if (this._inFire && !this._shotHit) { this._shotHit = true; this.stats.hits++; }
+    };
+    // 擊殺:在原本的 onKill(金幣、血池)之後加上獎勵、掉落與統計
+    const kill = this.onKill;
+    this.onKill = (...a) => { kill.apply(this, a); this.afterKill(...a); };
+    // 爆炸造成的擊殺不算近戰
+    for (const k of ['explode', 'explodeAt']) {
+      const f = this[k];
+      if (typeof f !== 'function') continue;
+      this[k] = (...a) => { const prev = this._killHow; this._killHow = 'explosion'; try { return f.apply(this, a); } finally { this._killHow = prev; } };
+    }
+    for (const k of ['melee', 'knife', 'meleeAttack', 'stab']) {
+      const f = this[k];
+      if (typeof f !== 'function') continue;
+      this[k] = (...a) => { const prev = this._killHow; this._killHow = 'melee'; try { return f.apply(this, a); } finally { this._killHow = prev; } };
+    }
+    window.addEventListener('keydown', (e) => this.onGameplayKey(e), true); // 捕獲階段:比 input.js 先處理
+    document.addEventListener('pointerlockchange', () => {
+      if (document.pointerLockElement !== this.canvas && this.ui.map.isOpen) this.ui.map.close();
+    });
+  },
+
   resetRun() {
     for (const z of this.zombies) z.dispose();
     this.zombies.length = 0;
     this.coins.clear();
     this.clearPools();
     this.hazards.clear();
-    if (this.shop) { this.shop.dispose(); this.shop = null; }
+    this.pickups?.clear();
+    this.supplies?.reset();
+    this.shop?.setOpen(false, true);
+    if (this.shopUIOpen) this.closeShop(false);
     const p = this.player, st = this.world.start;
     p.hp = p.maxHp;
     p.alive = true;
@@ -20,18 +75,27 @@ export const flowMethods = {
     p.grenades = 0;
     p.medkits = 0;
     p.coins = 0;
+    p.lastHurtFrom = null;
     p.pos.set(st.x, st.y || 0, st.z);
     p.yaw = st.yaw || 0;
     p.pitch = 0;
     p.vx = p.vz = 0;
-    // 重新給武器(只剩手槍)
+    // 重新給武器(只剩手槍),清除改裝
     this.weapons.inv = {};
+    this.weapons.mods = {};
+    this.upgrades = {};
     this.weapons.give('pistol');
     this.weapons.switchTo('pistol', true);
     this.round = 0;
     this.kills = 0;
-    this.ui.setCoins(0);
+    this.phase = 'fighting';
+    this.restT = 0;
+    this.healT = 0;
+    this.stats = { kills: 0, headshots: 0, melee: 0, shots: 0, hits: 0, time: 0, streak: 0, bestStreak: 0, lastKill: -99, earned: 0, pickups: 0, byType: {} };
+    this.ui.resetRun?.();
+    this.ui.setCoins(0, true);
     this.ui.setHP(p.hp, p.maxHp);
+    this.ui.setArmor?.(0, 0);
   },
 
   setMood(m) {
@@ -43,8 +107,10 @@ export const flowMethods = {
   begin() {
     resumeAudio();
     if (!this.ambientStarted) { sfx.ambient(); this.ambientStarted = true; }
+    settings.apply(); // AudioContext 建立後才能套用音量
     this.resetRun();
     this.state = 'playing';
+    this.paused = false;
     this.startRound(1);
   },
 
@@ -52,14 +118,19 @@ export const flowMethods = {
     this.round = n;
     this.queue = roster(n);
     this.toSpawn = this.queue.length;
-    this.spawnTimer = 3;
-    this.maxAlive = Math.min(14, 6 + Math.floor(n / 2));
+    const P = pace(n);
+    this.maxAlive = P.maxAlive;
+    this.spawnEvery = P.interval;
+    this.burst = P.burst;
+    this.spawnTimer = n === 1 ? 3.5 : 2.2;
     this.phase = 'fighting';
     this.weapons.resupply();
-    if (this.shop) { this.shop.dispose(); this.shop = null; }
+    this.shop?.setOpen(false);
+    this.supplies?.newRound();
+    if (this.shopUIOpen) this.closeShop(false);
     this.clearPools();
     this.ui.setRound(n);
-    this.ui.banner(`第 ${n} 回合`, `殭屍 ${this.toSpawn} 隻`, 3000);
+    this.ui.banner(`第 ${n} 回合`, `殭屍 ${this.toSpawn} 隻`, 3000, n % 5 === 0 ? 'red' : '');
     this.ui.prompt(null);
     sfx.roundStart();
     this.updateAmmoHud();
@@ -98,84 +169,318 @@ export const flowMethods = {
     const s = this.pickSpawn();
     const pos = { x: s.x + (Math.random() - 0.5) * 1.2, y: s.y || 0, z: s.z + (Math.random() - 0.5) * 1.2 };
     const z = new Zombie(this.scene, pos, this.round, type);
+    // 記下最後命中的部位(爆頭獎勵/統計用);不改變原本行為
+    const dmg = z.damage;
+    z.damage = (amount, part, ...rest) => { z._lastPart = part; z._lastHitT = this.time; return dmg.call(z, amount, part, ...rest); };
+    z._born = this.time;
+    z._farT = 0;
     this.zombies.push(z);
     this.toSpawn = Math.max(0, this.toSpawn - 1);
-    if (type === 'brute') this.ui.banner('巨屍出現', '牠會咆哮後衝鋒 · 引牠撞牆再攻擊頭部', 3500);
+    if (type === 'brute') this.ui.banner('巨屍出現', '牠會咆哮後衝鋒 · 引牠撞牆再攻擊頭部', 3500, 'red');
     return z;
+  },
+
+  // 每幀:出怪、回合結束、休息倒數(取代 game.update 裡原本的出怪/回合區塊)
+  updateRound(dt) {
+    if (this.phase === 'fighting') {
+      let alive = 0;
+      for (const z of this.zombies) if (z.alive) alive++;
+      this.spawnTimer -= dt;
+      if (this.toSpawn > 0 && alive < this.maxAlive && this.spawnTimer <= 0) {
+        this.spawnZombie();
+        if (this.burst > 0) { this.burst--; this.spawnTimer = 0.45; } else this.spawnTimer = this.spawnEvery * (0.7 + Math.random() * 0.6);
+      }
+      this._relocateStragglers(dt);
+      if (this.toSpawn === 0 && alive === 0) this.endRound();
+    } else if (this.phase === 'collecting') {
+      this.collectT -= dt;
+      if (this.collectT <= 0 && !this.coins.collecting) this.openRest();
+    } else if (this.phase === 'shop' || this.phase === 'break') {
+      const prev = Math.ceil(this.restT);
+      this.restT -= dt;
+      const now = Math.ceil(this.restT);
+      if (now !== prev && now <= 5 && now > 0) sfx.countdown(now);
+      if (this.restT <= 0) this.nextRound();
+    }
+  },
+
+  // 卡住或離所有玩家太遠的殭屍:看不到玩家一段時間後移到較近的出生點(大地圖保持節奏)
+  _relocateStragglers(dt) {
+    const w = this.world;
+    this._strT = (this._strT || 0) - dt;
+    if (this._strT > 0) return;
+    this._strT = 1;
+    for (const z of this.zombies) {
+      if (!z.alive || z.type === 'brute') continue;
+      const fd = w.flowDistance ? w.flowDistance(z.pos.x, z.pos.y, z.pos.z) : z.dist;
+      const far = !Number.isFinite(fd) || fd > 55;
+      z._farT = far && !z.los ? z._farT + 1 : 0;
+      if (z._farT >= (Number.isFinite(fd) ? 20 : 8) && this.time - z._born > 10) {
+        const s = this.pickSpawn();
+        z.pos.set(s.x + (Math.random() - 0.5), s.y || 0, s.z + (Math.random() - 0.5));
+        z.vel?.set?.(0, 0, 0);
+        z.root?.position.copy(z.pos);
+        z._farT = 0;
+        z._born = this.time;
+      }
+    }
   },
 
   endRound() {
     this.phase = 'collecting';
-    this.ui.banner(`第 ${this.round} 回合結束`, '收集金幣中…', 3000);
+    this.collectT = 1.4;
+    this.ui.banner(`第 ${this.round} 回合結束`, '收集金幣中…', 2600);
     this.setMood('break');
     sfx.roundEnd();
     const p = this.player;
-    p.hp = Math.min(p.maxHp, p.hp + 25);
+    p.hp = Math.min(p.maxHp, p.hp + 20);
     this.ui.setHP(p.hp, p.maxHp);
-    const after = () => {
-      if (this.state !== 'playing') return;
-      if (this.round % 5 === 0) {
-        this.phase = 'shop';
-        this.setMood('shop');
-        this.shop = new Shop(this.scene, this.world);
-        this.ui.banner('武器商店開放', '前往補給站購買武器', 5000);
-      } else {
-        this.phase = 'break';
-        this.breakTimer = 6;
-      }
-    };
-    if (this.coins.piles.length) {
-      this.coins.collectAll();
-      this.coins.pendingDone = after;
-    } else setTimeout(after, 1500);
+    this.coins.collectAll();
   },
 
+  // 休息時間:商店捲門拉起、補給站開放
+  openRest() {
+    if (this.state !== 'playing') return;
+    this.phase = 'shop';
+    this.restT = REST_TIME;
+    this.setMood('shop');
+    this.shop?.setOpen(true);
+    const bonus = 20 + 10 * this.round; // 回合獎勵
+    this.player.coins += bonus;
+    this.stats.earned += bonus;
+    this.ui.setCoins(this.player.coins);
+    this.ui.coinGain(bonus);
+    this.ui.feed(`回合獎勵 <b>+${bonus}</b>`, { icon: 'coin', color: '#f2c84b', html: true });
+    const where = this.shop?.levelId ? `${this.shop.levelId} 便利商店` : '補給站';
+    this.ui.banner('補給站開放', `休息 ${REST_TIME} 秒 · 前往 ${where} 購買武器與裝備 · [N] 立即開始下一回合`, 4800, 'gold');
+    this.ui.feed('補給站已開放', { icon: 'cart', color: '#ffb347' });
+  },
+
+  // ---------- 商店 ----------
   openShop() {
+    if (this.shopUIOpen || !this.shop?.open || this.state !== 'playing') return;
     this.shopUIOpen = true;
-    this.ui.renderShop(this.player, this.weapons, (id, price) => this.buy(id, price));
-    this.ui.overlay('shop', true);
-    document.exitPointerLock();
     this.input.fireHeld = false;
+    this.ui.prompt(null);
+    this.ui.shop.open(this);
+    if (document.pointerLockElement) document.exitPointerLock();
+    sfx.shopOpen();
   },
 
   closeShop(relock = true) {
+    if (!this.shopUIOpen) return;
     this.shopUIOpen = false;
-    this.ui.overlay('shop', false);
-    if (relock && this.state === 'playing') this.canvas.requestPointerLock();
+    this.ui.shop.close();
+    sfx.shopClose();
+    if (relock && this.state === 'playing') {
+      try { const r = this.canvas.requestPointerLock(); if (r?.catch) r.catch(() => {}); } catch { /* 需要使用者手勢 */ }
+    }
   },
 
-  buy(id, price) {
-    if (this.player.coins < price) { sfx.deny(); return; }
-    this.player.coins -= price;
-    if (id === 'ammo') this.weapons.refillAll();
-    else {
-      const owned = this.weapons.has(id);
-      this.weapons.give(id);
-      if (!owned) this.weapons.switchTo(id);
-    }
-    sfx.buy();
-    this.ui.setCoins(this.player.coins);
-    this.updateAmmoHud();
-    this.ui.renderShop(this.player, this.weapons, (i, p) => this.buy(i, p));
+  shopTabs() { return shopTabs(this); },
+
+  // 購買(UI 呼叫);回傳 purchase 的結果並處理音效與 HUD
+  buy(item) {
+    const r = purchase(this, item);
+    if (r.ok) {
+      if (r.equip) sfx.switch();
+      else {
+        sfx.cashRegister();
+        if (r.sound === 'upgrade') sfx.upgrade();
+        else if (r.sound === 'armor') sfx.armorEquip();
+        else sfx.buy();
+        this.ui.spend?.(r.price);
+      }
+      this.ui.setCoins(this.player.coins);
+      this.ui.setArmor?.(this.player.armor, this.player.maxArmor);
+      this.updateAmmoHud();
+    } else sfx.deny();
+    return r;
   },
 
   nextRound() {
+    if (this.state !== 'playing' || (this.phase !== 'shop' && this.phase !== 'break')) return;
     if (this.shopUIOpen) this.closeShop();
     this.startRound(this.round + 1);
   },
 
+  // ---------- 醫療包(H) ----------
+  useMedkit() {
+    const p = this.player;
+    if (this.state !== 'playing' || this.healT > 0 || p.hp <= 0 || p.downed) return false;
+    if (!(p.medkits > 0)) { this.ui.pickup('沒有醫療包', '#a3a39a'); sfx.pickupDeny(); return false; }
+    if (p.hp >= p.maxHp) { this.ui.pickup('生命已滿', '#a3a39a'); sfx.pickupDeny(); return false; }
+    p.medkits--;
+    this.healT = HEAL.time;
+    this.healLeft = HEAL.amount;
+    sfx.heal();
+    return true;
+  },
+
+  _updateHeal(dt) {
+    if (!(this.healT > 0)) { this.ui.healing(null); return; }
+    const p = this.player;
+    const step = Math.min(this.healLeft, (HEAL.amount / HEAL.time) * dt);
+    this.healLeft -= step;
+    this.healT -= dt;
+    p.hp = Math.min(p.maxHp, p.hp + step);
+    this.ui.setHP(p.hp, p.maxHp);
+    this.ui.healing(1 - Math.max(0, this.healT) / HEAL.time);
+    // 治療中放下武器、不能射擊
+    const w = this.weapons;
+    if (typeof w.raise === 'number') w.raise = Math.max(w.raise, 0.9);
+    this.input.fireHeld = false;
+    this.input.firePressed = false;
+    if (this.healT <= 0 || p.hp >= p.maxHp) {
+      this.healT = 0;
+      this.ui.healing(null);
+      this.ui.pickup(`治療完成 · 生命 ${Math.ceil(p.hp)}`, '#7dffae', { icon: 'heal', panel: 'health' });
+    }
+  },
+
+  // ---------- 擊殺獎勵 ----------
+  afterKill(z, killer = this.player, how) {
+    if (killer && killer !== this.player) return; // 隊友的擊殺由連線層處理
+    how = how || this._killHow || (z._lastPart === 'melee' ? 'melee' : null);
+    const near = Math.hypot(z.pos.x - this.player.pos.x, z.pos.z - this.player.pos.z) < 2.6;
+    if (!how && near && this.weapons.sinceShot > 0.35) how = 'melee'; // 沒開槍的近距離擊殺 = 近戰
+    const head = how !== 'explosion' && how !== 'melee' && z._lastPart === 'head';
+    const base = z.T?.coins ?? TYPES[z.type]?.coins ?? 5;
+    const bonus = Math.round(base * ((head ? BONUS.head : 0) + (how === 'melee' ? BONUS.melee : 0)));
+    if (bonus > 0) this.coins.drop(z.pos.x, z.pos.y, z.pos.z, bonus);
+    const S = this.stats;
+    S.kills++;
+    if (head) S.headshots++;
+    if (how === 'melee') S.melee++;
+    S.earned += base + bonus;
+    S.byType[z.type] = (S.byType[z.type] || 0) + 1;
+    S.streak = this.time - S.lastKill <= STREAK_GAP ? S.streak + 1 : 1;
+    S.lastKill = this.time;
+    S.bestStreak = Math.max(S.bestStreak, S.streak);
+    const tag = how === 'melee' ? '近戰' : head ? '爆頭' : how === 'explosion' ? '爆炸' : '';
+    this.ui.killPop(base + bonus, tag, how === 'melee' ? 'melee' : head ? 'head' : '');
+    const name = TYPES[z.type]?.name || '殭屍';
+    if (z.type === 'brute' || head || how === 'melee' || S.streak >= 3) {
+      const extra = S.streak >= 3 ? ` · ${S.streak} 連殺` : '';
+      this.ui.feed(`${tag ? `${tag} · ` : ''}擊殺 ${name} <b>+${base + bonus}</b>${extra}`, { icon: how === 'melee' ? 'knife' : head ? 'head' : 'skull', color: z.type === 'brute' ? '#ff6a5a' : head ? '#ff9a6a' : '#e8e3d6', html: true });
+    }
+    if (S.streak === 5 || S.streak === 10 || S.streak === 15) sfx.killConfirm();
+    this.pickups?.roll(z, this);
+  },
+
+  // ---------- 按鍵(E 互動、N 下一回合、H 醫療包、M 地圖) ----------
+  onGameplayKey(e) {
+    if (this.state !== 'playing') return;
+    if (this.shopUIOpen) { // 商店介面吃掉所有按鍵
+      e.stopPropagation();
+      if (!e.repeat || /Arrow/.test(e.code)) this.ui.shop.onKey(e);
+      return;
+    }
+    if (this.ui.map.isOpen) {
+      if (['KeyM', 'Escape', 'PageUp', 'PageDown', 'Tab'].includes(e.code)) {
+        e.stopPropagation();
+        e.preventDefault();
+        if (e.code === 'PageUp') this.ui.map.floor(1);
+        else if (e.code === 'PageDown') this.ui.map.floor(-1);
+        else this.ui.map.close();
+        return;
+      }
+    }
+    if (this.paused || e.repeat) return;
+    switch (e.code) {
+      case 'KeyE': {
+        e.stopPropagation();
+        const s = this.shop?.interact(this.player);
+        if (s === 'open') { this.openShop(); return; }
+        if (s === 'closed') { this.ui.pickup('補給站只在回合間的休息時間開放', '#a3a39a'); sfx.pickupDeny(); return; }
+        const st = this.supplies?.nearest(this.player);
+        if (st) this.supplies.use(st, this);
+        return;
+      }
+      case 'KeyN':
+        e.stopPropagation();
+        this.nextRound();
+        return;
+      case 'KeyH':
+        this.useMedkit();
+        return;
+      case 'KeyM':
+        e.preventDefault();
+        this.ui.map.open(this);
+        return;
+      default:
+    }
+  },
+
+  // ---------- 每幀(game.update 在暫停檢查之後呼叫) ----------
+  updateGameplay(dt) {
+    const p = this.player;
+    this.stats.time += dt;
+    this._updateHeal(dt);
+    this.pickups?.update(dt, this);
+    this.supplies?.update(dt, this);
+    this.shop?.update(dt, this.time, p);
+    // 互動提示
+    let prompt = null, dim = false;
+    if (!(this.healT > 0)) {
+      const s = this.shop?.interact(p);
+      if (s === 'open') prompt = '按 [E] 開啟補給站';
+      else if (s === 'closed') { prompt = '補給站 · 回合結束後的休息時間開放'; dim = true; }
+      else {
+        const st = this.supplies?.nearest(p);
+        if (st) ({ text: prompt, dim } = this.supplies.promptFor(st, p));
+      }
+    }
+    this.ui.prompt(prompt, dim);
+    // 回合資訊
+    if (this.phase === 'fighting') this.ui.setZombies(this.zombiesLeft());
+    else if (this.phase === 'shop' || this.phase === 'break') this.ui.setRest(this.restT);
+    else if (this.phase === 'collecting') this.ui.setRoundText('收集金幣中…');
+    this.ui.update(this, dt);
+  },
+
   updateAmmoHud() {
     const w = this.weapons;
-    this.ui.setAmmo(w.def.name, w.ammo.mag, w.ammo.reserve, w.reloading > 0);
+    const cap = typeof w.stat === 'function' ? Math.round(w.stat(w.current, 'mag')) : Math.round(w.def.mag * (w.mods?.[w.current]?.mag ?? 1));
+    const prev = this._ammoLow;
+    this.ui.setAmmo(w.def.name, w.ammo.mag, w.ammo.reserve, w.reloading > 0, cap);
+    const low = w.ammo.mag <= Math.max(1, Math.floor(cap * 0.25)) && w.ammo.mag > 0;
+    if (low && !prev && this.state === 'playing') sfx.lowAmmo();
+    this._ammoLow = low;
   },
 
   die() {
     this.state = 'dead';
     this.player.alive = false;
+    this.healT = 0;
     this.setMood('dead');
-    document.exitPointerLock();
+    if (this.shopUIOpen) this.closeShop(false);
+    this.ui.map.close();
+    if (document.pointerLockElement) document.exitPointerLock();
     this.input.fireHeld = false;
-    document.getElementById('deadinfo').innerHTML = `你撐到了第 <b>${this.round}</b> 回合<br />擊殺 ${this.kills} · 累積金幣 ${this.player.coins}`;
-    this.ui.overlay('dead', true);
+    this.ui.showDeath(this.deathSummary());
+  },
+
+  deathSummary() {
+    const S = this.stats;
+    return {
+      round: this.round, kills: S.kills, headshots: S.headshots, melee: S.melee,
+      accuracy: S.shots ? S.hits / S.shots : 0, shots: S.shots, time: S.time, bestStreak: S.bestStreak, earned: S.earned, byType: S.byType,
+    };
+  },
+
+  // 回主選單
+  quitToMenu() {
+    if (this.shopUIOpen) this.closeShop(false);
+    this.ui.map.close();
+    this.resetRun();
+    this.state = 'menu';
+    this.paused = false;
+    this.setMood('menu');
+    this.ui.showHud(false);
+    this.ui.overlay('pause', false);
+    this.ui.overlay('dead', false);
+    this.ui.overlay('menu', true);
+    if (document.pointerLockElement) document.exitPointerLock();
   },
 };

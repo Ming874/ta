@@ -58,6 +58,7 @@ export class Game {
     this.world = new World();
     this.hospital = buildHospital(this.world, this.world.layout, this.scene);
     this.scene.add(this.hospital.group);
+    this.buildGameplayWorld(); // 補給站店面與補給點(碰撞盒要在 buildNav 之前登記)
     this.world.buildNav();
 
     this.player = new Player(this.camera, this.world);
@@ -74,7 +75,6 @@ export class Game {
     this.queue = [];
     this.hazards = new Hazards(this.scene);
     this.zctx = { player: this.player, players: this.players, world: this.world, zombies: this.zombies, hazards: this.hazards, game: this };
-    this.shop = null;
 
     // 槍口閃光燈(照亮環境)
     this.muzzleLight = new THREE.PointLight(0xffa850, 0, 14, 2);
@@ -87,6 +87,7 @@ export class Game {
     window.addEventListener('resize', () => this.resize());
     this.resize();
 
+    this.initGameplay(); // 掉落物、商店介面、HUD、設定、按鍵(src/game/flow.js)
     this.resetRun();
     this.setMood('menu');
     this.ui.setHP(this.player.hp, this.player.maxHp);
@@ -138,15 +139,8 @@ export class Game {
     w.update(dt, this.input, p.speedNorm, p.sprinting, this.look);
     this.updateAmmoHud();
 
-    // 殭屍生成
-    if (this.phase === 'fighting') {
-      const alive = this.zombies.filter((z) => z.alive).length;
-      this.spawnTimer -= dt;
-      if (this.toSpawn > 0 && alive < this.maxAlive && this.spawnTimer <= 0) {
-        this.spawnZombie();
-        this.spawnTimer = Math.max(0.6, 1.8 - this.round * 0.08);
-      }
-    }
+    // 出怪、回合結束、休息倒數(src/game/flow.js)
+    this.updateRound(dt);
 
     // 殭屍更新(傷害套用到牠攻擊的那位玩家)
     for (let i = this.zombies.length - 1; i >= 0; i--) {
@@ -175,20 +169,8 @@ export class Game {
     if (this.phase === 'fighting') this.setMood(boss ? 'boss' : 'fight');
 
     this.coins.update(dt, p);
-    this.ui.setZombies(this.phase === 'fighting' ? this.zombiesLeft() : 0);
-
-    // 回合狀態
-    if (this.phase === 'fighting' && this.toSpawn === 0 && !this.zombies.some((z) => z.alive)) this.endRound();
-    if (this.phase === 'break') {
-      this.breakTimer -= dt;
-      this.ui.prompt(`下一回合 ${Math.ceil(this.breakTimer)} 秒後開始(按 N 立即開始)`);
-      if (this.breakTimer <= 0) this.nextRound();
-    }
-    if (this.phase === 'shop' && this.shop) {
-      this.shop.update(dt, this.time);
-      this.ui.prompt(this.shop.near(p) ? '按 E 開啟商店 · 按 N 開始下一回合' : '前往補給站購買武器 · 按 N 開始下一回合');
-    }
-    if (this.phase === 'collecting') this.ui.prompt(null);
+    // 商店、掉落物、補給點、醫療包、HUD(src/game/flow.js)
+    this.updateGameplay(dt);
 
     // 低血量心跳暗角
     this.post.uniforms.hurt.value = p.hp < 35 ? (1 - p.hp / 35) * 0.7 + Math.sin(this.time * 6) * 0.1 : Math.max(0, 1 - (this.time - p.lastHurt) * 2) * 0.5;
