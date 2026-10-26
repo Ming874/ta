@@ -1,6 +1,7 @@
 // 殭屍語音:共振峰(formant)合成。聲門脈衝 + 氣聲噪音 → 喉音嘎吱(vocal fry)調幅 → 三個共振峰帶通 → 飽和 → 包絡。
 // 每次呼叫都重新隨機音高曲線、母音路徑、嘎吱節奏,不會聽起來像同一個樣本重播。
-import { A, emit, burst, tone, bubble, shaper, gain, filter, rand, pick, curve, duck } from './core.js';
+import { A, emit, burst, tone, bubble, shaper, gain, filter, rand, pick, curve, duck, baked, playBuf } from './core.js';
+import * as SM from './samples.js';
 
 // 母音共振峰(成年男性,Hz)
 const VOW = {
@@ -28,15 +29,19 @@ const CONTOUR = {
 };
 
 // 聲門波形:諧波以 n^-1.2 衰減,比鋸齒波柔和、有喉音質感
+const WAVES = new WeakMap(); // PeriodicWave 屬於建立它的 context(烘焙用的離線 context 要各自建)
 function glottal() {
-  if (A.waves.glottal) return A.waves.glottal;
+  const w = WAVES.get(A.ctx);
+  if (w) return w;
   const n = 64, re = new Float32Array(n), im = new Float32Array(n);
   for (let k = 1; k < n; k++) {
     const a = Math.pow(k, -1.2);
     re[k] = a * 0.35 * (k % 3 === 0 ? -1 : 1);
     im[k] = a * (k % 2 ? 1 : -0.85);
   }
-  return (A.waves.glottal = A.ctx.createPeriodicWave(re, im));
+  const pw = A.ctx.createPeriodicWave(re, im);
+  WAVES.set(A.ctx, pw);
+  return pw;
 }
 
 // 解析參數(類型 × 情境 × 隨機)
@@ -152,9 +157,28 @@ export function vocal(dest, t, S) {
 }
 
 // ---------- 對外:殭屍語音 ----------
+// 錄音樣本與合成語音混用(增加變化):各類型用不同的移調,巨屍/腫脹者壓低、奔跑者拉高
+const SEMI = { walker: 0, runner: 3.5, crawler: 1.5, bloater: -3.5, brute: -6 };
+const MIX = { groan: 0.55, attack: 0.6, pain: 0.5, die: 0.6 }; // 用樣本的機率
+const REF = { brute: 2.4 };
 function say(type, pos, mode, prio, over) {
+  const o = { pos, bus: 'voice', cat: 'voice', prio, room: 0.35, ref: REF[type] ?? 1.6 };
+  if (!over && SM.has(`z.${mode}`) && Math.random() < (MIX[mode] ?? 0.5)) {
+    const h = SM.play(`z.${mode}`, { ...o, semi: (SEMI[type] ?? 0) + rand(-0.8, 0.8), p: 0.6, g: type === 'brute' ? 1.3 : 1 });
+    if (h) return h;
+  }
+  // 短促、頻繁的痛叫與攻擊吼叫:各類型預烘焙 5 個變體(連射時不必每次即時合成)
+  if (!over && (mode === 'pain' || mode === 'attack')) {
+    const set = baked(`v|${type}|${mode}`, 5, mode === 'pain' ? 0.8 : 1, (dst, t0) => vocal(dst, t0, spec(type, mode)));
+    if (set) {
+      const b = pick(set), r = rand(0.95, 1.05);
+      const h = emit({ ...o, dur: b.duration / r });
+      if (h) playBuf(h.in, h.t, b, { rate: r });
+      return h;
+    }
+  }
   const S = spec(type, mode, over);
-  const h = emit({ pos, bus: 'voice', cat: 'voice', prio, dur: S.dur + 0.2, hrtf: true, room: 0.35, hall: 0.12, ref: type === 'brute' ? 2.4 : 1.6 });
+  const h = emit({ ...o, dur: S.dur + 0.2 });
   if (!h) return null;
   vocal(h.in, h.t, S);
   return h;
@@ -193,6 +217,10 @@ export const voices = {
     return h;
   },
   shriek(pos) {
+    if (SM.has('z.shriek') && Math.random() < 0.6) {
+      const h = SM.play('z.shriek', { pos, bus: 'voice', cat: 'voice', prio: 5, room: 0.45, hall: 0.25, ref: 2, p: 1 });
+      if (h) return;
+    }
     const S = spec('runner', 'groan', {
       contour: 'shriek', f0: rand(470, 640), dur: rand(0.85, 1.15), vows: ['i', 'ae', 'a'], fs: 1.15, q: 3.5, drive: 6, breath: 1.1, fryRate: rand(60, 90), fryD: 0.3, gain: 0.55, lp: 7500, att: 0.06, rel: 0.35, jit: 0.12, wob: 0.05, makeup: 2.4,
     });
@@ -205,6 +233,10 @@ export const voices = {
     vocal(h.in, h.t + 0.2, { ...S, f0: S.f0 * 2.02, gain: 0.18, drive: 8, vows: ['i', 'e', 'ae'] });
   },
   roar(pos) {
+    if (SM.has('z.roar')) { // 錄音咆哮壓低 + 合成胸腔共鳴
+      const h = SM.play('z.roar', { pos, bus: 'voice', cat: 'voice', prio: 6, room: 0.55, hall: 0.45, ref: 4, roll: 0.8, gain: 0.8, semi: -4, p: 1 });
+      if (h) { tone(h.in, h.t + 0.1, { f: 38, f1: 30, dur: 1.6, a: 0.4, g: 0.5 }); duck(0.6, 0.8); return; }
+    }
     const S = spec('brute', 'groan', {
       contour: 'roar', f0: rand(46, 56), dur: rand(1.7, 2.1), vows: ['o', 'a', 'a'], q: 4, drive: 7, sub: 1.1, breath: 0.9, fryRate: rand(28, 34), fryD: 0.55, gain: 0.85, lp: 3200, att: 0.25, rel: 0.5, makeup: 3.6,
     });
