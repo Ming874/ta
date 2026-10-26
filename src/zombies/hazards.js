@@ -91,31 +91,31 @@ export class Hazards {
     this.shots.push({ g, vel, trail, hist: [], t: 0 });
   }
 
-  pool(x, z, r = 1.25) {
+  pool(x, y, z, r = 1.25) {
     const m = new THREE.Mesh(poolGeo, new THREE.MeshBasicMaterial({ map: splatTex, transparent: true, depthWrite: false, color: 0xb0e050, opacity: 0.9, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
     m.rotation.x = -Math.PI / 2;
     m.rotation.z = Math.random() * 6.28;
-    m.position.set(x, 0.02 + Math.random() * 0.004, z);
+    m.position.set(x, y + 0.02 + Math.random() * 0.004, z);
     m.scale.setScalar(0.1);
     const glow = new THREE.Mesh(poolGeo, new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.35 }));
     glow.rotation.x = -Math.PI / 2;
-    glow.position.set(x, 0.03, z);
+    glow.position.set(x, y + 0.03, z);
     glow.scale.setScalar(r * 2.6);
     this.scene.add(m, glow);
     this.pools.push({ m, glow, r, t: 0, life: 5.5, sizzle: 0 });
   }
 
-  gas(x, z) {
+  gas(x, y, z) {
     const sprites = [];
     for (let i = 0; i < 12; i++) {
       const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex, transparent: true, depthWrite: false, color: 0x8faa30, opacity: 0 }));
       const a = Math.random() * 6.28, d = Math.random() * 1.4;
-      s.position.set(x + Math.cos(a) * d, 0.3 + Math.random() * 1.6, z + Math.sin(a) * d);
+      s.position.set(x + Math.cos(a) * d, y + 0.3 + Math.random() * 1.6, z + Math.sin(a) * d);
       s.userData = { base: 1.6 + Math.random() * 1.6, spin: (Math.random() - 0.5) * 0.6, rise: 0.05 + Math.random() * 0.15 };
       this.scene.add(s);
       sprites.push(s);
     }
-    this.clouds.push({ x, z, sprites, t: 0, life: 6, r: 2.4 });
+    this.clouds.push({ x, y, z, sprites, t: 0, life: 6, r: 2.4 });
   }
 
   flash(pos, size = 5) {
@@ -127,6 +127,7 @@ export class Hazards {
   }
 
   update(dt, player, world) {
+    this.world = world;
     const pp = player.pos;
     // 酸液彈
     for (let i = this.shots.length - 1; i >= 0; i--) {
@@ -145,7 +146,7 @@ export class Hazards {
         const at = wall ? prev : p;
         if (hitPlayer) { this.acc += 15; sfx.splash(pp); }
         else sfx.splash(at);
-        this.pool(at.x, at.z);
+        this.pool(at.x, this.world?.groundY?.(at.x, at.z, at.y) ?? 0, at.z);
         this.scene.remove(s.g, ...s.trail);
         s.g.children[1].material.dispose();
         for (const t of s.trail) t.material.dispose();
@@ -161,7 +162,7 @@ export class Hazards {
       p.m.scale.setScalar(p.r * 2 * (0.2 + 0.8 * grow));
       p.m.material.opacity = 0.9 * fade;
       p.glow.material.opacity = (0.25 + Math.sin(p.t * 7) * 0.08) * fade;
-      const inside = Math.hypot(pp.x - p.m.position.x, pp.z - p.m.position.z) < p.r * 0.85 && fade > 0.3;
+      const inside = Math.hypot(pp.x - p.m.position.x, pp.z - p.m.position.z) < p.r * 0.85 && Math.abs(pp.y - p.m.position.y) < 1 && fade > 0.3;
       if (inside) this.acc += 6 * dt;
       p.sizzle -= dt;
       if (p.sizzle <= 0) { p.sizzle = inside ? 0.6 : 1.4; sfx.sizzle(p.m.position); }
@@ -184,7 +185,7 @@ export class Hazards {
         s.material.opacity = 0.55 * a;
         s.position.y += u.rise * dt;
       }
-      if (Math.hypot(pp.x - c.x, pp.z - c.z) < c.r && a > 0.3) this.acc += 7 * dt;
+      if (Math.hypot(pp.x - c.x, pp.z - c.z) < c.r && Math.abs(pp.y - c.y) < 2.5 && a > 0.3) this.acc += 7 * dt;
       if (c.t >= c.life) {
         for (const s of c.sprites) { this.scene.remove(s); s.material.dispose(); }
         this.clouds.splice(i, 1);

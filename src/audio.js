@@ -64,5 +64,17 @@ export const sfx = {
   ambient: safe(() => startMusic()),
 };
 
+// ---- 新增的音效介面(由音效模組逐步實作;在那之前是安全的空函式,其他系統可直接呼叫) ----
+// pos 一律為 {x, y, z} 世界座標;surface 為 'tile'|'concrete'|'metal'|'wood'|'carpet'|'grass'|'gravel'|'asphalt'|'water'
+const STUBS = [
+  'adsIn', 'adsOut', 'grenadeThrow', 'grenadeBounce' /* (pos) */, 'explosion' /* (pos, size 0..1) */, 'knifeSwing', 'knifeHit' /* (pos, flesh) */,
+  'pickupAmmo', 'pickupMed', 'pickupDeny', 'pickupItem', 'armorHit', 'armorEquip', 'heal', 'lowAmmo',
+  'shopOpen', 'shopClose', 'shopTab', 'shopHover', 'upgrade', 'cashRegister', 'shutter' /* (pos, open) */,
+  'door' /* (pos, kind 'creak'|'slam'|'metal') */, 'scare' /* (kind, pos) */, 'setZone' /* (zoneId, mood) */,
+  'loopStart' /* (key, kind, pos) */, 'loopStop' /* (key) */, 'uiClick', 'uiHover', 'countdown' /* (n) */,
+  'playerJoin', 'playerLeave', 'chat', 'revive', 'downed', 'killConfirm', 'remoteShot' /* (id, pos) */, 'remoteStep' /* (pos, surface) */,
+];
+for (const k of STUBS) if (!sfx[k]) sfx[k] = () => {};
+
 // 除錯/測試用(OfflineAudioContext 量測)
 export const _internal = { A, attach, foley, voices, startMusic };

@@ -19,15 +19,15 @@ export class Coins {
   get total() { return this.piles.reduce((s, p) => s + p.count, 0); }
 
   // 在(x,z)掉落 n 枚;附近已有金幣堆就疊上去,不新增堆
-  drop(x, z, n = 5) {
+  drop(x, y, z, n = 5) {
     for (const p of this.piles) {
-      if (!p.flying && Math.hypot(p.group.position.x - x, p.group.position.z - z) < 0.45) {
+      if (!p.flying && Math.hypot(p.group.position.x - x, p.group.position.z - z) < 0.45 && Math.abs(p.group.position.y - y) < 1) {
         this._add(p, n);
         return p;
       }
     }
     const group = new THREE.Group();
-    group.position.set(x, 0, z);
+    group.position.set(x, y, z);
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.55 }));
     glow.scale.set(0.7, 0.7, 1);
     glow.position.y = 0.12;

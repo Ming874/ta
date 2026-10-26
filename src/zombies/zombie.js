@@ -38,7 +38,8 @@ function makeBar(wide) {
 }
 
 export class Zombie {
-  constructor(scene, x, z, round, type = 'walker') {
+  // pos = {x, y, z}:出生點(y 為地面高度)
+  constructor(scene, pos, round, type = 'walker') {
     const T = TYPES[type];
     this.type = type;
     this.T = T;
@@ -47,7 +48,7 @@ export class Zombie {
     this.hp = this.maxHp;
     this.alive = true;
     this.dying = 0;
-    this.pos = new THREE.Vector3(x, 0, z);
+    this.pos = new THREE.Vector3(pos.x, pos.y || 0, pos.z);
     this.vel = new THREE.Vector3();
     this.speed = lerp(T.speed[0], T.speed[1], Math.random()) * (type === 'brute' ? 1 : 1 + Math.min(0.3, (round - 1) * 0.02));
     this.heading = Math.random() * TAU;
@@ -101,7 +102,7 @@ export class Zombie {
     this.hipY = this.b.hips.position.y;
     this.mouthOff = v.mouth.clone().sub(v.rig.bones[v.rig.index.head].head);
     this.headH = v.rig.HC.y * this.k;
-    this.vp = { x, y: type === 'crawler' ? 0.4 : this.headH, z };
+    this.vp = { x: pos.x, y: (pos.y || 0) + (type === 'crawler' ? 0.4 : this.headH), z: pos.z };
 
     this.root = new THREE.Group();
     this.root.rotation.order = 'YXZ';
@@ -127,6 +128,23 @@ export class Zombie {
     ctx.fillStyle = 'rgba(255,255,255,0.2)';
     ctx.fillRect(2, 2, 124 * f, 4);
     tex.needsUpdate = true;
+  }
+
+  // 多人時追最近、活著且未倒地的玩家;對目前目標有黏著性,避免來回切換。單人只有自己
+  pickTarget(ctx) {
+    const list = ctx.players;
+    if (!list || list.length < 2) return ctx.player;
+    const dist = (p) => Math.hypot(p.pos.x - this.pos.x, p.pos.z - this.pos.z) + Math.abs(p.pos.y - this.pos.y) * 3;
+    const ok = (p) => p && p.alive !== false && !p.downed;
+    let best = ok(this.target) ? this.target : null, bd = best ? dist(best) * 0.75 : Infinity;
+    for (const p of list) if (ok(p) && dist(p) < bd) { bd = dist(p); best = p; }
+    return best || ctx.player;
+  }
+  // 鏡頭震動只作用在本機玩家,依與本機玩家的距離衰減
+  _shakeLocal(ctx, a, range) {
+    const lp = ctx.player;
+    const d = Math.hypot(lp.pos.x - this.pos.x, lp.pos.z - this.pos.z) + Math.abs(lp.pos.y - this.pos.y) * 2;
+    lp.addShake(a * Math.max(0, 1 - d / range));
   }
 
   go(s) {
@@ -178,19 +196,20 @@ export class Zombie {
   update(dt, ctx) {
     this.t += dt;
     if (!this.alive) { this._dead(dt, ctx); return 0; }
-    const { player, world, zombies } = ctx;
+    const { world, zombies } = ctx;
+    const player = (this.target = this.pickTarget(ctx));
     const toX = player.pos.x - this.pos.x, toZ = player.pos.z - this.pos.z;
     const dist = Math.hypot(toX, toZ) || 1e-3;
     this.dist = dist;
     this.losT -= dt;
     if (this.losT <= 0) {
       this.losT = 0.15 + Math.random() * 0.1;
-      this.los = dist < 18 && world.hasLineOfSight(this.pos.x, this.pos.z, player.pos.x, player.pos.z);
+      this.los = dist < 18 && world.hasLineOfSight(this.pos.x, this.pos.y + 1.4, this.pos.z, player.pos.x, player.pos.y + 1.4, player.pos.z);
     }
     const w = this.want;
     if (dist < 4 && this.los) { w.x = toX / dist; w.z = toZ / dist; }
     else {
-      const f = world.flowDir(this.pos.x, this.pos.z, this._dir || (this._dir = { x: 0, z: 0 }));
+      const f = world.flowDir(this.pos.x, this.pos.y, this.pos.z, this._dir || (this._dir = { x: 0, z: 0 }));
       if (f) { w.x = f.x; w.z = f.z; } else { w.x = toX / dist; w.z = toZ / dist; }
     }
     w.speed = this.speed;
@@ -255,6 +274,7 @@ export class Zombie {
 
     // ---- 叫聲 ----
     this.vp.x = this.pos.x;
+    this.vp.y = this.pos.y + (this.type === 'crawler' ? 0.4 : this.headH);
     this.vp.z = this.pos.z;
     this.groanT -= dt;
     if (this.groanT <= 0) {
@@ -285,7 +305,7 @@ export class Zombie {
         break;
       case 'attack':
         w.speed = dist > T.reach * 0.8 ? this.speed * 0.4 : 0;
-        if (this.cross(0.58) && dist < T.reach + 0.4) { dealt = T.dmg; say('bite', ctx.player.pos); }
+        if (this.cross(0.58) && dist < T.reach + 0.4) { dealt = T.dmg; say('bite', this.target.pos); }
         if (this.st > 1.1) { this.go('chase'); this.attackCd = T.cd - 1.1; }
         break;
       case 'stagger':
@@ -298,7 +318,7 @@ export class Zombie {
   }
 
   _think_runner(dt, ctx, dist, toX, toZ, w) {
-    const T = this.T, L = T.lunge, p = ctx.player;
+    const T = this.T, L = T.lunge, p = this.target;
     let dealt = 0;
     if (!this.spotted && this.los && dist < 15) { this.spotted = true; say('shriek', this.vp); this.jawT = 1; }
     switch (this.state) {
@@ -330,8 +350,7 @@ export class Zombie {
         if (!this.leap.hit && dist < 0.95) {
           this.leap.hit = true;
           dealt = L.dmg;
-          p.vx = (p.vx || 0) + this.leap.x * 5;
-          p.vz = (p.vz || 0) + this.leap.z * 5;
+          p.knock(this.leap.x * 5, this.leap.z * 5);
           say('bite', p.pos);
         }
         if (this.st > 0.46) { this.rootY = 0; this.go('recover'); }
@@ -374,7 +393,7 @@ export class Zombie {
       case 'attack':
         w.speed = 0;
         w.face = Math.atan2(toX, toZ);
-        if (this.cross(0.48) && dist < T.reach + 0.3) { dealt = T.dmg; say('bite', ctx.player.pos); }
+        if (this.cross(0.48) && dist < T.reach + 0.3) { dealt = T.dmg; say('bite', this.target.pos); }
         if (this.st > 0.95) { this.go('chase'); this.attackCd = T.cd - 0.95; }
         break;
       default: this.go('chase');
@@ -383,7 +402,7 @@ export class Zombie {
   }
 
   _think_bloater(dt, ctx, dist, toX, toZ, w) {
-    const T = this.T, S = T.spit, p = ctx.player;
+    const T = this.T, S = T.spit, p = this.target;
     let dealt = 0;
     switch (this.state) {
       case 'chase':
@@ -398,7 +417,7 @@ export class Zombie {
           this.b.head.updateWorldMatrix(true, false);
           const from = this.b.head.localToWorld(this.mouthOff.clone());
           const lead = Math.min(1.2, dist / 11);
-          ctx.hazards.spit(from, new THREE.Vector3(p.pos.x + (p.vx || 0) * lead * 0.6, 0.9, p.pos.z + (p.vz || 0) * lead * 0.6));
+          ctx.hazards.spit(from, new THREE.Vector3(p.pos.x + (p.vx || 0) * lead * 0.6, p.pos.y + 0.9, p.pos.z + (p.vz || 0) * lead * 0.6));
           say('spit', this.vp);
         }
         if (this.st > 1.3) { this.go('chase'); this.specialCd = lerp(S.cd[0], S.cd[1], Math.random()); }
@@ -415,9 +434,9 @@ export class Zombie {
   }
 
   _think_brute(dt, ctx, dist, toX, toZ, w) {
-    const T = this.T, C = T.charge, p = ctx.player;
+    const T = this.T, C = T.charge, p = this.target;
     let dealt = 0;
-    const shake = (a, range) => { p.shake = Math.max(p.shake, a * Math.max(0, 1 - dist / range)); };
+    const shake = (a, range) => this._shakeLocal(ctx, a, range);
     switch (this.state) {
       case 'chase':
         if (this.los && dist > C.min && dist < C.max && this.specialCd <= 0) { this.go('roar'); say('roar', this.vp); this.jawT = 0; }
@@ -437,9 +456,8 @@ export class Zombie {
         if (!this.charge.hit && dist < T.radius + 0.65) {
           this.charge.hit = true;
           dealt = C.dmg;
-          p.vx = (p.vx || 0) + this.charge.x * 11;
-          p.vz = (p.vz || 0) + this.charge.z * 11;
-          p.shake = Math.max(p.shake, 0.6);
+          p.knock(this.charge.x * 11, this.charge.z * 11);
+          p.addShake(0.6);
           say('knock');
           this.go('recover');
         } else if (this.blocked && this.st > 0.3) {
@@ -674,7 +692,7 @@ export class Zombie {
   }
 
   _pose_brute(dt, ctx, dist, toX, toZ) {
-    const b = this.b, sp = this.speedNow, st = this.st, S = this.state, p = ctx.player;
+    const b = this.b, sp = this.speedNow, st = this.st, S = this.state;
     const charging = S === 'charge';
     const f = Math.min(1, sp / (charging ? 6 : 1.1));
     const amp = charging ? 0.7 * f + 0.05 : 0.28 * f + 0.02;
@@ -691,7 +709,7 @@ export class Zombie {
     const n = Math.floor((ph + Math.PI / 2) / Math.PI);
     if (n !== this.stepN) {
       this.stepN = n;
-      if (f > 0.3) { say('stomp', this.vp); p.shake = Math.max(p.shake, (charging ? 0.25 : 0.14) * Math.max(0, 1 - this.dist / 12)); }
+      if (f > 0.3) { say('stomp', this.vp); this._shakeLocal(ctx, charging ? 0.25 : 0.14, 12); }
     }
     b.hips.rotation.z = Math.sin(ph) * 0.08 * f;
     b.hips.rotation.y = Math.sin(ph) * 0.12 * f;
@@ -733,7 +751,7 @@ export class Zombie {
   }
 
   _applyRoot() {
-    this.root.position.set(this.pos.x, this.rootY, this.pos.z);
+    this.root.position.set(this.pos.x, this.pos.y + this.rootY, this.pos.z);
     this.root.rotation.set(this.rootPitch, this.heading, this.rootRoll);
   }
 
@@ -748,7 +766,7 @@ export class Zombie {
     const R = (bone, x, y, z, k = sm) => { const r = b[bone].rotation; r.x += (x - r.x) * k; r.y += (y - r.y) * k; r.z += (z - r.z) * k; };
     const fall = (t0, t1) => {
       const u = clamp((t - t0) / (t1 - t0), 0, 1);
-      if (u >= 1 && !this.landed) { this.landed = true; say('thud', this.vp, this.type === 'brute'); if (this.type === 'brute') ctx.player.shake = Math.max(ctx.player.shake, 0.35 * Math.max(0, 1 - this.dist / 12)); }
+      if (u >= 1 && !this.landed) { this.landed = true; say('thud', this.vp, this.type === 'brute'); if (this.type === 'brute') this._shakeLocal(ctx, 0.35, 12); }
       return u < 1 ? u * u : 1 - Math.exp(-(t - t1) * 9) * Math.sin((t - t1) * 22) * 0.05;
     };
     const limpLegs = (kn) => { for (const L of ['L', 'R']) { R('thigh' + L, -0.15, 0, 0); R('shin' + L, kn, 0, 0); R('foot' + L, 0.4, 0, 0); } };

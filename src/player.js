@@ -12,9 +12,21 @@ export class Player {
     this.yaw = 0; // 朝北(往醫院深處,-Z)
     this.pitch = 0;
     this.keys = {};
+    this.id = 'local';
+    this.name = '';
+    this.alive = true;
+    this.downed = false; // 多人合作:倒地等待救援
     this.hp = 100;
     this.maxHp = 100;
+    this.armor = 0; // 防彈背心耐久;受傷時吸收 60% 傷害直到耗盡
+    this.maxArmor = 0;
     this.coins = 0;
+    this.grenades = 0;
+    this.medkits = 0;
+    this.speedMul = 1; // 開鏡/負重等造成的移動速度倍率
+    this.sensMul = 1; // 開鏡時的滑鼠靈敏度倍率
+    this.surface = 'tile'; // 腳下地面材質(腳步聲)
+    this.lastHurtFrom = null; // 最近一次傷害來源位置 {x,z}(受傷方向指示)
     this.speedNorm = 0;
     this.sprinting = false;
     this.bobT = 0;
@@ -46,8 +58,8 @@ export class Player {
   }
 
   look(dx, dy) {
-    this.yaw -= dx * 0.0022;
-    this.pitch -= dy * 0.0022;
+    this.yaw -= dx * 0.0022 * this.sensMul;
+    this.pitch -= dy * 0.0022 * this.sensMul;
     this.pitch = Math.max(-1.45, Math.min(1.45, this.pitch));
   }
 
@@ -57,11 +69,30 @@ export class Player {
     this.yaw += (Math.random() - 0.5) * yawRand;
   }
 
-  hurt(amount, t) {
-    this.hp = Math.max(0, this.hp - amount);
-    this.shake = 0.35;
+  // src:傷害來源位置(可省略);回傳實際扣的生命值
+  hurt(amount, t, src = null) {
+    let dmg = amount;
+    if (this.armor > 0) {
+      const absorbed = Math.min(this.armor, amount * 0.6);
+      this.armor -= absorbed;
+      dmg -= absorbed;
+      sfx.armorHit();
+    }
+    this.hp = Math.max(0, this.hp - dmg);
+    this.shake = Math.max(this.shake, 0.35);
     this.lastHurt = t;
+    if (src) this.lastHurtFrom = { x: src.x, z: src.z };
     sfx.hurt();
+    return dmg;
+  }
+
+  knock(dx, dz) {
+    this.vx = (this.vx || 0) + dx;
+    this.vz = (this.vz || 0) + dz;
+  }
+
+  addShake(a) {
+    this.shake = Math.max(this.shake, a);
   }
 
   update(dt, canMove) {
@@ -75,7 +106,7 @@ export class Player {
     const len = Math.hypot(fx, fz);
     if (len > 0) { fx /= len; fz /= len; }
     this.sprinting = !!(this.keys.ShiftLeft || this.keys.ShiftRight) && fz < 0 && canMove;
-    const speed = this.sprinting ? 5.4 : 3.3;
+    const speed = (this.sprinting ? 5.4 : 3.3) * this.speedMul;
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
     const wx = fx * cos + fz * sin;
     const wz = -fx * sin + fz * cos;
@@ -91,7 +122,10 @@ export class Player {
     this.bobT += dt * sp * 1.9;
     const prev = this.stepT;
     this.stepT = Math.floor(this.bobT / Math.PI);
-    if (this.stepT !== prev && sp > 1) sfx.step(this.sprinting);
+    if (this.stepT !== prev && sp > 1) {
+      this.surface = this.world.surfaceAt ? this.world.surfaceAt(this.pos.x, this.pos.y, this.pos.z) : 'tile';
+      sfx.step(this.sprinting, this.surface);
+    }
 
     // 後座力回復
     const rec = this.recoilBank * Math.min(1, dt * 5);
@@ -102,7 +136,7 @@ export class Player {
     const bobY = Math.sin(this.bobT * 2) * 0.035 * this.speedNorm;
     const bobX = Math.cos(this.bobT) * 0.025 * this.speedNorm;
     const sh = this.shake * (Math.random() - 0.5) * 0.08;
-    this.camera.position.set(this.pos.x + bobX * cos, EYE + bobY + sh, this.pos.z - bobX * sin);
+    this.camera.position.set(this.pos.x + bobX * cos, this.pos.y + EYE + bobY + sh, this.pos.z - bobX * sin);
     this.camera.rotation.order = 'YXZ';
     this.camera.rotation.set(this.pitch + sh, this.yaw, 0);
   }

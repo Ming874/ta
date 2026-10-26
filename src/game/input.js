@@ -1,0 +1,75 @@
+import { ORDER } from '../weapons/weapon.js';
+import { resume as resumeAudio } from '../audio.js';
+
+// 鍵盤/滑鼠/指標鎖定與選單按鈕。以 mixin 方式掛到 Game 上
+export const inputMethods = {
+  bindInput() {
+    const canvas = this.canvas;
+    document.addEventListener('pointerlockchange', () => {
+      const locked = document.pointerLockElement === canvas;
+      if (!locked && this.state === 'playing' && !this.shopUIOpen) {
+        this.paused = true;
+        this.ui.overlay('pause', true);
+      }
+      if (locked) {
+        this.paused = false;
+        this.ui.overlay('pause', false);
+        this.ui.overlay('menu', false);
+      }
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (document.pointerLockElement !== canvas || this.state !== 'playing') return;
+      this.player.look(e.movementX, e.movementY);
+      this.look.x += e.movementX;
+      this.look.y += e.movementY;
+    });
+    document.addEventListener('mousedown', (e) => {
+      if (document.pointerLockElement !== canvas || e.button !== 0) return;
+      this.input.fireHeld = true;
+      this.input.firePressed = true;
+    });
+    document.addEventListener('mouseup', (e) => { if (e.button === 0) this.input.fireHeld = false; });
+    document.addEventListener('wheel', (e) => {
+      if (this.state === 'playing' && !this.paused && !this.shopUIOpen) this.weapons.cycle(e.deltaY > 0 ? 1 : -1);
+    });
+    document.addEventListener('keydown', (e) => {
+      this.player.keys[e.code] = true;
+      if (this.state !== 'playing') return;
+      if (e.code === 'KeyE' && this.phase === 'shop' && this.shop) {
+        if (this.shopUIOpen) this.closeShop();
+        else if (this.shop.near(this.player)) this.openShop();
+      }
+      if (e.code === 'Escape' && this.shopUIOpen) this.closeShop(false), this.ui.overlay('pause', true), (this.paused = true);
+      if (this.paused || this.shopUIOpen) {
+        if (e.code === 'KeyN' && this.phase === 'shop') this.nextRound();
+        return;
+      }
+      if (e.code === 'KeyR') this.weapons.startReload();
+      if (e.code === 'KeyF') this.player.toggleFlashlight();
+      if (e.code === 'KeyN' && (this.phase === 'shop' || this.phase === 'break')) this.nextRound();
+      const m = /^Digit([1-9])$/.exec(e.code);
+      if (m) {
+        const id = ORDER[Number(m[1]) - 1];
+        if (id && this.weapons.has(id)) this.weapons.switchTo(id);
+      }
+    });
+    document.addEventListener('keyup', (e) => { this.player.keys[e.code] = false; });
+    window.addEventListener('blur', () => { this.player.keys = {}; this.input.fireHeld = false; });
+
+    const lock = () => { resumeAudio(); canvas.requestPointerLock(); };
+    document.getElementById('startBtn').onclick = () => {
+      document.getElementById('menu').classList.remove('on');
+      this.ui.showHud(true);
+      this.begin();
+      lock();
+    };
+    document.getElementById('resumeBtn').onclick = lock;
+    document.getElementById('pause').onclick = lock;
+    document.getElementById('restartBtn').onclick = () => {
+      this.ui.overlay('dead', false);
+      this.begin();
+      lock();
+    };
+    document.getElementById('shopNext').onclick = () => this.nextRound();
+  },
+};

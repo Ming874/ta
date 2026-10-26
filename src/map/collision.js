@@ -9,8 +9,12 @@ export class World {
     this.w = L.w;
     this.h = L.h;
     this.solid = L.solid;
-    this.spawns = L.spawns;
-    this.start = L.start;
+    this.spawns = L.spawns.map((s) => ({ ...s, y: 0, level: 0 }));
+    this.start = { ...L.start, y: 0, yaw: 0, level: 0 };
+    // 舊單層地圖的相容欄位(新多樓層 World 會依 levels.js 提供真正的值)
+    this.shop = { x: 30, y: 0, z: 49.2, yaw: Math.PI, level: 0, stand: { x: 30, z: 47.4 } };
+    this.supplies = [];
+    this.layout = null;
     this.sizeX = this.w * CELL;
     this.sizeZ = this.h * CELL;
     this.boxes = []; // 道具 AABB {minX,maxX,minZ,maxZ,height}
@@ -27,8 +31,8 @@ export class World {
     return this.solid[r * this.w + c] === 1;
   }
 
-  addBox(cx, cz, sx, sz, height = 1) {
-    const b = { minX: cx - sx / 2, maxX: cx + sx / 2, minZ: cz - sz / 2, maxZ: cz + sz / 2, height };
+  addBox(cx, cz, sx, sz, height = 1, y0 = 0) {
+    const b = { minX: cx - sx / 2, maxX: cx + sx / 2, minZ: cz - sz / 2, maxZ: cz + sz / 2, height, y0 };
     this.boxes.push(b);
     return b;
   }
@@ -108,7 +112,14 @@ export class World {
     return best;
   }
 
-  hasLineOfSight(ax, az, bx, bz) {
+  // 單層地面高度與材質(多樓層 World 會實作真正的版本)
+  groundY() { return 0; }
+  surfaceAt() { return 'tile'; }
+  levelAt() { return 0; }
+
+  // 新簽名 (ax, ay, az, bx, by, bz);舊的 4 參數呼叫仍相容
+  hasLineOfSight(ax, ay, az, bx, by, bz) {
+    if (by === undefined) [az, bx, bz] = [ay, az, bx];
     const dx = bx - ax, dz = bz - az;
     const d = Math.hypot(dx, dz);
     if (d < 0.01) return true;
@@ -147,18 +158,18 @@ export class World {
   }
 
   // 以玩家位置為中心做 BFS;位置沒變(同一導航格)則略過
-  updateFlow(px, pz) {
+  // targets:[{x,y,z}, ...](多人時每位玩家都是 BFS 起點,殭屍會走向最近的玩家);舊的 (px, pz) 仍相容
+  updateFlow(targets, pz) {
+    if (!Array.isArray(targets)) targets = [{ x: targets, z: pz }];
     const { fw, fh } = this;
-    const gi = Math.max(0, Math.min(fw - 1, Math.floor(px / FINE)));
-    const gj = Math.max(0, Math.min(fh - 1, Math.floor(pz / FINE)));
-    const goal = gj * fw + gi;
-    if (goal === this.lastGoal) return;
-    this.lastGoal = goal;
+    const goals = targets.map((t) => Math.max(0, Math.min(fh - 1, Math.floor(t.z / FINE))) * fw + Math.max(0, Math.min(fw - 1, Math.floor(t.x / FINE))));
+    const key = goals.join(',');
+    if (key === this.lastGoal) return;
+    this.lastGoal = key;
     this.dist.fill(-1);
     const q = this.queue;
     let head = 0, tail = 0;
-    this.dist[goal] = 0;
-    q[tail++] = goal;
+    for (const goal of goals) if (this.dist[goal] !== 0) { this.dist[goal] = 0; q[tail++] = goal; }
     const { dist, blocked } = this;
     while (head < tail) {
       const cur = q[head++];
@@ -172,7 +183,18 @@ export class World {
   }
 
   // 回傳從(x,z)前往玩家的方向(單位向量),找不到路時回傳 null
-  flowDir(x, z, out) {
+  // 沿導航路徑到最近玩家的距離(公尺),不可達回傳 Infinity
+  flowDistance(x, y, z) {
+    if (z === undefined) z = y;
+    const i = Math.max(0, Math.min(this.fw - 1, Math.floor(x / FINE)));
+    const j = Math.max(0, Math.min(this.fh - 1, Math.floor(z / FINE)));
+    const d = this.dist[j * this.fw + i];
+    return d < 0 ? Infinity : d * FINE;
+  }
+
+  // 新簽名 (x, y, z, out);舊的 (x, z, out) 仍相容
+  flowDir(x, y, z, out) {
+    if (typeof z === 'object') [z, out] = [y, z];
     const { fw, fh, dist, blocked } = this;
     const i = Math.max(0, Math.min(fw - 1, Math.floor(x / FINE)));
     const j = Math.max(0, Math.min(fh - 1, Math.floor(z / FINE)));
