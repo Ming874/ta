@@ -41,6 +41,31 @@ export class UI {
     this.gainTimer = setTimeout(() => { el.style.opacity = 0; this._gain = 0; }, 1400);
   }
 
+  // 撿到掉落物的浮動文字;o = { sub: 第二行, icon: 'ammo' | 'med', panel: 'ammo' | 'health'(同時閃一下對應 HUD) }
+  pickup(text, color = '#ffc35a', o = {}) {
+    const box = $('pickfeed');
+    const el = document.createElement('div');
+    el.className = 'pk';
+    el.style.color = color;
+    if (o.icon) el.innerHTML = `<i class="ic ${o.icon}"></i>`;
+    el.append(text);
+    if (o.sub) {
+      const s = document.createElement('small');
+      s.textContent = o.sub;
+      el.appendChild(s);
+    }
+    box.appendChild(el);
+    while (box.children.length > 4) box.firstChild.remove();
+    setTimeout(() => el.remove(), 2100);
+    const pn = o.panel && $(o.panel);
+    if (pn) {
+      pn.style.setProperty('--flash', color);
+      pn.classList.remove('flash');
+      void pn.offsetWidth; // 重新觸發動畫
+      pn.classList.add('flash');
+    }
+  }
+
   setRound(n) { $('round').textContent = n; }
   setZombies(n) { $('zleft').textContent = n; }
 

@@ -39,6 +39,21 @@
   #banner { position: absolute; left: 0; right: 0; top: 24%; text-align: center; font-size: 54px; letter-spacing: 12px; font-weight: 700; color: #cfd3c8; text-shadow: 0 2px 12px #000; opacity: 0; transition: opacity .6s; }
   #banner small { display: block; font-size: 20px; letter-spacing: 4px; margin-top: 12px; opacity: .85; }
   #prompt { position: absolute; left: 50%; bottom: 20%; transform: translateX(-50%); font-size: 20px; text-shadow: 0 1px 4px #000; background: rgba(0,0,0,.45); padding: 8px 18px; border: 1px solid rgba(255,255,255,.25); display: none; }
+  #pickfeed { position: absolute; left: 50%; bottom: 29%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  #pickfeed .pk { font-size: 24px; font-weight: 700; letter-spacing: 3px; white-space: nowrap; text-align: center; text-shadow: 0 1px 3px #000, 0 0 14px rgba(0,0,0,.9); animation: pkfloat 2s ease-out forwards; }
+  #pickfeed .pk small { display: block; font-size: 14px; letter-spacing: 1px; margin-top: 1px; opacity: .8; }
+  #pickfeed .ic { display: inline-block; position: relative; width: 16px; height: 16px; margin-right: 9px; vertical-align: -1px; filter: drop-shadow(0 0 4px currentColor); }
+  #pickfeed .ic.med::before, #pickfeed .ic.med::after { content: ""; position: absolute; background: currentColor; left: 5px; top: 0; width: 6px; height: 16px; border-radius: 1px; }
+  #pickfeed .ic.med::after { left: 0; top: 5px; width: 16px; height: 6px; }
+  #pickfeed .ic.ammo::before, #pickfeed .ic.ammo::after { content: ""; position: absolute; bottom: 0; width: 5px; height: 15px; background: currentColor; border-radius: 3px 3px 1px 1px; }
+  #pickfeed .ic.ammo::before { left: 1px; }
+  #pickfeed .ic.ammo::after { left: 9px; }
+  @keyframes pkfloat { 0% { opacity: 0; transform: translateY(16px) scale(.9); } 10% { opacity: 1; transform: translateY(0) scale(1.06); } 18% { transform: scale(1); } 72% { opacity: 1; } 100% { opacity: 0; transform: translateY(-40px); } }
+  #ammo.flash .count { animation: hudflash .7s ease-out; transform-origin: right bottom; }
+  #health.flash .num { animation: hudflash .7s ease-out; transform-origin: left bottom; }
+  #health.flash .fill { animation: barflash .7s ease-out; }
+  @keyframes hudflash { 0% { color: var(--flash); transform: scale(1.18); text-shadow: 0 0 16px var(--flash), 0 1px 3px #000; } 100% { transform: scale(1); } }
+  @keyframes barflash { 0% { filter: brightness(2.2) saturate(.6); box-shadow: 0 0 12px var(--flash); } 100% { filter: none; box-shadow: none; } }
   .overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; text-align: center; background: rgba(0,0,0,.72); z-index: 10; }
   .overlay.on { display: flex; }
   .overlay h1 { font-size: 56px; letter-spacing: 10px; margin: 0 0 8px; font-weight: 700; color: #cfd3c8; }
@@ -73,6 +88,7 @@
   <div class="panel" id="roundinfo"><div class="r">第 <span id="round">1</span> 回合</div><div class="z">殭屍剩餘 <span id="zleft">0</span></div></div>
   <div id="banner"></div>
   <div id="prompt"></div>
+  <div id="pickfeed"></div>
 </div>
 
 <div class="overlay on" id="menu">
