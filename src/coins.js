@@ -13,6 +13,8 @@ export class Coins {
     this.piles = [];
     this.collecting = false;
     this.onGain = null; // (amount, pile) => void
+    this.player = null; // 由 Game 設定(收集時判斷樓層與視線)
+    this.world = null;
     this.pendingDone = null;
   }
 
@@ -57,14 +59,20 @@ export class Coins {
     }
   }
 
-  // 回合結束:所有金幣堆飛向玩家並加進庫存
-  collectAll() {
+  // 回合結束:所有金幣堆飛向玩家並加進庫存。
+  // 與玩家同一層且看得到的金幣堆飛過來;隔樓層/隔牆的就地閃光消失(不會穿過樓板飛)
+  collectAll(player = this.player, world = this.world) {
     this.collecting = true;
     this.piles.forEach((p, i) => {
       p.flying = true;
       p.t = 0;
       p.delay = i * 0.05;
       p.from.copy(p.group.position);
+      p.vanish = false;
+      if (player && world && world.hasLineOfSight) {
+        const q = p.group.position, pp = player.pos;
+        p.vanish = Math.abs(q.y - pp.y) > 1.5 || Math.hypot(q.x - pp.x, q.z - pp.z) > 40 || !world.hasLineOfSight(q.x, q.y + 0.3, q.z, pp.x, pp.y + 1.2, pp.z);
+      }
     });
     if (!this.piles.length) this.collecting = false;
   }
@@ -79,12 +87,19 @@ export class Coins {
       p.t += dt / 0.8;
       const e = Math.min(1, p.t);
       const k = e * e * (3 - 2 * e);
-      const tx = player.pos.x, tz = player.pos.z, ty = 1.2;
-      p.group.position.x = p.from.x + (tx - p.from.x) * k;
-      p.group.position.z = p.from.z + (tz - p.from.z) * k;
-      p.group.position.y = p.from.y + (ty - p.from.y) * k + Math.sin(e * Math.PI) * 0.8;
-      p.group.rotation.y += dt * 14;
-      p.group.scale.setScalar(1 - 0.5 * k);
+      if (p.vanish) { // 就地升起、旋轉、縮小
+        p.group.position.y = p.from.y + k * 0.9;
+        p.group.rotation.y += dt * 18;
+        p.group.scale.setScalar(Math.max(0.01, 1 - k));
+        p.glow.material.opacity = 0.9 * (1 - k * 0.6);
+      } else {
+        const tx = player.pos.x, tz = player.pos.z, ty = player.pos.y + 1.2;
+        p.group.position.x = p.from.x + (tx - p.from.x) * k;
+        p.group.position.z = p.from.z + (tz - p.from.z) * k;
+        p.group.position.y = p.from.y + (ty - p.from.y) * k + Math.sin(e * Math.PI) * 0.8;
+        p.group.rotation.y += dt * 14;
+        p.group.scale.setScalar(1 - 0.5 * k);
+      }
       if (p.t >= 1) {
         sfx.coin(i);
         if (this.onGain) this.onGain(p.count, p);

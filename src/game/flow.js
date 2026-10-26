@@ -20,10 +20,8 @@ export const flowMethods = {
     p.grenades = 0;
     p.medkits = 0;
     p.coins = 0;
-    p.pos.set(st.x, st.y || 0, st.z);
-    p.yaw = st.yaw || 0;
-    p.pitch = 0;
-    p.vx = p.vz = 0;
+    if (p.place) p.place(st.x, st.y || 0, st.z, st.yaw || 0); // 位置 + 清掉速度/跳躍/蹲姿
+    else { p.pos.set(st.x, st.y || 0, st.z); p.yaw = st.yaw || 0; p.pitch = 0; p.vx = p.vz = 0; }
     // 重新給武器(只剩手槍)
     this.weapons.inv = {};
     this.weapons.give('pistol');
@@ -77,7 +75,7 @@ export const flowMethods = {
       const ed = Math.min(...players.map((p) => Math.hypot(s.x - p.pos.x, s.z - p.pos.z) + Math.abs((s.y || 0) - p.pos.y) * 2));
       const fdRaw = w.flowDistance ? w.flowDistance(s.x, s.y || 0, s.z) : Infinity;
       const fd = Number.isFinite(fdRaw) ? fdRaw : ed;
-      const seen = players.some((p) => Math.abs((s.y || 0) - p.pos.y) < 2.5 && w.hasLineOfSight(s.x, (s.y || 0) + 1.5, s.z, p.pos.x, p.pos.y + 1.6, p.pos.z));
+      const seen = players.some((p) => w.hasLineOfSight(s.x, (s.y || 0) + 1.5, s.z, p.pos.x, p.pos.y + 1.6, p.pos.z)); // 3D 視線(挑空/樓梯開口也算)
       return { s, ed, fd, seen, reach: Number.isFinite(fdRaw) };
     });
     const tiers = [
