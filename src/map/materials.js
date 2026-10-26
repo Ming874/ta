@@ -53,6 +53,13 @@ export function mat(key) {
   return m;
 }
 export const MAT_KEYS = Object.keys(DEF);
+// 各模組可在 import 時註冊額外材質鍵(避免多人同時改這個檔案):registerMat('fabric_pink', [0xc89aa0, 1])
+// 也可直接傳入現成的 THREE.Material
+export function registerMat(key, def) {
+  if (def && def.isMaterial) { def.name = key; cache.set(key, def); return def; }
+  if (!DEF[key]) DEF[key] = def;
+  return mat(key);
+}
 // 由場景代理在載入 PBR 貼圖後覆寫特定鍵的材質(保留同一個實例,已建好的網格自動更新)
 export function upgradeMat(key, props) {
   const m = mat(key);
