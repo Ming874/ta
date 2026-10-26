@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { casingGeo, shellGeos } from './models.js';
+import { casingGeo, shellGeos, ENV_MAP } from './models.js';
 
 // 武器特效(全部物件池 / InstancedMesh,更新時零配置):
 //   Debris  受光照的碎屑/血滴/木屑/磁磚碎片/玻璃碎片(InstancedMesh + instanceColor)
@@ -20,6 +20,8 @@ function canvas(w, h) {
 }
 let rs = 1234;
 const rnd = () => ((rs = (rs * 16807) % 2147483647) / 2147483647);
+
+const copy3 = (A, i, j) => { A[i] = A[j]; A[i + 1] = A[j + 1]; A[i + 2] = A[j + 2]; };
 
 // 地面高度查詢(多樓層 World 的 groundY,沒有時用 fallback)
 function floorAt(world, x, y, z, fb) {
@@ -66,7 +68,7 @@ class Debris {
     const j = --this.n;
     if (i === j) return;
     const i3 = i * 3, j3 = j * 3;
-    for (const A of [this.P, this.V, this.S, this.R, this.W, this.C]) { A[i3] = A[j3]; A[i3 + 1] = A[j3 + 1]; A[i3 + 2] = A[j3 + 2]; }
+    copy3(this.P, i3, j3); copy3(this.V, i3, j3); copy3(this.S, i3, j3); copy3(this.R, i3, j3); copy3(this.W, i3, j3); copy3(this.C, i3, j3);
     this.life[i] = this.life[j]; this.max[i] = this.max[j]; this.floor[i] = this.floor[j]; this.bounce[i] = this.bounce[j]; this.drag[i] = this.drag[j]; this.grav[i] = this.grav[j]; this.rest[i] = this.rest[j];
   }
 
@@ -140,7 +142,7 @@ class Glow {
     const j = --this.n;
     if (i === j) return;
     const i3 = i * 3, j3 = j * 3;
-    for (const A of [this.P, this.V, this.C]) { A[i3] = A[j3]; A[i3 + 1] = A[j3 + 1]; A[i3 + 2] = A[j3 + 2]; }
+    copy3(this.P, i3, j3); copy3(this.V, i3, j3); copy3(this.C, i3, j3);
     this.life[i] = this.life[j]; this.max[i] = this.max[j]; this.floor[i] = this.floor[j]; this.size[i] = this.size[j]; this.grav[i] = this.grav[j]; this.drag[i] = this.drag[j];
   }
 
@@ -257,6 +259,7 @@ class Puffs {
     const F = (n) => new Float32Array(cap * n);
     this.P = F(3); this.V = F(3); this.C = F(3);
     this.life = F(1); this.max = F(1); this.s0 = F(1); this.s1 = F(1); this.a0 = F(1); this.rot = F(1); this.spin = F(1); this.var = F(1); this.rise = F(1); this.drag = F(1); this.fadeIn = F(1);
+    this.scal = [this.life, this.max, this.s0, this.s1, this.a0, this.rot, this.spin, this.var, this.rise, this.drag, this.fadeIn];
     this.n = 0;
   }
 
@@ -276,8 +279,9 @@ class Puffs {
     const j = --this.n;
     if (i === j) return;
     const i3 = i * 3, j3 = j * 3;
-    for (const A of [this.P, this.V, this.C]) { A[i3] = A[j3]; A[i3 + 1] = A[j3 + 1]; A[i3 + 2] = A[j3 + 2]; }
-    for (const A of [this.life, this.max, this.s0, this.s1, this.a0, this.rot, this.spin, this.var, this.rise, this.drag, this.fadeIn]) A[i] = A[j];
+    copy3(this.P, i3, j3); copy3(this.V, i3, j3); copy3(this.C, i3, j3);
+    const L = this.scal;
+    for (let k = 0; k < L.length; k++) L[k][i] = L[k][j];
   }
 
   update(dt) {
@@ -464,14 +468,17 @@ class Casings {
   constructor(scene, world, cap = 64) {
     this.world = world;
     this.cap = cap;
-    const brass = new THREE.MeshStandardMaterial({ color: 0xc69a4c, metalness: 1, roughness: 0.32 });
+    // 不受場景燈光影響(手電筒近距離會過曝):和手持武器一樣用環境反射上色,落地後逐漸變暗融入場景
+    const mk = (refl) => new THREE.MeshBasicMaterial({ color: 0xffffff, envMap: ENV_MAP, reflectivity: refl, combine: THREE.MultiplyOperation });
+    const brass = mk(0.45), plastic = mk(0.12);
     const [hull, base] = shellGeos();
     this.meshes = {
       pistol: [new THREE.InstancedMesh(casingGeo('pistol'), brass, cap)],
       rifle: [new THREE.InstancedMesh(casingGeo('rifle'), brass, cap)],
-      shell: [new THREE.InstancedMesh(hull, new THREE.MeshStandardMaterial({ color: 0x8a1810, roughness: 0.45 }), cap), new THREE.InstancedMesh(base, brass, cap)],
+      shell: [new THREE.InstancedMesh(hull, plastic, cap), new THREE.InstancedMesh(base, brass, cap)],
     };
-    for (const k of CASE_KINDS) for (const m of this.meshes[k]) { m.count = 0; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(m); }
+    this.cols = { pistol: [new THREE.Color(0xb08a45)], rifle: [new THREE.Color(0xb08a45)], shell: [new THREE.Color(0x7a1a12), new THREE.Color(0xb08a45)] };
+    for (const k of CASE_KINDS) for (const m of this.meshes[k]) { m.count = 0; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.setColorAt(0, _c.set(1, 1, 1)); m.instanceColor.setUsage(THREE.DynamicDrawUsage); scene.add(m); }
     this.list = { pistol: [], rifle: [], shell: [] };
     this.pool = [];
     this.onLand = null; // (pos, surface, kind) => void
@@ -522,6 +529,7 @@ class Casings {
             c.w.multiplyScalar(0.6);
           } else {
             c.rest = true;
+            c.restT = c.t;
             c.q.setFromEuler(_e.set(0, rnd() * 6.28, rnd() * 6.28)); // 躺平:長軸水平、隨機方位
           }
         }
@@ -533,9 +541,11 @@ class Casings {
         if (kind === 'shell') _s.set(s, s, s);
         else { const w = (c.size[0] * s) / (kind === 'rifle' ? 0.24 : 0.52); _s.set(w, w, c.size[1] * s); }
         _m.compose(_p, c.q, _s);
-        for (const m of M) m.setMatrixAt(i, _m);
+        const lum = c.rest ? Math.max(0.28, 0.75 - (c.t - c.restT) * 0.3) : Math.max(0.55, 1 - c.t * 0.6);
+        const C = this.cols[kind];
+        for (let j = 0; j < M.length; j++) { M[j].setMatrixAt(i, _m); M[j].setColorAt(i, _c.copy(C[j]).multiplyScalar(lum)); }
       }
-      for (const m of M) { m.count = L.length; if (L.length) m.instanceMatrix.needsUpdate = true; }
+      for (const m of M) { m.count = L.length; if (L.length) { m.instanceMatrix.needsUpdate = true; m.instanceColor.needsUpdate = true; } }
     }
   }
 
@@ -622,85 +632,97 @@ export class WeaponFX {
   }
 
   // ---------- 命中效果(依材質) ----------
-  // p 命中點、n 表面法線、d 子彈方向、mat 材質、power 0..1(大口徑更誇張)
+  // p 命中點、n 表面法線、d 子彈方向、mat 材質、power 0..1(大口徑更誇張)。熱路徑:不建立閉包/物件
   impact(p, n, d, mat, power = 0.4) {
-    const fl = this.floor(p.x, p.y, p.z);
-    const k = 0.6 + power;
-    // 反射方向(碎屑往外噴)
-    const dn = d.x * n.x + d.y * n.y + d.z * n.z;
-    const rx = d.x - 2 * dn * n.x, ry = d.y - 2 * dn * n.y, rz = d.z - 2 * dn * n.z;
-    const spray = (cnt, speed, cone, cb) => {
-      for (let i = 0; i < cnt; i++) {
-        const vx = (n.x * 0.7 + rx * 0.3 + (rnd() - 0.5) * cone) * speed * rand(0.4, 1.2);
-        const vy = (n.y * 0.7 + ry * 0.3 + (rnd() - 0.5) * cone + 0.25) * speed * rand(0.4, 1.2);
-        const vz = (n.z * 0.7 + rz * 0.3 + (rnd() - 0.5) * cone) * speed * rand(0.4, 1.2);
-        cb(vx, vy, vz);
-      }
-    };
-    const dust = (cnt, r, g, b, a, s1, life = 1.6) => {
-      for (let i = 0; i < cnt; i++) this.smoke.spawn(p.x + n.x * 0.05, p.y + n.y * 0.05, p.z + n.z * 0.05, (n.x + (rnd() - 0.5) * 0.8) * 1.4 * k, (n.y + (rnd() - 0.5) * 0.8) * 1.4 * k + 0.2, (n.z + (rnd() - 0.5) * 0.8) * 1.4 * k, 0.05, s1 * k * rand(0.7, 1.3), r, g, b, a, life * rand(0.7, 1.2), 0.15, 2.6, 0.05);
-    };
-    const chunk = (cnt, color, sz, speed, life = 2.2, spin = 18) => spray(cnt, speed * k, 1.2, (vx, vy, vz) => {
-      const s = sz * rand(0.5, 1.4);
-      this.debris.spawn(p.x + n.x * 0.02, p.y + n.y * 0.02, p.z + n.z * 0.02, vx, vy, vz, s, s * rand(0.4, 0.9), s * rand(0.6, 1.2), color, life * rand(0.6, 1.3), fl, 0.3, 0.5, 9.8, spin);
-    });
-    const sparks = (cnt, speed) => spray(cnt, speed * k, 1.6, (vx, vy, vz) => this.glow.spawn(p.x + n.x * 0.01, p.y + n.y * 0.01, p.z + n.z * 0.01, vx, vy, vz, 5, 2.6, 0.9, rand(0.15, 0.45), rand(0.006, 0.012), fl, 9.8, 0.8));
-    const decal = (cell, size) => this.decals.add(p, n, size * rand(0.85, 1.15) * (0.75 + power * 0.6), cell, 50);
+    const I = this._I || (this._I = { p: new THREE.Vector3(), n: new THREE.Vector3(), rx: 0, ry: 0, rz: 0, k: 1, fl: 0 });
+    I.p.copy(p); I.n.copy(n);
+    I.fl = this.floor(p.x, p.y, p.z);
+    I.k = 0.6 + power;
+    const dn = d.x * n.x + d.y * n.y + d.z * n.z; // 反射方向(碎屑往外噴)
+    I.rx = d.x - 2 * dn * n.x; I.ry = d.y - 2 * dn * n.y; I.rz = d.z - 2 * dn * n.z;
+    const k = I.k, fl = I.fl;
     switch (mat) {
       case 'flesh': // 血霧 + 血滴
         for (let i = 0; i < 3 + power * 4; i++) this.smoke.spawn(p.x, p.y, p.z, (rnd() - 0.5) * 0.8 + d.x * 0.5, (rnd() - 0.5) * 0.6, (rnd() - 0.5) * 0.8 + d.z * 0.5, 0.05, 0.3 * k, 0.15, 0.012, 0.01, 0.5, 0.5 * rand(0.7, 1.3), -0.3, 3, 0.04);
-        spray(6 + power * 8, 2.6, 1.6, (vx, vy, vz) => { const s = rand(0.005, 0.01); this.debris.spawn(p.x, p.y, p.z, vx, vy, vz, s, s, s * 1.5, 0x320404, rand(0.5, 1.4), fl, 0, 0.3, 9.8, 4); });
+        for (let i = 0; i < 6 + power * 8; i++) { const s = rand(0.005, 0.01); this._sprayV(2.6, 1.6); this.debris.spawn(p.x, p.y, p.z, _t.x, _t.y, _t.z, s, s, s * 1.5, 0x320404, rand(0.5, 1.4), fl, 0, 0.3, 9.8, 4); }
         return;
       case 'water':
         for (let i = 0; i < 10 * k; i++) this.debris.spawn(p.x, p.y + 0.02, p.z, (rnd() - 0.5) * 1.2, rand(1.5, 3.6) * k, (rnd() - 0.5) * 1.2, 0.012, 0.02, 0.012, 0x9fb4b8, rand(0.4, 0.9), fl - 0.05, 0, 0.2);
-        dust(4, 0.55, 0.62, 0.64, 0.4, 0.45, 0.9);
+        this._dust(4, 0.55, 0.62, 0.64, 0.4, 0.45, 0.9);
         return;
       case 'metal':
-        sparks(10 + power * 14, 6);
-        dust(2, 0.3, 0.3, 0.32, 0.35, 0.25, 0.8);
-        decal(DECAL.metal, 0.07);
+        this._sparks(10 + power * 14, 6);
+        this._dust(2, 0.3, 0.3, 0.32, 0.35, 0.25, 0.8);
+        this._decal(DECAL.metal, 0.07, power);
         return;
       case 'wood':
-        chunk(6 + power * 6, 0x6a4a2c, 0.012, 3.2, 3, 26);
-        dust(3, 0.42, 0.33, 0.24, 0.45, 0.35);
-        decal(DECAL.wood, 0.075);
+        this._chunk(6 + power * 6, 0x6a4a2c, 0.012, 3.2, 3, 26);
+        this._dust(3, 0.42, 0.33, 0.24, 0.45, 0.35);
+        this._decal(DECAL.wood, 0.075, power);
         return;
       case 'tile':
-        chunk(6 + power * 6, 0xd8d8d0, 0.011, 3.6, 2.4, 24);
-        chunk(3, 0x8a8a84, 0.007, 3, 2);
-        dust(3, 0.62, 0.62, 0.6, 0.45, 0.35);
-        sparks(2, 4);
-        decal(DECAL.tile, 0.11);
+        this._chunk(6 + power * 6, 0xd8d8d0, 0.011, 3.6, 2.4, 24);
+        this._chunk(3, 0x8a8a84, 0.007, 3, 2);
+        this._dust(3, 0.62, 0.62, 0.6, 0.45, 0.35);
+        this._sparks(2, 4);
+        this._decal(DECAL.tile, 0.11, power);
         return;
       case 'glass':
         for (let i = 0; i < 10 + power * 10; i++) this.debris.spawn(p.x, p.y, p.z, (rnd() - 0.5) * 2 + d.x * 2, rand(-0.5, 1.5), (rnd() - 0.5) * 2 + d.z * 2, rand(0.008, 0.02), 0.002, rand(0.008, 0.025), 0xb8d4dc, rand(1.5, 3), fl, 0.2, 0.3, 9.8, 20);
-        decal(DECAL.glass, 0.18);
+        this._decal(DECAL.glass, 0.18, power);
         return;
       case 'grass':
       case 'gravel':
       case 'asphalt':
       case 'dirt':
-        chunk(5 + power * 5, mat === 'grass' ? 0x3a3a22 : 0x2e2c2a, 0.012, 2.6, 2.4);
-        dust(4, 0.36, 0.32, 0.27, 0.5, 0.5);
-        decal(DECAL.dirt, 0.1);
+        this._chunk(5 + power * 5, mat === 'grass' ? 0x3a3a22 : 0x2e2c2a, 0.012, 2.6, 2.4);
+        this._dust(4, 0.36, 0.32, 0.27, 0.5, 0.5);
+        this._decal(DECAL.dirt, 0.1, power);
         return;
       case 'carpet':
       case 'fabric':
-        dust(4, 0.4, 0.38, 0.36, 0.4, 0.3, 1.2);
-        decal(DECAL.dirt, 0.06);
+        this._dust(4, 0.4, 0.38, 0.36, 0.4, 0.3, 1.2);
+        this._decal(DECAL.dirt, 0.06, power);
         return;
       case 'brick':
-        chunk(7 + power * 6, 0x6e3424, 0.013, 3.4);
-        dust(4, 0.5, 0.36, 0.3, 0.5, 0.45);
-        decal(DECAL.concrete, 0.1);
+        this._chunk(7 + power * 6, 0x6e3424, 0.013, 3.4);
+        this._dust(4, 0.5, 0.36, 0.3, 0.5, 0.45);
+        this._decal(DECAL.concrete, 0.1, power);
         return;
       default: // concrete / plaster / paint
-        chunk(6 + power * 7, 0x8c8a84, 0.012, 3.4);
-        dust(4, 0.58, 0.57, 0.54, 0.55, 0.45);
-        sparks(power > 0.6 ? 4 : 1, 4);
-        decal(DECAL.concrete, 0.09);
+        this._chunk(6 + power * 7, 0x8c8a84, 0.012, 3.4);
+        this._dust(4, 0.58, 0.57, 0.54, 0.55, 0.45);
+        this._sparks(power > 0.6 ? 4 : 1, 4);
+        this._decal(DECAL.concrete, 0.09, power);
     }
   }
+
+  // 沿法線/反射方向的隨機噴射速度 → _t
+  _sprayV(speed, cone) {
+    const I = this._I, n = I.n;
+    const s = speed * rand(0.4, 1.2);
+    return _t.set((n.x * 0.7 + I.rx * 0.3 + (rnd() - 0.5) * cone) * s, (n.y * 0.7 + I.ry * 0.3 + (rnd() - 0.5) * cone + 0.25) * s, (n.z * 0.7 + I.rz * 0.3 + (rnd() - 0.5) * cone) * s);
+  }
+  _dust(cnt, r, g, b, a, s1, life = 1.6) {
+    const I = this._I, p = I.p, n = I.n, k = I.k;
+    for (let i = 0; i < cnt; i++) this.smoke.spawn(p.x + n.x * 0.05, p.y + n.y * 0.05, p.z + n.z * 0.05, (n.x + (rnd() - 0.5) * 0.8) * 1.4 * k, (n.y + (rnd() - 0.5) * 0.8) * 1.4 * k + 0.2, (n.z + (rnd() - 0.5) * 0.8) * 1.4 * k, 0.05, s1 * k * rand(0.7, 1.3), r, g, b, a, life * rand(0.7, 1.2), 0.15, 2.6, 0.05);
+  }
+  _chunk(cnt, color, sz, speed, life = 2.2, spin = 18) {
+    const I = this._I, p = I.p, n = I.n;
+    for (let i = 0; i < cnt; i++) {
+      this._sprayV(speed * I.k, 1.2);
+      const s = sz * rand(0.5, 1.4);
+      this.debris.spawn(p.x + n.x * 0.02, p.y + n.y * 0.02, p.z + n.z * 0.02, _t.x, _t.y, _t.z, s, s * rand(0.4, 0.9), s * rand(0.6, 1.2), color, life * rand(0.6, 1.3), I.fl, 0.3, 0.5, 9.8, spin);
+    }
+  }
+  _sparks(cnt, speed) {
+    const I = this._I, p = I.p, n = I.n;
+    for (let i = 0; i < cnt; i++) {
+      this._sprayV(speed * I.k, 1.6);
+      this.glow.spawn(p.x + n.x * 0.01, p.y + n.y * 0.01, p.z + n.z * 0.01, _t.x, _t.y, _t.z, 5, 2.6, 0.9, rand(0.15, 0.45), rand(0.006, 0.012), I.fl, 9.8, 0.8);
+    }
+  }
+  _decal(cell, size, power) { this.decals.add(this._I.p, this._I.n, size * rand(0.85, 1.15) * (0.75 + power * 0.6), cell, 50); }
 
   // 槍口煙(世界座標,開火後的輕煙)
   muzzleSmoke(p, d, amount = 1) {

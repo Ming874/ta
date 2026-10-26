@@ -54,7 +54,7 @@ export const WEAPONS = {
   barrett: {
     name: '巴雷特', desc: 'Barrett M82A1 · .50 BMG 半自動狙擊', price: 650, damage: 260, rpm: 70, auto: false,
     mag: 10, reserveStart: 20, reserveCap: 50, reload: 3.6, spread: 0.06, kick: 0.15, pitch: 0.075,
-    hold: [0.19, -0.2, -0.74], slot: 6, ads: { zoom: 6, spread: 0.0015, time: 0.36, scope: true }, penetrate: 3, penMul: 0.7,
+    hold: [0.22, -0.225, -0.74], slot: 6, ads: { zoom: 6, spread: 0.0015, time: 0.36, scope: true }, penetrate: 3, penMul: 0.7,
     falloff: null, minDmg: 1, bloom: 0, moveSpread: 1.0, recoil: { yaw: [0], rand: 0.35 },
     flash: 'brake', casing: 'rifle', casingSize: [0.0204, 0.099], move: 0.88,
     stats: { damage: 1, rate: 0.12, accuracy: 0.97, range: 1, mobility: 0.28 },

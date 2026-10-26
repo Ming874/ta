@@ -204,6 +204,7 @@ function envTexture() {
 }
 
 const ENV = envTexture();
+export const ENV_MAP = ENV; // 拋殼等世界物件共用的環境反射
 const METAL = metalTexture();
 const STIPPLE = stippleTexture();
 const AKWOOD = woodTextures(0x1e0e08, 0x48261a, 0x603422, 26);
