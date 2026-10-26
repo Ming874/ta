@@ -37,6 +37,53 @@ function boxRay(b, ox, oy, oz, dx, dy, dz, tmax) {
   return t0;
 }
 
+// Dial 最短路(稠密網格:同層 8 方向位元 + 少數跨層邊;邊權 直 2 / 斜 3,四個循環桶)。
+// 可分段執行:st = [目前距離 d, 待處理數 pending],每次最多處理 budget 個節點,做完回傳 true。
+// 獨立函式讓 JIT 只看到型別陣列(單型),內層迴圈完全展開
+function dialStart(dist, Q, qh, qt, seeds, ns, st) {
+  dist.fill(INF);
+  qh.fill(0);
+  qt.fill(0);
+  for (let q = 0; q < ns; q++) { dist[seeds[q]] = 0; Q[qt[0]++] = seeds[q]; }
+  st[0] = 0;
+  st[1] = ns;
+}
+function dialStep(G, dist, Q, qh, qt, info, DOFF, xe, st, budget) {
+  let d = st[0], pending = st[1];
+  const o0 = DOFF[0], o1 = DOFF[1], o2 = DOFF[2], o3 = DOFF[3], o4 = DOFF[4], o5 = DOFF[5], o6 = DOFF[6], o7 = DOFF[7];
+  for (; pending > 0; d++) {
+    const b = d & 3, base = b * G;
+    const d2 = d + 2, d3 = d + 3, k2 = d2 & 3, k3 = d3 & 3, b2 = k2 * G, b3 = k3 * G;
+    while (qh[b] < qt[b]) {
+      if (--budget < 0) { st[0] = d; st[1] = pending; return false; }
+      const n = Q[base + qh[b]++];
+      pending--;
+      if (dist[n] !== d) continue;
+      const inf = info[n];
+      let m;
+      if (inf & 1 && d2 < dist[(m = n + o0)]) { dist[m] = d2; Q[b2 + qt[k2]++] = m; pending++; }
+      if (inf & 2 && d2 < dist[(m = n + o1)]) { dist[m] = d2; Q[b2 + qt[k2]++] = m; pending++; }
+      if (inf & 4 && d2 < dist[(m = n + o2)]) { dist[m] = d2; Q[b2 + qt[k2]++] = m; pending++; }
+      if (inf & 8 && d2 < dist[(m = n + o3)]) { dist[m] = d2; Q[b2 + qt[k2]++] = m; pending++; }
+      if (inf & 16 && d3 < dist[(m = n + o4)]) { dist[m] = d3; Q[b3 + qt[k3]++] = m; pending++; }
+      if (inf & 32 && d3 < dist[(m = n + o5)]) { dist[m] = d3; Q[b3 + qt[k3]++] = m; pending++; }
+      if (inf & 64 && d3 < dist[(m = n + o6)]) { dist[m] = d3; Q[b3 + qt[k3]++] = m; pending++; }
+      if (inf & 128 && d3 < dist[(m = n + o7)]) { dist[m] = d3; Q[b3 + qt[k3]++] = m; pending++; }
+      if (inf & 256) {
+        const xs = xe.get(n);
+        for (let k = 0; k < xs.length; k++) {
+          const v = xs[k], mm = v >> 2, nd = d + (v & 3);
+          if (nd < dist[mm]) { dist[mm] = nd; const bb = nd & 3; Q[bb * G + qt[bb]++] = mm; pending++; }
+        }
+      }
+    }
+    qh[b] = qt[b] = 0;
+  }
+  st[0] = d;
+  st[1] = 0;
+  return true;
+}
+
 export class World {
   constructor() {
     const L = parseLayout();
@@ -97,10 +144,11 @@ export class World {
     this._stamp = 0;
     this._pl = 0; // _pick 選到的樓層
     this.navM = 0; // 導航節點數(buildNav 後 > 0)
-    this._nSeeds = -1;
     this._seeds = new Int32Array(MAX_SEEDS);
-    this.flowMs = 0; // 最近一次 updateFlow 實際計算耗時
-    this.flowRuns = 0;
+    this.flowMs = 0; // 最近一輪距離場的總計算耗時(可能分成數幀)
+    this.flowSliceMs = 0; // 最近一次 updateFlow 呼叫的耗時
+    this.flowRuns = 0; // 已完成的輪數
+    this.flowBudget = 16384; // 每次呼叫最多處理的節點數
   }
 
   // ======================================================================
@@ -583,13 +631,16 @@ export class World {
     return true;
   }
 
+  // 導航圖:每層一張 240×200 的 0.5m 細格(稠密索引 g = 層 * FN + j * fw + i)。
+  // ninfo[g] 低 8 位 = 同層 8 方向是否相連,bit 8 = 有跨層邊(樓梯兩端,存在 xEdges);
+  // 稠密網格讓 BFS 波前在記憶體中連續,快取友善(比壓縮鄰接表快數倍)。
   buildNav() {
     const t0 = performance.now();
     this._ensureObstacleBoxes();
     const { W, H, NL, WH } = this;
-    const fw = (this.fw = W * SUB), fh = (this.fh = H * SUB), FN = (this.FN = fw * fh);
-    const id = (this.navId = new Int32Array(NL * FN).fill(-1));
-    const tI = [], tJ = [], tH = [], tL = [];
+    const fw = (this.fw = W * SUB), fh = (this.fh = H * SUB), FN = (this.FN = fw * fh), G = (this.G = NL * FN);
+    const gh = (this.gh = new Float32Array(G).fill(NaN)); // 節點地面高度(NaN = 非節點)
+    let M = 0;
     for (let li = 0; li < NL; li++) {
       for (let j = 0; j < fh; j++) for (let i = 0; i < fw; i++) {
         const idx = (j >> 2) * W + (i >> 2);
@@ -597,51 +648,62 @@ export class World {
         const x = (i + 0.5) * FINE, z = (j + 0.5) * FINE;
         const h = this._surf(li, idx, x, z);
         if (!this._navFree(x, z, h)) continue;
-        id[li * FN + j * fw + i] = tI.length;
-        tI.push(i); tJ.push(j); tH.push(h); tL.push(li);
+        gh[li * FN + j * fw + i] = h;
+        M++;
       }
     }
-    const M = (this.navM = tI.length);
-    const nI = (this.nI = Int16Array.from(tI)), nJ = (this.nJ = Int16Array.from(tJ));
-    const nH = (this.nH = Float32Array.from(tH));
-    this.nL = Uint8Array.from(tL);
+    this.navM = M;
     const find = (i, j, h) => {
       if (i < 0 || j < 0 || i >= fw || j >= fh) return -1;
       for (let li = 0; li < NL; li++) {
-        const n = id[li * FN + j * fw + i];
-        if (n >= 0 && Math.abs(nH[n] - h) <= NAV_STEP) return n;
+        const g = li * FN + j * fw + i, v = gh[g];
+        if (v === v && Math.abs(v - h) <= NAV_STEP) return g;
       }
       return -1;
     };
-    const off = (this.nOff = new Int32Array(M + 1));
-    const adj = [];
-    for (let n = 0; n < M; n++) {
-      off[n] = adj.length;
-      const i = nI[n], j = nJ[n], h = nH[n];
+    const info = (this.ninfo = new Uint16Array(G));
+    const DOFF = (this.DOFF = new Int32Array(8));
+    for (let d = 0; d < 8; d++) DOFF[d] = DJ[d] * fw + DI[d];
+    const xe = (this.xEdges = new Map());
+    let E = 0;
+    for (let g = 0; g < G; g++) {
+      const h = gh[g];
+      if (h !== h) continue;
+      const r = g % FN, i = r % fw, j = (r / fw) | 0;
+      const xs = [];
       for (let d = 0; d < 8; d++) {
         const m = find(i + DI[d], j + DJ[d], h);
         if (m < 0) continue;
         if (d >= 4 && (find(i + DI[d], j, h) < 0 || find(i, j + DJ[d], h) < 0)) continue; // 不切角
-        adj.push(m * 4 + (d >= 4 ? 3 : 2));
+        E++;
+        if (m === g + DOFF[d]) info[g] |= 1 << d;
+        else xs.push(m * 4 + (d >= 4 ? 3 : 2)); // 跨層(樓梯頂端 ↔ 上層平台)
       }
+      if (xs.length) { info[g] |= 256; xe.set(g, Int32Array.from(xs)); }
     }
-    off[M] = adj.length;
-    this.nAdj = Int32Array.from(adj);
-    this.dist = new Uint16Array(M).fill(INF);
-    this._q = new Int32Array(M * 4);
+    this.navE = E;
+    this.dist = new Uint16Array(G).fill(INF); // 查詢用(最近一次算完的距離場)
+    this._back = new Uint16Array(G).fill(INF); // 計算中
+    this._bfs = new Int32Array(2);
+    this._bfsOn = false;
+    this._runSeeds = new Int32Array(MAX_SEEDS);
+    this._nRun = -1;
+    this._q = new Int32Array(G * 4);
     this._qh = new Int32Array(4);
     this._qt = new Int32Array(4);
-    this._nSeeds = -1;
     this.navDirty = false;
     this.navBuildMs = performance.now() - t0;
-    // 連通分量(驗證/除錯用)
+    // 先從起點完整算一次(預熱 JIT,第一幀就有可用的距離場)
+    const st = this.start;
+    if (st) { const b = this.flowBudget; this.flowBudget = Infinity; this.updateFlow([{ x: st.x, y: st.y, z: st.z }]); this.flowBudget = b; }
+    this._nRun = -1;
     return this;
   }
 
-  // 離 (x,y,z) 最近的導航節點:同一細格高度最接近者;沒有則在附近 rad 圈內找
+  // 離 (x,y,z) 最近的導航節點(稠密索引):同一細格高度最接近者;沒有則在附近 rad 圈內找
   _nodeNear(x, y, z, rad) {
     if (!this.navM) return -1;
-    const { fw, fh, FN, NL } = this, id = this.navId, nH = this.nH;
+    const { fw, fh, FN, NL } = this, gh = this.gh;
     const i0 = Math.floor(x / FINE), j0 = Math.floor(z / FINE);
     let best = -1, bs = Infinity;
     for (let ring = 0; ring <= rad; ring++) {
@@ -650,12 +712,12 @@ export class World {
         const i = i0 + di, j = j0 + dj;
         if (i < 0 || j < 0 || i >= fw || j >= fh) continue;
         for (let li = 0; li < NL; li++) {
-          const n = id[li * FN + j * fw + i];
-          if (n < 0) continue;
-          const e = Math.abs(nH[n] - y);
+          const g = li * FN + j * fw + i, h = gh[g];
+          if (h !== h) continue;
+          const e = h > y ? h - y : y - h;
           if (e > 1.6) continue;
           const s = e + (di * di + dj * dj) * 0.3;
-          if (s < bs) { bs = s; best = n; }
+          if (s < bs) { bs = s; best = g; }
         }
       }
       if (best >= 0) return best;
@@ -668,40 +730,54 @@ export class World {
     if (!this.navM) return;
     if (!Array.isArray(targets)) { this._legacy ||= [{ x: 0, y: 0, z: 0 }]; this._legacy[0].x = targets; this._legacy[0].z = pz; targets = this._legacy; }
     const seeds = this._seeds;
-    let ns = 0, same = true;
+    let ns = 0;
     for (let k = 0; k < targets.length && ns < MAX_SEEDS; k++) {
       const t = targets[k];
       const n = this._nodeNear(t.x, t.y || 0, t.z, 4);
       if (n < 0) continue;
       let dup = false;
       for (let q = 0; q < ns; q++) if (seeds[q] === n) dup = true;
-      if (dup) continue;
-      if (seeds[ns] !== n) same = false;
-      seeds[ns++] = n;
+      if (!dup) seeds[ns++] = n;
     }
-    if (same && ns === this._nSeeds) return;
-    this._nSeeds = ns;
+    if (!this._bfsOn) { // 沒有進行中的計算:目標節點有變才開始新的一輪
+      if (ns === this._nRun) { let eq = true; for (let q = 0; q < ns; q++) if (this._runSeeds[q] !== seeds[q]) eq = false; if (eq) return; }
+      if (!ns) return;
+      this._nRun = ns;
+      for (let q = 0; q < ns; q++) this._runSeeds[q] = seeds[q];
+      dialStart(this._back, this._q, this._qh, this._qt, this._runSeeds, ns, this._bfs);
+      this._bfsOn = true;
+      this._bfsMs = 0;
+    }
+    // 每次呼叫最多處理 flowBudget 個節點(約 0.5ms),整輪算完才換成查詢用的距離場
     const t0 = performance.now();
-    const M = this.navM, dist = this.dist, Q = this._q, qh = this._qh, qt = this._qt, off = this.nOff, adj = this.nAdj;
-    dist.fill(INF);
-    qh.fill(0); qt.fill(0);
-    let pending = 0;
-    for (let q = 0; q < ns; q++) { dist[seeds[q]] = 0; Q[qt[0]++] = seeds[q]; pending++; }
-    for (let d = 0; pending > 0; d++) {
-      const b = d & 3, base = b * M;
-      while (qh[b] < qt[b]) {
-        const n = Q[base + qh[b]++];
-        pending--;
-        if (dist[n] !== d) continue;
-        for (let e = off[n], ee = off[n + 1]; e < ee; e++) {
-          const v = adj[e], m = v >> 2, nd = d + (v & 3);
-          if (nd < dist[m]) { dist[m] = nd; const bb = nd & 3; Q[bb * M + qt[bb]++] = m; pending++; }
-        }
-      }
-      qh[b] = qt[b] = 0;
+    const done = dialStep(this.G, this._back, this._q, this._qh, this._qt, this.ninfo, this.DOFF, this.xEdges, this._bfs, this.flowBudget);
+    const ms = performance.now() - t0;
+    this._bfsMs += ms;
+    this.flowSliceMs = ms;
+    if (done) {
+      const t = this.dist;
+      this.dist = this._back;
+      this._back = t;
+      this._bfsOn = false;
+      this.flowMs = this._bfsMs;
+      this.flowRuns++;
     }
-    this.flowMs = performance.now() - t0;
-    this.flowRuns++;
+  }
+
+  // 節點 n 的鄰居中距離最小者(比 n 小才算);沒有回傳 -1
+  _next(n) {
+    const dist = this.dist, inf = this.ninfo[n], DOFF = this.DOFF;
+    let bd = dist[n], best = -1;
+    for (let d = 0; d < 8; d++) {
+      if (!(inf & (1 << d))) continue;
+      const m = n + DOFF[d];
+      if (dist[m] < bd) { bd = dist[m]; best = m; }
+    }
+    if (inf & 256) {
+      const xs = this.xEdges.get(n);
+      for (let k = 0; k < xs.length; k++) { const m = xs[k] >> 2; if (dist[m] < bd) { bd = dist[m]; best = m; } }
+    }
+    return best;
   }
 
   // 沿導航路徑到最近目標的距離(公尺),不可達回傳 Infinity
@@ -717,17 +793,16 @@ export class World {
     if (typeof z === 'object') { out = z; z = y; y = 0; }
     const n = this._nodeNear(x, y, z, 3);
     if (n < 0) return null;
-    const dist = this.dist, off = this.nOff, adj = this.nAdj;
-    let bd = dist[n], m1 = -1;
-    if (bd === INF || bd === 0) return null;
-    for (let e = off[n], ee = off[n + 1]; e < ee; e++) { const m = adj[e] >> 2; if (dist[m] < bd) { bd = dist[m]; m1 = m; } }
+    const d0 = this.dist[n];
+    if (d0 === INF || d0 === 0) return null;
+    const m1 = this._next(n);
     if (m1 < 0) return null;
-    // 再往前看一步,讓路徑較平順
-    let m2 = m1;
-    for (let e = off[m1], ee = off[m1 + 1]; e < ee; e++) { const m = adj[e] >> 2; if (dist[m] < bd) { bd = dist[m]; m2 = m; } }
-    let tx = (this.nI[m2] + 0.5) * FINE - x, tz = (this.nJ[m2] + 0.5) * FINE - z;
+    const m2 = this._next(m1); // 再往前看一步,讓路徑較平順
+    const { FN, fw } = this;
+    let r = (m2 >= 0 ? m2 : m1) % FN;
+    let tx = ((r % fw) + 0.5) * FINE - x, tz = (((r / fw) | 0) + 0.5) * FINE - z;
     let l = Math.sqrt(tx * tx + tz * tz);
-    if (l < 0.05) { tx = (this.nI[m1] + 0.5) * FINE - x; tz = (this.nJ[m1] + 0.5) * FINE - z; l = Math.sqrt(tx * tx + tz * tz); }
+    if (l < 0.05) { r = m1 % FN; tx = ((r % fw) + 0.5) * FINE - x; tz = (((r / fw) | 0) + 0.5) * FINE - z; l = Math.sqrt(tx * tx + tz * tz); }
     if (l < 1e-6) return null;
     out.x = tx / l;
     out.z = tz / l;
