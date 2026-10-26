@@ -53,6 +53,7 @@ export const flowMethods = {
       this[k] = (...a) => { const prev = this._killHow; this._killHow = 'melee'; try { return f.apply(this, a); } finally { this._killHow = prev; } };
     }
     window.addEventListener('keydown', (e) => this.onGameplayKey(e), true); // 捕獲階段:比 input.js 先處理
+    this.weaponScene.visible = false; // 標題畫面不顯示手持武器
     document.addEventListener('pointerlockchange', () => {
       if (document.pointerLockElement !== this.canvas && this.ui.map.isOpen) this.ui.map.close();
     });
@@ -112,6 +113,7 @@ export const flowMethods = {
     this.resetRun();
     this.state = 'playing';
     this.paused = false;
+    this.weaponScene.visible = true;
     this.startRound(1);
   },
 
@@ -413,6 +415,22 @@ export const flowMethods = {
     }
   },
 
+  // 標題畫面/死亡畫面:鏡頭緩慢飄移(game.update 在非遊戲狀態時呼叫)
+  updateIdle(dt) {
+    if (this.state === 'playing') return;
+    this._idleT = (this._idleT || 0) + dt;
+    const t = this._idleT, cam = this.camera, st = this.world.start, p = this.player;
+    if (this.state === 'menu') {
+      cam.position.set(st.x + Math.sin(t * 0.05) * 0.35, (st.y || 0) + 1.65 + Math.sin(t * 0.37) * 0.025, st.z + Math.cos(t * 0.04) * 0.25);
+      cam.rotation.order = 'YXZ';
+      cam.rotation.set(0.06 + Math.sin(t * 0.11) * 0.035, (st.yaw || 0) + Math.sin(t * 0.07) * 0.28, Math.sin(t * 0.13) * 0.012);
+    } else if (this.state === 'dead') { // 倒在地上慢慢往旁邊傾
+      const k = Math.min(1, t / 1.2);
+      cam.position.y += ((p.pos.y || 0) + 0.35 - cam.position.y) * Math.min(1, dt * 2.5);
+      cam.rotation.z += (0.9 * k - cam.rotation.z) * Math.min(1, dt * 2);
+    }
+  },
+
   // ---------- 每幀(game.update 在暫停檢查之後呼叫) ----------
   updateGameplay(dt) {
     const p = this.player;
@@ -452,6 +470,7 @@ export const flowMethods = {
 
   die() {
     this.state = 'dead';
+    this.weaponScene.visible = false;
     this.player.alive = false;
     this.healT = 0;
     this.setMood('dead');
@@ -459,6 +478,7 @@ export const flowMethods = {
     this.ui.map.close();
     if (document.pointerLockElement) document.exitPointerLock();
     this.input.fireHeld = false;
+    this._idleT = 0;
     this.ui.showDeath(this.deathSummary());
   },
 
@@ -477,6 +497,7 @@ export const flowMethods = {
     this.resetRun();
     this.state = 'menu';
     this.paused = false;
+    this.weaponScene.visible = false;
     this.setMood('menu');
     this.ui.showHud(false);
     this.ui.overlay('pause', false);

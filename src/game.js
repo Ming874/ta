@@ -118,8 +118,9 @@ export class Game {
     this.updateParticles(dt);
 
     if (this.state !== 'playing') {
-      // 選單/死亡:鏡頭保持,只更新場景動畫;順便預先建好殭屍模型
+      // 選單/死亡:只更新場景動畫與鏡頭飄移;順便預先建好殭屍模型
       this.coins.update(dt, this.player);
+      this.updateIdle(dt);
       prewarm();
       return;
     }
