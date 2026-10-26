@@ -29,7 +29,7 @@ export class RemotePlayer {
     this.rtt = info.rtt || 0;
     this.pos = new THREE.Vector3(s.game.world.start.x, s.game.world.start.y || 0, s.game.world.start.z);
     this.vx = 0; this.vz = 0; this.yaw = 0; this.pitch = 0;
-    this.alive = false; this.downed = false; this.hp = 100; this.maxHp = 100; this.armor = 0;
+    this.alive = false; this.up = true; this.downed = false; this.hp = 100; this.maxHp = 100; this.armor = 0;
     this.flags = 0; this.weapon = 'pistol'; this.rt = NONE; this.rp = 0;
     this.buf = new Interp(10, 40, [3], [7, 8, 9]); // x y z yaw pitch vx vz flags weapon hp
     this.sv = new Float32Array(10);
@@ -130,6 +130,28 @@ export class NetSession {
     for (const id of ['menu', 'dead', 'shop']) g.ui.overlay(id, false);
     this.mode.begin();
     this.zs.begin();
+    this.startTicker();
+  }
+
+  // 背景分頁時瀏覽器會停掉 requestAnimationFrame:用 Worker 計時器(背景不太會被節流)在畫面停住時繼續跑模擬(不渲染),
+  // 讓房主的殭屍/回合、本機狀態送出都不中斷
+  startTicker() {
+    try {
+      const src = 'let t=null;onmessage=(e)=>{clearInterval(t);t=e.data>0?setInterval(()=>postMessage(0),e.data):null;};';
+      this.tickUrl = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+      this.ticker = new Worker(this.tickUrl);
+      this.ticker.onmessage = () => {
+        const now = performance.now();
+        if (!this.active || now - this.lastUpdate < 150) return;
+        const dt = Math.min(0.05, (now - this.lastUpdate) / 1000);
+        try { this.game.update(dt); } catch (e) { console.error('[net] 背景更新', e); }
+      };
+      this.ticker.postMessage(50);
+    } catch { this.ticker = null; }
+  }
+  stopTicker() {
+    if (this.ticker) { this.ticker.postMessage(0); this.ticker.terminate(); this.ticker = null; }
+    if (this.tickUrl) { URL.revokeObjectURL(this.tickUrl); this.tickUrl = null; }
   }
 
   stop() {
@@ -140,6 +162,7 @@ export class NetSession {
     this.unsub.length = 0;
     this.client.onBinary = null;
     this.mode.stop?.();
+    this.stopTicker();
     this.uninstall();
     for (const rp of this.remotes.values()) this.dropRemote(rp);
     this.remotes.clear();
@@ -252,8 +275,8 @@ export class NetSession {
       const src = d[1] !== null ? { x: d[1], z: d[2] } : null;
       g.damagePlayer(g.player, d[0], src);
     });
-    this.on('kn', (d, f) => { if (f === this.hostSlot) g.player.knock(d[0], d[1]); });
-    this.on('sh', (d, f) => { if (f === this.hostSlot) g.player.addShake(d); });
+    this.on('kn', (d, f) => { if (f === this.hostSlot && Number.isFinite(d[0]) && Number.isFinite(d[1])) g.player.knock(d[0], d[1]); });
+    this.on('sh', (d, f) => { if (f === this.hostSlot && Number.isFinite(d)) g.player.addShake(Math.min(1, d)); });
     this.on('hz', (d, f) => {
       if (f !== this.hostSlot || this.isHost) return;
       if (d[0] === 's') this.origSpit.call(g.hazards, new THREE.Vector3(d[1], d[2], d[3]), new THREE.Vector3(d[4], d[5], d[6]));
@@ -366,7 +389,8 @@ export class NetSession {
     rp.pos.set(s.x, s.y, s.z);
     rp.vx = s.vx; rp.vz = s.vz; rp.yaw = s.yaw; rp.pitch = s.pitch;
     rp.flags = s.flags;
-    rp.alive = !!(s.flags & F.ALIVE) && !(s.flags & F.DEAD) && rp.connected;
+    rp.up = !!(s.flags & F.ALIVE) && !(s.flags & F.DEAD); // 依對方自己回報的狀態:活著(含倒地)
+    rp.alive = rp.up && rp.connected;
     rp.downed = !!(s.flags & F.DOWNED);
     rp.hp = s.hp; rp.armor = s.armor;
     rp.weapon = name(WEAPON_IDS, s.weapon, 'pistol');
@@ -459,10 +483,11 @@ export class NetSession {
   // ---------- 每幀 ----------
   update(dt) {
     if (!this.active) return;
-    this.renderTime = this.client.serverNow() - INTERP_DELAY;
     const now = performance.now();
+    this.lastUpdate = now;
+    this.renderTime = this.client.serverNow() - INTERP_DELAY;
     for (const rp of this.remotes.values()) {
-      // 斷線或很久沒有狀態:視為不在場(殭屍不追)
+      // 斷線或很久沒有狀態:殭屍先不追(但不算陣亡,全員倒地的判定看 rp.up)
       if (rp.has && now - rp.lastMsg > 3000) rp.alive = false;
     }
     this.zs.update(dt);
@@ -473,6 +498,14 @@ export class NetSession {
 
   afterPlayer(dt) {
     if (!this.active) return;
+    // 防呆:任何非有限值(NaN)都還原成上一個正常狀態,避免一路擴散到鏡頭/音效/網路
+    const p = this.game.player;
+    if (!Number.isFinite(p.pos.x + p.pos.y + p.pos.z + p.yaw + p.pitch + (p.vx || 0) + (p.vz || 0) + (p.shake || 0))) {
+      const g0 = this._good;
+      if (g0) { p.pos.set(g0[0], g0[1], g0[2]); p.yaw = g0[3]; p.pitch = g0[4]; } else { const st = this.game.world.start; p.pos.set(st.x, st.y || 0, st.z); p.yaw = 0; p.pitch = 0; }
+      p.vx = p.vz = 0; p.shake = 0;
+      this.game.camera.position.set(p.pos.x, p.pos.y + 1.65, p.pos.z);
+    } else (this._good || (this._good = [0, 0, 0, 0, 0])).splice(0, 5, p.pos.x, p.pos.y, p.pos.z, p.yaw, p.pitch);
     this.mode.afterPlayer(dt);
     this.animateRemotes(dt);
     this.sendState();

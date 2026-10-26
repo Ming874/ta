@@ -302,7 +302,7 @@ export class CoopMode {
       }
       // 全員倒地 → 結束
       let standing = p.alive !== false && !p.downed && !this.dead ? 1 : 0;
-      for (const rp of s.remotes.values()) if (rp.connected && rp.alive && !rp.downed) standing++;
+      for (const rp of s.remotes.values()) if (rp.connected && rp.up && !rp.downed) standing++;
       if (!standing && g.phase === 'fighting') {
         this.overT += dt;
         if (this.overT > 0.8 && !this.over) {

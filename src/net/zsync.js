@@ -394,8 +394,8 @@ export class ZombieSync {
           nz.drawBar();
         }
       }
-      // 很久沒出現在快照裡的活殭屍(漏掉死亡訊息)→ 移除
-      if (z.alive && z._seen && now - z._seen > 6000) { z.alive = false; z.corpse = 0.01; this.byId.delete(z._nid); }
+      // 房主持續在送快照(每 2 秒完整一次),這隻卻 6 秒沒出現:漏掉了死亡訊息 → 移除
+      if (z.alive && z._seen && now - z._seen > 6000 && now - this.host.t < 600) { z.alive = false; z.corpse = 0.01; this.byId.delete(z._nid); }
     }
   }
 

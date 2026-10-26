@@ -44,7 +44,7 @@ class Lobby {
     const btn = document.createElement('button');
     btn.className = 'btn';
     btn.id = 'mp-entry';
-    btn.textContent = '多人連線';
+    btn.textContent = '多人連線(測試版)';
     btn.onclick = () => this.open();
     const modes = document.getElementById('menuModes');
     if (modes) modes.appendChild(btn);
