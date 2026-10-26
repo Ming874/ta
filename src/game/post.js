@@ -64,4 +64,5 @@ export function setupPost(game) {
   composer.addPass(game.post);
   composer.addPass(new OutputPass());
   game.composer = composer;
+  game.hospital?.attachRenderer?.(game.renderer, game);
 }
