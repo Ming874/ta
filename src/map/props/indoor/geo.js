@@ -123,7 +123,7 @@ function clean(g) {
 }
 
 // ---------- 掃掠管(轉角圓滑的折線管,框架、扶手、點滴架用) ----------
-function polyBend(pts, bend, seg = 4) {
+function polyBend(pts, bend, seg = 3) {
   const P = pts.map((p) => new V3(...p));
   if (P.length < 3 || bend <= 0) return P;
   const out = [P[0]];
@@ -271,7 +271,7 @@ export class B {
   bb(s, x0, y0, z0, x1, y1, z1, o = {}) { return this.box(s, Math.abs(x1 - x0), Math.abs(y1 - y0), Math.abs(z1 - z0), (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, o); }
   // 圓柱(中心座標;axis 'y'|'x'|'z')
   cyl(s, r, h, x = 0, y = 0, z = 0, o = {}) {
-    const g = new THREE.CylinderGeometry(o.r2 ?? r, r, h, o.seg ?? 12, 1, !!o.open, o.t0 ?? 0, o.tl ?? Math.PI * 2);
+    const g = new THREE.CylinderGeometry(o.r2 ?? r, r, h, o.seg ?? 10, 1, !!o.open, o.t0 ?? 0, o.tl ?? Math.PI * 2);
     const ax = o.axis === 'x' ? [0, 0, -HALF] : o.axis === 'z' ? [HALF, 0, 0] : [0, 0, 0];
     const local = compose(x, y, z, o.rx || 0, o.ry || 0, o.rz || 0).multiply(compose(0, 0, 0, ...ax));
     return this.geo(s, g, local, o.boxuv ? 'box' : 'native', [Math.PI * 2 * r, h]);
@@ -279,14 +279,14 @@ export class B {
   // 兩點間的圓桿
   rod(s, r, a, b, o = {}) {
     const A = new V3(...a), Bp = new V3(...b), d = new V3().subVectors(Bp, A), len = d.length();
-    const g = new THREE.CylinderGeometry(o.r2 ?? r, r, len, o.seg ?? 8, 1, !!o.open);
+    const g = new THREE.CylinderGeometry(o.r2 ?? r, r, len, o.seg ?? 6, 1, !!o.open);
     const q = new THREE.Quaternion().setFromUnitVectors(new V3(0, 1, 0), d.normalize());
     const local = new M4().compose(A.clone().add(Bp).multiplyScalar(0.5), q, new V3(1, 1, 1));
     return this.geo(s, g, local, 'native', [Math.PI * 2 * r, len]);
   }
   // 掃掠管:pts 折線,bend 轉角半徑
   tube(s, pts, r, o = {}) {
-    const g = sweepGeo(pts, r, o.seg ?? 8, { closed: o.closed, caps: o.caps ?? true, bend: o.bend ?? r * 3, rEnd: o.rEnd });
+    const g = sweepGeo(pts, r, o.seg ?? 6, { closed: o.closed, caps: o.caps ?? true, bend: o.bend ?? r * 3, rEnd: o.rEnd });
     return this.geo(s, g, o.m || null, 'native', [Math.PI * 2 * r, 1]);
   }
   // 車削:prof [[r, y], ...]

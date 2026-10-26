@@ -46,10 +46,14 @@ export function bigWheel(b, x, y, z, R, o = {}) {
 
 // 條狀把手(沿 X,中心在 x,y,z,朝 +Z 突出)
 export function barHandle(b, x, y, z, w = 0.12, s = 'chrome', o = {}) {
-  const d = o.d ?? 0.03, r = o.r ?? 0.006;
+  const d = o.d ?? 0.03, r = o.r ?? 0.006, t = r * 1.6;
   if (o.vertical) {
-    b.tube(s, [[x, y - w / 2, z], [x, y - w / 2, z + d], [x, y + w / 2, z + d], [x, y + w / 2, z]], r, { seg: 6, bend: 0.008 });
-  } else b.tube(s, [[x - w / 2, y, z], [x - w / 2, y, z + d], [x + w / 2, y, z + d], [x + w / 2, y, z]], r, { seg: 6, bend: 0.008 });
+    b.box(s, t, w, t, x, y, z + d);
+    for (const k of [-1, 1]) b.box(s, t * 0.8, t * 0.8, d, x, y + k * (w / 2 - t / 2), z + d / 2);
+  } else {
+    b.box(s, w, t, t, x, y, z + d);
+    for (const k of [-1, 1]) b.box(s, t * 0.8, t * 0.8, d, x + k * (w / 2 - t / 2), y, z + d / 2);
+  }
 }
 // 杯狀拉手(檔案櫃常見)
 export function cupPull(b, x, y, z, w = 0.1, s = 'chrome') {

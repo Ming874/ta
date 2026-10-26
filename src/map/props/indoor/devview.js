@@ -28,6 +28,19 @@ export async function setup({ zones = null, mood = 'bright' } = {}) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x050606);
   const camera = new THREE.PerspectiveCamera(75, W / H, 0.05, 160);
+  // 和場景建構器相同的昏暗環境貼圖(金屬才不會全黑)
+  {
+    const envScene = new THREE.Scene();
+    const m = new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      vertexShader: 'varying vec3 vD; void main(){ vD = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: 'varying vec3 vD; void main(){ vec3 d = normalize(vD); float u = d.y; vec3 c = u > 0.0 ? mix(vec3(0.16,0.19,0.25), vec3(0.05,0.07,0.12), pow(u, 0.6)) : mix(vec3(0.1,0.1,0.1), vec3(0.03,0.028,0.025), pow(-u, 0.5)); float panels = step(0.92, fract(d.x * 3.0 + 0.5)) * step(0.0, u) * step(u, 0.5) * 0.15; gl_FragColor = vec4(c + panels, 1.0); }',
+    });
+    envScene.add(new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), m));
+    const pm = new THREE.PMREMGenerator(renderer);
+    scene.environment = pm.fromScene(envScene, 0.02).texture;
+    pm.dispose();
+  }
   scene.add(camera);
 
   const L = parseLayout();
@@ -117,6 +130,7 @@ export async function setup({ zones = null, mood = 'bright' } = {}) {
     meshes, instMeshes, instances: inst, dynamic: dyn, tris: Math.round(tris), lights: fin.lights.length, events: fin.events.length,
     colliders: boxes.length, zones: st.zones, timing,
     atlas: atlasStats(),
+    use: Object.entries(st.use || {}).sort((a, b) => b[1] - a[1]).slice(0, 40).map(([k, v]) => `${k}:${Math.round(v / 1000)}k`).join(' '),
     tpl: [...tplTime].sort((a, b) => b[1].ms - a[1].ms).slice(0, 25).map(([k, e]) => `${k}:${e.ms.toFixed(0)}ms/${e.n}/${e.tris}t`).join(' '),
   };
 

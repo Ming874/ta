@@ -1,5 +1,5 @@
 import { B, tpl, HALF, L, G, THREE, caster, barHandle, cupPull, knob, drawer, doorPanel, shell, labelHolder, louvers, screws, led, win, cable } from './parts.js';
-import { sign, spines, poster, glowSwatch, fileCover, drugBox } from './art.js';
+import { sign, spines, poster, glowSwatch, fileCover, drugBox, keyboardTex, clockFace } from './art.js';
 
 // 一般家具:椅子、桌子、書桌、檔案櫃、書櫃、置物櫃、鐵架、玻璃櫃、櫃台、長椅、沙發、衣櫃、垃圾桶、盆栽、洗手台…
 
@@ -495,15 +495,10 @@ export function corkBoard(w = 1.2, h = 0.8, seed = 0) {
 }
 export function wallClock(seed = 0) {
   return tpl(`clock:${seed % 2}`, (b) => {
-    b.cyl('pl_white', 0.16, 0.045, 0, 0, 0.0225, { axis: 'z', seg: 24 });
-    b.cyl('steel', 0.165, 0.035, 0, 0, 0.02, { axis: 'z', seg: 24, open: true });
-    b.cyl('ceramic', 0.15, 0.002, 0, 0, 0.046, { axis: 'z', seg: 20 });
-    for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; b.box('pl_black', 0.008, i % 3 ? 0.012 : 0.025, 0.002, Math.sin(a) * 0.13, Math.cos(a) * 0.13, 0.048, { rz: -a }); }
-    const hh = seed % 2 ? 3.2 : 0.4, mm = seed % 2 ? 2.9 : 5.6; // 停在 3:13 / 0:53
-    b.box('pl_black', 0.012, 0.08, 0.002, Math.sin(hh) * 0.035, Math.cos(hh) * 0.035, 0.05, { rz: -hh });
-    b.box('pl_black', 0.008, 0.115, 0.002, Math.sin(mm) * 0.05, Math.cos(mm) * 0.05, 0.051, { rz: -mm });
-    b.box('pl_red', 0.003, 0.13, 0.002, Math.sin(4.5) * 0.05, Math.cos(4.5) * 0.05, 0.052, { rz: -4.5 });
-    b.box('glass', 0.3, 0.3, 0.002, 0, 0, 0.056);
+    b.cyl('pl_white', 0.16, 0.045, 0, 0, 0.0225, { axis: 'z', seg: 20 });
+    b.cyl('steel', 0.165, 0.035, 0, 0, 0.02, { axis: 'z', seg: 20, open: true });
+    b.plane(L(clockFace(seed)), 0.29, 0.29, 0, 0, 0.0455); // 停住的時間(3:13 / 0:53)
+    b.cyl('glass', 0.15, 0.003, 0, 0, 0.05, { axis: 'z', seg: 16 });
     b.meta.mount = true;
   });
 }
@@ -613,8 +608,8 @@ export function crtMonitor(seed = 0, screenRect = null) {
 }
 export function keyboard(seed = 0) {
   return tpl(`kbd:${seed % 2}`, (b) => {
-    b.box('pl_beige', 0.46, 0.03, 0.17, 0, 0.015, 0, { r: 0.008, rx: 0.05 });
-    for (let r = 0; r < 5; r++) for (let c = 0; c < 15; c++) b.box('pl_cream', 0.024, 0.01, 0.022, -0.2 + c * 0.0275, 0.032 + r * 0.0015, -0.055 + r * 0.027, { r: 0.002 });
+    b.box('pl_beige', 0.46, 0.03, 0.17, 0, 0.015, 0, { r: 0.006, rx: 0.05 });
+    b.plane(L(keyboardTex()), 0.44, 0.15, 0, 0.0315, 0.0, { rx: -Math.PI / 2 + 0.05 });
     b.tube('pl_beige', [[0, 0.02, -0.09], [0.02, 0.01, -0.2], [0.1, 0.005, -0.25]], 0.003, { seg: 4, bend: 0.03 });
   });
 }

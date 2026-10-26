@@ -455,6 +455,37 @@ export function ctConsole() {
     }
   });
 }
+// 鍵盤鍵帽(俯視)
+export function keyboardTex() {
+  return labRect('kbdtex', 192, 72, (c, w, h) => {
+    reseed(55);
+    c.fillStyle = '#9a9070'; c.fillRect(0, 0, w, h);
+    for (let r = 0; r < 5; r++) for (let k = 0; k < 15; k++) {
+      const x = 4 + k * 12.4, y = 4 + r * 13.4, kw = (r === 4 && k > 3 && k < 11) ? 0 : 10.5;
+      if (!kw) continue;
+      c.fillStyle = '#5a5444'; c.fillRect(x + 0.6, y + 0.8, kw, 11.4);
+      c.fillStyle = (k + r) % 7 === 0 ? '#b8ae8c' : '#d8d0b0'; c.fillRect(x, y, kw, 11);
+    }
+    c.fillStyle = '#d8d0b0'; c.fillRect(4 + 4 * 12.4, 4 + 4 * 13.4, 6.4 * 12.4, 11); // 空白鍵
+    blotches(c, 0, 0, w, h, 4, 4, 20, '40,30,20', 0.1, 0.3);
+  });
+}
+// 時鐘面(停住的指針)
+export function clockFace(seed = 0) {
+  return labRect(`clockface:${seed % 2}`, 128, 128, (c, w, h) => {
+    reseed(seed * 7 + 99);
+    c.fillStyle = '#e4e0d4'; c.fillRect(0, 0, w, h);
+    c.save(); c.translate(w / 2, h / 2);
+    for (let i = 0; i < 60; i++) { const a = (i / 60) * Math.PI * 2; c.fillStyle = '#151515'; c.save(); c.rotate(a); c.fillRect(-(i % 5 ? 0.6 : 1.6), -60, i % 5 ? 1.2 : 3.2, i % 5 ? 4 : 9); c.restore(); }
+    for (let i = 1; i <= 12; i++) { const a = (i / 12) * Math.PI * 2; text(c, String(i), Math.sin(a) * 44, -Math.cos(a) * 44 + 1, { size: 12, color: '#151515', font: 'Arial, sans-serif' }); }
+    const hh = seed % 2 ? 3.2 : 0.4, mm = seed % 2 ? 2.9 : 5.6;
+    const hand = (a, l, wd, col) => { c.save(); c.rotate(a); c.fillStyle = col; c.fillRect(-wd / 2, -l, wd, l + 8); c.restore(); };
+    hand(hh, 30, 4, '#151515'); hand(mm, 46, 2.6, '#151515'); hand(4.5, 50, 1, '#b01010');
+    c.fillStyle = '#151515'; c.beginPath(); c.arc(0, 0, 3, 0, 7); c.fill();
+    c.restore();
+    blotches(c, 0, 0, w, h, 5, 10, 40, '90,70,40', 0.08, 0.25);
+  });
+}
 // 純色色票(標籤圖集內):小雜物用,整個物件只用一個材質(一個 InstancedMesh)
 export function sw(color) { return labRect(`swatch:${color}`, 8, 8, (c, w, h) => { c.fillStyle = color; c.fillRect(0, 0, w, h); }); }
 // 純色發光色票(LED、燈泡、火焰)

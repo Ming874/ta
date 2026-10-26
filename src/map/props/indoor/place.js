@@ -228,6 +228,8 @@ export class Room {
       this.count.tris += g.attributes.position.count / 3;
     }
     this.count.statics++;
+    const k = t.name.split(/[:#@]/)[0], u = this.st.use || (this.st.use = {});
+    u[k] = (u[k] || 0) + t.tris;
     return { t, x, z, yaw, y: o.y ?? this.y, M };
   }
   // 有碰撞家具:檢查 → 放置 → 登記碰撞。成功回傳放置資訊,失敗回傳 null
@@ -254,11 +256,12 @@ export class Room {
       const f = (i + 0.5) / n - 0.5;
       const px = lx + (longX ? f * sx : 0), pz = lz + (longX ? 0 : f * sz);
       const proxy = new THREE.Mesh(UNIT);
+      proxy.visible = false; // 只用來算包圍盒(setFromObject 不看 visible)
       proxy.scale.set(longX ? sx / n : sx, sy, longX ? sz : sz / n);
       proxy.position.set(x + px * cs + pz * sn, y + bb.min.y + sy / 2, z - px * sn + pz * cs);
       proxy.rotation.y = aligned ? Math.round(yaw / (Math.PI / 2)) * (Math.PI / 2) : yaw;
       this.ctx.add(proxy, { collide: true, static: false, shrink: o.shrink ?? (aligned ? 0.03 : 0.08) });
-      this.ctx.group.remove(proxy);
+      proxy.parent?.remove(proxy); // 場景建構器可能把物件改放到別的群組,直接從實際的父節點移除
       this.count.colliders++;
     }
   }
@@ -372,6 +375,7 @@ export class Room {
       im.instanceMatrix.needsUpdate = true;
       if (im.instanceColor) im.instanceColor.needsUpdate = true;
       im.boundingSphere = null;
+      im.boundingBox = null;
     }
     b.count++;
     this.count.inst++;
