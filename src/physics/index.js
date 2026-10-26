@@ -34,6 +34,7 @@ function mainBackend() {
   const out = new Float32Array(OUT_LEN);
   return {
     name: 'main', sab: false,
+    get core() { return core; }, // 除錯用
     async init() {
       const R = (await import('@dimforge/rapier3d-compat')).default;
       await R.init();
@@ -73,7 +74,7 @@ function workerBackend() {
           if (m.t === 'ready') { clearTimeout(timer); be.initMs = m.ms; resolve(); }
           else if (m.t === 'error') { clearTimeout(timer); console.warn('[physics worker]', m.message); reject(new Error(m.message)); }
           else if (m.t === 'out') {
-            busy = false;
+            if (!sab) busy = false; // SAB 模式以序號判斷完成(訊息可能比共享記憶體晚到)
             if (m.events) for (const ev of m.events) events.push(ev);
             if (m.buf) latest = new Float32Array(m.buf);
           }
@@ -146,6 +147,7 @@ export function createPhysics(game, opts = {}) {
     begin, update, ragdoll, collectDynamic, raycast, hit, shot, impulseAt, addDebris, chips: spawnChips, reset, debug, freezeAll,
     get ragdolls() { return rags; },
     poseOf: (slot) => Array.from(VIS.subarray(slot * 7, slot * 7 + 7)), // 除錯:槽位目前的(插值後)姿態
+    get _backend() { return backend; }, // 除錯用
   };
 
   // ======================= 初始化 =======================
@@ -586,6 +588,7 @@ export function createPhysics(game, opts = {}) {
     cmds.push(['chars', charData()]);
     const out = cmds.slice();
     cmds.length = 0;
+    if (P._rec) P._rec.push(out); // 除錯:錄下命令串流(在 Node 重播量測)
     return out;
   }
 
@@ -699,16 +702,22 @@ export function createPhysics(game, opts = {}) {
       if (!r.z.root?.parent || (r.z.corpse !== undefined && r.z.corpse < 1.6)) freeze(r);
     }
     let res;
+    const t1 = performance.now();
     if (backend.name === 'main') res = backend.frame(dt, flush());
     else res = backend.frame();
+    const t2 = performance.now();
     consume(res);
+    const t3 = performance.now();
     // 插值並寫回
     for (const s of moving) { const r = recs[s]; if (!r) continue; lerpPose(s, alpha); applyRec(r, s * 7); }
+    const t4 = performance.now();
     for (const r of rags) {
       applyRagdoll(r.rec, VIS);
       const b = r.z.b?.belly;
       if (r.z.type === 'bloater' && b) b.scale.setScalar(Math.max(0.55, b.scale.x - dt * 6)); // 爆開後肚子消下去
     }
+    const t5 = performance.now();
+    stats.breakdown = [t1 - t0, t2 - t1, t3 - t2, t4 - t3, t5 - t4, stats.beginMs || 0]; // pre, backend, consume, apply, ragdoll, begin
     for (const m of instDirty) m.instanceMatrix.needsUpdate = true;
     instDirty.clear();
     // 碎片壽命

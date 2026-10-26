@@ -42,6 +42,7 @@ const CHAR_STRIDE = 10; // 角色推擠資料:id, x, y, z, vx, vz, 半徑, 身�
 export function createCore(R) {
   const world = new R.World({ x: 0, y: -9.81, z: 0 });
   world.timestep = H;
+  world.numSolverIterations = 2; // 道具/碎片用 2 次就夠穩;布娃娃部位另外加 2 次(關節鏈需要)
   const queue = new R.EventQueue(true);
   const bodies = new Array(SLOTS).fill(null);
   const kind = new Uint8Array(SLOTS);
@@ -105,6 +106,7 @@ export function createCore(R) {
     if (v) { d.setLinvel(v[0], v[1], v[2]); tw.x = v[3] || 0; tw.y = v[4] || 0; tw.z = v[5] || 0; d.setAngvel(tw); }
     if (o.sleep) d.setSleeping(true);
     if (o.gs !== undefined) d.setGravityScale(o.gs);
+    if (o.iters) d.setAdditionalSolverIterations(o.iters);
     const b = world.createRigidBody(d);
     let vol = 0;
     for (let i = 0; i + SHAPE_LEN <= shapes.length; i += SHAPE_LEN) vol += shapeVolume(shapes, i);
@@ -140,7 +142,7 @@ export function createCore(R) {
     removeRag(id);
     const r = { slots: [], mass: 0, calm: 0, t: 0, maxT: o.maxT ?? 7, done: false };
     for (const pt of parts) {
-      const b = addBody(pt.slot, KIND.PART, pt.p, pt.v, pt.shapes, { g: 'rag', den: pt.den ?? 1000, f: o.f ?? 0.85, e: 0.04, ld: o.ld ?? 0.1, ad: o.ad ?? 1.2, ev: pt.ev });
+      const b = addBody(pt.slot, KIND.PART, pt.p, pt.v, pt.shapes, { g: 'rag', den: pt.den ?? 1000, f: o.f ?? 0.85, e: 0.04, ld: o.ld ?? 0.1, ad: o.ad ?? 1.2, ev: pt.ev, iters: 2 });
       r.slots.push(pt.slot);
       r.mass += b.mass();
     }
@@ -296,11 +298,21 @@ export function createCore(R) {
     touched[s] = steps;
     if (listed[s] !== frame) { listed[s] = frame; list.push(s); }
   }
+  // 自訂快速休眠:道具/碎片慢到幾乎不動 0.4 秒就直接睡(Rapier 預設要整個島靜止 2 秒)
+  const calm = new Float32Array(SLOTS), toSleep = [];
   function onActive(b) {
     const s = b.userData;
     if (s === undefined || s < 0 || bodies[s] !== b) return;
     active++;
     capture(s, b);
+    const k = kind[s];
+    if (k === KIND.PART) return;
+    const v = b.linvel(tw);
+    if (v.x * v.x + v.y * v.y + v.z * v.z < 0.003) {
+      const w = b.angvel(tw);
+      if (w.x * w.x + w.y * w.y + w.z * w.z < 0.02) { if ((calm[s] += H) > (k === KIND.CHIP ? 0.25 : 0.4)) toSleep.push(b); return; }
+    }
+    calm[s] = 0;
   }
   function onForce(e) {
     const f = e.totalForceMagnitude();
@@ -308,21 +320,27 @@ export function createCore(R) {
     if (s1 !== undefined && steps - lastHit[s1] > 10) { lastHit[s1] = steps; events.push(['hit', s1, f]); }
     if (s2 !== undefined && steps - lastHit[s2] > 10) { lastHit[s2] = steps; events.push(['hit', s2, f]); }
   }
+  // 布娃娃靜止判定:前 1.5 秒很嚴格(避免靠牆半蹲就被凍結),之後逐步放寬;2 秒後加大阻尼收掉殘餘抖動
   function ragCheck() {
     for (const [id, r] of rags) {
       if (r.done) continue;
       r.t += H;
+      if (!r.damped && r.t > 2) {
+        r.damped = true;
+        for (const s of r.slots) { const b = bodies[s]; if (b) { b.setLinearDamping(0.8); b.setAngularDamping(3.5); } }
+      }
+      const k = r.t < 1.5 ? 1 : r.t < 3 ? 3 : 8;
       let calm = true;
       for (const s of r.slots) {
         const b = bodies[s];
         if (!b || b.isSleeping()) continue;
         const v = b.linvel(tv);
-        if (v.x * v.x + v.y * v.y + v.z * v.z > 0.005) { calm = false; break; }
+        if (v.x * v.x + v.y * v.y + v.z * v.z > 0.005 * k) { calm = false; break; }
         const w = b.angvel(tw);
-        if (w.x * w.x + w.y * w.y + w.z * w.z > 0.12) { calm = false; break; }
+        if (w.x * w.x + w.y * w.y + w.z * w.z > 0.12 * k) { calm = false; break; }
       }
       r.calm = calm ? r.calm + H : 0;
-      if (r.calm > 0.7 || r.t > r.maxT) { r.done = true; events.push(['settled', id]); }
+      if (r.calm > 0.5 || r.t > r.maxT) { r.done = true; events.push(['settled', id, r.t]); }
     }
   }
   const far = [];
@@ -344,6 +362,8 @@ export function createCore(R) {
     steps++;
     active = 0;
     world.forEachActiveRigidBody(onActive);
+    for (const b of toSleep) { b.sleep(); calm[b.userData] = 0; }
+    toSleep.length = 0;
     queue.drainContactForceEvents(onForce);
     ragCheck();
     if (steps % 30 === 0) sleepFar();
