@@ -94,7 +94,7 @@ export class MapUI {
 
   _fit() {
     const { w, h } = this._dims();
-    const maxW = Math.min(1180, window.innerWidth * 0.94), maxH = window.innerHeight - 150;
+    const maxW = Math.min(1180, window.innerWidth * 0.94), maxH = window.innerHeight - 130;
     const k = Math.min(maxW / w, maxH / h);
     this.stage.style.width = `${Math.floor(w * k)}px`;
     this.stage.style.height = `${Math.floor(h * k)}px`;

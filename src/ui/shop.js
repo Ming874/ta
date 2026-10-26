@@ -128,6 +128,9 @@ class Preview {
     this.key = key;
     this.clear();
     if (!pv) return;
+    this.rotY = pv.type === 'gun' ? 0.32 : pv.type.startsWith('vest') ? 0.45 : 0.62; // 每個商品從好看的角度開始轉
+    this.tilt = pv.type === 'gun' ? 0.1 : 0.22;
+    this.auto = 1;
     let obj = null;
     if (pv.type === 'gun') {
       try { obj = createDisplayGun(pv.id); } catch { obj = null; }
@@ -272,7 +275,8 @@ export class ShopUI {
     if (!this.items.length) { this.listEl.innerHTML = `<div class="sh-empty">${esc(t.empty || '目前沒有商品')}</div>`; return; }
     this.listEl.innerHTML = t.items.map((it) => {
       if (it.header) return `<div class="sh-group">${esc(it.name)}</div>`;
-      const icon = ICON[it.icon || KIND_ICON[it.kind === 'weapon' || it.kind === 'mod' ? it.kind : it.id] || 'ammo'];
+      const wIcon = (id) => (id === 'revolver' || id === 'pistol' ? 'pistol' : id === 'barrett' ? 'sniper' : 'rifle');
+      const icon = ICON[it.kind === 'weapon' ? wIcon(it.id) : it.icon || KIND_ICON[it.kind === 'mod' ? 'mod' : it.id] || 'ammo'];
       let right;
       if (it.state === 'owned') right = '<span class="tag own">已擁有</span>';
       else if (it.state === 'equipped') right = '<span class="tag eq">使用中</span>';
@@ -312,8 +316,8 @@ export class ShopUI {
         };
         const dm = show('damage'), mg = show('mag'), rl = show('reload'), sp = show('spread');
         const pel = def.pellets ? ` ×${def.pellets}` : '';
-        const f = (o, d, unit = '', inv = false) => (o.up ? `${fmt(o.now, d)}${unit} → <b class="up">${fmt(inv ? o.after : o.after, d)}${unit}</b>` : `<b>${fmt(o.now, d)}${unit}</b>`);
-        facts = `<div class="sh-facts"><span>傷害${f(dm, dm.now % 1 ? 1 : 0)}${pel}</span><span>彈匣${it.mod === 'mag' && mg.up ? ` ${Math.round(mg.now)} → <b class="up">${Math.round(mg.after)}</b>` : `<b>${Math.round(mg.now)}</b>`}</span><span>換彈${f(rl, 2, 's')}</span><span>射速<b>${def.rpm}</b> RPM</span>${it.mod === 'spread' ? `<span>散布${f(sp, 4)}</span>` : ''}${def.auto ? '<span><b>全自動</b></span>' : ''}</div>`;
+        const f = (o, d, unit = '') => (o.up ? `<b>${fmt(o.now, d)}${unit}</b> → <b class="up">${fmt(o.after, d)}${unit}</b>` : `<b>${fmt(o.now, d)}${unit}</b>`);
+        facts = `<div class="sh-facts"><span>傷害${f(dm, dm.now % 1 ? 1 : 0)}${pel}</span><span>彈匣${it.mod === 'mag' && mg.up ? `<b>${Math.round(mg.now)}</b> → <b class="up">${Math.round(mg.after)}</b>` : `<b>${Math.round(mg.now)}</b>`}</span><span>換彈${f(rl, 2, 's')}</span><span>射速<b>${def.rpm}</b> RPM</span>${it.mod === 'spread' ? `<span>散布${f(sp, 4)}</span>` : ''}${def.auto ? '<span><b>全自動</b></span>' : ''}</div>`;
       }
     } else if (it.id === 'vest_light' || it.id === 'vest_heavy') {
       const armor = it.id === 'vest_heavy' ? 100 : 50;

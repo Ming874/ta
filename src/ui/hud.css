@@ -88,7 +88,7 @@
 
 /* ---- 擊殺跳字 ---- */
 .hd-pops { left: 50%; top: 50%; width: 0; height: 0; }
-.hd-pop { position: absolute; left: 3.2em; top: -2.6em; white-space: nowrap; font: 700 1.35em/1 var(--num); color: var(--hud-gold); opacity: 0; will-change: transform, opacity; }
+.hd-pop { position: absolute; left: 3.2em; top: -2.6em; white-space: nowrap; font: 700 1.6em/1 var(--num); color: var(--hud-gold); opacity: 0; will-change: transform, opacity; }
 .hd-pop small { font-family: "Microsoft JhengHei", sans-serif; font-size: .62em; letter-spacing: .15em; margin-left: .4em; color: #ffd9a8; }
 .hd-pop.head small { color: #ff8b6a; }
 .hd-pop.melee small { color: #b9e3ff; }

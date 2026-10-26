@@ -24,6 +24,7 @@ export const flowMethods = {
     this._gpInit = true;
     if (!this.shop) this.buildGameplayWorld(); // 舊的建構流程沒呼叫時的保險
     this.pickups = new Pickups(this.scene, this.world);
+    try { this.pickups._warm(this); } catch { /* 預先編譯掉落物 shader(載入時就做,避免第一次掉落卡頓) */ }
     this.ui.attach(this);
     settings.attach(this);
     // 射擊統計(命中率):包住 onFire,命中標記在同一次呼叫裡觸發才算命中
@@ -121,7 +122,7 @@ export const flowMethods = {
     const P = pace(n);
     this.maxAlive = P.maxAlive;
     this.spawnEvery = P.interval;
-    this.burst = P.burst;
+    this.spawnBurst = P.burst;
     this.spawnTimer = n === 1 ? 3.5 : 2.2;
     this.phase = 'fighting';
     this.weapons.resupply();
@@ -188,7 +189,7 @@ export const flowMethods = {
       this.spawnTimer -= dt;
       if (this.toSpawn > 0 && alive < this.maxAlive && this.spawnTimer <= 0) {
         this.spawnZombie();
-        if (this.burst > 0) { this.burst--; this.spawnTimer = 0.45; } else this.spawnTimer = this.spawnEvery * (0.7 + Math.random() * 0.6);
+        if (this.spawnBurst > 0) { this.spawnBurst--; this.spawnTimer = 0.45; } else this.spawnTimer = this.spawnEvery * (0.7 + Math.random() * 0.6);
       }
       this._relocateStragglers(dt);
       if (this.toSpawn === 0 && alive === 0) this.endRound();
