@@ -4,6 +4,17 @@ import { sfx } from './audio.js';
 const EYE = 1.65, EYE_CROUCH = 1.05; // 眼睛高度(腳底起算)
 const HEIGHT = 1.8, HEIGHT_CROUCH = 1.25; // 身高(天花板/道具盒判定)
 const RADIUS = 0.35;
+
+// 手電筒近距離亮度上限:光照與距離平方成反比,貼近牆面、白色布簾或殭屍時整片過曝,再被 Bloom 放大成一大團白光。
+// 把聚光燈的距離衰減在 SPOT_NEAR 公尺內固定(近處最多等於 2.5m 處的亮度):牆、道具、殭屍一律有效,沒有額外運算。
+// 場景裡只有手電筒是聚光燈;要在任何材質編譯前改 shader 片段,所以放在模組載入時。
+const SPOT_NEAR = 2.5;
+{
+  const k = 'lights_pars_begin', from = 'getDistanceAttenuation( lightDistance, spotLight.distance, spotLight.decay )';
+  const src = THREE.ShaderChunk[k];
+  if (src && src.includes(from)) THREE.ShaderChunk[k] = src.replace(from, `getDistanceAttenuation( max( lightDistance, ${SPOT_NEAR.toFixed(1)} ), spotLight.distance, spotLight.decay )`);
+  else console.warn('[player] 找不到聚光燈距離衰減的 shader 片段,手電筒近距離上限未套用');
+}
 const G = 9.8;
 const JUMP_V = 3.6; // 起跳速度(約 0.66m 高)
 const WALK = 3.3, SPRINT = 5.4, CROUCH = 1.7; // m/s
@@ -105,7 +116,7 @@ export class Player {
   toggleFlashlight() {
     this.flashOn = !this.flashOn;
     this.flashlight.visible = this.flashOn;
-    sfx.dry();
+    sfx.flashlight(this.flashOn);
   }
 
   look(dx, dy) {
@@ -133,7 +144,7 @@ export class Player {
     this.shake = Math.max(this.shake, 0.35);
     this.lastHurt = t;
     if (src) this.lastHurtFrom = { x: src.x, z: src.z };
-    sfx.hurt();
+    sfx.hurt(dmg);
     return dmg;
   }
 
@@ -219,7 +230,7 @@ export class Player {
       this._coyote = this._jumpBuf = 0;
       this.stamina = Math.max(0, this.stamina - JUMP_COST);
       this._stamT = STAM_DELAY;
-      sfx.step(true, this.surface);
+      sfx.jump(this.surface);
     }
 
     // ---- 積分 + 碰撞(world.resolve 處理牆/道具/地面/天花板/落地) ----
@@ -237,7 +248,7 @@ export class Player {
     }
     if (wasAir && this.onGround && this.landV > 1) { // 落地:鏡頭下沉 + 腳步聲
       this.dipV -= Math.min(5, this.landV) * 0.32;
-      sfx.step(this.landV > 3, this.surface);
+      sfx.land(this.landV, this.surface);
     }
     const sp = Math.hypot(this.vx, this.vz);
     this.speedNorm = Math.min(1, sp / 3.3);

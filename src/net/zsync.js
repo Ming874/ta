@@ -2,22 +2,26 @@ import * as THREE from 'three';
 import { Zombie } from '../zombies/zombie.js';
 import { forceVariant, variantIndexOf } from '../zombies/model.js';
 import { sfx } from '../audio.js';
-import { BIN, NONE, ZTYPES, ZSTATES, PARTS, PHASES, ZHEAD, ZENTRY, Writer, code, name, qPos, qAng, dAng } from './protocol.js';
+import { BIN, NONE, ZTYPES, ZSTATES, PARTS, PHASES, ZENTRY, Writer, code, name, qPos, qAng, dAng } from './protocol.js';
 import { Interp } from './interp.js';
 
 // 殭屍同步。
 // 房主:幫每隻殭屍編號,出生時送 'zn'(外觀與個性)、死亡送 'zd'(擊殺者與死法),每秒 15 次送二進位快照
 //       (只送有變化的;離所有玩家很遠的每 3 張才送一次;靜止的每秒補一次)。
+//       其他人的命中先驗證(每發上限、每人每秒額度)再套用,擊殺歸屬看最後一擊。
 // 其他人:用同一個變體建立「代理殭屍」(不跑 AI),以 100ms+ 的插值延遲播放位置/朝向/狀態,沿用原本的姿勢動畫;
 //       打代理殭屍時先在本地預測(血量/受擊/死亡),命中放進下一則狀態送給房主結算。
+// 外觀:變體 k 用固定種子建模(model.js),'zn' 與快照都帶 k;代理用 forceVariant 指定同一個 k。
 const SNAP_HZ = 15;
 const DELAY = 115; // 殭屍快照插值延遲(ms):快照間隔 66ms + 抖動
 const FAR = 45;
-const UP = new THREE.Vector3(0, 1, 0);
 const ARM = ['reach', 'one', 'hang', 'none'];
 const r2 = (x) => Math.round(x * 100) / 100;
 const r3 = (x) => Math.round(x * 1000) / 1000;
+const fin = (x) => typeof x === 'number' && Number.isFinite(x);
 const SAFE_STATES = new Set(['chase', 'attack', 'stumble', 'stagger', 'recover', 'getup', 'stun']);
+const _p = new THREE.Vector3(), _d = new THREE.Vector3();
+const HITP = { bone: '', point: new THREE.Vector3(), dir: new THREE.Vector3(), dmg: 0, range: 0, weapon: '', explosive: false, melee: false }; // 遠端命中(房主結算用,重複使用)
 
 export class ZombieSync {
   constructor(s) {
@@ -32,19 +36,19 @@ export class ZombieSync {
     this.tmp = new Float32Array(9);
     this.info = new Map(); // 還沒看到快照的 'zn'
     this.host = { round: 0, phase: 'wait', toSpawn: 0, timer: -1, alive: 0, t: 0 };
-    this.stepNear = 0;
+    this.deadIds = new Set();
   }
 
   begin() {
     if (this.s.isHost) for (const z of this.g.zombies) this.register(z);
   }
-  stop() { this.byId.clear(); this.info.clear(); }
+  stop() { this.byId.clear(); this.info.clear(); this.deadIds.clear(); }
   hostLeft() { return this.host.toSpawn + this.host.alive; }
 
   listen() {
     const s = this.s;
-    s.on('zn', (d, f) => { if (f === s.hostSlot && !s.isHost) this.onSpawnInfo(d); });
-    s.on('zd', (d, f) => { if (f === s.hostSlot && !s.isHost) this.onDeath(d); });
+    s.on('zn', (d, f) => { if (f === s.hostSlot && !s.isHost && Array.isArray(d) && d.length >= 14) this.onSpawnInfo(d); });
+    s.on('zd', (d, f) => { if (f === s.hostSlot && !s.isHost && Array.isArray(d)) this.onDeath(d); });
   }
 
   // ====================== 房主 ======================
@@ -63,9 +67,12 @@ export class ZombieSync {
     this.wrapHostDamage(z);
     this.s.send('zn', this.spawnInfo(z));
   }
+  // 記下最後命中的部位(死亡訊息用);包在原本的 damage(含 flow 的統計包裝)外面,命中資訊照傳
   wrapHostDamage(z) {
-    const orig = Zombie.prototype.damage;
-    z.damage = function (a, part) { this._lastPart = part; return orig.call(this, a, part); };
+    if (z._hostWrap) return;
+    const prev = z.damage;
+    z.damage = function (a, part, hit) { this._lastPart = part; return prev.call(this, a, part, hit); };
+    z._hostWrap = true;
   }
   spawnInfo(z) {
     return [z._nid, code(ZTYPES, z.type), variantIndexOf(z.V), r3(z.k), code(ARM, z.armStyle), r2(z.limp), z.limpSide, r3(z.tilt), r3(z.lean), Math.round(z.maxHp), r2(z.pos.x), r2(z.pos.y), r2(z.pos.z), r2(z.heading)];
@@ -78,7 +85,7 @@ export class ZombieSync {
     if (z._dsent) return;
     z._dsent = true;
     this.byId.delete(z._nid);
-    this.s.send('zd', [z._nid, killerSlot ?? NONE, code(PARTS, z._lastPart || 'body'), z.deathKind || null, z.deathSide || 1]);
+    this.s.send('zd', [z._nid, killerSlot ?? NONE, code(PARTS, z._lastPart || z.killPart || 'body'), z.deathKind || null, z.deathSide || 1]);
   }
 
   hostUpdate(dt) {
@@ -135,16 +142,45 @@ export class ZombieSync {
     s.client.sendBin(w.view());
   }
 
-  // 遠端玩家打中殭屍:房主結算傷害與擊殺;其他人只做受擊反應
-  onRemoteHit(rp, id, part, dmg) {
+  // 房主驗證遠端命中:每發上限(巴雷特 260×1.5;爆炸 240),每人另有額度(持續 900/秒、瞬間 3000,夠一顆手榴彈炸一群)
+  budget(rp, dmg, flags) {
+    if (!(dmg > 0)) return 0;
+    dmg = Math.min(dmg, flags & 1 ? 240 : 400);
+    const b = rp.zbud, now = performance.now();
+    if (!b.init) { b.init = true; b.b = 3000; b.t = now; }
+    b.b = Math.min(3000, b.b + ((now - b.t) / 1000) * 900);
+    b.t = now;
+    const d = Math.min(dmg, b.b);
+    b.b -= d;
+    return d;
+  }
+
+  // 遠端玩家打中殭屍:房主結算傷害與擊殺(命中點 = 該部位的命中盒、方向 = 射手 → 命中點);其他人只做受擊反應
+  onRemoteHit(rp, id, part, dmg, flags = 0) {
     const z = this.byId.get(id);
     if (!z || !z.alive) return;
     const g = this.g;
     if (this.s.isHost && !z._proxy) {
-      const killed = z.damage(dmg, part);
+      dmg = this.budget(rp, dmg, flags);
+      if (!(dmg > 0)) return;
       z.root.updateMatrixWorld(true);
-      const hb = z.hitboxes.find((h) => h.userData.part === part) || z.hitboxes[0];
-      if (hb) { const p = hb.getWorldPosition(new THREE.Vector3()); g.burst(p, UP, 'blood', part === 'head' ? 8 : 5, z.pos.y); }
+      let hb = null;
+      for (const h of z.hitboxes) if (h.userData.part === part && h.matrixWorld.determinant() !== 0) { hb = h; break; }
+      if (!hb) hb = z.hitboxes[0];
+      const H = HITP;
+      hb.getWorldPosition(H.point);
+      const ex = rp.pos.x, ey = rp.pos.y + 1.5, ez = rp.pos.z;
+      H.dir.set(H.point.x - ex, H.point.y - ey, H.point.z - ez);
+      H.range = H.dir.length();
+      if (H.range < 1e-3) H.dir.set(0, 0, 1); else H.dir.multiplyScalar(1 / H.range);
+      H.explosive = !!(flags & 1);
+      H.melee = !!(flags & 2);
+      if (H.explosive) { H.dir.y = Math.abs(H.dir.y) + 0.35; H.dir.normalize(); }
+      H.bone = hb.parent ? hb.parent.name : '';
+      H.dmg = dmg * (part === 'head' ? 2 : 1);
+      H.weapon = H.melee ? 'knife' : H.explosive ? 'grenade' : rp.weapon;
+      g._impulse?.(z, H.point, H.dir, dmg * (H.explosive ? 3 : 4)); // 布娃娃的倒地方向
+      const killed = z.damage(dmg, part, H);
       if (killed) g.onKill(z, rp);
     } else if (z._proxy) {
       this.flinch(z, dmg, part);
@@ -159,79 +195,89 @@ export class ZombieSync {
     z._flinchT = performance.now();
   }
 
-  // 擊殺(包裝 game.onKill)
-  onKill(z, killer, orig) {
+  // 擊殺(包裝 game.onKill;orig = flow 包過的 onKill:金幣、獎勵、掉落、統計)
+  onKill(z, killer, hit, orig) {
     const s = this.s, g = this.g;
     if (z._proxy) {
-      // 本地預測擊殺:金幣/掉落物歸自己(與房主確認同時發生時兩邊都會拿到,合作模式可接受)
-      if (z._localKill && !z._creditLocal) { z._creditLocal = true; if (s.pvp) { this.corpse(z); g.kills = (g.kills || 0) + 1; } else orig.call(g, z, g.player); }
+      // 本地預測擊殺:立刻倒地(布娃娃、斷肢)並顯示擊殺標記;金幣/獎勵/掉落等房主的 'zd' 確認是我殺的才給
+      // (兩人同時打同一隻時只有房主判定的那個人拿到,不會重複)
+      if (z._localKill && !z._pending) {
+        z._pending = { how: g._killHow || (hit?.melee ? 'melee' : hit?.blast || hit?.explosive ? 'explosion' : null), t: performance.now() };
+        this.corpse(z, hit);
+        if (g.wfx && g.chud) { g._killMark = true; g.chud.marker('kill', z.killPart === 'head'); sfx.killConfirm?.(); }
+      }
       return;
     }
     // 房主的真殭屍
     const k = killer || g.player;
-    if (k.remote) { // 遠端玩家擊殺:金幣與掉落物在他那邊生成
-      this.corpse(z);
-      z.killer = k;
-    } else if (s.pvp) { this.corpse(z); z.killer = k; g.kills = (g.kills || 0) + 1; }
-    else orig.call(g, z, k);
+    if (k.remote) { this.corpse(z, hit); z.killer = k; } // 隊友擊殺:金幣與掉落物在他那邊生成
+    else if (s.pvp) { this.corpse(z, hit); z.killer = k; g.kills = (g.kills || 0) + 1; }
+    else orig.call(g, z, k, hit);
     const slot = k.remote ? k.id : k === g.player ? s.me : NONE;
     if (z._nid) this.sendDeath(z, slot);
     s.mode.onZombieKilled?.(z, slot);
   }
-  corpse(z) {
-    if (z.type !== 'bloater') this.g.addPool(z.pos.x, z.pos.y, z.pos.z);
-    z.corpse = z.type === 'brute' ? 9 : 6;
+  // 沒有擊殺獎勵的屍體:血池、布娃娃、斷口噴血(combat.killFx)
+  corpse(z, hit = null) {
+    if (z._killed) return;
+    z._killed = true;
+    this.g.killFx(z, hit);
   }
-
-  visualExplode(z) {
-    const g = this.g, c = z.pos;
-    const at = new THREE.Vector3(c.x, c.y + 1.0, c.z);
-    g.hazards.flash(at, 6);
-    g.hazards.gas(c.x, c.y, c.z); // 毒氣在各端本地模擬(只傷害自己)
-    g.burst(at, UP, 'bile', 40, c.y);
-    g.burst(at, UP, 'blood', 30, c.y);
-    g.addPool(c.x, c.y, c.z);
-    g.muzzleLight.position.copy(at);
-    g.muzzleLight.intensity = 30;
-    sfx.burst(z.vp);
+  // 房主確認是我殺的(屍體已經倒了):金幣、擊殺數、flow 的擊殺獎勵/統計/掉落物(與 combat.onKill + flow.afterKill 相同)
+  credit(z, how) {
+    const g = this.g;
+    if (z._credited) return;
+    z._credited = true;
+    z.killer = g.player;
+    g.kills = (g.kills || 0) + 1;
+    if (this.s.pvp) return;
+    g.coins.drop(z.pos.x, z.pos.y, z.pos.z, z.T.coins);
+    g.afterKill?.(z, g.player, how || null);
   }
 
   // ====================== 其他人 ======================
   onSpawnInfo(d) {
     const id = d[0];
+    if (!(id > 0) || this.deadIds.has(id)) return;
     const z = this.byId.get(id);
     if (z) { this.applyInfo(z, d); return; }
+    if (!fin(d[10]) || !fin(d[11]) || !fin(d[12])) return;
     this.info.set(id, d);
     this.createProxy(id, d[1], d[2], d[10], d[11], d[12], d[13]);
   }
   applyInfo(z, d) {
-    z.k = d[3] || 1;
+    z.k = fin(d[3]) ? Math.max(0.8, Math.min(1.2, d[3])) : 1;
     z.mesh.scale.setScalar(z.k);
     z.headH = z.V.rig.HC.y * z.k;
     z.bar.sprite.position.y = z.type === 'crawler' ? 0.95 : z.headH + 0.32;
     z.armStyle = ARM[d[4]] || z.armStyle;
-    z.limp = d[5]; z.limpSide = d[6]; z.tilt = d[7]; z.lean = d[8];
-    if (d[9] > 0) { z.maxHp = d[9]; z.drawBar(); }
+    if (fin(d[5])) z.limp = d[5];
+    if (d[6] === 1 || d[6] === -1) z.limpSide = d[6];
+    if (fin(d[7])) z.tilt = d[7];
+    if (fin(d[8])) z.lean = d[8];
+    if (d[9] > 0 && d[9] < 100000) { z.maxHp = d[9]; z.drawBar(); }
     this.info.delete(d[0]);
   }
 
   createProxy(id, typeIdx, vi, x, y, zz, h) {
-    const g = this.g, s = this.s;
+    const g = this.g;
     const type = name(ZTYPES, typeIdx, 'walker');
-    forceVariant(type, vi);
+    forceVariant(type, vi | 0);
     const z = new Zombie(g.scene, { x, y, z: zz }, Math.max(1, g.round | 0), type);
     z._proxy = true;
     z._nid = id;
-    z.heading = h || 0;
+    z.heading = fin(h) ? h : 0;
     z.buf = new Interp(9, 24, [3], [4, 5, 6, 8]); // x y z 朝向 狀態 狀態時間 血量 速度 目標
     z._hpHost = z.hp;
     z._groan = 2 + Math.random() * 4;
+    z.speedNow = 0; // 第一張快照到之前姿勢動畫也要有值(否則步態相位變 NaN,整副骨架跟著壞掉)
+    z.dist = 99;
     this.toProxy(z);
     g.zombies.push(z);
     this.byId.set(id, z);
     const info = this.info.get(id);
     if (info) this.applyInfo(z, info);
-    if (type === 'brute') g.ui.banner('巨屍出現', '牠會咆哮後衝鋒 · 引牠撞牆再攻擊頭部', 3500);
+    if (type === 'brute') g.ui.banner('巨屍出現', '牠會咆哮後衝鋒 · 引牠撞牆再攻擊頭部', 3500, 'red');
     return z;
   }
   toProxy(z) {
@@ -240,11 +286,12 @@ export class ZombieSync {
     if (!z.buf) z.buf = new Interp(9, 24, [3], [4, 5, 6, 8]);
     z.update = (dt, ctx) => this.drive(z, dt, ctx);
     const orig = Zombie.prototype.damage;
-    z.damage = function (amount, part) { // 本地預測 + 送給房主
+    z.damage = function (amount, part, hit) { // 本地預測 + 送給房主
       if (!this.alive) return false;
-      s.queueZHit(this._nid, part, amount);
+      s.queueZHit(this._nid, part, amount, hit ? (hit.explosive ? 1 : 0) | (hit.melee ? 2 : 0) : 0);
       this._hitT = performance.now();
-      const killed = orig.call(this, amount, part);
+      this._lastPart = part;
+      const killed = orig.call(this, amount, part, hit);
       if (killed) { this._localKill = true; this._killAt = performance.now(); }
       return killed;
     };
@@ -252,7 +299,7 @@ export class ZombieSync {
 
   onSnapshot(r) {
     const s = this.s;
-    if (s.isHost) return;
+    if (s.isHost || r.left < 16) return;
     r.u8(); const from = r.u8(); r.u16(); const t = r.u32();
     if (from !== s.hostSlot) return;
     const H = this.host;
@@ -267,7 +314,7 @@ export class ZombieSync {
       const st = r.u16() / 1000, hp = r.u16(), sp = r.u8() / 20, tg = r.u8();
       let z = this.byId.get(id);
       if (!z) {
-        if (this.deadIds?.has(id)) continue;
+        if (this.deadIds.has(id)) continue;
         z = this.createProxy(id, ty, vi, x, y, zz, h);
       }
       if (!z._proxy) continue;
@@ -283,18 +330,26 @@ export class ZombieSync {
   onDeath(d) {
     const [id, by, partCode, dk, ds] = d;
     const z = this.byId.get(id);
-    (this.deadIds || (this.deadIds = new Set())).add(id);
+    this.deadIds.add(id);
     if (this.deadIds.size > 400) this.deadIds = new Set([...this.deadIds].slice(-200));
     if (!z) return;
     this.byId.delete(id);
     z._hostDead = true;
     const g = this.g, s = this.s;
     if (z.alive) {
-      z.die(name(PARTS, partCode, 'body'));
-      if (dk) { z.deathKind = dk; z.deathSide = ds || 1; }
-      if (by === s.me) { z._localKill = true; z._creditLocal = true; if (s.pvp) this.corpse(z); else s.origOnKill.call(g, z, g.player); }
-      else this.corpse(z);
-    }
+      const part = name(PARTS, partCode, 'body');
+      // 布娃娃倒地方向:擊殺者 → 殭屍
+      const k = by === s.me ? g.player : s.remotes.get(by);
+      if (k) {
+        _p.set(z.pos.x, z.pos.y + (z.type === 'crawler' ? 0.3 : 1.1), z.pos.z);
+        _d.set(z.pos.x - k.pos.x, 0.15, z.pos.z - k.pos.z).normalize();
+        g._impulse?.(z, _p, _d, 140);
+      }
+      z.die(part);
+      if (typeof dk === 'string' && dk.length < 12) { z.deathKind = dk; z.deathSide = ds === -1 ? -1 : 1; }
+      this.corpse(z);
+      if (by === s.me) { this.credit(z, null); g.chud?.marker('kill', part === 'head'); }
+    } else if (by === s.me && z._pending) this.credit(z, z._pending.how); // 預測的擊殺確認了
     s.mode.onZombieKilled?.(z, by);
   }
 
@@ -303,7 +358,6 @@ export class ZombieSync {
     z.t += dt;
     if (!z.alive) { z._dead(dt, ctx); return 0; }
     const s = this.s, g = this.g;
-    // 預測擊殺但房主遲遲沒確認(極少見):讓牠復活成新的代理
     const v = this.tmp;
     const rt = s.client.serverNow() - DELAY;
     const res = z.buf.sample(rt, v);
@@ -329,12 +383,15 @@ export class ZombieSync {
       const tg = v[8];
       z.target = tg === s.me ? g.player : s.remotes.get(tg) || null;
     }
+    if (!(z.speedNow >= 0)) z.speedNow = 0;
+    if (!Number.isFinite(z.ph)) z.ph = 0;
     const tp = z.target?.pos || this.nearest(z);
     const toX = tp ? tp.x - z.pos.x : Math.sin(z.heading), toZ = tp ? tp.z - z.pos.z : Math.cos(z.heading);
     const dist = Math.hypot(toX, toZ) || 1e-3;
     const lp = g.player.pos;
     z.dist = Math.hypot(lp.x - z.pos.x, lp.z - z.pos.z);
     z.mesh.castShadow = z.dist < 11;
+    z._slope?.(ctx.world, z.type === 'crawler' ? 1 : 0, dt);
     z._resetPose();
     z['_pose_' + z.type](dt, ctx, dist, toX, toZ);
     if (z.type === 'runner' && z.state === 'leap') { const u = z.st / 0.46; z.rootY = Math.max(0, 4 * 0.42 * u * (1 - u)); }
@@ -353,7 +410,6 @@ export class ZombieSync {
       z.jawT = 1.3;
     }
     z.jawT = Math.max(0, z.jawT - dt);
-    // 預測擊殺 2.5 秒仍未被房主確認、且快照還在更新 → 重新建立
     return 0;
   }
   nearest(z) {
@@ -389,6 +445,7 @@ export class ZombieSync {
         const id = z._nid;
         const n = z.buf.newest;
         if (n >= 0) {
+          this.byId.delete(id);
           const nz = this.createProxy(id, code(ZTYPES, z.type), variantIndexOf(z.V), z.buf.value(n, 0), z.buf.value(n, 1), z.buf.value(n, 2), z.buf.value(n, 3));
           nz.hp = nz._hostHp = z.buf.value(n, 6);
           nz.drawBar();
@@ -408,6 +465,7 @@ export class ZombieSync {
       if (!z._proxy) continue;
       delete z.update;
       delete z.damage;
+      z._hostWrap = false;
       z._proxy = false;
       if (z.alive) {
         const n = z.buf.newest;
@@ -426,6 +484,8 @@ export class ZombieSync {
         z.losT = 0;
         z.rootY = 0;
         z.rootPitch = 0;
+        z._born = g.time;
+        z._farT = 0;
         z.drawBar();
       }
       if (z._nid) { this.byId.set(z._nid, z); this.wrapHostDamage(z); }
@@ -440,6 +500,7 @@ export class ZombieSync {
       if (z._proxy || !z.alive) continue;
       if (!z._nid) { z.alive = false; z.corpse = 0.01; continue; }
       delete z.damage;
+      z._hostWrap = false;
       z._hostHp = z.hp;
       z._seen = performance.now();
       z._groan = 3;

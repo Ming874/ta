@@ -187,39 +187,72 @@ export const flowMethods = {
     return this.toSpawn + this.zombies.filter((z) => z.alive).length;
   },
 
-  // 出生點:優先「沿導航路徑 18~50m、玩家看不到」的點(3D 視線;35m 外有霧遮擋不算看得到);
-  // 符合的少於 3 個時,依路徑距離由近到遠補到 3 個(最遠 80m),都沒有再逐步放寬
-  pickSpawn() {
-    const w = this.world;
-    const players = this.players.filter((p) => p.alive !== false);
-    const scored = w.spawns.map((s) => {
+  // 出生點(type:要生的殭屍種類;通風口只給爬行者):
+  //  必要:路徑可達、所有玩家都看不到(眼睛 → 出生點頭/腳兩條 3D 視線;45m 外有霧不算)、直線距離 > 14m、
+  //        沿導航路徑 18~55m、不在本機玩家正後方 25m 內(不會在背後憑空冒出來)
+  //  加權:同樓層 ×3 > 相鄰樓層 ×1.4 > 隔兩層;暗處 ×1.5、門後 ×1.4、通風口 ×2.2;路徑 22~42m 最好;
+  //        6 秒內用過的 ×0.15(不連續從同一個洞冒出來)。太久沒有殭屍接近玩家(_calmT)時改挑近一點的(14~35m)
+  //  符合的太少時依序放寬
+  pickSpawn(type = 'walker', maxFd = Infinity) {
+    const w = this.world, L = w.layout, now = this.time;
+    const players = this.players.filter((p) => p.alive !== false && !p.downed);
+    if (!players.length) players.push(this.player);
+    const calm = (this._calmT || 0) > 12;
+    const cand = [];
+    for (const s of w.spawns) {
+      if (s.bad || (s.vent && type !== 'crawler')) continue;
       const sy = s.y || 0;
-      const ed = Math.min(...players.map((p) => Math.hypot(s.x - p.pos.x, s.z - p.pos.z) + Math.abs(sy - p.pos.y) * 2));
-      const fdRaw = w.flowDistance ? w.flowDistance(s.x, sy, s.z) : Infinity;
-      const fd = Number.isFinite(fdRaw) ? fdRaw : ed;
-      const seen = players.some((p) => Math.hypot(s.x - p.pos.x, sy - p.pos.y, s.z - p.pos.z) < 35 && w.hasLineOfSight(s.x, sy + 1.5, s.z, p.pos.x, p.pos.y + 1.6, p.pos.z));
-      return { s, ed, fd, seen, reach: Number.isFinite(fdRaw) };
-    });
-    const pool = scored.filter((q) => q.reach && q.ed > 12 && q.fd >= 18 && !q.seen).sort((a, b) => a.fd - b.fd);
-    let near = pool.filter((q) => q.fd <= 50);
-    if (near.length < 3) near = pool.slice(0, 3).filter((q) => q.fd <= 80);
-    if (near.length) return near[(Math.random() * near.length) | 0].s;
+      let ed = Infinity, lv = 9, seen = false, behind = false;
+      for (const p of players) {
+        const dx = s.x - p.pos.x, dz = s.z - p.pos.z, ddy = sy - p.pos.y, hd = Math.hypot(dx, dz);
+        ed = Math.min(ed, hd + Math.abs(ddy) * 2);
+        lv = Math.min(lv, Math.abs(s.level - L.levelOfY(p.pos.y + 0.3)));
+        if (!seen && hd + Math.abs(ddy) < 45) {
+          const ey = p.pos.y + (p.eyeH || 1.6);
+          seen = w.hasLineOfSight(p.pos.x, ey, p.pos.z, s.x, sy + 1.5, s.z) || w.hasLineOfSight(p.pos.x, ey, p.pos.z, s.x, sy + 0.4, s.z);
+        }
+        if (p === this.player && hd < 25 && Math.abs(ddy) < 2.5 && -dx * Math.sin(p.yaw) - dz * Math.cos(p.yaw) < -hd * 0.35) behind = true;
+      }
+      const fd = w.flowDistance ? w.flowDistance(s.x, sy, s.z) : ed;
+      cand.push({ s, ed, lv, seen, behind, fd });
+    }
+    const lo = calm ? 14 : 18, hi = calm ? 35 : 55;
+    const weight = (q) => {
+      let k = q.lv === 0 ? 3 : q.lv === 1 ? 1.4 : 0.35;
+      if (q.s.dark) k *= 1.5;
+      if (q.s.door) k *= 1.4;
+      if (q.s.vent) k *= 2.2;
+      if (now - (q.s._used ?? -99) < 6) k *= 0.15;
+      if (Number.isFinite(q.fd)) k *= q.fd < lo + 4 ? 0.7 : q.fd > (calm ? 30 : 42) ? 0.6 : 1;
+      return k;
+    };
     const tiers = [
-      (q) => q.ed > 10 && !q.seen,
+      (q) => Number.isFinite(q.fd) && !q.seen && q.ed > 14 && q.fd >= lo && q.fd <= hi && !q.behind,
+      (q) => Number.isFinite(q.fd) && !q.seen && q.ed > 12 && q.fd >= 14 && q.fd <= 80 && !q.behind,
+      (q) => Number.isFinite(q.fd) && !q.seen && q.ed > 10,
+      (q) => !q.seen && q.ed > 8,
       (q) => q.ed > 8,
       () => true,
     ];
     for (const ok of tiers) {
-      const cand = scored.filter(ok);
-      if (cand.length) return cand[(Math.random() * cand.length) | 0].s;
+      const pool = cand.filter((q) => ok(q) && !(q.fd > maxFd)); // maxFd:移動既有殭屍時只挑比牠現在更近的
+      if (!pool.length) continue;
+      let sum = 0;
+      for (const q of pool) sum += (q.wt = weight(q));
+      let r = Math.random() * sum;
+      for (const q of pool) if ((r -= q.wt) <= 0) { q.s._used = now; return q.s; }
+      pool[0].s._used = now;
+      return pool[0].s;
     }
-    return w.spawns[0];
+    return maxFd < Infinity ? null : w.spawns.find((s) => !s.bad) || w.spawns[0];
   },
 
   spawnZombie(type = this.queue.shift() || 'walker') {
-    const s = this.pickSpawn();
-    const pos = { x: s.x + (Math.random() - 0.5) * 1.2, y: s.y || 0, z: s.z + (Math.random() - 0.5) * 1.2 };
+    const s = this.pickSpawn(type);
+    const j = s.vent ? 0.15 : 1.1; // 出生點周圍 0.6m 內保證淨空(collision.js 檢查過)
+    const pos = { x: s.x + (Math.random() - 0.5) * j, y: s.y || 0, z: s.z + (Math.random() - 0.5) * j };
     const z = new Zombie(this.scene, pos, this.round, type);
+    if (s.yaw !== undefined) z.heading = s.yaw; // 從通風口爬出來:面向房內
     // 記下最後命中的部位(爆頭獎勵/統計用);不改變原本行為
     const dmg = z.damage;
     z.damage = (amount, part, ...rest) => { z._lastPart = part; z._lastHitT = this.time; return dmg.call(z, amount, part, ...rest); };
@@ -234,9 +267,11 @@ export const flowMethods = {
   // 每幀:出怪、回合結束、休息倒數(取代 game.update 裡原本的出怪/回合區塊)
   updateRound(dt) {
     if (this.phase === 'fighting') {
-      let alive = 0;
-      for (const z of this.zombies) if (z.alive) alive++;
-      this.spawnTimer -= dt;
+      let alive = 0, near = Infinity;
+      for (const z of this.zombies) if (z.alive) { alive++; if (z.dist < near && Math.abs(z.dy || 0) < 3) near = z.dist; }
+      // 壓力:太久沒有殭屍接近玩家(12m 內)→ 出怪間隔減半、出生點挑近一點、遠處閒晃的殭屍移近(長回合不會冷場)
+      this._calmT = near < 12 ? 0 : (this._calmT || 0) + dt;
+      this.spawnTimer -= dt * (this._calmT > 8 ? 2 : 1);
       if (this.toSpawn > 0 && alive < this.maxAlive && this.spawnTimer <= 0) {
         this.spawnZombie();
         if (this.spawnBurst > 0) { this.spawnBurst--; this.spawnTimer = 0.45; } else this.spawnTimer = this.spawnEvery * (0.7 + Math.random() * 0.6);
@@ -259,26 +294,25 @@ export const flowMethods = {
     }
   },
 
-  // 卡住或離所有玩家太遠的殭屍:看不到玩家一段時間後移到較近的出生點(大地圖保持節奏)
+  // 離所有玩家太遠的殭屍(卡住的由殭屍自己處理):沒人看得到一段時間後移到較近的隱蔽出生點(大地圖保持節奏);
+  // 冷場(_calmT > 15 秒)時最遠的那隻馬上移近
   _relocateStragglers(dt) {
     const w = this.world;
     this._strT = (this._strT || 0) - dt;
     if (this._strT > 0) return;
     this._strT = 1;
+    let far0 = null, fd0 = 30;
     for (const z of this.zombies) {
-      if (!z.alive || z.type === 'brute') continue;
+      if (!z.alive || z._proxy) continue;
       const fd = w.flowDistance ? w.flowDistance(z.pos.x, z.pos.y, z.pos.z) : z.dist;
-      const far = !Number.isFinite(fd) || fd > 55;
-      z._farT = far && !z.los ? z._farT + 1 : 0;
-      if (z._farT >= (Number.isFinite(fd) ? 20 : 8) && this.time - z._born > 10) {
-        const s = this.pickSpawn();
-        z.pos.set(s.x + (Math.random() - 0.5), s.y || 0, s.z + (Math.random() - 0.5));
-        z.vel?.set?.(0, 0, 0);
-        z.root?.position.copy(z.pos);
-        z._farT = 0;
-        z._born = this.time;
-      }
+      const reach = Number.isFinite(fd);
+      if (z.type === 'brute' && reach) continue; // 巨屍只有走不到時才移
+      const far = !reach || fd > 55;
+      z._farT = far && !z.los ? (z._farT || 0) + 1 : 0;
+      if (reach && fd > fd0 && !z.los && this.time - z._born > 8) { fd0 = fd; far0 = z; }
+      if (z._farT >= (reach ? 20 : 6) && this.time - z._born > 10 && (z._warp ? z._warp(this.zctx, false, reach ? fd - 12 : Infinity) : true)) { z._farT = 0; z._born = this.time; }
     }
+    if (far0 && (this._calmT || 0) > 15 && far0._warp && far0._warp(this.zctx, false, fd0 - 12)) { far0._born = this.time; this._calmT = 8; }
   },
 
   endRound() {

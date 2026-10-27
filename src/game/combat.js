@@ -22,9 +22,10 @@ const OBST_MAT = { statue: 'concrete', fountain: 'concrete', barricade: 'wood', 
 
 export const combatMethods = {
   // 所有對玩家的傷害都經過這裡:防彈衣吸收、受傷方向、死亡判定。src = 傷害來源位置(可省略)
-  damagePlayer(p, amount, src = null) {
+  // kind:'explosion'(手榴彈等)讓連線層分辨來源(多人:對戰算 PvP 傷害、合作不誤傷)
+  damagePlayer(p, amount, src = null, kind = null) {
     if (!(amount > 0) || this.state !== 'playing') return 0;
-    if (p !== this.player) return this.net ? this.net.damageRemote(p, amount, src) : 0; // 遠端隊友交給連線層
+    if (p !== this.player) return this.net ? this.net.damageRemote(p, amount, src, kind) : 0; // 遠端隊友交給連線層
     if (p.hp <= 0) return 0;
     const dealt = p.hurt(amount, this.time, src);
     this.ui.damageFlash();
@@ -136,7 +137,7 @@ export const combatMethods = {
     else if (kind === 'drop') this._eject(data.id, this.weapons.models[data.id], data.n);
     else if (kind === 'knife') this.meleeHit();
     else if (kind === 'throw') this.releaseGrenade();
-    else if (kind === 'pin') sfx.dry();
+    else if (kind === 'pin') sfx.grenadePin();
   },
 
   // 拋殼:從視角模型的拋殼口換算到世界座標(依兩台相機 FOV 差修正,讓彈殼出現在畫面上同一位置)
@@ -221,7 +222,7 @@ export const combatMethods = {
     const maxD = 140;
     const W = this.world;
     let lim = W.rayDistance(o.x, o.y, o.z, d.x, d.y, d.z, maxD);
-    const n = castZombies(this.zombies, o, d, lim);
+    const n = castZombies(this._targets(), o, d, lim);
     const pen = def.penetrate || 0, penMul = def.penMul ?? 0.7;
     let mul = 1, count = 0, stopped = false, endT = lim;
     const power = Math.min(1, dmg0 / 120);
@@ -265,7 +266,19 @@ export const combatMethods = {
         _b.subVectors(_end, _a).normalize();
         for (let s = 1.5; s < Math.min(L, 40); s += 1.8) this.wfx.smoke.spawn(_a.x + _b.x * s, _a.y + _b.y * s, _a.z + _b.z * s, 0, 0.05, 0, 0.06, 0.22, 0.62, 0.62, 0.62, 0.1, 1.6 + Math.random(), 0.05, 1, 0.01);
       }
+      if (this.net) this.net.onShot(_end, count > 0); // [net] 彈著點(遠端玩家畫曳光與命中特效)
     }
+  },
+
+  // 射線判定的目標:殭屍 + 連線層提供的額外目標(對戰時的遠端玩家命中盒,結構同殭屍:alive/pos/type/root/hitboxes/damage)
+  _targets() {
+    const x = this.extraTargets;
+    if (!x || !x.length) return this.zombies;
+    const out = this._tl || (this._tl = []);
+    out.length = 0;
+    for (let i = 0; i < this.zombies.length; i++) out.push(this.zombies[i]);
+    for (let i = 0; i < x.length; i++) out.push(x[i]);
+    return out;
   },
 
   // 擊殺前記下衝量(布娃娃依擊殺方向倒下),並套用到移動速度
@@ -280,7 +293,7 @@ export const combatMethods = {
     const mat = this._surfaceMat(pt, n);
     if (pellets === 1 || idx < 4) this.wfx.impact(pt, n, d, mat, power);
     else this.wfx.decals.add(pt, n, 0.035 + Math.random() * 0.02, mat === 'wood' ? DECAL.wood : mat === 'metal' ? DECAL.metal : mat === 'tile' ? DECAL.tile : DECAL.concrete, 40);
-    if (idx === 0) sfx.wall();
+    if (idx === 0) sfx.wall(pt, mat);
     // 金屬跳彈:淺角度時往反射方向再飛一小段
     if (mat === 'metal' && pellets === 1) {
       const dn = d.dot(n);
@@ -410,10 +423,20 @@ export const combatMethods = {
     if (z._killed) return;
     z._killed = true;
     this.coins.drop(z.pos.x, z.pos.y, z.pos.z, z.T.coins);
-    if (z.type !== 'bloater') this.addPool(z.pos.x, z.pos.y, z.pos.z);
-    z.corpse = z.type === 'brute' ? 9 : 6;
     z.killer = killer;
     this.kills = (this.kills || 0) + 1;
+    this.killFx(z, hit);
+    if (killer === this.player && this.wfx) {
+      this._killMark = true;
+      this.chud.marker('kill', z.killPart === 'head');
+      sfx.killConfirm();
+    }
+  },
+
+  // 屍體:血池、布娃娃、斷口噴血(不含金幣與擊殺計數;連線層處理隊友的擊殺時也用這個)
+  killFx(z, hit = null) {
+    if (z.type !== 'bloater') this.addPool(z.pos.x, z.pos.y, z.pos.z);
+    z.corpse = z.type === 'brute' ? 9 : 6;
     this.physics?.ragdoll(z, hit || z.lastImpulse || null); // 物理布娃娃(src/physics);不可用時沿用 zombie.js 的死亡動畫
     if (!this.wfx) return;
     const g = z.gore;
@@ -430,15 +453,11 @@ export const combatMethods = {
         this.wfx.smoke.spawn(_p.x, _p.y, _p.z, 0, 0.4, 0, 0.1, 0.6, 0.14, 0.012, 0.01, 0.55, 0.9, -0.2, 2, 0.03);
       }
     }
-    if (killer === this.player) {
-      this._killMark = true;
-      this.chud.marker('kill', z.killPart === 'head');
-      sfx.killConfirm();
-    }
   },
 
   // 膿腫者死亡時爆開:傷害周圍的玩家與殭屍,留下毒氣(不同樓層幾乎不受影響)
-  explode(z) {
+  // fxOnly:只有特效與物理(連線時其他人畫面上的代理殭屍;傷害由房主結算)
+  explode(z, fxOnly = false) {
     const E = z.T.explode, c = z.pos, p = this.player;
     const at = new THREE.Vector3(c.x, c.y + 1.0, c.z);
     this.hazards.flash(at, 6);
@@ -456,6 +475,7 @@ export const combatMethods = {
     // 物理:膿腫者爆開後倒下,周圍的道具、屍體被炸開(src/physics)
     this.physics?.ragdoll(z, { blast: at, radius: E.radius, strength: 9 });
     if (this.physics && this.physics.impulseAt) this.physics.impulseAt(at, E.radius * 1.6, 9);
+    if (fxOnly) return;
     const dist = (q) => Math.hypot(q.x - c.x, q.z - c.z) + Math.abs(q.y - c.y) * 1.5;
     for (const pl of this.players) {
       const d = dist(pl.pos);
@@ -476,7 +496,7 @@ export const combatMethods = {
   },
 
   // ---------- 通用爆炸 ----------
-  // opts:{ owner 擊殺者, self 對玩家的傷害倍率(預設 0.6), shake, kind:'grenade'|... , fx:false 不畫特效 }
+  // opts:{ owner 擊殺者, self 對玩家的傷害倍率(預設 0.6), shake, kind:'grenade'|... , fx:false 不畫特效, harmless:只有特效(連線:別人丟的手榴彈) }
   explodeAt(pos, radius = 6, damage = 160, opts = {}) {
     if (!this.wfx) this.initCombat();
     const owner = opts.owner || this.player;
@@ -503,6 +523,11 @@ export const combatMethods = {
       sfx.explosion(c, size);
     }
     if (this.physics && this.physics.impulseAt) this.physics.impulseAt(c, radius * 1.2, damage * 0.1);
+    if (opts.harmless) { // 只有震動(傷害由丟的人那一端結算)
+      const pl = this.player, d = Math.hypot(pl.pos.x - c.x, pl.pos.y + 1 - c.y, pl.pos.z - c.z);
+      pl.addShake(Math.min(1.2, (opts.shake ?? 1) * 1.4 * Math.max(0, 1 - d / (radius * 3.5))));
+      return;
+    }
     // 傷害係數:距離(含高度差)、樓層差、視線遮蔽
     const factor = (x, y, z, feetY) => {
       const dx = x - c.x, dy = y - c.y, dz = z - c.z;
@@ -543,8 +568,8 @@ export const combatMethods = {
       _d.set(pl.pos.x - c.x, 0, pl.pos.z - c.z);
       if (_d.lengthSq() < 1e-4) _d.set(1, 0, 0);
       _d.normalize();
-      if (pl.knock) pl.knock(_d.x * 7 * f, _d.z * 7 * f);
-      this.damagePlayer(pl, Math.round(damage * (opts.self ?? 0.6) * f), c);
+      if (pl.knock) pl.knock(_d.x * 7 * f, _d.z * 7 * f, 'explosion');
+      this.damagePlayer(pl, Math.round(damage * (opts.self ?? 0.6) * f), c, 'explosion');
     }
     if (hits && owner === this.player && !this._killMark) this.chud.marker('hit');
     this._killMark = false;
@@ -575,10 +600,17 @@ export const combatMethods = {
     const start = new THREE.Vector3().copy(_o).addScaledVector(_b, Math.max(0, Math.min(L, free - NADE_R - 0.02)));
     const vel = new THREE.Vector3().copy(_f).multiplyScalar(14).addScaledVector(_up, 3.4);
     vel.x += (p.vx || 0) * 0.8; vel.z += (p.vz || 0) * 0.8;
+    this.addNade(start, vel, { owner: p });
+    if (this.net) this.net.onGrenade(start, vel); // [net] 其他人畫面上的同一顆手榴彈(只有特效)
+  },
+
+  // 飛行中的手榴彈:o = { owner, t(已經過的時間), harmless }
+  addNade(start, vel, o = {}) {
+    if (!this.wfx) this.initCombat();
     const mesh = createGrenadeProjectile();
     mesh.position.copy(start);
     this.scene.add(mesh);
-    this.nades.push({ mesh, p: start, v: vel, t: 0.28, fuse: 2.5, rest: false, spin: new THREE.Vector3(rand(-14, 14), rand(-6, 6), rand(-14, 14)), owner: p });
+    this.nades.push({ mesh, p: start, v: vel, t: o.t ?? 0.28, fuse: 2.5, rest: false, spin: new THREE.Vector3(rand(-14, 14), rand(-6, 6), rand(-14, 14)), owner: o.owner || this.player, harmless: !!o.harmless });
   },
 
   _updateNades(dt) {
@@ -589,7 +621,7 @@ export const combatMethods = {
       if (g.t >= g.fuse) {
         this.scene.remove(g.mesh);
         this.nades.splice(i, 1);
-        this.explodeAt(_p.copy(g.p).addScaledVector(_up, 0.1), 7, 230, { owner: g.owner, kind: 'grenade' });
+        this.explodeAt(_p.copy(g.p).addScaledVector(_up, 0.1), 7, 230, { owner: g.owner, kind: 'grenade', harmless: g.harmless });
         continue;
       }
       if (!g.rest) {
@@ -644,7 +676,7 @@ export const combatMethods = {
     cam.getWorldPosition(_o);
     _f.set(0, 0, -1).applyQuaternion(cam.quaternion);
     let best = null, bs = Infinity;
-    for (const z of this.zombies) {
+    for (const z of this._targets()) {
       if (!z.alive) continue;
       // 殭屍身上離視線最近的點(腳踝到頭頂的垂直線段)
       const top = z.pos.y + (z.type === 'crawler' ? 0.55 : (z.headH || 1.6) + 0.1), bot = z.pos.y + 0.15;

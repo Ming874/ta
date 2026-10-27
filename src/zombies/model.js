@@ -1183,6 +1183,10 @@ export function survivorVariant(look) {
   return scache[i] || (scache[i] = buildVariant('survivor', 6000 + i * 7919, SURVIVOR_LOOKS[i]));
 }
 export const survivorReady = (look) => !!scache[((look | 0) % SURVIVOR_LOOKS.length + SURVIVOR_LOOKS.length) % SURVIVOR_LOOKS.length];
+// 釋放倖存者模型快取(沒有任何遠端玩家角色時才呼叫;下次 survivorVariant 會重建)
+export function disposeSurvivors() {
+  for (let i = 0; i < scache.length; i++) { scache[i]?.geometry?.dispose(); scache[i] = undefined; }
+}
 
 // 倖存者材質:健康皮膚(細緻毛孔)、清澈的眼睛;衣物/裝備/頭髮與殭屍共用
 const IRIS = { brown: '#5a3a1e', dark: '#2a1a10', green: '#4a6a3a', hazel: '#7a5a2a', blue: '#4a6a9a' };

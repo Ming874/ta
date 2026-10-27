@@ -40,7 +40,25 @@ export const PBR_SETS = {
   bark: { tile: 2.15, ao: 1, avg: '#847668' },
   dirt: { tile: 1.3, ao: 1, avg: '#4d4537' },
   chainlink: { tile: 1.0, ao: 0, alpha: 1, avg: '#9b9ea0' },
+  // wave 2:更多牆/地/天花板(見 public/credits/indoor.md)
+  plaster_paint: { tile: 2.5, ao: 1, avg: '#aba3a0' },
+  wallpaper_old: { tile: 2.0, ao: 1, avg: '#776b5e' },
+  plaster_blue: { tile: 2.4, ao: 1, avg: '#87a5a0' },
+  plaster_damaged: { tile: 2.4, ao: 1, avg: '#948271' },
+  brick_white: { tile: 2.0, ao: 1, avg: '#8d806b' },
+  gloss_paint: { tile: 1.6, ao: 1, avg: '#547c58' },
+  tile_sq: { tile: 1.5, ao: 1, avg: '#bdc3c0' },
+  plaster_mould: { tile: 2.4, ao: 1, avg: '#75714c' },
+  lino_pattern: { tile: 1.5, ao: 1, avg: '#b0834f' },
+  checker_bw: { tile: 1.6, ao: 1, avg: '#868580' },
+  rubber_floor: { tile: 2.0, ao: 1, avg: '#1f2125' },
+  anti_skid: { tile: 1.2, ao: 1, avg: '#866b54' },
+  carpet_dirty: { tile: 1.5, ao: 1, avg: '#352f25' },
+  epoxy: { tile: 3.0, ao: 1, avg: '#4f493f' },
+  ceiling_tile2: { tile: 2.4, ao: 1, avg: '#f5f5f5' },
 };
+// 新地圖註冊自己的貼圖組(public/textures/<name>/…):registerPbrSets({ name: { tile, ao, avg, alpha? } })
+export function registerPbrSets(defs) { Object.assign(PBR_SETS, defs); }
 const BASE = ((typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) || '/') + 'textures/';
 const PH = { color: null, normal: '#8080ff', orm: '#ffd0ff', opacity: '#ffffff' };
 const sets = new Map(); // set → { maps: {color, normal, orm, opacity}: base Texture, clones: [], state }
@@ -79,7 +97,8 @@ function getSet(name) {
 // 下載交給 src/sys/assets.js:關鍵檔載完才開始、依玩家距離排序、限制同時下載數、背景解碼、每幀交付一張。
 // 漸進式:有 1K 顏色圖的組先載 512 的 color_s.webp(法線/orm 本來就是 512),全部基本圖載完後才依距離換成 1K
 // (低畫質不換;assets.hiRes = false)
-const HI = new Set(['asphalt', 'brick', 'ceiling_tile', 'concrete', 'concrete_wall', 'concrete_wet', 'dirt', 'grass', 'linoleum', 'metal_painted', 'paint_peeling', 'paving', 'plaster', 'rust', 'stone', 'stone_wall', 'tile_lobby', 'tile_wall', 'tile_ward', 'tile_white', 'wood_floor', 'wood_old', 'wood_panel']);
+const HI = new Set(['asphalt', 'brick', 'ceiling_tile', 'concrete', 'concrete_wall', 'concrete_wet', 'dirt', 'grass', 'linoleum', 'metal_painted', 'paint_peeling', 'paving', 'plaster', 'rust', 'stone', 'stone_wall', 'tile_lobby', 'tile_wall', 'tile_ward', 'tile_white', 'wood_floor', 'wood_old', 'wood_panel',
+  'plaster_paint', 'wallpaper_old', 'plaster_blue', 'plaster_damaged', 'brick_white', 'gloss_paint', 'tile_sq', 'plaster_mould', 'lino_pattern', 'checker_bw', 'anti_skid', 'epoxy', 'ceiling_tile2']);
 function swap(s, m, img) {
   const base = s.maps[m];
   // 尺寸不同的新圖:先釋放舊的 GL 貼圖(不可變儲存無法改尺寸),下次使用時重新配置

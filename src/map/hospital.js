@@ -7,6 +7,9 @@ import { Buckets } from './hospital/builder.js';
 import { createShellContext, buildFloors, buildWalls, buildWindowCells, buildCeilings, buildVaults, buildPipes } from './hospital/shell.js';
 import { buildDoors, buildWindows, buildRails, buildFences, buildElevators, buildEdgeRails } from './hospital/openings.js';
 import { buildStairs } from './hospital/stairs.js';
+import { buildSigns } from './hospital/signs.js';
+import { createEvents } from './hospital/events.js';
+import { upgradePropMaterials } from './hospital/proppbr.js';
 import { NO_FLASH_SHADOW_LAYER } from './hospital/builder.js';
 import { buildLights, setGlowFog } from './hospital/lights.js';
 import { buildAtmosphere, makeEnvironment, onGlowFog } from './hospital/atmosphere.js';
@@ -48,6 +51,7 @@ export function buildHospital(world, layout, scene, opts = {}) {
   buildElevators(K);
   buildStairs(K);
   buildEdgeRails(K);
+  try { buildSigns(K); } catch (e) { console.error('[hospital] 標示建構失敗', e); }
   const tShell = performance.now();
 
   // ---- 道具(依樓層合併靜態網格) ----
@@ -69,6 +73,11 @@ export function buildHospital(world, layout, scene, opts = {}) {
   const { lights: propLights, events: propEvents } = ctx.finalize();
   const chunks = []; // 合併後的道具區塊(距離剔除用)
   const propMeshes = mergeStatics(statics, propGroups, chunks);
+  const propPbr = upgradePropMaterials();
+  // 可推動的小道具是各自獨立的物件(不能合併):離玩家 34m 以外就不畫(夜裡有霧,看不出來),省 draw call
+  const dynProps = [];
+  for (const g of propGroups) for (const o of g.children) if (o.userData?.dynamic && !o.isInstancedMesh) dynProps.push(o);
+  let dynTick = 0;
   const tProps = performance.now();
 
   // ---- 燈光與氛圍 ----
@@ -78,25 +87,42 @@ export function buildHospital(world, layout, scene, opts = {}) {
   onGlowFog(setGlowFog);
   const meshes = B.build(levelGroups);
   const tris = B.tris;
+  const events = createEvents({ K, L, lights, propEvents, root });
 
   // ---- 樓層可見性:地下室只在地下或靠近往下的樓梯時才畫 ----
   const b1 = L.levels.findIndex((l) => l.id === 'B1');
   const connectors = []; // B1 ↔ 1F 的通道(樓梯、坡道)
   for (const s of L.stairs) if (s.lower === b1) connectors.push({ x: (s.x0 + s.x1) / 2, z: (s.z0 + s.z1) / 2 });
   const vis = L.levels.map(() => true);
-  const updateVisibility = (li, x, z) => {
+  // 其他樓層的「道具」(draw call 大宗):只有在戶外、靠近連通兩層的樓梯、或在挑空(大廳中庭)附近時才畫;
+  // 結構(外牆、窗、樓板)照舊,從窗外看建築不會缺一塊
+  const stairsP = L.stairs.map((s) => ({ lo: s.lower, hi: s.upper, x: (s.x0 + s.x1) / 2, z: (s.z0 + s.z1) / 2, r: 9 + Math.max(s.x1 - s.x0, s.z1 - s.z0) / 2 }));
+  const voids = [];
+  L.levels.forEach((lv, lj) => {
+    let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9;
+    for (let r = 0; r < L.H; r++) for (let c = 0; c < L.W; c++) if (lv.rows[r][c] === 'o') { x0 = Math.min(x0, c * 2); x1 = Math.max(x1, c * 2 + 2); z0 = Math.min(z0, r * 2); z1 = Math.max(z1, r * 2 + 2); }
+    if (x1 > x0) voids.push({ lj, x0: x0 - 8, z0: z0 - 8, x1: x1 + 8, z1: z1 + 8 });
+  });
+  const propVis = L.levels.map(() => true);
+  const updateVisibility = (li, x, z, outdoor) => {
     let nearB1 = false;
     for (const c of connectors) if ((c.x - x) ** 2 + (c.z - z) ** 2 < 15 * 15) nearB1 = true;
+    let atrium = false;
+    for (const v of voids) if (x > v.x0 && x < v.x1 && z > v.z0 && z < v.z1) atrium = true;
     for (let i = 0; i < vis.length; i++) {
       if (li === b1) vis[i] = i === b1 || (nearB1 && i === b1 + 1); // 地下室只有靠近樓梯/坡道時看得到 1F;2F 以上看不到
       else vis[i] = i === b1 ? nearB1 || li === b1 : true;
       levelGroups[i].visible = vis[i];
+      let pv = i === li || outdoor || atrium;
+      if (!pv) for (const s of stairsP) if (((s.lo === li && s.hi === i) || (s.hi === li && s.lo === i)) && (s.x - x) ** 2 + (s.z - z) ** 2 < s.r * s.r) { pv = true; break; }
+      propVis[i] = pv;
+      propGroups[i].visible = pv;
     }
   };
 
   const stats = {
     buildMs: Math.round(performance.now() - t0), shellMs: Math.round(tShell - t0), propsMs: Math.round(tProps - tShell),
-    meshes: meshes.length, propMeshes, tris, fixtures: lights.fixtures.length, propLights: propLights.length, propEvents: propEvents.length,
+    meshes: meshes.length, propMeshes, propPbr, tris, fixtures: lights.fixtures.length, propLights: propLights.length, propEvents: propEvents.length,
     proc: procStats, pbr: pbrState, propErr: propErr ? String(propErr) : null,
   };
   console.log('[hospital] build', JSON.stringify(stats));
@@ -106,10 +132,11 @@ export function buildHospital(world, layout, scene, opts = {}) {
   let shadowFrames = 0, lastLoaded = -1;
   let cullTick = 0;
   const H = {
-    group: root, stats, layout: L, lights, atmo, K, levelGroups, propEvents, propLights, vis, chunks,
+    group: root, stats, layout: L, lights, atmo, K, levelGroups, propGroups, propEvents, propLights, vis, propVis, events, game: null, chunks,
     propDistance: 54, // 道具區塊的顯示距離(公尺):霧裡看不到的就不畫,setQuality 依 drawDistance 調整
     // post.js 會呼叫:提供 renderer(環境貼圖、各向異性)與品質設定
     attachRenderer(r, game) {
+      H.game = game || null;
       try { setAnisotropy(Math.min(8, r.capabilities.getMaxAnisotropy())); } catch { /* 忽略 */ }
       try { scene.environment = makeEnvironment(r); } catch (e) { console.warn('[hospital] 環境貼圖失敗', e); }
       H.setQuality(game?.quality);
@@ -131,7 +158,9 @@ export function buildHospital(world, layout, scene, opts = {}) {
       const style = zone || L.levelDefault[L.levels[li].id];
       const mood = L.moods[style.mood] || L.moods.corridor;
       const outdoor = (L.flagsAt(li, c, r) & L.F.OUTDOOR) !== 0 || L.ceilY(li, c, r) === Infinity;
-      updateVisibility(li, p.x, p.z);
+      updateVisibility(li, p.x, p.z, outdoor);
+      // 可推動的小道具:34m(或畫質的道具距離,取小)以外不畫
+      if ((dynTick = (dynTick + 1) % 12) === 0) { const fd = Math.min(34, H.propDistance); for (const o of dynProps) { const dx = o.position.x - p.x, dz = o.position.z - p.z; o.visible = dx * dx + dz * dz < fd * fd; } }
       // 道具區塊距離剔除(每 4 幀一次;區塊包圍球表面到眼睛的距離)。
       // 小東西在霧裡更早就看不清楚:半徑越小顯示距離越短(半徑 0.2m ≈ 1/3,4m 以上 = 完整距離)
       if ((cullTick = (cullTick + 1) & 3) === 0) {
@@ -147,10 +176,25 @@ export function buildHospital(world, layout, scene, opts = {}) {
       const fl = Math.hypot(camFwd.x, camFwd.z) || 1;
       lights.update(time, dt, p.x, p.y + 1.6, p.z, camFwd.x / fl, camFwd.z / fl, li, vis);
       atmo.update(time, dt, cam, mood, outdoor);
+      // 新的一局(狀態從非遊戲中變成遊戲中):驚嚇事件、被甩上的門、掉下的天花板都歸零
+      const st = H.game?.state;
+      if (st === 'playing' && H._state !== 'playing') events.reset();
+      H._state = st;
+      try { events.update(time, dt, player, H.game, { li, zone, mood: style.mood, outdoor, fx: camFwd.x / fl, fz: camFwd.z / fl }); } catch (e) { console.warn('[events]', e); }
       // 月光陰影:靜態,只在一開始與貼圖載完時重算(玩家在地面以上時)
       const loaded = pbrState.alpha + procStats.done; // 只有鏤空貼圖會改變陰影形狀(其他貼圖載完不必重畫 2048 陰影圖)
       if (li !== b1 && (shadowFrames < 2 || loaded !== lastLoaded)) { atmo.moon.shadow.needsUpdate = true; shadowFrames++; lastLoaded = loaded; }
       H.zone = zone; H.level = li; H.mood = style.mood;
+    },
+    // 新回合/重新開始:驚嚇事件與燈光狀態歸零(地圖不重建)
+    reset() { events.reset(); },
+    // 換地圖時:移除場景、釋放幾何(材質/貼圖是全域快取,可給下一張地圖共用)
+    dispose() {
+      events.dispose();
+      lights.dispose?.();
+      scene.remove(root);
+      root.traverse((o) => { if (o.geometry && !o.geometry.userData?.shared) o.geometry.dispose(); });
+      if (scene.environment && scene.environment.isTexture) { scene.environment.dispose(); scene.environment = null; }
     },
   };
   return H;

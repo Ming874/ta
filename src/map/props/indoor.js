@@ -3,6 +3,7 @@
 // 規劃器 Room(indoor/place.js)負責:不擋路的可達性檢查、碰撞登記(ctx.add)、區域內依材質合併、實例化小物件、可推動道具。
 import { Room } from './indoor/place.js';
 import { THEMES } from './indoor/themes.js';
+import { dressVignette } from './indoor/vignettes.js';
 
 export const INDOOR_THEMES = new Set([
   'xray', 'ct', 'pharmacy', 'cafeteria', 'rehab', 'waiting', 'er', 'chapel', 'lobby', 'security', 'corridor', 'stairwell',
@@ -17,6 +18,7 @@ export function dressIndoor(ctx, zone) {
   const R = new Room(ctx, zone);
   try {
     fn(R, zone);
+    dressVignette(R, zone); // 環境敘事小場景(路障、檢傷、隔離、血跡…)
   } catch (e) {
     console.warn('[props-in] 擺設失敗', zone.id, e && e.stack ? e.stack.split('\n').slice(0, 4).join(' | ') : e);
   }

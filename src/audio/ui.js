@@ -1,13 +1,20 @@
 // 介面、商店、拾取、裝備、多人提示音:清楚但不吵,音色延續醫院主題(監視器嗶聲、老收銀機、無線電對講)。
-import { A, emit, burst, tone, metal, gain, filter, rand, pick, curve, duck, muffle } from './core.js';
+import { A, emit, burst, tone, metal, gain, filter, rand, pick, curve, duck, muffle, baked, playBuf } from './core.js';
 import { click, clack, slide, cloth, squeal, tinnitus } from './foley.js';
 import { grunt } from './voices.js';
 import * as SM from './samples.js';
+import { sting } from './tracks.js';
 
 const rl = {};
-const limit = (k, s) => { const n = A.ctx.currentTime; if (n - (rl[k] ?? -9) < s) return false; rl[k] = n; return true; };
-const U = (o = {}) => emit({ bus: 'ui', dur: 1, ...o });
-const F = (o = {}) => emit({ bus: 'sfx', room: 0.12, dur: 1, ...o }); // 有實體感的手部動作(走音效匯流排)
+const limit = (k, s) => { const n = performance.now() / 1000; if (n - (rl[k] ?? -9) < s) return false; rl[k] = n; return true; }; // 牆鐘時間(離線量測時每個 context 都從 0 開始)
+const U = (o = {}) => emit({ bus: 'ui', prio: 4, dur: 1, ...o });
+// 短的合成提示音:第一次之後烘焙成緩衝(每次只剩一個 BufferSource,不必每次建 6~10 個節點)
+function cue(name, h, len, synth) {
+  const set = baked(`cue|${name}`, 2, len, (dst, t0) => synth({ in: dst, t: t0 }), 1, 32000);
+  if (set) { playBuf(h.in, h.t, pick(set), { rate: rand(0.99, 1.01) }); return; }
+  synth(h);
+}
+const F = (o = {}) => emit({ bus: 'sfx', prio: 4, room: 0.12, dur: 1, ...o }); // 有實體感的手部動作(走音效匯流排)
 
 function velcro(d, t, dur, g) { // 魔鬼氈撕開:密集不規則的爆裂顆粒
   const b = burst(d, t, { type: 'bandpass', f: 2800, q: 0.8, dur, g });
@@ -18,30 +25,34 @@ function velcro(d, t, dur, g) { // 魔鬼氈撕開:密集不規則的爆裂顆�
 export const ui = {
   // ---------- 金幣 / 購買 / 回合 ----------
   coin(i = 0) {
-    const h = U({ room: 0.15, dur: 0.5, gain: 0.8 });
+    const h = U({ room: 0.15, dur: 0.9, gain: 0.8 });
     if (!h) return;
     const f = 2093 * Math.pow(2, ((i % 6) * 2) / 12);
+    if (SM.play(i > 6 && Math.random() < 0.3 ? 'ui.coins' : 'ui.coin', { h, g: 0.5, semi: (i % 6) * 0.6 })) { metal(h.in, h.t + 0.02, f * 1.5, 0.025, 0.2, [1, 2.756]); return; }
     metal(h.in, h.t, f, 0.1, 0.3, [1, 2.756, 5.404]);
     metal(h.in, h.t + 0.035, f * 1.5, 0.05, 0.2, [1, 2.756]);
     burst(h.in, h.t, { type: 'highpass', f: 6000, dur: 0.01, g: 0.05 });
   },
   buy() {
-    const h = U({ room: 0.2, dur: 1.2 });
+    const h = U({ room: 0.2, dur: 2.8 });
     if (!h) return;
+    if (SM.play('ui.confirm', { h, g: 0.6 })) return;
     clack(h.in, h.t, 900, 0.25); // 收銀機械
     [1319, 1661, 1976].forEach((f, k) => metal(h.in, h.t + 0.08 + k * 0.07, f, 0.07, 0.6, [1, 2.0, 3.01, 4.1]));
     for (let k = 0; k < 5; k++) metal(h.in, h.t + 0.2 + k * 0.05, rand(2600, 3600), 0.03, 0.15, [1, 2.756]);
   },
   deny() {
-    const h = U({ room: 0.1, dur: 0.5 });
+    const h = U({ room: 0.1, dur: 0.8 });
     if (!h) return;
+    if (SM.play('ui.deny', { h, g: 0.55 })) return;
     const lp = filter('lowpass', 700, 1, h.in);
     tone(lp, h.t, { type: 'sawtooth', f: 110, dur: 0.11, hold: 0.04, g: 0.18 });
     tone(lp, h.t + 0.15, { type: 'sawtooth', f: 104, dur: 0.16, hold: 0.06, g: 0.18 });
     burst(h.in, h.t, { type: 'lowpass', f: 300, dur: 0.08, g: 0.2 });
   },
-  roundStart() {
-    const h = emit({ bus: 'sfx', room: 0.3, hall: 0.8, dur: 4, gain: 0.33 });
+  roundStart() { // 串流的錄音刺擊 + 合成的金屬刮升/撞擊
+    const rec = sting('round', 0.9, 6);
+    const h = emit({ bus: 'sfx', prio: 6, room: 0.3, hall: 0.8, dur: 4, gain: rec ? 0.18 : 0.33 });
     if (!h) return;
     const t = h.t;
     burst(h.in, t, { type: 'bandpass', f: 700, f1: 3200, q: 2, dur: 0.15, a: 0.55, g: 0.06 }); // 金屬刮升
@@ -53,8 +64,9 @@ export const ui = {
     lp.frequency.exponentialRampToValueAtTime(260, t + 2.8);
     for (const f of [73.4, 77.8, 110, 146.8 * 1.01]) tone(lp, t + 0.6, { type: 'sawtooth', f, dur: 1.8, a: 0.3, g: 0.07 });
   },
-  roundEnd() {
-    const h = emit({ bus: 'sfx', room: 0.3, hall: 0.7, dur: 4, gain: 0.66 });
+  roundEnd() { // 銅鑼錄音 + 合成的低沉銅鑼與三個下降的鐘聲
+    const rec = sting('gong', 0.9, 7);
+    const h = emit({ bus: 'sfx', prio: 6, room: 0.3, hall: 0.7, dur: 4, gain: rec ? 0.3 : 0.66 });
     if (!h) return;
     metal(h.in, h.t, 110, 0.22, 3.2, [1, 2.24, 3.38, 4.57, 5.9]); // 低沉銅鑼
     [1175, 1047, 880].forEach((f, k) => metal(h.in, h.t + 0.5 + k * 0.42, f * rand(0.985, 1.0), 0.035, 1.1, [1, 3.98, 6.3]));
@@ -62,16 +74,18 @@ export const ui = {
 
   uiClick() {
     if (!limit('click', 0.03)) return;
-    const h = U({ dur: 0.2, gain: 6 });
+    const h = U({ dur: 0.4, gain: 6 });
     if (!h) return;
+    if (SM.play('ui.click', { h, g: 0.12 })) return;
     burst(h.in, h.t, { type: 'bandpass', f: 2600, q: 3, dur: 0.008, g: 0.22 });
     tone(h.in, h.t, { f: 1800, dur: 0.025, g: 0.04 });
     burst(h.in, h.t, { type: 'lowpass', f: 500, dur: 0.015, g: 0.08 });
   },
   uiHover() {
     if (!limit('hover', 0.045)) return;
-    const h = U({ dur: 0.1, gain: 4 });
+    const h = U({ prio: 2, dur: 0.3, gain: 4 });
     if (!h) return;
+    if (SM.play('ui.hover', { h, g: 0.06 })) return;
     tone(h.in, h.t, { f: 2400, f1: 2300, dur: 0.02, g: 0.016 });
     burst(h.in, h.t, { type: 'highpass', f: 6000, dur: 0.004, g: 0.025 });
   },
@@ -104,8 +118,9 @@ export const ui = {
     metal(h.in, t + 0.55, 1047, 0.035, 1.1, [1, 2.0, 3.01]);
   },
   shopClose() {
-    const h = U({ dur: 0.6, gain: 3 });
+    const h = U({ dur: 0.8, gain: 3 });
     if (!h) return;
+    SM.play('ui.back', { h, g: 0.08 });
     tone(h.in, h.t, { f: 1250, f1: 420, glide: 0.12, dur: 0.13, g: 0.04 });
     click(h.in, h.t + 0.12, 1800, 0.12);
   },
@@ -113,8 +128,7 @@ export const ui = {
     if (!limit('tab', 0.05)) return;
     const h = U({ dur: 0.3, gain: 5 });
     if (!h) return;
-    click(h.in, h.t, 2200, 0.16);
-    tone(h.in, h.t, { f: rand(1450, 1550), dur: 0.03, g: 0.03 });
+    cue('tab', h, 0.12, (x) => { click(x.in, x.t, 2200, 0.16); tone(x.in, x.t, { f: rand(1450, 1550), dur: 0.03, g: 0.03 }); });
   },
   shopHover() {
     if (!limit('shover', 0.04)) return;
@@ -131,9 +145,10 @@ export const ui = {
     [659, 830, 988, 1319].forEach((f, k) => metal(h.in, t + 0.42 + k * 0.07, f, 0.035, 0.5, [1, 2.0, 3.0]));
   },
   cashRegister() { // 老式收銀機:按鍵 → 鈴 → 抽屜彈出 → 零錢
-    const h = F({ dur: 2, room: 0.25, gain: 0.7 });
+    const h = F({ dur: 2.4, room: 0.25, gain: 0.7 });
     if (!h) return;
     const t = h.t;
+    if (SM.play('ui.register', { h, g: 0.7 })) return;
     for (let i = 0; i < 3; i++) click(h.in, t + i * 0.08, 1800, 0.15);
     metal(h.in, t + 0.28, 2640, 0.09, 1.2, [1, 2.0, 3.0, 4.2]);
     slide(h.in, t + 0.32, 600, 300, 0.22, 0.2);
@@ -143,9 +158,10 @@ export const ui = {
   // 商店捲門:葉片在捲軸上連續卡嗒 + 馬達 + 結束時的撞擊
   shutter(pos, open = true) {
     const dur = rand(2, 2.4);
-    const h = pos ? emit({ pos, cat: 'fx', prio: 3, room: 0.6, hall: 0.3, dur: dur + 1, ref: 2.5, gain: 1.1, track: false }) : F({ dur: dur + 1, room: 0.5 });
+    const h = pos ? emit({ pos, cat: 'fx', prio: 3, room: 0.6, hall: 0.3, dur: dur + 3, ref: 2.5, gain: 1.1, track: false }) : F({ dur: dur + 3, room: 0.5 });
     if (!h) return;
     const t = h.t;
+    if (SM.play(open ? 'shutter.open' : 'shutter.close', { h, g: 0.8 })) { if (!open) duck(0.75, 0.4); return; }
     const am = gain(0);
     am.connect(h.in);
     const rate = rand(26, 34), N = Math.ceil(dur * rate * 6);
@@ -171,7 +187,7 @@ export const ui = {
     const h = pos ? emit({ pos, cat: 'fx', prio: 3, room: 0.8, hall: 0.4, dur: 3, ref: 2.2, gain: kind === 'creak' ? 4 : kind === 'metal' ? 0.8 : 1, track: false }) : F({ dur: 3, room: 0.6, gain: kind === 'creak' ? 3 : 0.8 });
     if (!h) return;
     const t = h.t;
-    if (SM.play(`door.${kind}`, { h, g: 0.8 })) { if (kind === 'slam') duck(0.65, 0.5); return; }
+    if (SM.play(`door.${kind}`, { h, g: 0.8 })) { if (kind === 'slam' || kind === 'cell') duck(0.65, 0.5); return; }
     if (kind === 'slam') {
       burst(h.in, t, { buf: 'pink', type: 'bandpass', f: 500, f1: 1200, q: 1, dur: 0.1, a: 0.08, g: 0.06 });
       tone(h.in, t + 0.08, { f: 68, f1: 30, dur: 0.5, g: 0.85 });
@@ -214,9 +230,10 @@ export const ui = {
     click(h.in, t + 0.22, 2600, 0.12);
   },
   pickupMed() {
-    const h = F({ dur: 1.2, gain: 1.2 });
+    const h = F({ dur: 1.4, gain: 1.2 });
     if (!h) return;
     const t = h.t;
+    if (SM.play(Math.random() < 0.6 ? 'med.zip' : 'med.velcro', { h, g: 0.5 })) { const c = U({ dur: 1 }); if (c) { tone(c.in, c.t + 0.1, { f: 659, dur: 0.25, a: 0.01, g: 0.02 }); tone(c.in, c.t + 0.18, { f: 988, dur: 0.35, a: 0.01, g: 0.016 }); } return; }
     click(h.in, t, 2400, 0.18); // 塑膠扣
     burst(h.in, t + 0.02, { type: 'bandpass', f: 1100, q: 2.5, dur: 0.03, g: 0.15 });
     burst(h.in, t + 0.08, { buf: 'pink', type: 'bandpass', f: 2500, q: 0.9, dur: 0.1, a: 0.03, g: 0.09 }); // 包裝
@@ -227,12 +244,12 @@ export const ui = {
     if (!limit('pdeny', 0.5)) return;
     const h = U({ dur: 0.4, gain: 2 });
     if (!h) return;
-    burst(h.in, h.t, { type: 'lowpass', f: 300, dur: 0.06, g: 0.2 });
-    tone(filter('lowpass', 600, 0.8, h.in), h.t, { type: 'sawtooth', f: 98, dur: 0.12, hold: 0.03, g: 0.05 });
+    cue('pdeny', h, 0.3, (x) => { burst(x.in, x.t, { type: 'lowpass', f: 300, dur: 0.06, g: 0.2 }); tone(filter('lowpass', 600, 0.8, x.in), x.t, { type: 'sawtooth', f: 98, dur: 0.12, hold: 0.03, g: 0.05 }); });
   },
   pickupItem() {
-    const h = F({ dur: 0.8, gain: 1.6 });
+    const h = F({ dur: 0.9, gain: 1.6 });
     if (!h) return;
+    SM.play('pick.ammobox', { h, g: 0.25 });
     cloth(h.in, h.t, 0.15, 0.08);
     click(h.in, h.t + 0.06, 2000, 0.14);
     const c = U({ dur: 0.6 });
@@ -242,6 +259,7 @@ export const ui = {
     const h = F({ dur: 1.4, gain: 0.9 });
     if (!h) return;
     const t = h.t;
+    if (SM.play('med.velcro', { h, g: 0.75 })) { clack(h.in, t + 0.72, 900, 0.3); tone(h.in, t + 0.72, { f: 120, f1: 60, dur: 0.1, g: 0.22 }); cloth(h.in, t + 0.8, 0.2, 0.08); return; }
     velcro(h.in, t, 0.22, 0.25);
     slide(h.in, t + 0.3, 1200, 1800, 0.15, 0.12);
     velcro(h.in, t + 0.5, 0.16, 0.2);
@@ -250,21 +268,31 @@ export const ui = {
     cloth(h.in, t + 0.8, 0.2, 0.08);
   },
   heal() { // 針筒推藥的嘶聲 + 鬆一口氣 + 溫暖的和弦
-    const h = F({ dur: 1.6 });
+    const h = F({ dur: 1.8 });
     if (!h) return;
     const t = h.t;
+    SM.play(Math.random() < 0.5 ? 'med.bandage' : 'med.cloth', { h, g: 0.45 });
     burst(h.in, t, { type: 'highpass', f: 4500, dur: 0.3, a: 0.05, g: 0.045 });
     burst(h.in, t + 0.35, { buf: 'pink', type: 'bandpass', f: 900, f1: 500, q: 1, dur: 0.45, a: 0.1, g: 0.1 });
     const c = U({ dur: 1.5 });
     if (c) { tone(c.in, c.t + 0.3, { f: 523, dur: 0.6, a: 0.03, g: 0.022 }); tone(c.in, c.t + 0.4, { f: 784, dur: 0.7, a: 0.03, g: 0.017 }); }
   },
+  // 掉落物落地(定位):彈藥箱 = 木/金屬悶響 + 箱內子彈晃動、醫療包 = 軟的布包、手榴彈 = 金屬叮
+  pickupLand(pos, kind = 'ammo') {
+    const h = emit({ pos, cat: 'fx', prio: 1, room: 0.2, dur: 0.6, ref: 1.5, maxDist: 25, gain: 1.4, track: false });
+    if (!h) return;
+    const t = h.t;
+    if (kind === 'med' || kind === 'health') { burst(h.in, t, { type: 'lowpass', f: 600, f1: 180, dur: 0.06, g: 0.25 }); burst(h.in, t, { buf: 'pink', type: 'bandpass', f: 1400, q: 0.8, dur: 0.06, g: 0.06 }); return; }
+    if (kind === 'grenade') { metal(h.in, t, rand(900, 1200), 0.05, 0.12, [1, 2.2, 3.7]); burst(h.in, t, { type: 'lowpass', f: 700, f1: 200, dur: 0.05, g: 0.2 }); return; }
+    burst(h.in, t, { type: 'lowpass', f: 500, f1: 120, dur: 0.07, g: 0.35 });
+    burst(h.in, t, { type: 'bandpass', f: rand(700, 1000), q: 3, dur: 0.03, g: 0.15 });
+    for (let i = 0; i < 3; i++) metal(h.in, t + rand(0, 0.06), rand(2600, 4000), 0.012, 0.05, [1, 2.7]);
+  },
   lowAmmo() {
     if (!limit('low', 0.9)) return;
     const h = U({ dur: 0.4, gain: 3 });
     if (!h) return;
-    click(h.in, h.t, 3200, 0.08);
-    click(h.in, h.t + 0.09, 3200, 0.07);
-    tone(h.in, h.t, { f: 1600, dur: 0.03, g: 0.015 });
+    cue('low', h, 0.3, (x) => { click(x.in, x.t, 3200, 0.08); click(x.in, x.t + 0.09, 3200, 0.07); tone(x.in, x.t, { f: 1600, dur: 0.03, g: 0.015 }); });
   },
 
   // ---------- 多人 ----------
@@ -286,9 +314,7 @@ export const ui = {
     if (!limit('chat', 0.08)) return;
     const h = U({ dur: 0.3, gain: 3 });
     if (!h) return;
-    click(h.in, h.t, 2400, 0.09);
-    tone(h.in, h.t + 0.02, { f: 1320, dur: 0.05, g: 0.025 });
-    burst(h.in, h.t + 0.08, { type: 'bandpass', f: 2200, q: 1.2, dur: 0.03, g: 0.02 });
+    cue('chat', h, 0.2, (x) => { click(x.in, x.t, 2400, 0.09); tone(x.in, x.t + 0.02, { f: 1320, dur: 0.05, g: 0.025 }); burst(x.in, x.t + 0.08, { type: 'bandpass', f: 2200, q: 1.2, dur: 0.03, g: 0.02 }); });
   },
   revive(pos) {
     if (pos && Number.isFinite(pos.x)) { // 隊友被救起(定位)
@@ -327,8 +353,6 @@ export const ui = {
     if (!limit('kill', 0.05)) return;
     const h = U({ dur: 0.4, gain: 2 });
     if (!h) return;
-    metal(h.in, h.t, 2300, 0.07, 0.07, [1, 2.7]);
-    tone(h.in, h.t, { f: 90, f1: 55, dur: 0.08, g: 0.14 });
-    burst(h.in, h.t, { type: 'highpass', f: 7000, dur: 0.01, g: 0.035 });
+    cue('kill', h, 0.25, (x) => { metal(x.in, x.t, 2300, 0.07, 0.07, [1, 2.7]); tone(x.in, x.t, { f: 90, f1: 55, dur: 0.08, g: 0.14 }); burst(x.in, x.t, { type: 'highpass', f: 7000, dur: 0.01, g: 0.035 }); });
   },
 };

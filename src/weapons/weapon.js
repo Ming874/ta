@@ -226,7 +226,7 @@ export class WeaponSystem {
     this.autoReload = 0;
     this.fireQueue = 0;
     this.lowAmmoWarned = false;
-    if (!instant) sfx.switch();
+    if (!instant) sfx.switch(id);
   }
 
   cycle(dir) {
@@ -250,7 +250,7 @@ export class WeaponSystem {
       return;
     }
     this.reloading = this.reloadTotal = this.stat(id, 'reload');
-    sfx.reload(id);
+    sfx.reload(id, this.reloadTotal, a.mag === 0);
     if (id === 'revolver') this._revDrop = 6 - a.mag; // 擺出彈巢時倒出空彈殼
   }
 
@@ -333,7 +333,7 @@ export class WeaponSystem {
     const canAim = !!d.ads && this.reloading <= 0 && !sprinting && !this.action && this.raise < 0.6 && (!d.pump || this.pumpT > 0.62 || this.pumped);
     const want = this.aim && canAim;
     this.ads = clamp01(this.ads + (want ? dt : -dt * 1.3) / (d.ads ? d.ads.time : 0.2));
-    if (want !== this.aiming) { this.aiming = want; (want ? sfx.adsIn : sfx.adsOut)(); }
+    if (want !== this.aiming) { this.aiming = want; (want ? sfx.adsIn : sfx.adsOut)(this.current); }
     const e = ease(this.ads);
     if (d.ads && d.ads.scope) {
       this.scoped = this.ads >= 0.999 && want;
@@ -373,7 +373,7 @@ export class WeaponSystem {
         if (a.mag === 0 && a.reserve > 0) this.autoReload = d.pump ? 0.75 : 0.28;
         if (a.mag <= Math.ceil(magSize * 0.25) && a.mag > 0 && !this.lowAmmoWarned) { this.lowAmmoWarned = true; sfx.lowAmmo(); }
       } else if (input.firePressed) {
-        sfx.dry();
+        sfx.dry(id);
         this.cooldown = 0.25;
         this.startReload();
       }

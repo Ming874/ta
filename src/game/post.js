@@ -32,7 +32,7 @@ export const PostShader = {
     }`,
 };
 
-// 清掉 HDR 緩衝裡偶發的 NaN/Inf,避免 Bloom 把整個畫面染成全黑
+// 清掉 HDR 緩衝裡偶發的 NaN/Inf,避免 Bloom 把整個畫面染成全黑;並把高光軟壓縮到約 8 以下(極亮的反光不會暈開成整片白光)
 export const SanitizeShader = {
   uniforms: { tDiffuse: { value: null } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
