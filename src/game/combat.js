@@ -360,7 +360,7 @@ export const combatMethods = {
 
   // ---------- 噴血源(爆頭血柱/斷肢/傷口) ----------
   _goreAdd(z, bone, off, dir, dur, rate, power) {
-    if (!bone || this.gore.length > 28) return;
+    if (!bone || this.gore.length > 28 || !Number.isFinite(off.x + off.y + off.z)) return; // 已斷開(縮成 0)的骨骼反矩陣會是 NaN
     const e = this.gorePool.pop() || { z: null, bone: null, off: new THREE.Vector3(), dir: new THREE.Vector3(), t: 0, dur: 0, rate: 0, acc: 0, power: 1 };
     e.z = z; e.bone = bone; e.off.copy(off); e.dir.copy(dir).normalize(); e.t = 0; e.dur = dur; e.rate = rate; e.acc = 0; e.power = power;
     this.gore.push(e);
@@ -372,6 +372,7 @@ export const combatMethods = {
     if (!bone) return;
     _a.copy(pt);
     bone.worldToLocal(_a);
+    if (!Number.isFinite(_a.x + _a.y + _a.z)) return; // 打到已斷開的部位
     bone.getWorldQuaternion(_q).invert();
     _b.copy(d).negate().applyQuaternion(_q);
     _b.y += 0.3;
