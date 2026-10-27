@@ -2,11 +2,17 @@ import './hud.css';
 import { WEAPONS } from '../weapons/weapon.js';
 import { sfx } from '../audio.js';
 import { F } from './protocol.js';
+import { ICON } from '../ui/icons.js';
 
 // 多人 HUD:計分板(Tab)、聊天(Enter)、隊友列表與血條、擊殺/事件訊息、倒地/救援提示、對戰倒數與比分、選武器、結算。
 const el = (tag, cls, parent, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; if (parent) parent.appendChild(e); return e; };
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const mmss = (t) => { t = Math.max(0, Math.ceil(t)); return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; };
+// 事件種類 → 右側訊息列(ui.feed)的顏色與圖示
+const KIND = {
+  kill: { color: '#ffd046', icon: 'skull' }, pvp: { color: '#e8e3d6', icon: 'skull' }, dead: { color: '#ff6a5a', icon: 'skull' }, down: { color: '#ff6a5a', icon: 'cross' },
+  revive: { color: '#7dffae', icon: 'heal' }, join: { color: '#7dffae' }, leave: { color: '#a3a39a' }, warn: { color: '#ffb090' }, host: { color: '#8fc8ff' }, coin: { color: '#f2c84b', icon: 'coin' },
+};
 
 export class NetHud {
   constructor(s) {
@@ -58,19 +64,22 @@ export class NetHud {
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
 
-    // 暫停選單:多人時世界不暫停,加上「離開房間」
+    // 暫停選單:多人時世界不暫停;「回到主選單」換成「離開房間」(menu.js 的 .mn-card 結構,舊版 #pause 也相容)
     const pause = document.getElementById('pause');
     if (pause) {
-      const h1 = pause.querySelector('h1'), p = pause.querySelector('p');
-      this.pauseSaved = { h1: h1?.textContent, p: p?.innerHTML };
+      const h1 = pause.querySelector('h1'), p = pause.querySelector('.mn-hint') || pause.querySelector('p');
+      const quit = pause.querySelector('[data-act="quit"]');
+      this.pauseSaved = { h1: h1?.textContent, p: p?.innerHTML, quit };
       if (h1) h1.textContent = '選單';
-      if (p) p.innerHTML = '點擊畫面回到遊戲<br /><small style="opacity:.7">多人連線中,遊戲不會暫停</small>';
-      const b = el('button', 'btn', pause, '離開房間');
+      if (p) p.innerHTML = '多人連線中,遊戲不會暫停 · 點擊空白處返回';
+      if (quit) quit.style.display = 'none';
+      const btns = pause.querySelector('.mn-btns') || pause;
+      const b = el('button', btns === pause ? 'btn' : 'mn-btn', btns, '離開房間');
       b.id = 'mp-leaveBtn';
-      b.style.background = '#3a3a3a';
-      b.style.borderColor = '#777';
-      b.onclick = (e) => { e.stopPropagation(); s.lobby.leaveRoom(); };
+      b.onclick = (e) => { e.stopPropagation(); sfx.uiClick?.(); s.lobby.leaveRoom(); };
     }
+    // 斷線重連提示(全畫面中央)
+    this.recon = el('div', '', root, '<div class="spin"></div><div class="t">連線中斷,重新連線中…</div><div class="sub"></div>'); this.recon.id = 'mp-recon';
     if (!this.s.pvp) this.team.classList.add('on');
   }
 
@@ -83,11 +92,14 @@ export class NetHud {
     const pause = document.getElementById('pause');
     if (pause && this.pauseSaved) {
       const h1 = pause.querySelector('h1'), p = pause.querySelector('p');
+      const p2 = pause.querySelector('.mn-hint') || p;
       if (h1 && this.pauseSaved.h1 !== undefined) h1.textContent = this.pauseSaved.h1;
-      if (p && this.pauseSaved.p !== undefined) p.innerHTML = this.pauseSaved.p;
+      if (p2 && this.pauseSaved.p !== undefined) p2.innerHTML = this.pauseSaved.p;
+      if (this.pauseSaved.quit) this.pauseSaved.quit.style.display = '';
       document.getElementById('mp-leaveBtn')?.remove();
       this.pauseSaved = null;
     }
+    clearInterval(this._reconT);
     this.chatOpen = false;
     this.pickerOpen = false;
   }
@@ -118,13 +130,32 @@ export class NetHud {
 
   feed(text, kind = '') {
     const ui = this.s.game.ui;
-    if (typeof ui.feed === 'function') { ui.feed(text, kind); return; }
+    if (typeof ui.feed === 'function') { ui.feed(text, KIND[kind] || {}); return; }
     if (!this.feedEl) return;
     const d = el('div', kind, this.feedEl);
     d.textContent = text;
     while (this.feedEl.children.length > 6) this.feedEl.firstChild.remove();
     setTimeout(() => d.classList.add('fade'), 5000);
     setTimeout(() => d.remove(), 5700);
+  }
+  // 擊殺訊息:擊殺者 [武器] 受害者(爆頭加圖示)
+  kill(killer, victim, weapon, head, kind) {
+    const ui = this.s.game.ui;
+    const K = KIND[kind] || KIND.pvp;
+    const html = `<b>${esc(killer)}</b><span class="mp-kf">${head ? ICON.head || '' : ''}${esc(weapon || '擊殺')}</span>${esc(victim)}`;
+    if (typeof ui.feed === 'function') ui.feed(html, { color: K.color, icon: 'skull', html: true, ms: 5200 });
+    else this.feed(`${killer} [${weapon}] ${victim}`, kind);
+  }
+  // 斷線重連:全畫面提示 + 倒數(伺服器保留座位 20 秒)
+  reconnecting(on) {
+    if (!this.recon) return;
+    clearInterval(this._reconT);
+    this.recon.classList.toggle('on', !!on);
+    if (!on) { this.status('已重新連線', false, 2000); return; }
+    const t0 = performance.now();
+    const tick = () => { const left = Math.max(0, 25 - (performance.now() - t0) / 1000); this.recon.querySelector('.sub').textContent = `座位保留中 · 還有 ${Math.ceil(left)} 秒 · 遊戲在背景繼續進行`; };
+    tick();
+    this._reconT = setInterval(tick, 500);
   }
   center(text, ms = 2000) {
     if (!this.centerEl) return;
@@ -231,13 +262,15 @@ export class NetHud {
       const mine = m.scores.get(s.me) || { k: 0, d: 0 };
       const lead = rows[0];
       const t = m.warmup > 0 ? '暖身' : mmss(m.hostTimer());
-      this.top.innerHTML = `<span class="me">你 <b>${mine.k}</b> 殺 / ${mine.d} 死</span>${lead && lead[0] !== s.me ? `<span class="lead">領先 ${esc(s.nameOf(lead[0]))} <b>${lead[1]}</b></span>` : lead ? '<span class="lead">你領先</span>' : ''}<span class="dim">目標 ${m.limit}</span><span class="time">${t}</span>`;
+      const html = `<span class="me">你 <b>${mine.k}</b> 殺 / ${mine.d} 死</span>${lead && lead[0] !== s.me ? `<span class="lead">領先 ${esc(s.nameOf(lead[0]))} <b>${lead[1]}</b></span>` : lead ? '<span class="lead">你領先</span>' : ''}<span class="dim">目標 ${m.limit} 殺</span><span class="time">${t}</span>`;
+      if (html !== this._topHtml) { this.top.innerHTML = html; this._topHtml = html; }
       this.top.classList.add('on');
     } else if ((g.phase === 'break' || g.phase === 'shop') && g.state === 'playing') {
-      const need = m.needed(), have = [...m.votes].filter((id) => id === s.me || s.remotes.get(id)?.connected).length;
-      const t = s.isHost ? m.hostTimer() : s.zs.host.timer;
-      this.top.innerHTML = `<span>準備下一回合 <b>${have}/${need}</b></span><span class="dim">${m.voted ? '你已準備(再按 N 取消)' : '按 N 準備'}</span>${t >= 0 ? `<span class="time">${mmss(t)}</span>` : ''}`;
+      const need = m.needed(), have = m.readyCount();
+      const html = `<span>準備下一回合 <b>${have}/${need}</b></span><span class="dim">${m.voted ? '你已準備(再按 N 取消)' : '按 N 準備'}</span><span class="time">${mmss(g.restT || 0)}</span>`;
+      if (html !== this._topHtml) { this.top.innerHTML = html; this._topHtml = html; }
       this.top.classList.add('on');
+      m.shopText?.();
     } else this.top.classList.remove('on');
     // 隊友列表(合作)
     if (!s.pvp) {

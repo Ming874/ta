@@ -235,8 +235,11 @@ class Lobby {
     s.start();
     s.hud.chatLine('', `房間 ${m.room.code} · ${MODE_NAME[m.room.mode]} · Tab 計分板 · Enter 聊天`, false, true);
     // 有使用者手勢(房主按開始)就直接鎖定滑鼠;其他人顯示「點擊進入」
-    if (performance.now() - this.gesture < 4000) g.canvas.requestPointerLock();
-    else { g.paused = true; g.ui.overlay('pause', true); }
+    let locked = false;
+    if (performance.now() - this.gesture < 4000) {
+      try { const r = g.canvas.requestPointerLock(); locked = true; if (r?.catch) r.catch(() => { g.paused = true; g.ui.overlay('pause', true); }); } catch { locked = false; }
+    }
+    if (!locked) { g.paused = true; g.ui.overlay('pause', true); }
   }
   endSession() {
     if (this.session) { this.session.stop(); this.session = null; }

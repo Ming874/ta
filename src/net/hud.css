@@ -119,3 +119,18 @@
 #mp-results button.red { background: #7a1a15; border-color: #b4443a; }
 #mp-results button:hover { filter: brightness(1.2); }
 #mp-results .wait { margin-top: 10px; font-size: 13px; opacity: 0.6; }
+
+/* 對戰:沒有回合,隱藏回合資訊 */
+body.mp-pvp .hd-round { display: none !important; }
+
+/* 擊殺訊息列(畫在 ui.feed 的 .hd-msg 裡):擊殺者 [武器] 受害者 */
+.hd-msg .mp-kf { display: inline-flex; align-items: center; gap: .25em; margin: 0 .55em; padding: .05em .45em; font-size: .82em; letter-spacing: .04em; color: #d8d2c2; background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .14); border-radius: 2px; }
+.hd-msg .mp-kf svg { margin: 0 !important; width: 1em; height: 1em; color: #ff8a6a; }
+
+/* 斷線重連 */
+#mp-recon { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); display: none; flex-direction: column; align-items: center; gap: 10px; padding: 18px 34px 16px; background: rgba(8, 10, 10, 0.86); border: 1px solid rgba(255, 140, 90, 0.5); }
+#mp-recon.on { display: flex; }
+#mp-recon .t { font-size: 22px; letter-spacing: 4px; color: #ffd0b8; font-weight: 700; }
+#mp-recon .sub { font-size: 14px; opacity: 0.8; letter-spacing: 1px; }
+#mp-recon .spin { width: 26px; height: 26px; border: 3px solid rgba(255, 255, 255, 0.2); border-top-color: #ffb090; border-radius: 50%; animation: mp-spin 0.9s linear infinite; }
+@keyframes mp-spin { to { transform: rotate(360deg); } }

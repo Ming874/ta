@@ -4,10 +4,11 @@
 import { TYPES } from '../zombies/types.js';
 import { WEAPONS, ORDER } from '../weapons/weapon.js';
 
-export const PROTO = 1; // 與 server/index.js 一致
+export const PROTO = 2; // 與 server/index.js 一致(格式或訊息語意改變就加一,舊頁面會被要求重新整理)
 export const BIN = { STATE: 1, ZSNAP: 2 };
 export const TAU = Math.PI * 2;
 export const NONE = 255;
+export const W_KNIFE = 253, W_BOOM = 254; // 對戰傷害的「武器」代碼:小刀、爆炸
 
 // 對照表由遊戲資料產生(各端是同一個版本,順序一致);找不到的值送 255
 export const ZTYPES = Object.keys(TYPES);
@@ -66,13 +67,15 @@ export class Reader {
 // 22 u16 旗標 | 24 u8 武器 | 25 u8 生命 | 26 u8 護甲 | 27 u8 救援對象座位 | 28 u8 救援進度(0..255)
 // 29 u8 開火數 | 30 u8 殭屍命中數 | 31 u8 玩家命中數
 // 開火 ×7:i16 ex, i16 ey, i16 ez(彈著點), u8 旗標(1 = 命中肉體)
-// 殭屍命中 ×6:u16 殭屍編號, u8 部位, u16 傷害×10, u8 保留
-// 玩家命中 ×5:u8 對象座位, u8 部位, u16 傷害×10, u8 武器
+// 殭屍命中 ×6:u16 殭屍編號, u8 部位, u16 傷害×10, u8 旗標(1 爆炸、2 近戰)
+// 玩家命中 ×5:u8 對象座位, u8 部位, u16 傷害×10, u8 武器(WEAPON_IDS 索引;W_KNIFE / W_BOOM)
+// 伺服器只轉送,但會檢查長度 = 32 + 開火×7 + 殭屍命中×6 + 玩家命中×5(見 server/index.js)
+export const STATE_HEAD = 32;
 export const MAX_SHOTS = 24, MAX_HITS = 32;
 export function makeState() {
   return {
     seq: 0, time: 0, x: 0, y: 0, z: 0, yaw: 0, pitch: 0, vx: 0, vz: 0, flags: 0, weapon: 0, hp: 100, armor: 0, rt: NONE, rp: 0,
-    nShots: 0, shots: new Float32Array(MAX_SHOTS * 4), nZ: 0, zh: new Float32Array(MAX_HITS * 3), nP: 0, ph: new Float32Array(MAX_HITS * 4),
+    nShots: 0, shots: new Float32Array(MAX_SHOTS * 4), nZ: 0, zh: new Float32Array(MAX_HITS * 4), nP: 0, ph: new Float32Array(MAX_HITS * 4),
   };
 }
 export function writeState(w, s) {
@@ -83,7 +86,7 @@ export function writeState(w, s) {
   const ns = Math.min(s.nShots, MAX_SHOTS), nz = Math.min(s.nZ, MAX_HITS), np = Math.min(s.nP, MAX_HITS);
   w.u8(ns); w.u8(nz); w.u8(np);
   for (let i = 0; i < ns; i++) { const k = i * 4; w.i16(qPos(s.shots[k])); w.i16(qPos(s.shots[k + 1])); w.i16(qPos(s.shots[k + 2])); w.u8(s.shots[k + 3]); }
-  for (let i = 0; i < nz; i++) { const k = i * 3; w.u16(s.zh[k]); w.u8(s.zh[k + 1]); w.u16(clamp(Math.round(s.zh[k + 2] * 10), 0, 65535)); w.u8(0); }
+  for (let i = 0; i < nz; i++) { const k = i * 4; w.u16(s.zh[k]); w.u8(s.zh[k + 1]); w.u16(clamp(Math.round(s.zh[k + 2] * 10), 0, 65535)); w.u8(s.zh[k + 3] & 0xff); }
   for (let i = 0; i < np; i++) { const k = i * 4; w.u8(s.ph[k]); w.u8(s.ph[k + 1]); w.u16(clamp(Math.round(s.ph[k + 2] * 10), 0, 65535)); w.u8(s.ph[k + 3]); }
   return w.view();
 }
@@ -92,11 +95,11 @@ export function readState(r, s) {
   s.x = r.i16() / 100; s.y = r.i16() / 100; s.z = r.i16() / 100; s.yaw = dAng(r.u16()); s.pitch = r.i16() / 10000; s.vx = r.i16() / 100; s.vz = r.i16() / 100;
   s.flags = r.u16(); s.weapon = r.u8(); s.hp = r.u8(); s.armor = r.u8(); s.rt = r.u8(); s.rp = r.u8() / 255;
   const ns = r.u8(), nz = r.u8(), np = r.u8();
-  if (r.left < ns * 7 + nz * 6 + np * 5) return false;
-  s.nShots = Math.min(ns, MAX_SHOTS); s.nZ = Math.min(nz, MAX_HITS); s.nP = Math.min(np, MAX_HITS);
-  for (let i = 0; i < ns; i++) { const x = r.i16() / 100, y = r.i16() / 100, z = r.i16() / 100, f = r.u8(); if (i < MAX_SHOTS) { const k = i * 4; s.shots[k] = x; s.shots[k + 1] = y; s.shots[k + 2] = z; s.shots[k + 3] = f; } }
-  for (let i = 0; i < nz; i++) { const id = r.u16(), part = r.u8(), dmg = r.u16() / 10; r.u8(); if (i < MAX_HITS) { const k = i * 3; s.zh[k] = id; s.zh[k + 1] = part; s.zh[k + 2] = dmg; } }
-  for (let i = 0; i < np; i++) { const to = r.u8(), part = r.u8(), dmg = r.u16() / 10, wpn = r.u8(); if (i < MAX_HITS) { const k = i * 4; s.ph[k] = to; s.ph[k + 1] = part; s.ph[k + 2] = dmg; s.ph[k + 3] = wpn; } }
+  if (ns > MAX_SHOTS || nz > MAX_HITS || np > MAX_HITS || r.left < ns * 7 + nz * 6 + np * 5) return false;
+  s.nShots = ns; s.nZ = nz; s.nP = np;
+  for (let i = 0; i < ns; i++) { const k = i * 4; s.shots[k] = r.i16() / 100; s.shots[k + 1] = r.i16() / 100; s.shots[k + 2] = r.i16() / 100; s.shots[k + 3] = r.u8(); }
+  for (let i = 0; i < nz; i++) { const k = i * 4; s.zh[k] = r.u16(); s.zh[k + 1] = r.u8(); s.zh[k + 2] = r.u16() / 10; s.zh[k + 3] = r.u8(); }
+  for (let i = 0; i < np; i++) { const k = i * 4; s.ph[k] = r.u8(); s.ph[k + 1] = r.u8(); s.ph[k + 2] = r.u16() / 10; s.ph[k + 3] = r.u8(); }
   return true;
 }
 

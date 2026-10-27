@@ -27,9 +27,10 @@ export class NetClient {
     this._timers = [];
   }
 
+  // 同源的 /ws(HTTPS 頁面 → wss://);測試時可用 ?server=ws://… 指定其他伺服器
   url() {
     const q = new URLSearchParams(location.search).get('server');
-    if (q) return q;
+    if (q && /^wss?:\/\//.test(q)) return q;
     return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
   }
 
@@ -110,6 +111,17 @@ export class NetClient {
   _closed(ev) {
     this._stopTimers();
     this.ws = null;
+    // 版本不符(伺服器已更新):不再重試,請使用者重新整理
+    if (ev && ev.code === 4000) {
+      const was = this.status;
+      this.want = false;
+      this.status = 'closed';
+      this.lostAt = 0;
+      this.token = null;
+      if (was === 'connecting') this.emit('_fail', new Error('遊戲已更新,請重新整理頁面'));
+      else this.emit('lost', { reason: 'version' });
+      return;
+    }
     if (this.status === 'connecting' && !this.token) {
       this.status = 'closed';
       this.emit('_fail', new Error('無法連線到伺服器'));

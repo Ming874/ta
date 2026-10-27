@@ -3,9 +3,14 @@ import { sfx } from '../audio.js';
 import { F, NONE } from './protocol.js';
 
 // 合作生存:房主跑回合/出怪,廣播回合開始('rs')與結束('re');其他人照著切換階段。
-// 回合間(休息/商店)所有人按 N 準備,全員準備或倒數結束就開始下一回合。
+// 回合間是商店階段(phase 'shop',商店捲門拉起):每人用自己的金幣在實體商店購買;按 N 準備 / 取消,
+// 全員準備就倒數 3 秒開始,否則 REST_MP 秒到了自動開始(房主計時,快照帶倒數)。
+// 金幣、擊殺獎勵、掉落物(彈匣/醫療包/手榴彈)、補給點都是「各人各自」:只在擊殺者的畫面生成、只有他撿得到,不需同步。
 // 血量歸零先倒地 30 秒(坐地持手槍、可以開槍),隊友靠近按住 E 3 秒救起;流血至死則觀戰到下一回合重生;全員倒地才結束。
-const BREAK_MP = 20, SHOP_MP = 60, BLEED = 30, REVIVE_TIME = 3, REVIVE_DIST = 1.8;
+const REST_MP = 45, READY_LEFT = 3, BLEED = 30, REVIVE_TIME = 3, REVIVE_DIST = 1.8;
+const QCODE = { walker: 'W', runner: 'R', crawler: 'C', bloater: 'B', brute: 'X' };
+const QTYPE = { W: 'walker', R: 'runner', C: 'crawler', B: 'bloater', X: 'brute' };
+const isRest = (ph) => ph === 'shop' || ph === 'break';
 const _v = new THREE.Vector3();
 
 export class CoopMode {
@@ -30,6 +35,8 @@ export class CoopMode {
     this.overT = 0;
     this.over = false;
     this.shieldT = 0;
+    this.queue = ''; // 本回合完整出怪表(房主轉移時接手剩下的)
+    this.total = 0;
     this.stats = { kills: 0, downs: 0, revives: 0 };
     this.team = new Map(); // slot → 統計(房主彙整,用於結算)
   }
@@ -39,7 +46,9 @@ export class CoopMode {
     s.hook(g, 'startRound', (orig) => function (n) {
       orig.call(this, n);
       if (s.isHost) {
-        s.send('rs', { n, c: g.toSpawn, m: g.maxAlive, q: (g.queue || []).map((t) => t[0]).join('') });
+        m.queue = (g.queue || []).map((t) => QCODE[t] || 'W').join('');
+        m.total = g.toSpawn;
+        s.send('rs', { n, c: g.toSpawn, m: g.maxAlive, q: m.queue });
         m.onRoundStart(n);
       }
     });
@@ -47,35 +56,59 @@ export class CoopMode {
       if (s.isHost) { orig.call(this); s.send('re', { n: g.round }); m.onRoundEnd(); }
       else if (m.allowEnd) orig.call(this);
     });
+    // 下一回合:只有房主的倒數能真的開始;玩家按 N / 商店的按鈕 = 切換準備
     s.hook(g, 'nextRound', (orig) => function () {
       if (s.isHost && m.allowNext) return orig.call(this);
-      m.vote(true);
+      if (g.state === 'playing' && isRest(g.phase)) m.vote(!m.voted);
     });
-    // N:準備 / 取消準備(攔在遊戲本身的按鍵處理之前)
-    this.onKey = (e) => {
-      if (e.code !== 'KeyN' || g.state !== 'playing' || s.hud.chatOpen) return;
-      e.stopImmediatePropagation();
-      if (g.phase === 'break' || g.phase === 'shop') this.vote(!this.voted);
-    };
-    this.onClick = (e) => {
-      if (e.target?.closest?.('#shopNext')) { e.stopImmediatePropagation(); e.preventDefault(); this.vote(true); }
-    };
+    // 補給站開放的橫幅:多人版的說明(休息時間、準備)
+    s.hook(g, 'openRest', (orig) => function () {
+      const r = orig.call(this);
+      if (g.phase === 'shop') {
+        const where = g.shop?.levelId ? `${g.shop.levelId} 便利商店` : '補給站';
+        g.ui.banner('補給站開放', `休息 ${REST_MP} 秒 · 前往 ${where} 購買武器與裝備 · [N] 準備(全員準備就開始)`, 4800, 'gold');
+      }
+      return r;
+    });
+    // 商店介面:多人時世界不暫停,休息列改顯示準備人數;「開始下一回合」按鈕改成準備
+    if (g.ui.shop && typeof g.ui.shop.refresh === 'function') {
+      s.hook(g.ui.shop, 'refresh', (orig) => function (...a) { const r = orig.apply(this, a); m.shopText(); return r; });
+    }
+    // E 鍵按住救援:遊戲的互動鍵處理會攔下 E(不會進 player.keys),這裡另外記
+    this.onKey = (e) => { if (e.code === 'KeyE') this.holdE = e.type === 'keydown'; };
+    this.onBlur = () => { this.holdE = false; };
     window.addEventListener('keydown', this.onKey, true);
-    window.addEventListener('click', this.onClick, true);
+    window.addEventListener('keyup', this.onKey, true);
+    window.addEventListener('blur', this.onBlur);
   }
   stop() {
     window.removeEventListener('keydown', this.onKey, true);
-    window.removeEventListener('click', this.onClick, true);
+    window.removeEventListener('keyup', this.onKey, true);
+    window.removeEventListener('blur', this.onBlur);
+  }
+
+  // 商店介面上的多人資訊(開啟/購買時重畫,每 0.15 秒由 hud.update 更新)
+  shopText() {
+    const g = this.g, ui = g.ui.shop;
+    if (!g.shopUIOpen || !ui) return;
+    const t = Math.max(0, Math.ceil(g.restT || 0));
+    const txt = `休息剩餘<b>${t}</b>秒 · 準備 <b>${this.readyCount()}/${this.needed()}</b> · 多人連線不暫停`;
+    if (ui.restEl && ui.restEl.innerHTML !== txt) ui.restEl.innerHTML = txt;
+    const btn = document.getElementById('shopNext');
+    const label = `${this.voted ? '取消準備' : '準備下一回合'}<kbd>N</kbd>`;
+    if (btn && btn.innerHTML !== label) btn.innerHTML = label;
   }
 
   listen() {
     const s = this.s, g = this.g;
     s.on('rs', (d, f) => {
-      if (f !== s.hostSlot) return;
+      if (f !== s.hostSlot || !d) return;
       if (g.shopUIOpen) g.closeShop();
-      g.startRound(d.n);
+      g.startRound(d.n | 0);
       g.queue = [];
-      g.toSpawn = d.c;
+      g.toSpawn = d.c | 0;
+      this.queue = typeof d.q === 'string' ? d.q.slice(0, 400) : '';
+      this.total = d.c | 0;
       this.onRoundStart(d.n);
     });
     s.on('re', (d, f) => {
@@ -84,13 +117,13 @@ export class CoopMode {
       this.onRoundEnd();
     });
     s.on('vote', (d, f) => { if (s.isHost) { if (d) this.votes.add(f); else this.votes.delete(f); this.sendVotes(); } });
-    s.on('rv', (d, f) => { if (f === s.hostSlot) { this.votes = new Set(d); this.voted = this.votes.has(s.me); } });
+    s.on('rv', (d, f) => { if (f === s.hostSlot && Array.isArray(d)) { this.votes = new Set(d); this.voted = this.votes.has(s.me); } });
     s.on('down', (d, f) => {
       const rp = s.remotes.get(f);
       if (!rp) return;
       rp.downed = true;
       s.hud.feed(`${rp.name} 倒地了!靠近按住 E 救援`, 'down');
-      sfx.downed?.();
+      sfx.downed?.(rp.pos);
       this.bump(f, 'downs');
     });
     s.on('up', (d, f) => {
@@ -99,32 +132,46 @@ export class CoopMode {
       if (!(d?.by >= 0)) { if (rp) s.hud.feed(`${rp.name} 撐過了這一回合`, 'revive'); return; }
       const by = d.by === s.me ? '你' : s.nameOf(d.by);
       if (rp) s.hud.feed(`${by} 救起了 ${rp.name}`, 'revive');
-      if (d.by === s.me) { this.stats.revives++; s.hud.center('救援成功', 1500); }
+      if (d.by === s.me) { this.stats.revives++; s.hud.center('救援成功', 1500); sfx.revive?.(rp?.pos); }
       this.bump(d.by, 'revives');
     });
     s.on('bleed', (d, f) => { const rp = s.remotes.get(f); if (rp) s.hud.feed(`${rp.name} 失血過多死亡,下一回合復活`, 'dead'); });
-    s.on('rev', (d, f) => { if (this.g.player.downed && !this.dead) this.revive(f); });
-    s.on('go', (d, f) => { if (f === s.hostSlot) this.gameOver(d); });
+    s.on('rev', (d, f) => { if (this.g.player.downed && !this.dead && s.remotes.get(f)?.connected) this.revive(f); });
+    s.on('go', (d, f) => { if (f === s.hostSlot && d && Array.isArray(d.t)) this.gameOver(d); });
+    // 中途加入:房主送目前回合、階段、補償金幣
     s.on('sync', (d, f) => {
-      if (f !== s.hostSlot) return;
-      g.round = d.n;
-      g.toSpawn = d.c;
-      if (d.phase === 'fighting') { g.startRound(d.n); g.queue = []; g.toSpawn = d.c; }
-      else { g.phase = d.phase === 'shop' ? 'break' : d.phase; g.ui.setRound?.(d.n); }
-      if (d.coins > 0) { g.player.coins += d.coins; g.ui.setCoins(g.player.coins); s.hud.feed(`中途加入:獲得 ${d.coins} 金幣`, 'coin'); }
+      if (f !== s.hostSlot || !d) return;
+      const n = Math.max(1, d.n | 0);
+      if (d.phase === 'fighting') {
+        g.startRound(n);
+        g.queue = [];
+        g.toSpawn = d.c | 0;
+        this.queue = typeof d.q === 'string' ? d.q.slice(0, 400) : '';
+        this.total = d.total | 0;
+      } else {
+        g.round = n;
+        g.ui.setRound?.(n);
+        g.phase = 'shop';
+        g.restT = Math.max(1, d.t || REST_MP);
+        g.shop?.setOpen(true);
+        g.setMood?.('shop');
+      }
+      if (Array.isArray(d.v)) { this.votes = new Set(d.v); this.voted = this.votes.has(s.me); }
+      const coins = Math.max(0, Math.min(5000, d.coins | 0));
+      if (coins > 0) { g.player.coins += coins; g.ui.setCoins(g.player.coins); g.ui.coinGain?.(coins); s.hud.feed(`中途加入:獲得 ${coins} 金幣`, 'coin'); }
     });
   }
 
-  hostTimer() { return this.g.phase === 'break' || this.g.phase === 'shop' ? Math.max(0, this.timer) : -1; }
+  hostTimer() { return isRest(this.g.phase) ? Math.max(0, this.timer) : -1; }
 
   begin() {
     const s = this.s, g = this.g;
     if (s.isHost) {
       g.startRound(1);
     } else {
-      g.phase = 'break';
+      // 等房主的 'rs' / 'sync'(不屬於任何回合階段,本機不會自己出怪或倒數)
+      g.phase = 'wait';
       g.round = 0;
-      g.breakTimer = 99;
       s.hud.center(s.late ? '中途加入:同步中…' : '等待房主開始…', 3000);
     }
     this.pos0();
@@ -142,7 +189,8 @@ export class CoopMode {
   onJoin(rp, back = false) {
     const s = this.s, g = this.g;
     s.zs.sendAllTo(rp.id);
-    s.send('sync', { n: g.round, c: g.toSpawn, phase: g.phase, coins: back ? 0 : Math.max(0, (g.round - 1) * 40) }, rp.id);
+    const phase = g.phase === 'fighting' ? 'fighting' : 'shop';
+    s.send('sync', { n: g.round, c: g.toSpawn, total: this.total, q: this.queue, phase, t: this.hostTimer(), v: [...this.votes], coins: back ? 0 : Math.max(0, (g.round - 1) * 40) }, rp.id);
     this.sendVotes();
   }
   onLeave(rp) { if (this.s.isHost) { this.votes.delete(rp.id); this.sendVotes(); } }
@@ -152,13 +200,17 @@ export class CoopMode {
     const H = this.s.zs.host;
     if (H.round) g.round = H.round;
     if (g.phase === 'fighting') {
-      g.toSpawn = H.toSpawn;
-      g.queue = Array.from({ length: g.toSpawn }, () => 'walker');
+      g.toSpawn = Math.max(0, H.toSpawn | 0);
+      // 出怪表:房主已經出了前 total − toSpawn 隻,剩下的照原本的順序
+      const rest = this.queue.slice(Math.max(0, this.queue.length - g.toSpawn));
+      g.queue = Array.from({ length: g.toSpawn }, (_, i) => QTYPE[rest[i]] || 'walker');
       g.maxAlive = Math.min(14, 6 + Math.floor(g.round / 2));
+      g.spawnEvery = g.spawnEvery || 2;
+      g.spawnBurst = 0;
       g.spawnTimer = 2;
-    } else if (g.phase === 'collecting') {
-      g.phase = 'break';
-      this.timer = 8;
+    } else if (g.phase === 'wait') {
+      // 還沒收到任何回合資訊就接手:直接開始目前回合
+      g.startRound(Math.max(1, H.round || 1));
     } else this.timer = Math.max(5, H.timer > 0 ? H.timer : 10);
     this.votes = new Set(this.voted ? [this.s.me] : []);
     this.sendVotes();
@@ -166,11 +218,12 @@ export class CoopMode {
 
   vote(on) {
     const s = this.s, g = this.g;
-    if (g.phase !== 'break' && g.phase !== 'shop') return;
+    if (!isRest(g.phase) || this.voted === on) return;
     this.voted = on;
     if (s.isHost) { if (on) this.votes.add(s.me); else this.votes.delete(s.me); this.sendVotes(); }
-    else s.send('vote', on ? 1 : 0, s.hostSlot);
+    else { if (on) this.votes.add(s.me); else this.votes.delete(s.me); s.send('vote', on ? 1 : 0, s.hostSlot); }
     sfx.uiClick?.();
+    this.shopText();
   }
   sendVotes() { if (this.s.isHost) this.s.send('rv', [...this.votes]); }
   needed() {
@@ -178,13 +231,14 @@ export class CoopMode {
     for (const rp of this.s.remotes.values()) if (rp.connected) n++;
     return n;
   }
-  allReady() {
-    if (!this.votes.has(this.s.me)) return false;
-    for (const rp of this.s.remotes.values()) if (rp.connected && !this.votes.has(rp.id)) return false;
-    return true;
+  readyCount() {
+    let n = this.votes.has(this.s.me) ? 1 : 0;
+    for (const rp of this.s.remotes.values()) if (rp.connected && this.votes.has(rp.id)) n++;
+    return n;
   }
+  allReady() { return this.readyCount() >= this.needed(); }
 
-  onRoundStart(n) {
+  onRoundStart() {
     this.votes.clear();
     this.voted = false;
     this.timer = -1;
@@ -200,7 +254,7 @@ export class CoopMode {
     this.bump(slot, 'kills');
   }
   bump(slot, key) {
-    if (slot === undefined || slot === null || slot === NONE) return;
+    if (slot === undefined || slot === null || slot === NONE || slot < 0) return;
     const t = this.team.get(slot) || { kills: 0, downs: 0, revives: 0 };
     t[key]++;
     this.team.set(slot, t);
@@ -212,11 +266,13 @@ export class CoopMode {
     if (p.downed || this.dead || this.over) return;
     p.downed = true;
     p.hp = 0;
+    g.healT = 0;
     this.downT = BLEED;
     this.stats.downs++;
     this.bump(s.me, 'downs');
     if (g.weapons.has('pistol') && g.weapons.current !== 'pistol') g.weapons.switchTo('pistol');
     if (g.shopUIOpen) g.closeShop();
+    g.ui.map?.close?.();
     s.send('down', 1);
     sfx.downed?.();
     s.hud.center('你倒地了!撐住,等隊友救援', 2500);
@@ -268,6 +324,7 @@ export class CoopMode {
     this.over = true;
     g.state = 'dead';
     g.setMood?.('dead');
+    if (g.shopUIOpen) g.closeShop(false);
     document.exitPointerLock?.();
     g.input.fireHeld = false;
     s.hud.results({
@@ -277,7 +334,7 @@ export class CoopMode {
     });
   }
 
-  // 房主:每幀檢查全員倒地、回合間倒數
+  // 每幀:房主檢查全員倒地、商店階段倒數;其他人用快照的倒數
   update(dt) {
     const s = this.s, g = this.g, p = g.player;
     this.shieldT = Math.max(0, this.shieldT - dt);
@@ -288,16 +345,12 @@ export class CoopMode {
       if (this.downT <= 0) this.bleedOut();
     }
     if (s.isHost) {
-      // 回合間:多人版的休息/商店倒數(全員準備就提早開始)
-      if (g.phase !== this.lastPhase) {
-        if (g.phase === 'break') this.timer = BREAK_MP;
-        else if (g.phase === 'shop') this.timer = SHOP_MP;
-        this.lastPhase = g.phase;
-      }
-      if (g.phase === 'break' || g.phase === 'shop') {
+      // 商店階段:多人版的倒數(全員準備就提早開始);g.restT 跟著倒數,流程本身的計時永遠不會先歸零
+      if (g.phase !== this.lastPhase && isRest(g.phase)) this.timer = REST_MP;
+      if (isRest(g.phase)) {
         this.timer -= dt;
-        if (this.allReady() && this.timer > 3) this.timer = 3;
-        g.breakTimer = Math.max(0.5, this.timer + 0.5); // 不讓原本 6 秒的計時器自己開始
+        if (this.allReady() && this.timer > READY_LEFT) this.timer = READY_LEFT;
+        g.restT = Math.max(0.2, this.timer);
         if (this.timer <= 0) { this.allowNext = true; g.nextRound(); this.allowNext = false; }
       }
       // 全員倒地 → 結束
@@ -313,10 +366,9 @@ export class CoopMode {
           this.gameOver(d);
         }
       } else this.overT = 0;
-    } else if (g.phase === 'break' || g.phase === 'shop') {
+    } else if (isRest(g.phase)) {
       const H = s.zs.host;
-      if (H.timer >= 0) g.breakTimer = Math.max(0.5, H.timer + 0.5);
-      else g.breakTimer = 99;
+      g.restT = H.timer >= 0 ? Math.max(0.2, H.timer - (performance.now() - H.t) / 1000) : 99;
     }
     this.lastPhase = g.phase;
   }
@@ -336,9 +388,10 @@ export class CoopMode {
       g.weaponScene.visible = false;
       g.input.fireHeld = false;
       if (g.input.firePressed) { this.specIdx++; g.input.firePressed = false; }
-      const alive = [...s.remotes.values()].filter((r) => r.alive && r.avatar);
-      if (alive.length) {
-        const t = alive[this.specIdx % alive.length];
+      let t = null, n = 0;
+      for (const r of s.remotes.values()) if (r.alive && r.avatar) n++;
+      if (n) { let i = this.specIdx % n; for (const r of s.remotes.values()) if (r.alive && r.avatar && i-- === 0) { t = r; break; } }
+      if (t) {
         const a = t.avatar.root.position;
         const back = _v.set(Math.sin(t.yaw), 0, Math.cos(t.yaw)).multiplyScalar(2.6);
         cam.position.set(a.x + back.x, a.y + 2.1, a.z + back.z);
@@ -346,7 +399,7 @@ export class CoopMode {
         s.hud.spectate(t.name);
       } else s.hud.spectate(null);
     } else {
-      if (!g.weaponScene.visible) g.weaponScene.visible = true;
+      if (!g.weaponScene.visible && g.state === 'playing') g.weaponScene.visible = true;
       s.hud.spectate(null);
     }
     // 救援:靠近倒地隊友,按住 E
@@ -359,7 +412,7 @@ export class CoopMode {
         if (d < cd) { cd = d; cand = rp; }
       }
     }
-    if (cand && p.keys.KeyE && !g.shopUIOpen && !g.paused) {
+    if (cand && (this.holdE || p.keys.KeyE) && !g.shopUIOpen && !g.paused) {
       if (this.reviveSlot !== cand.id) { this.reviveSlot = cand.id; this.reviveP = 0; }
       this.reviveP += dt / REVIVE_TIME;
       this.reviving = true;

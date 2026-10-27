@@ -3,7 +3,8 @@
 // WebSocket:房間(6 碼代碼,合作 4 人 / 對戰 8 人)、暱稱、房主與房主轉移、斷線保留座位(可重連)、心跳與逾時、
 // 訊息頻率/大小上限、公開房間列表。遊戲本身由房主的瀏覽器模擬,伺服器只負責轉發:
 //   文字訊息(JSON,低頻事件):{t:'g', k, d, to?} → 轉給房間其他人(或指定座位),附上 f = 發送者座位
-//   二進位訊息(高頻:玩家狀態 / 殭屍快照):第 0 位元組 = 種類、第 1 位元組由伺服器填入發送者座位,原封轉發
+//   二進位訊息(高頻:玩家狀態 / 殭屍快照):第 0 位元組 = 種類、第 1 位元組由伺服器填入發送者座位,檢查長度後原封轉發
+// 部署:npm run build 之後 node server/index.js(監聽 $PORT);前面接 HTTPS 代理時用戶端自動走同源的 wss://…/ws。
 import http from 'node:http';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -18,19 +19,22 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.resolve(process.env.DIST_DIR || path.join(HERE, '..', 'dist'));
 const PORT = Number(process.env.PORT) || 8787;
 const HOST = process.env.HOST || '0.0.0.0';
-const PROTO = 1; // 與 src/net/protocol.js 的 PROTO 一致
-const DEV = process.env.NODE_ENV !== 'production';
+const PROTO = 2; // 與 src/net/protocol.js 的 PROTO 一致
+// 正式環境:明確設定 NODE_ENV=production,或「有 PORT(平台指定)且有建置好的 dist/」(Zeabur 不會設 NODE_ENV)。
+// 開發模式只差在 dist/ 變動時自動重建檔案索引(npm run build 後不用重開伺服器)
+const PROD = process.env.NODE_ENV === 'production' || (process.env.NODE_ENV !== 'development' && !!process.env.PORT && fs.existsSync(path.join(DIST, 'index.html')));
 
 const L = {
   conns: 2000, perIp: 16, rooms: 500, createPerMin: 8, payload: 64 * 1024,
   msgRate: 90, msgBurst: 180, byteRate: 128 * 1024, byteBurst: 384 * 1024, strikes: 400,
   chatRate: 1 / 1.1, chatBurst: 5, chatLen: 160, nameLen: 16,
-  grace: 20000, hostGrace: 2500, idle: 45000, ping: 5000, slow: 768 * 1024, dead: 4 * 1024 * 1024,
+  grace: 20000, hostGrace: 2500, idle: 45000, hello: 10000, ping: 5000, slow: 768 * 1024, dead: 4 * 1024 * 1024,
 };
 const MAXP = { coop: 4, pvp: 8 };
 const BIN = { STATE: 1, ZSNAP: 2 }; // 二進位訊息種類
 const BIN_MAX = { [BIN.STATE]: 2048, [BIN.ZSNAP]: 24576 };
-const HOST_ONLY = new Set(['zn', 'zd', 'hz', 'rs', 're', 'go', 'ps', 'pe', 'hurt', 'kn', 'sh', 'sync', 'rv', 'rq', 'cd']);
+// 只有房主能送的遊戲事件(回合、殭屍、對其他玩家的傷害結算…)
+const HOST_ONLY = new Set(['zn', 'zd', 'hz', 'rs', 're', 'go', 'ps', 'pe', 'hurt', 'sh', 'sync', 'rv', 'rq', 'cd']);
 const now = () => Date.now();
 const mono = () => performance.now();
 
@@ -52,7 +56,7 @@ const clean = (s, max) => {
   if (typeof s !== 'string') return '';
   // 去掉控制字元與角括號,合併空白,依字元(code point)截斷
   let t = '';
-  for (const ch of s) if (!BAD_CP(ch.codePointAt(0))) t += ch;
+  for (const ch of s.slice(0, max * 4)) if (!BAD_CP(ch.codePointAt(0))) t += ch;
   t = t.replace(/\s+/g, ' ').trim();
   return Array.from(t).slice(0, max).join('');
 };
@@ -74,13 +78,15 @@ function clientIp(req) {
 }
 
 // ---------- 統計 ----------
-const stat = { msgIn: 0, msgOut: 0, byteIn: 0, byteOut: 0, binIn: 0, rate: { msgIn: 0, msgOut: 0, byteIn: 0, byteOut: 0, binIn: 0 }, started: now(), peakConns: 0, dropped: 0, kicked: 0 };
+const stat = { msgIn: 0, msgOut: 0, byteIn: 0, byteOut: 0, binIn: 0, rate: { msgIn: 0, msgOut: 0, byteIn: 0, byteOut: 0, binIn: 0 }, started: now(), peakConns: 0, dropped: 0, kicked: 0, badBin: 0, http: 0, http304: 0 };
 setInterval(() => {
   for (const k of ['msgIn', 'msgOut', 'byteIn', 'byteOut', 'binIn']) { stat.rate[k] = stat[k]; stat[k] = 0; }
 }, 1000).unref();
 
 // =====================================================================
 // 靜態檔
+// 啟動時把 dist/ 建成記憶體索引(大小、MIME、內容雜湊 ETag、快取策略),每個請求不必再 stat;
+// 可壓縮的檔案先用 br q5 / gzip 壓好放記憶體(啟動一秒內完成),之後在背景逐一升級成 br q11。
 // =====================================================================
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
@@ -88,12 +94,13 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8', '.md': 'text/markdown; charset=utf-8', '.xml': 'application/xml; charset=utf-8', '.csv': 'text/csv; charset=utf-8',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.avif': 'image/avif',
   '.gif': 'image/gif', '.ico': 'image/x-icon', '.ktx2': 'image/ktx2', '.hdr': 'image/vnd.radiance', '.exr': 'image/x-exr', '.basis': 'application/octet-stream',
-  '.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json', '.bin': 'application/octet-stream', '.wasm': 'application/wasm',
+  '.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json', '.bin': 'application/octet-stream', '.obj': 'text/plain; charset=utf-8', '.wasm': 'application/wasm',
   '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.oga': 'audio/ogg', '.opus': 'audio/ogg', '.wav': 'audio/wav', '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.flac': 'audio/flac',
   '.mp4': 'video/mp4', '.webm': 'video/webm', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.otf': 'font/otf',
   '.webmanifest': 'application/manifest+json', '.pdf': 'application/pdf',
 };
-const COMPRESSIBLE = new Set(['.html', '.js', '.mjs', '.css', '.json', '.map', '.txt', '.md', '.xml', '.csv', '.svg', '.gltf', '.wasm', '.webmanifest', '.obj', '.hdr']);
+// 文字、glTF 幾何(.bin/.glb)、wasm、未壓縮字型與圖示;已壓縮的圖片/音訊/影片/woff 不再壓
+const COMPRESSIBLE = new Set(['.html', '.js', '.mjs', '.css', '.json', '.map', '.txt', '.md', '.xml', '.csv', '.svg', '.gltf', '.glb', '.bin', '.obj', '.wasm', '.webmanifest', '.hdr', '.exr', '.ttf', '.otf', '.ico', '.wav']);
 // 跨來源隔離(SharedArrayBuffer 需要):所有回應都帶;靜態資源另外標示只供同源使用
 const ISOLATION = {
   'Cross-Origin-Opener-Policy': 'same-origin',
@@ -102,33 +109,94 @@ const ISOLATION = {
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
 };
+// 快取策略:Vite 產生的 /assets/*(檔名含雜湊)永久快取;入口檔(index.html、Service Worker、manifest)每次重新驗證;
+// 其他未加雜湊的資源(貼圖、模型、圖示、授權說明)快取 1 天,過期後一週內先用舊的、背景重新驗證(內容雜湊 ETag → 304)
+const CC_IMMUTABLE = 'public, max-age=31536000, immutable';
+const CC_ENTRY = 'no-cache';
+const CC_STATIC = 'public, max-age=86400, stale-while-revalidate=604800';
+const NO_CACHE_FILES = new Set(['/index.html', '/sw.js', '/manifest.webmanifest']);
 const brotli = promisify(zlib.brotliCompress), gzip = promisify(zlib.gzip);
-const zcache = new Map(); // `${file}|${mtime}|${enc}` → Promise<Buffer>
-let zbytes = 0;
-const ZCACHE_MAX = 96 * 1024 * 1024;
 
-function compressed(file, st, enc) {
-  const key = `${file}|${st.mtimeMs}|${enc}`;
-  let p = zcache.get(key);
-  if (!p) {
-    p = fsp.readFile(file).then((buf) => (enc === 'br'
-      ? brotli(buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: buf.length > 4e6 ? 7 : 10, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: buf.length } })
-      : gzip(buf, { level: 9 }))).then((out) => {
-      zbytes += out.length;
-      while (zbytes > ZCACHE_MAX && zcache.size > 1) { // 超出上限:丟掉最舊的
-        const [k0, v0] = zcache.entries().next().value;
-        zcache.delete(k0);
-        v0.then((b) => { zbytes -= b.length; }, () => {});
-      }
-      return out;
-    });
-    p.catch(() => zcache.delete(key));
-    zcache.set(key, p);
+let files = new Map(); // '/相對路徑' → { abs, size, mtime, type, etag, cc, z: boolean, br, gz, brQ }
+let indexing = null;
+let zbytes = 0;
+
+async function walk(dir, out) {
+  let ents;
+  try { ents = await fsp.readdir(dir, { withFileTypes: true }); } catch { return out; }
+  for (const e of ents) {
+    const f = path.join(dir, e.name);
+    if (e.isDirectory()) await walk(f, out);
+    else if (e.isFile()) out.push(f);
   }
-  return p;
+  return out;
+}
+const brOpts = (q, n) => ({ params: { [zlib.constants.BROTLI_PARAM_QUALITY]: q, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: n } });
+
+// 建立索引:讀每個檔一次算 SHA-1(dist 約 35MB,約 0.1 秒),可壓縮的同時壓好
+async function buildIndex() {
+  const t0 = mono();
+  const list = await walk(DIST, []);
+  const next = new Map();
+  let raw = 0;
+  await Promise.all(list.map(async (abs) => {
+    try {
+      const st = await fsp.stat(abs);
+      const rel = '/' + path.relative(DIST, abs).split(path.sep).join('/');
+      const ext = path.extname(abs).toLowerCase();
+      const z = COMPRESSIBLE.has(ext) && st.size > 512 && st.size < 64e6;
+      const buf = z || st.size < 4e6 ? await fsp.readFile(abs) : null;
+      const hash = buf ? crypto.createHash('sha1').update(buf).digest('base64url').slice(0, 20) : `${st.size.toString(36)}-${Math.floor(st.mtimeMs).toString(36)}`;
+      const ent = {
+        abs, size: st.size, mtime: st.mtime.toUTCString(), type: MIME[ext] || 'application/octet-stream', etag: hash,
+        cc: rel.startsWith('/assets/') ? CC_IMMUTABLE : NO_CACHE_FILES.has(rel) ? CC_ENTRY : CC_STATIC, z, br: null, gz: null, brQ: 0,
+      };
+      if (z) {
+        ent.br = await brotli(buf, brOpts(5, buf.length));
+        ent.gz = await gzip(buf, { level: 6 });
+        ent.brQ = 5;
+        zbytes += ent.br.length + ent.gz.length;
+      }
+      raw += st.size;
+      next.set(rel, ent);
+    } catch { /* 檔案在建索引時被刪掉 */ }
+  }));
+  files = next;
+  zbytes = 0;
+  for (const e of files.values()) zbytes += (e.br?.length || 0) + (e.gz?.length || 0);
+  log(`[http] 索引 ${files.size} 個檔案 ${(raw / 1048576).toFixed(1)}MB,壓縮 ${[...files.values()].filter((e) => e.z).length} 個(${(zbytes / 1048576).toFixed(1)}MB,${(mono() - t0).toFixed(0)}ms)`);
+  upgrade(next);
+}
+// 背景逐一升級成 br q11(一次一個,不搶 CPU;索引被換掉就停)
+async function upgrade(map) {
+  const list = [...map.values()].filter((e) => e.z && e.brQ < 11).sort((a, b) => a.size - b.size);
+  const t0 = mono();
+  let saved = 0;
+  for (const e of list) {
+    if (files !== map) return;
+    try {
+      const buf = await fsp.readFile(e.abs);
+      const out = await brotli(buf, brOpts(e.size > 2e6 ? 10 : 11, buf.length));
+      if (out.length < e.br.length) { saved += e.br.length - out.length; zbytes -= e.br.length - out.length; e.br = out; }
+      e.brQ = 11;
+    } catch { /* 略過 */ }
+  }
+  if (list.length) log(`[http] br 升級完成:${list.length} 個檔案再省 ${(saved / 1024).toFixed(0)}KB(${((mono() - t0) / 1000).toFixed(1)}s)`);
+}
+function reindex() {
+  if (indexing) return indexing;
+  indexing = buildIndex().catch((e) => log('[http] 建索引失敗', e)).finally(() => { indexing = null; });
+  return indexing;
+}
+// 開發:dist/ 變動(重新 build)時重建索引
+function watchDist() {
+  if (PROD) return;
+  let t = 0;
+  try {
+    fs.watch(DIST, { recursive: true }, () => { clearTimeout(t); t = setTimeout(reindex, 600); }).on('error', () => {});
+  } catch { /* 平台不支援遞迴監看 */ }
 }
 
-const statOf = (f) => fsp.stat(f).catch(() => null);
 function plain(res, code, text, extra = {}) {
   res.writeHead(code, { ...ISOLATION, 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', ...extra });
   res.end(text);
@@ -138,89 +206,63 @@ function json(res, code, obj) {
   res.writeHead(code, { ...ISOLATION, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
   res.end(body);
 }
+// If-None-Match 是否符合(忽略 W/ 與 -br/-gz 字尾)
+function etagMatch(header, tag) {
+  if (!header) return false;
+  if (header.trim() === '*') return true;
+  for (let t of header.split(',')) {
+    t = t.trim().replace(/^W\//, '').replace(/^"|"$/g, '').replace(/-(br|gz)$/, '');
+    if (t === tag) return true;
+  }
+  return false;
+}
 
-async function serveStatic(req, res, pathname) {
+function serveStatic(req, res, pathname) {
   let rel;
   try { rel = decodeURIComponent(pathname); } catch { return plain(res, 400, 'Bad Request'); }
   if (rel.includes('\0') || rel.includes('\\')) return plain(res, 400, 'Bad Request');
   rel = path.posix.normalize(rel);
   if (!rel.startsWith('/')) rel = '/' + rel;
   if (rel.endsWith('/')) rel += 'index.html';
-  let file = path.join(DIST, rel);
-  if (file !== DIST && !file.startsWith(DIST + path.sep)) return plain(res, 403, 'Forbidden');
-  let st = await statOf(file);
-  if (st && st.isDirectory()) { file = path.join(file, 'index.html'); st = await statOf(file); }
-  if (!st || !st.isFile()) {
+  let ent = files.get(rel) || files.get(rel + '/index.html');
+  if (!ent) {
     // 有副檔名的資源不存在 → 404(讓 tryLoadGLB 之類的探測正確失敗);其他路徑 → SPA fallback
     if (path.posix.extname(rel) && rel !== '/index.html') return plain(res, 404, 'Not Found');
-    file = path.join(DIST, 'index.html');
-    st = await statOf(file);
-    if (!st) return plain(res, 503, '尚未建置前端:請先執行 npm run build(開發時請用 Vite dev server)');
+    ent = files.get('/index.html');
+    if (!ent) return plain(res, 503, '尚未建置前端:請先執行 npm run build(開發時請用 Vite dev server)', { 'Retry-After': '10' });
   }
-  const ext = path.extname(file).toLowerCase();
-  const type = MIME[ext] || 'application/octet-stream';
-  const etag = `W/"${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`;
-  const immutable = rel.startsWith('/assets/');
-  const headers = {
-    ...ISOLATION,
-    'Content-Type': type,
-    'Cache-Control': immutable ? 'public, max-age=31536000, immutable' : ext === '.html' ? 'no-cache' : 'public, max-age=3600',
-    ETag: etag,
-    'Last-Modified': st.mtime.toUTCString(),
-    'Accept-Ranges': 'bytes',
-  };
-  if (req.headers['if-none-match'] === etag) { res.writeHead(304, headers); return res.end(); }
-
-  // 壓縮(文字類資源)
+  stat.http++;
+  const headers = { ...ISOLATION, 'Content-Type': ent.type, 'Cache-Control': ent.cc, 'Last-Modified': ent.mtime };
+  // 壓縮版本(文字類資源與 glTF 幾何)
   const ae = String(req.headers['accept-encoding'] || '');
-  const enc = COMPRESSIBLE.has(ext) && st.size > 1024 && st.size < 32e6 ? (/\bbr\b/.test(ae) ? 'br' : /\bgzip\b/.test(ae) ? 'gzip' : null) : null;
+  const enc = ent.z ? (ent.br && /\bbr\b/.test(ae) ? 'br' : ent.gz && /\bgzip\b/.test(ae) ? 'gzip' : null) : null;
+  if (ent.z) headers.Vary = 'Accept-Encoding';
+  headers.ETag = `"${ent.etag}${enc === 'br' ? '-br' : enc === 'gzip' ? '-gz' : ''}"`;
+  if (etagMatch(req.headers['if-none-match'], ent.etag)) { stat.http304++; res.writeHead(304, headers); return res.end(); }
   if (enc) {
-    try {
-      const body = await compressed(file, st, enc);
-      headers['Content-Encoding'] = enc;
-      headers['Content-Length'] = body.length;
-      headers.Vary = 'Accept-Encoding';
-      delete headers['Accept-Ranges'];
-      res.writeHead(200, headers);
-      return req.method === 'HEAD' ? res.end() : res.end(body);
-    } catch { /* 壓縮失敗就送原檔 */ }
+    const body = enc === 'br' ? ent.br : ent.gz;
+    headers['Content-Encoding'] = enc;
+    headers['Content-Length'] = body.length;
+    res.writeHead(200, headers);
+    return req.method === 'HEAD' ? res.end() : res.end(body);
   }
-
-  // Range(音訊/影片串流)
-  let start = 0, end = st.size - 1, code = 200;
+  // 原檔(圖片、音訊…);支援 Range(音訊/影片串流)
+  headers['Accept-Ranges'] = 'bytes';
+  let start = 0, end = ent.size - 1, code = 200;
   const range = req.headers.range;
-  if (range && /^bytes=\d*-\d*$/.test(range) && st.size > 0) {
+  if (range && /^bytes=\d*-\d*$/.test(range) && ent.size > 0) {
     const [a, b] = range.slice(6).split('-');
-    if (a === '') { start = Math.max(0, st.size - Number(b)); } else { start = Number(a); if (b !== '') end = Math.min(end, Number(b)); }
-    if (start > end || start >= st.size) { res.writeHead(416, { ...ISOLATION, 'Content-Range': `bytes */${st.size}` }); return res.end(); }
+    if (a === '') { start = Math.max(0, ent.size - Number(b)); } else { start = Number(a); if (b !== '') end = Math.min(end, Number(b)); }
+    if (start > end || start >= ent.size) { res.writeHead(416, { ...ISOLATION, 'Content-Range': `bytes */${ent.size}` }); return res.end(); }
     code = 206;
-    headers['Content-Range'] = `bytes ${start}-${end}/${st.size}`;
+    headers['Content-Range'] = `bytes ${start}-${end}/${ent.size}`;
   }
   headers['Content-Length'] = end - start + 1;
   res.writeHead(code, headers);
-  if (req.method === 'HEAD' || st.size === 0) return res.end();
-  const stream = fs.createReadStream(file, { start, end });
+  if (req.method === 'HEAD' || ent.size === 0) return res.end();
+  const stream = fs.createReadStream(ent.abs, { start, end, highWaterMark: 256 * 1024 });
   stream.on('error', () => res.destroy());
   stream.pipe(res);
-}
-
-// 啟動後在背景先把文字資源壓好,第一位玩家不用等
-async function warm() {
-  const walk = async (dir) => {
-    let ents;
-    try { ents = await fsp.readdir(dir, { withFileTypes: true }); } catch { return; }
-    for (const e of ents) {
-      const f = path.join(dir, e.name);
-      if (e.isDirectory()) await walk(f);
-      else if (COMPRESSIBLE.has(path.extname(f).toLowerCase())) {
-        const st = await statOf(f);
-        if (st && st.size > 1024 && st.size < 8e6) { await compressed(f, st, 'br').catch(() => {}); await compressed(f, st, 'gzip').catch(() => {}); }
-      }
-    }
-  };
-  const t = mono();
-  await walk(DIST);
-  if (zcache.size) console.log(`[http] 預先壓縮 ${zcache.size} 個檔案 ${(zbytes / 1024).toFixed(0)}KB(${(mono() - t).toFixed(0)}ms)`);
 }
 
 // =====================================================================
@@ -240,6 +282,7 @@ class Conn {
     this.ip = ip;
     this.name = '';
     this.hello = false;
+    this.born = now();
     this.room = null;
     this.slot = -1;
     this.ready = false;
@@ -343,7 +386,7 @@ function leave(c, why = 'leave') {
   if (room.host === slot) migrate(room);
 }
 
-// 房主轉移:挑最早加入、仍在線的玩家
+// 房主轉移:挑最早加入、仍在線的玩家;沒有人在線就等(斷線者重連後會接手,逾時則房間關閉)
 function migrate(room) {
   const cand = room.live().sort((a, b) => a.joined - b.joined)[0];
   if (!cand) return;
@@ -376,6 +419,9 @@ function resume(c, token) {
   old.room = null;
   c.send({ t: 'joined', room: room.info(), you: c.slot, token: c.token, resumed: true });
   room.cast({ t: 'peer', p: room.player(c), back: true }, c);
+  // 房主斷線超過寬限、當時又沒有人在線可以接手(例如大家同時斷線)→ 回來的人接手
+  const h = room.slots[room.host];
+  if (!h || (h.gone && now() - h.gone > L.hostGrace)) migrate(room);
   return true;
 }
 
@@ -389,14 +435,14 @@ function onText(c, msg) {
   switch (t) {
     case 'hello': {
       if (c.hello) return;
-      if (msg.v !== PROTO) { c.send({ t: 'error', code: 'version', msg: '版本不符,請重新整理頁面' }); return c.ws.close(4000, 'version'); }
+      if (msg.v !== PROTO) { c.send({ t: 'error', code: 'version', msg: '遊戲已更新,請重新整理頁面' }); return c.ws.close(4000, 'version'); }
       c.hello = true;
       c.name = clean(msg.name, L.nameLen) || `倖存者${String(c.id % 1000).padStart(3, '0')}`;
-      const resumed = typeof msg.token === 'string' && resume(c, msg.token);
+      const resumed = typeof msg.token === 'string' && msg.token.length < 64 && resume(c, msg.token);
       c.send({ t: 'welcome', id: c.id, v: PROTO, name: c.name, token: c.token, resumed, now: mono() });
       return;
     }
-    case 'ping': return c.send({ t: 'pong', c: msg.c, s: mono() });
+    case 'ping': return c.send({ t: 'pong', c: Number.isFinite(msg.c) ? msg.c : 0, s: mono() });
     case 'name': {
       c.name = clean(msg.name, L.nameLen) || c.name;
       if (room) room.cast({ t: 'peer', p: room.player(c) });
@@ -420,10 +466,10 @@ function onText(c, msg) {
       return;
     }
     case 'join': {
-      const code = String(msg.code || '').toUpperCase().trim();
+      const code = String(msg.code || '').toUpperCase().trim().slice(0, 12);
       if (!CODE_RE.test(code)) return c.send({ t: 'error', code: 'code', msg: '房間代碼格式錯誤(6 碼英數字)' });
       const r = rooms.get(code);
-      if (!r) return c.send({ t: 'error', code: 'notfound', msg: '找不到這個房間' });
+      if (!r) return c.send({ t: 'error', code: 'notfound', msg: '找不到這個房間(可能已經關閉)' });
       if (r === room) return c.send({ t: 'joined', room: r.info(), you: c.slot, token: c.token });
       return join(c, r);
     }
@@ -441,7 +487,7 @@ function onText(c, msg) {
       }
       if (typeof msg.pub === 'boolean') room.pub = msg.pub;
       if (typeof msg.name === 'string') room.name = clean(msg.name, 24);
-      room.settings = settingsOf(room.mode, { ...room.settings, ...(msg.settings || {}) });
+      room.settings = settingsOf(room.mode, { ...room.settings, ...(msg.settings && typeof msg.settings === 'object' ? msg.settings : {}) });
       return room.cast({ t: 'room', room: room.info() });
     }
     case 'start': {
@@ -480,13 +526,14 @@ function onText(c, msg) {
       return room.cast({ t: 'chat', id: c.slot, name: c.name, text, team: !!msg.team });
     }
     case 'g': {
-      if (!room || c.gone) return;
+      if (!room || c.gone || room.state !== 'playing') return;
       const k = msg.k;
       if (typeof k !== 'string' || k.length > 8) return;
       if (HOST_ONLY.has(k) && room.host !== c.slot) return;
       const out = JSON.stringify({ t: 'g', k, f: c.slot, d: msg.d ?? null });
       if (msg.to !== undefined && msg.to !== null) {
-        const tc = room.slots[msg.to | 0];
+        const to = msg.to | 0;
+        const tc = to >= 0 && to < 8 ? room.slots[to] : null;
         if (tc && !tc.gone && tc !== c) tc.raw(out);
       } else room.castRaw(out, c);
       return;
@@ -495,13 +542,25 @@ function onText(c, msg) {
   }
 }
 
+// 二進位:驗證長度與筆數(格式見 src/net/protocol.js),座位由伺服器填入,原封轉發給房間其他人
+function binOk(buf) {
+  const kind = buf[0], n = buf.length;
+  if (kind === BIN.STATE) {
+    if (n < 32) return false;
+    const ns = buf[29], nz = buf[30], np = buf[31];
+    return ns <= 24 && nz <= 32 && np <= 32 && n === 32 + ns * 7 + nz * 6 + np * 5;
+  }
+  if (kind === BIN.ZSNAP) return n >= 16 && n === 16 + buf[15] * 20;
+  return false;
+}
 function onBinary(c, buf) {
   const room = c.room;
-  if (!room || c.gone || buf.length < 4) return;
+  if (!room || c.gone || buf.length < 4 || room.state !== 'playing') return;
   const kind = buf[0];
   const max = BIN_MAX[kind];
   if (!max || buf.length > max) return;
   if (kind === BIN.ZSNAP && room.host !== c.slot) return;
+  if (!binOk(buf)) { stat.badBin++; return; }
   stat.binIn++;
   buf[1] = c.slot; // 由伺服器填發送者座位(用戶端無法冒充)
   for (const o of room.slots) {
@@ -549,12 +608,12 @@ function onConnect(ws, ip) {
   });
 }
 
-// 心跳:每 5 秒 ping;連續 2 次沒回應或 45 秒沒任何訊息就斷線。順便廣播各房間的延遲
+// 心跳:每 5 秒 ping;連續 2 次沒回應、45 秒沒任何訊息、或 10 秒內沒打招呼就斷線。順便廣播各房間的延遲
 setInterval(() => {
   const t = now();
   for (const c of conns) {
     if (!c.ws) continue;
-    if (c.misses >= 2 || t - c.last > L.idle) { c.ws.terminate(); continue; }
+    if (c.misses >= 2 || t - c.last > L.idle || (!c.hello && t - c.born > L.hello)) { c.ws.terminate(); continue; }
     c.misses++;
     c.pingAt = mono();
     try { c.ws.ping(); } catch { /* 忽略 */ }
@@ -564,25 +623,31 @@ setInterval(() => {
     if (live.length > 1 || r.state === 'playing') r.cast({ t: 'pings', r: live.map((c) => [c.slot, c.rtt]) });
   }
 }, L.ping).unref();
+// 清理:建房紀錄只留一分鐘內的
+setInterval(() => {
+  const t = now();
+  for (const [ip, h] of ipCreates) { const k = h.filter((x) => t - x < 60000); if (k.length) ipCreates.set(ip, k); else ipCreates.delete(ip); }
+}, 60000).unref();
 
 // =====================================================================
 // HTTP 伺服器
 // =====================================================================
-const server = http.createServer(async (req, res) => {
+const server = http.createServer((req, res) => {
   try {
-    const url = new URL(req.url, 'http://local');
-    const p = url.pathname;
-    if (p === '/healthz') return plain(res, 200, 'ok');
+    const q = req.url.indexOf('?');
+    const p = q < 0 ? req.url : req.url.slice(0, q);
+    if (p === '/healthz') return json(res, 200, { ok: true, uptime: Math.round((now() - stat.started) / 1000), files: files.size, conns: conns.size, rooms: rooms.size });
     if (p === '/api/rooms') return json(res, 200, { rooms: publicRooms() });
     if (p === '/api/stats') {
       return json(res, 200, {
         uptime: Math.round((now() - stat.started) / 1000), conns: conns.size, peakConns: stat.peakConns, rooms: rooms.size,
-        playing: [...rooms.values()].filter((r) => r.state === 'playing').length, perSec: stat.rate, droppedFrames: stat.dropped,
-        mem: Math.round(process.memoryUsage().rss / 1048576), zcache: zcache.size,
+        playing: [...rooms.values()].filter((r) => r.state === 'playing').length, perSec: stat.rate, droppedFrames: stat.dropped, badBin: stat.badBin,
+        http: stat.http, http304: stat.http304, mem: Math.round(process.memoryUsage().rss / 1048576), files: files.size, zMB: +(zbytes / 1048576).toFixed(1),
       });
     }
     if (req.method !== 'GET' && req.method !== 'HEAD') return plain(res, 405, 'Method Not Allowed', { Allow: 'GET, HEAD' });
-    await serveStatic(req, res, p);
+    if (p.length > 1024) return plain(res, 414, 'URI Too Long');
+    serveStatic(req, res, p);
   } catch (e) {
     log('[http] 錯誤', e);
     if (!res.headersSent) plain(res, 500, 'Internal Server Error'); else res.destroy();
@@ -594,8 +659,8 @@ server.headersTimeout = 66000;
 
 const wss = new WebSocketServer({ noServer: true, maxPayload: L.payload, perMessageDeflate: false, clientTracking: false });
 server.on('upgrade', (req, socket, head) => {
-  let pathname = '/';
-  try { pathname = new URL(req.url, 'http://local').pathname; } catch { /* 忽略 */ }
+  const q = req.url.indexOf('?');
+  const pathname = q < 0 ? req.url : req.url.slice(0, q);
   if (pathname !== '/ws') { socket.write('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n'); return socket.destroy(); }
   const ip = clientIp(req);
   if (conns.size >= L.conns || (ipConns.get(ip) || 0) >= L.perIp) {
@@ -606,9 +671,11 @@ server.on('upgrade', (req, socket, head) => {
   wss.handleUpgrade(req, socket, head, (ws) => onConnect(ws, ip));
 });
 
-server.listen(PORT, HOST, () => {
-  log(`[server] http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}  ws:/ws  dist=${DIST}${fs.existsSync(DIST) ? '' : '(不存在,僅提供 WebSocket)'}${DEV ? '  [dev]' : ''}`);
-  if (fs.existsSync(DIST)) warm();
+reindex().then(() => {
+  server.listen(PORT, HOST, () => {
+    log(`[server] http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}  ws:/ws  dist=${DIST}${files.size ? '' : '(沒有建置檔,僅提供 WebSocket)'}  [${PROD ? 'production' : 'development'}]`);
+    watchDist();
+  });
 });
 
 function shutdown(sig) {
