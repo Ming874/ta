@@ -8,6 +8,7 @@ import { createShellContext, buildFloors, buildWalls, buildWindowCells, buildCei
 import { buildDoors, buildWindows, buildRails, buildFences, buildElevators, buildEdgeRails } from './hospital/openings.js';
 import { buildStairs } from './hospital/stairs.js';
 import { buildSigns } from './hospital/signs.js';
+import { createEvents } from './hospital/events.js';
 import { NO_FLASH_SHADOW_LAYER } from './hospital/builder.js';
 import { buildLights, setGlowFog } from './hospital/lights.js';
 import { buildAtmosphere, makeEnvironment, onGlowFog } from './hospital/atmosphere.js';
@@ -79,6 +80,7 @@ export function buildHospital(world, layout, scene, opts = {}) {
   onGlowFog(setGlowFog);
   const meshes = B.build(levelGroups);
   const tris = B.tris;
+  const events = createEvents({ K, L, lights, propEvents, root });
 
   // ---- 樓層可見性:地下室只在地下或靠近往下的樓梯時才畫 ----
   const b1 = L.levels.findIndex((l) => l.id === 'B1');
@@ -106,9 +108,10 @@ export function buildHospital(world, layout, scene, opts = {}) {
   const camFwd = new THREE.Vector3();
   let shadowFrames = 0, lastLoaded = -1;
   const H = {
-    group: root, stats, layout: L, lights, atmo, K, levelGroups, propEvents, propLights, vis,
+    group: root, stats, layout: L, lights, atmo, K, levelGroups, propEvents, propLights, vis, events, game: null,
     // post.js 會呼叫:提供 renderer(環境貼圖、各向異性)與品質設定
     attachRenderer(r, game) {
+      H.game = game || null;
       try { setAnisotropy(Math.min(8, r.capabilities.getMaxAnisotropy())); } catch { /* 忽略 */ }
       try { scene.environment = makeEnvironment(r); } catch (e) { console.warn('[hospital] 環境貼圖失敗', e); }
       H.setQuality(game?.quality);
@@ -135,10 +138,21 @@ export function buildHospital(world, layout, scene, opts = {}) {
       const fl = Math.hypot(camFwd.x, camFwd.z) || 1;
       lights.update(time, dt, p.x, p.y + 1.6, p.z, camFwd.x / fl, camFwd.z / fl, li, vis);
       atmo.update(time, dt, cam, mood, outdoor);
+      try { events.update(time, dt, player, H.game, { li, zone, mood: style.mood, outdoor, fx: camFwd.x / fl, fz: camFwd.z / fl }); } catch (e) { console.warn('[events]', e); }
       // 月光陰影:靜態,只在一開始與貼圖載完時重算(玩家在地面以上時)
       const loaded = pbrState.loaded + procStats.done;
       if (li !== b1 && (shadowFrames < 2 || loaded !== lastLoaded)) { atmo.moon.shadow.needsUpdate = true; shadowFrames++; lastLoaded = loaded; }
       H.zone = zone; H.level = li; H.mood = style.mood;
+    },
+    // 新回合/重新開始:驚嚇事件與燈光狀態歸零(地圖不重建)
+    reset() { events.reset(); },
+    // 換地圖時:移除場景、釋放幾何(材質/貼圖是全域快取,可給下一張地圖共用)
+    dispose() {
+      events.dispose();
+      lights.dispose?.();
+      scene.remove(root);
+      root.traverse((o) => { if (o.geometry && !o.geometry.userData?.shared) o.geometry.dispose(); });
+      if (scene.environment && scene.environment.isTexture) { scene.environment.dispose(); scene.environment = null; }
     },
   };
   return H;

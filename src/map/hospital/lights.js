@@ -128,7 +128,7 @@ export function buildLights(K, { root, propLights = [], poolSize = 8 }) {
     const f = {
       x: spec.x, y: spec.y, z: spec.z, li: spec.li, zone: spec.zone || null, kind: spec.kind, mode: spec.mode || MODE[spec.kind] || 'steady',
       color: new THREE.Color(spec.color ?? k.color), cd: spec.cd ?? k.cd, dist: spec.dist ?? k.dist, glow: spec.glow ?? k.glow, shape: spec.shape === undefined ? k.shape : spec.shape,
-      gain: k.gain, state, phase: R ? R() * 100 : Math.random() * 100, ov: 1, cur: 1, inst: -1, glowIdx: -1, axis: spec.axis || 'x', hang: spec.hang || 0,
+      gain: k.gain, state, phase: R ? R() * 100 : Math.abs(spec.x * 7.31 + spec.z * 3.17) % 100, ov: 1, cur: 1, inst: -1, glowIdx: -1, axis: spec.axis || 'x', hang: spec.hang || 0,
       sway: spec.kind === 'bare_bulb' ? (R ? R.r(0.03, 0.09) : 0.05) : 0, ox: 0, oz: 0, prop: !!spec.prop,
     };
     fixtures.push(f);
@@ -489,6 +489,12 @@ export function buildLights(K, { root, propLights = [], poolSize = 8 }) {
     get picked() { return lastPick; },
     // 事件用:找某區域/範圍內的燈具
     find(pred) { return fixtures.filter(pred); },
+    // 換地圖時:拿掉光源池的燈、釋放發光件材質
+    dispose() {
+      makePool(0);
+      for (const im of emissive) { im.material.dispose(); im.dispose?.(); }
+      glow.dispose?.();
+    },
   };
   return api;
 }
