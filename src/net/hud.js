@@ -57,10 +57,10 @@ export class NetHud {
     this.input.addEventListener('blur', () => { if (this.chatOpen) this.closeChat(); });
     this.onKeyDown = (e) => {
       if (this.chatOpen) return;
-      if (e.code === 'Tab') { e.preventDefault(); this.boardOpen = true; this.renderBoard(); this.board.classList.add('on'); }
+      if (e.code === 'Tab') { e.preventDefault(); this.boardOpen = true; this.renderBoard(); this.board.classList.add('on'); root.classList.add('board'); }
       if ((e.code === 'Enter' || e.code === 'NumpadEnter') && (g.state === 'playing' || g.state === 'dead')) { e.preventDefault(); this.openChat(); }
     };
-    this.onKeyUp = (e) => { if (e.code === 'Tab') { this.boardOpen = false; this.board.classList.remove('on'); } };
+    this.onKeyUp = (e) => { if (e.code === 'Tab') { this.boardOpen = false; this.board.classList.remove('on'); root.classList.remove('board'); } };
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
 

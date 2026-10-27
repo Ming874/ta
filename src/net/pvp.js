@@ -104,7 +104,7 @@ export class PvpMode {
     for (const p of w.spawns || []) out.push({ x: p.x, y: p.y || 0, z: p.z });
     if (w.start) out.push({ x: w.start.x, y: w.start.y || 0, z: w.start.z });
     for (const p of w.supplies || []) out.push({ x: p.x, y: p.y || 0, z: p.z });
-    return out.length ? out : [{ x: 30, y: 0, z: 42 }];
+    return out.length ? out : [{ x: (w.sizeX || 60) / 2, y: 0, z: (w.sizeZ || 60) / 2 }];
   }
   // 重生點:離活著的敵人越遠越好,避開敵人視線
   pickSpawn() {

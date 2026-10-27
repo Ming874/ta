@@ -61,6 +61,9 @@ const clean = (s, max) => {
   return Array.from(t).slice(0, max).join('');
 };
 const int = (v, lo, hi, def) => (Number.isFinite(+v) ? Math.max(lo, Math.min(hi, Math.round(+v))) : def);
+// 地圖代號(多地圖用,選填):小寫英數、底線、連字號;種子:0..2^31-1 的整數(null = 每場隨機)
+const mapIdOf = (v) => (typeof v === 'string' && /^[a-z0-9_-]{1,32}$/.test(v) ? v : null);
+const seedOf = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(+v) ? null : int(v, 0, 2147483647, null));
 const CODE_ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 不含易混淆的 I O 0 1
 const CODE_RE = /^[A-HJ-NP-Z2-9]{6}$/;
 function newCode() {
@@ -318,6 +321,9 @@ class Room {
     this.name = clean(opts.name, 24);
     this.pub = opts.pub !== false;
     this.settings = settingsOf(mode, opts.settings);
+    this.mapId = mapIdOf(opts.mapId); // 選填:指定地圖(null = 用戶端預設 / 隨機)
+    this.seed = seedOf(opts.seed); // 選填:固定種子(null = 每場隨機)
+    this.matchSeed = 0; // 目前這一場的種子(中途加入的人用同一個)
     this.slots = new Array(8).fill(null);
     this.host = 0;
     this.state = 'lobby';
@@ -332,12 +338,12 @@ class Room {
   info() {
     return {
       code: this.code, mode: this.mode, name: this.name, pub: this.pub, max: this.max, host: this.host, state: this.state,
-      match: this.match, settings: this.settings, players: this.members().map((c) => this.player(c)),
+      match: this.match, settings: this.settings, mapId: this.mapId, seed: this.seed, matchSeed: this.matchSeed, players: this.members().map((c) => this.player(c)),
     };
   }
   brief() {
     const host = this.slots[this.host];
-    return { code: this.code, mode: this.mode, name: this.name || `${host?.name || '?'} 的房間`, n: this.members().length, max: this.max, state: this.state, settings: this.settings };
+    return { code: this.code, mode: this.mode, name: this.name || `${host?.name || '?'} 的房間`, n: this.members().length, max: this.max, state: this.state, settings: this.settings, mapId: this.mapId };
   }
   cast(obj, except = null) { this.castRaw(JSON.stringify(obj), except); }
   castRaw(s, except = null) { for (const c of this.slots) if (c && c !== except && !c.gone) c.raw(s); }
@@ -487,6 +493,8 @@ function onText(c, msg) {
       }
       if (typeof msg.pub === 'boolean') room.pub = msg.pub;
       if (typeof msg.name === 'string') room.name = clean(msg.name, 24);
+      if ('mapId' in msg) room.mapId = mapIdOf(msg.mapId);
+      if ('seed' in msg) room.seed = seedOf(msg.seed);
       room.settings = settingsOf(room.mode, { ...room.settings, ...(msg.settings && typeof msg.settings === 'object' ? msg.settings : {}) });
       return room.cast({ t: 'room', room: room.info() });
     }
@@ -498,7 +506,10 @@ function onText(c, msg) {
       room.started = now();
       for (const m of room.members()) m.ready = false;
       const data = msg.data && typeof msg.data === 'object' ? msg.data : {};
-      const s = JSON.stringify({ t: 'start', match: room.match, seed: crypto.randomInt(1 << 30), data, room: room.info() });
+      // 地圖與種子在建場景之前就送到每個人(mapId 可由房主在開始時指定)
+      if ('mapId' in msg) room.mapId = mapIdOf(msg.mapId);
+      room.matchSeed = room.seed ?? crypto.randomInt(1 << 30);
+      const s = JSON.stringify({ t: 'start', match: room.match, seed: room.matchSeed, mapId: room.mapId, data, room: room.info() });
       if (s.length > 8192) return;
       log(`[room] ${room.code} 開始第 ${room.match} 場(${room.mode},${room.live().length} 人)`);
       return room.castRaw(s);

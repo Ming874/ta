@@ -88,6 +88,7 @@ export class NetSession {
     this.hostSlot = start.room.host;
     this.match = start.match;
     this.seed = start.seed || 1;
+    this.mapId = start.mapId || null; // 房間指定的地圖(多地圖;目前只有一張)
     this.late = !!start.late;
     this.settings = start.room.settings || {};
     this.remotes = new Map();
@@ -104,6 +105,9 @@ export class NetSession {
     this.lastSend = 0;
     this.seq = 0;
     this.targets = []; // 對戰:遠端玩家命中盒(game.extraTargets)
+    // 遠端位置的合理範圍:取自目前地圖的大小與樓層高度(不寫死任何一張地圖)
+    const W = game.world, ys = (W.layout?.levels || []).map((l) => l.y).filter(Number.isFinite);
+    this.bounds = { x1: (W.sizeX || 400) + 4, z1: (W.sizeZ || 400) + 4, y0: (ys.length ? Math.min(...ys) : -20) - 8, y1: (ys.length ? Math.max(...ys) : 40) + 16 };
     this.zs = new ZombieSync(this);
     this.mode = start.room.mode === 'pvp' ? new PvpMode(this) : new CoopMode(this);
     this.hud = new NetHud(this);
@@ -410,9 +414,9 @@ export class NetSession {
   onState(s) {
     const rp = this.remotes.get(s.slot);
     if (!rp) return;
-    const W = this.game.world;
+    const B = this.bounds;
     // 驗證:位置限制在地圖範圍內(量化後本來就是有限值)
-    s.x = clamp(s.x, -4, (W.sizeX || 300) + 4); s.z = clamp(s.z, -4, (W.sizeZ || 300) + 4); s.y = clamp(s.y, -9, 24);
+    s.x = clamp(s.x, -4, B.x1); s.z = clamp(s.z, -4, B.z1); s.y = clamp(s.y, B.y0, B.y1);
     s.pitch = clamp(s.pitch, -1.6, 1.6);
     rp.lastMsg = performance.now();
     const buf = rp.buf;

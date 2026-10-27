@@ -121,7 +121,9 @@
 #mp-results .wait { margin-top: 10px; font-size: 13px; opacity: 0.6; }
 
 /* 對戰:沒有回合,隱藏回合資訊 */
-body.mp-pvp .hd-round { display: none !important; }
+body.mp-pvp .hd-round, body.mp-pvp .hd-coins { display: none !important; }
+/* 計分板開著時,下面的大字(重生倒數、擊殺訊息)先藏起來 */
+#mp-hud.board #mp-respawn, #mp-hud.board #mp-center, #mp-hud.board #mp-downed { opacity: 0 !important; }
 
 /* 擊殺訊息列(畫在 ui.feed 的 .hd-msg 裡):擊殺者 [武器] 受害者 */
 .hd-msg .mp-kf { display: inline-flex; align-items: center; gap: .25em; margin: 0 .55em; padding: .05em .45em; font-size: .82em; letter-spacing: .04em; color: #d8d2c2; background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .14); border-radius: 2px; }

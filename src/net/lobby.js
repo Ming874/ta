@@ -42,11 +42,11 @@ class Lobby {
 
   mountEntry() {
     const btn = document.createElement('button');
-    btn.className = 'btn';
-    btn.id = 'mp-entry';
-    btn.textContent = '多人連線(測試版)';
-    btn.onclick = () => this.open();
     const modes = document.getElementById('menuModes');
+    btn.className = modes ? 'mn-btn' : 'btn';
+    btn.id = 'mp-entry';
+    btn.innerHTML = '多人連線<small>合作生存 · 對戰死鬥 · 和朋友一起玩</small>';
+    btn.onclick = () => { sfx.uiClick?.(); this.open(); };
     if (modes) modes.appendChild(btn);
     else document.getElementById('startBtn')?.insertAdjacentElement('afterend', btn);
     const el = (this.el = document.createElement('div'));
@@ -87,7 +87,8 @@ class Lobby {
       if (!this.listTimer) this.listTimer = setInterval(() => this.tick(), 1000);
     }).catch((e) => {
       this._connecting = null;
-      this.msg(`無法連線到多人伺服器(${e.message})。請確認伺服器已啟動。`);
+      if (/更新/.test(e.message)) this.versionMsg();
+      else this.msg(`無法連線到多人伺服器(${e.message})。請稍後再試。`);
       this.setStatus('離線');
       throw e;
     });
@@ -114,7 +115,7 @@ class Lobby {
       this.view = 'room';
       this.chatLog = [];
       this.sys(`你加入了房間 ${m.room.code}`);
-      if (m.room.state === 'playing' && !this.session) { this.startMatch({ room: m.room, match: m.room.match, seed: 0, late: true }); return; }
+      if (m.room.state === 'playing' && !this.session) { this.startMatch({ room: m.room, match: m.room.match, seed: m.room.matchSeed || 0, mapId: m.room.mapId, late: true }); return; }
       this.render();
       this.prebuild();
       history.replaceState(null, '', `${location.pathname}?room=${m.room.code}`);
@@ -150,7 +151,8 @@ class Lobby {
       if (this.session) this.session.hud.feed(m.msg, 'warn');
       else this.msg(m.msg);
     });
-    c.on('lost', () => {
+    c.on('lost', (m) => {
+      if (m?.reason === 'version') { this.endSession(); this.room = null; this.view = 'home'; this.el.classList.add('on'); this.render(); this.versionMsg(); return; }
       if (this.session) return; // session 會呼叫 matchLost
       this.room = null;
       this.view = 'home';
@@ -230,7 +232,8 @@ class Lobby {
     this.close();
     document.getElementById('menu')?.classList.remove('on');
     const g = this.g;
-    const s = new NetSession(g, this.client, this, { room: m.room, you: this.you, match: m.match, seed: m.seed, late: !!m.late });
+    // 多地圖(之後):m.mapId / m.seed 在這裡就已經到了,可以先 loadMap(mapId, seed) 再建 NetSession
+    const s = new NetSession(g, this.client, this, { room: m.room, you: this.you, match: m.match, seed: m.seed, mapId: m.mapId ?? m.room.mapId ?? null, late: !!m.late });
     this.session = s;
     s.start();
     s.hud.chatLine('', `房間 ${m.room.code} · ${MODE_NAME[m.room.mode]} · Tab 計分板 · Enter 聊天`, false, true);
@@ -266,6 +269,13 @@ class Lobby {
 
   // ---------- 畫面 ----------
   setStatus(t) { const s = this.box.querySelector('.status'); if (s) s.textContent = t; }
+  // 伺服器已更新(協定版本不同):請重新整理
+  versionMsg() {
+    const m = this.box.querySelector('.msg');
+    if (!m) return;
+    m.innerHTML = '遊戲已更新到新版本,請重新整理頁面。 <button class="big" id="mp-reload">重新整理</button>';
+    m.querySelector('#mp-reload').onclick = () => location.reload();
+  }
   msg(t, ok = false) { const m = this.box.querySelector('.msg'); if (m) { m.textContent = t || ''; m.classList.toggle('ok', ok); } }
   sys(t) { this.chatLog.push({ sys: true, text: t }); if (this.chatLog.length > 60) this.chatLog.shift(); this.renderChat(); }
 
@@ -327,23 +337,27 @@ class Lobby {
         : `<span>擊殺上限 ${S.kills} · ${S.minutes} 分鐘 · ${S.zombies ? '有殭屍騷擾' : '無殭屍'}</span>`)
       : (host ? `<label><input type="checkbox" id="mp-s-late" ${S.late !== false ? 'checked' : ''} /> 允許中途加入</label>` : `<span>${S.late !== false ? '允許中途加入' : '不允許中途加入'}</span>`);
     this.box.innerHTML = `
-      <h2><span>房間 <span class="roomcode">${esc(r.code)}</span></span><small class="info"></small></h2>
-      <div class="row"><button class="grey" id="mp-copy">複製邀請連結</button><span class="status"></span></div>
-      ${host ? `<h3>模式</h3><div class="modes"><button class="mode ${r.mode === 'coop' ? 'sel' : ''}" data-m="coop"><b>合作生存</b><span>2~4 人</span></button><button class="mode ${r.mode === 'pvp' ? 'sel' : ''}" data-m="pvp"><b>對戰死鬥</b><span>2~8 人</span></button></div>` : ''}
-      <h3>設定</h3><div class="opts">${settings}<label><input type="checkbox" id="mp-s-pub" ${r.pub ? 'checked' : ''} ${host ? '' : 'disabled'} /> 公開房間</label></div>
-      <h3>玩家</h3><div class="players"></div>
-      <div class="chatbox"><div class="log"></div><input type="text" maxlength="160" placeholder="聊天(Enter 送出)" /></div>
+      <div class="rhead"><h2><span>房間<span class="roomcode">${esc(r.code)}</span></span></h2>
+        <div class="meta"><small class="info"></small><span class="row"><span class="status"></span><button class="grey" id="mp-copy">複製邀請連結</button></span></div></div>
+      <div class="cols">
+        <div>
+          ${host ? `<h3>模式</h3><div class="modes"><button class="mode ${r.mode === 'coop' ? 'sel' : ''}" data-m="coop"><b>合作生存</b><span>2~4 人 · 一起撐過屍潮</span></button><button class="mode ${r.mode === 'pvp' ? 'sel' : ''}" data-m="pvp"><b>對戰死鬥</b><span>2~8 人 · 各自為戰</span></button></div>` : ''}
+          <h3>設定</h3><div class="opts">${settings}<label><input type="checkbox" id="mp-s-pub" ${r.pub ? 'checked' : ''} ${host ? '' : 'disabled'} /> 公開房間</label></div>
+          <h3>玩家</h3><div class="players"></div>
+        </div>
+        <div><h3>聊天</h3><div class="chatbox"><div class="log"></div><input type="text" maxlength="160" placeholder="聊天(Enter 送出)" /></div></div>
+      </div>
       <div class="msg"></div>
-      <div class="foot"><button class="red" id="mp-leave">離開房間</button><span class="row"><button id="mp-ready">準備</button>${host ? '<button class="big" id="mp-start">開始遊戲</button>' : ''}<button id="mp-rejoin" style="display:none">加入進行中的遊戲</button></span></div>`;
+      <div class="foot"><button class="red" id="mp-leave">離開房間</button><span class="help">${r.mode === 'pvp' ? '出生時選主武器 · Tab 計分板 · Enter 聊天' : '回合間到便利商店購物 · N 準備下一回合 · Tab 計分板'}</span><span class="row">${host ? '' : '<button id="mp-ready">準備</button>'}${host ? '<button class="big" id="mp-start">開始遊戲</button>' : ''}<button class="big" id="mp-rejoin" style="display:none">加入進行中的遊戲</button></span></div>`;
     const q = (s) => this.box.querySelector(s);
     q('#mp-copy').onclick = () => {
       const url = `${location.origin}${location.pathname}?room=${r.code}`;
       (navigator.clipboard?.writeText(url) || Promise.reject()).then(() => this.msg('已複製邀請連結', true), () => this.msg(url, true));
     };
     q('#mp-leave').onclick = () => this.leaveRoom();
-    q('#mp-ready').onclick = () => this.ready();
+    if (q('#mp-ready')) q('#mp-ready').onclick = () => this.ready();
     if (host) q('#mp-start').onclick = () => this.start();
-    q('#mp-rejoin').onclick = () => this.startMatch({ room: this.room, match: this.room.match, seed: 0, late: true });
+    q('#mp-rejoin').onclick = () => this.startMatch({ room: this.room, match: this.room.match, seed: this.room.matchSeed || 0, mapId: this.room.mapId, late: true });
     const send = (patch) => this.client.send('settings', patch);
     for (const b of this.box.querySelectorAll('.mode')) b.onclick = () => send({ mode: b.dataset.m });
     const cs = (id, fn) => { const e = q('#' + id); if (e) e.onchange = fn; };
@@ -373,12 +387,13 @@ class Lobby {
         <span class="ping">${p.rtt ? `${p.rtt}ms` : ''}</span>${host && p.id !== this.you ? `<button class="grey kick" data-id="${p.id}">踢出</button>` : ''}</div>`;
     }
     box.innerHTML = html;
+    box.classList.toggle('two', r.max > 4);
     for (const b of box.querySelectorAll('.kick')) b.onclick = () => this.client.send('kick', { id: Number(b.dataset.id) });
     const info = this.box.querySelector('.info');
     if (info) info.textContent = `${MODE_NAME[r.mode]} · ${r.players.length}/${r.max} 人${r.state === 'playing' ? ' · 遊戲進行中' : ''}`;
     const me = r.players.find((p) => p.id === this.you);
     const rb = this.box.querySelector('#mp-ready');
-    if (rb) { rb.textContent = me?.ready ? '取消準備' : '準備'; rb.style.display = r.state === 'playing' ? 'none' : ''; }
+    if (rb) { rb.textContent = me?.ready ? '取消準備' : '準備'; rb.classList.toggle('on', !!me?.ready); rb.style.display = r.state === 'playing' ? 'none' : ''; }
     const sb = this.box.querySelector('#mp-start');
     if (sb) {
       const others = r.players.filter((p) => p.id !== this.you && p.conn !== false);
