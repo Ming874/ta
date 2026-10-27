@@ -172,7 +172,7 @@ export function paranormalKinds(h) {
     } },
     phoneRing: { ok: (c) => anchorsOf(c, ['phone'], 3, 18, null, false).length > 0 && !h.ringing, run(c) {
       const a = pick(anchorsOf(c, ['phone'], 3, 18, null, false)), pos = { x: a.x, y: a.y, z: a.z };
-      sfx.scare('phone_ring', pos);
+      if (!game.interact) sfx.scare('phone_ring', pos); // 有互動系統時:那支真的電話會響(聽 'phone:ring'),接起來就是 phoneCall 的來電
       h.ringing = { pos, anchor: a, until: game.time + 9 };
       h.emit('phone:ring', { pos, anchor: a, until: h.ringing.until });
       return a;

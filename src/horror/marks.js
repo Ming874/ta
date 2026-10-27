@@ -125,7 +125,7 @@ function silhouetteCanvas(kind) {
 
 // 帶「每實例透明度」的標準材質(InstancedMesh 用)
 function instMat(map, o) {
-  const m = new THREE.MeshStandardMaterial({ map, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, ...o });
+  const m = new THREE.MeshStandardMaterial({ name: 'ghost-mark', map, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, ...o });
   m.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aAlpha;\nvarying float vAlpha;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvAlpha = aAlpha;');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vAlpha;').replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.a *= vAlpha;');
@@ -158,6 +158,13 @@ export class Marks {
   }
   // 預編譯用:每種材質一個代表(可見、在畫面外)
   warmList() { return [this.feet.im, this.hands.im, this.strip, this.faceM, this.curtM, this.tv, this.lift]; }
+  // 字跡材質的代表(參數與 write() 建的完全一樣 → 同一個 shader)
+  warmWriting() {
+    const c = document.createElement('canvas'); c.width = c.height = 4;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshStandardMaterial({ name: 'ghost-writing', map: tex(c), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, roughness: 0.85 }));
+    m.frustumCulled = false;
+    return m;
+  }
   _feet() {
     if (!this.feet) {
       const g = new THREE.PlaneGeometry(0.13, 0.26); g.rotateX(-Math.PI / 2);
@@ -197,7 +204,7 @@ export class Marks {
     const t = tex(c);
     const hgt = (w.size ?? 0.2) * (c.height / 96) * 0.82, wid = hgt * c.width / c.height;
     if (!m) {
-      m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshStandardMaterial({ transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, roughness: 0.85 }));
+      m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshStandardMaterial({ name: 'ghost-writing', transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, roughness: 0.85 }));
       m.castShadow = false; m.receiveShadow = false; m.raycast = () => {};
       m.name = 'ghost-writing';
       this.root.add(m);
@@ -221,7 +228,7 @@ export class Marks {
         uniforms: { uK: { value: 0 }, uS: { value: -1 } },
         vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
         fragmentShader: 'uniform float uK; uniform float uS; varying vec2 vUv; void main(){ float edge = smoothstep(0.0,0.08,vUv.x)*smoothstep(1.0,0.92,vUv.x); float fall = pow(1.0-vUv.y, 2.2); float sh = 1.0 - smoothstep(0.16, 0.04, abs(vUv.x - uS)) * 0.95; gl_FragColor = vec4(vec3(1.0,0.78,0.5) * fall * edge * sh * uK, 1.0); }',
-        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, name: 'ghost-strip',
       }));
       this.strip.raycast = () => {}; this.strip.frustumCulled = false;
       this.root.add(this.strip);
@@ -247,8 +254,8 @@ export class Marks {
     if (!this[key]) {
       const c = silhouetteCanvas(kind);
       const mat = kind === 'face'
-        ? new THREE.MeshBasicMaterial({ map: tex(c), transparent: true, depthWrite: false, opacity: 0, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6, fog: true })
-        : new THREE.MeshBasicMaterial({ map: tex(c), transparent: true, depthWrite: false, opacity: 0, blending: THREE.AdditiveBlending, fog: true });
+        ? new THREE.MeshBasicMaterial({ name: 'ghost-face', map: tex(c), transparent: true, depthWrite: false, opacity: 0, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6, fog: true })
+        : new THREE.MeshBasicMaterial({ name: 'ghost-curtain', map: tex(c), transparent: true, depthWrite: false, opacity: 0, blending: THREE.AdditiveBlending, fog: true });
       this[key] = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
       this[key].raycast = () => {}; this[key].frustumCulled = false;
       this.root.add(this[key]);
@@ -271,7 +278,7 @@ export class Marks {
     if (!this.tv) {
       const c = document.createElement('canvas'); c.width = 96; c.height = 72;
       const t = tex(c); t.colorSpace = THREE.SRGBColorSpace;
-      this.tv = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: t, toneMapped: false, fog: true }));
+      this.tv = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ name: 'ghost-tv', map: t, toneMapped: false, fog: true }));
       this.tv.userData.c = c; this.tv.raycast = () => {};
       this.root.add(this.tv);
     }
@@ -288,7 +295,7 @@ export class Marks {
   // 電梯門縫透出的光(門中心、朝外法線)
   _lift() {
     if (!this.lift) {
-      this.lift = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xfff0d8, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: true }));
+      this.lift = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ name: 'ghost-lift', color: 0xfff0d8, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: true }));
       this.lift.raycast = () => {};
       this.root.add(this.lift);
     }

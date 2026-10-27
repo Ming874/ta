@@ -150,6 +150,23 @@ export const LINES = [
   { id: 'cu.silence', text: '……噓。', who: '不明(亡者)', why: '配合突然的寂靜', when: '現在', trig: 'cue', cue: 'silence', ear: 'both' },
   { id: 'cu.window', text: '外面……有人在看。', who: '不明(亡者)', why: '配合窗外的人影', when: '現在', trig: 'cue', cue: 'window' },
   { id: 'cu.hands', text: '讓我進去……', ghost: 'lobby', who: '大廳的人', why: '配合玻璃上的手印:正門焊死之後,外面的人進不來', when: '七月初三', trig: 'cue', cue: 'handprints' },
+  // ---------- 第二輪:院內廣播故障重播(trig 'pa';萬嵐的集合廣播主機,STORY.md §1.10:合成、甜美、制式;不是鬼) ----------
+  { id: 'pa.1', text: '各位民眾請注意，救援即將抵達，請至一樓大廳集合。', who: '院內廣播(萬嵐的合成聲,主機故障重播)', why: '開場的集合廣播(story_A A.4);主機裝了誘集模組', when: '七月初三起每晚', trig: 'pa', filter: 'pa', hint: 'rule:pa' },
+  { id: 'pa.2', text: '請勿驚慌。……請勿使用電梯。', who: '院內廣播(萬嵐的合成聲,主機故障重播)', why: '集合廣播的後半段', when: '七月初三起每晚', trig: 'pa', filter: 'pa' },
+  { id: 'pa.3', text: '……感謝各位的配合。', who: '院內廣播(萬嵐的合成聲,主機故障重播)', why: '第一波屍潮衝進大廳時廣播說的那一句', when: '七月初三', trig: 'pa', filter: 'pa', prog: [3] },
+  { id: 'pa.4', text: '二〇七號房家屬，請至護理站。二〇七號房家屬……', who: '院內呼叫的舊錄音(混進廣播主機)', why: 'R2 護理站的舊呼叫錄音', when: '2025 年之前', trig: 'pa', filter: 'pa' },
+  { id: 'pa.5', text: '本院即日起全面停止收治……請依廣播指示，前往一樓大廳集合……', who: '院內廣播(萬嵐接管的院長室)', why: '緊急疏散公告的內容(§5.9)', when: '七月初三', trig: 'pa', filter: 'pa', prog: [4] },
+  // ---------- 第二輪:配合新事件的耳語 ----------
+  { id: 'cu.pace', text: '巡房了……不要在走廊上逗留。', ghost: 'zheng', who: '鄭玉蘭', why: '她還在夜間巡房(病歷板的夾子聲);以前也這樣叫家屬晚上不要在走廊逗留', when: '七月十一之後', trig: 'cue', cue: 'pace', ear: 'behind' },
+  { id: 'cu.knock', text: '聽到敲門……不要開。', ghost: 'zheng', who: '鄭玉蘭', why: '住院病患須知第五條「夜間聽到敲門聲,請勿開門」是她寫的(2025 年 3 月)', when: '2025/03 起', trig: 'cue', cue: 'knock', hint: 'rule:door' },
+  { id: 'cu.call', text: '鈴響了……我馬上過去。', ghost: 'zheng', who: '鄭玉蘭', why: '空病房的護理呼叫鈴在響;她還在值班', when: '七月十一之後', trig: 'cue', cue: 'call' },
+  { id: 'cu.door', text: '門要關好……牠們聽得到。', ghost: 'zheng', who: '鄭玉蘭', why: '有人替你把背後的門關上了;世界規則「牠們聽得到」', when: '七月十一之後', trig: 'cue', cue: 'door', hint: 'rule:sound' },
+  { id: 'cu.throw', text: '不要碰我的東西。', who: '病房的人(亡者)', why: '東西被丟過來', when: '現在', trig: 'cue', cue: 'throw' },
+  { id: 'cu.circle', text: '我在這裡……這裡……這裡。', who: '不明(亡者)', why: '配合繞著頭轉的低語', when: '現在', trig: 'cue', cue: 'circle' },
+  { id: 'cu.reflect', text: '玻璃裡的那個人……不是你。', who: '不明(亡者)', why: '配合窗玻璃倒影裡站在你背後的人', when: '現在', trig: 'cue', cue: 'reflect', ear: 'behind' },
+  { id: 'cu.creeper', text: '你一轉頭……我就過來。', who: '不明(亡者)', why: '配合你不看它時就靠近的人', when: '現在', trig: 'cue', cue: 'creeper', ear: 'behind' },
+  { id: 'cu.rollcall', text: '下一個……叫到你了。', who: '回收後沒有醒來的接單員(亡者)', why: '〈點名〉:冰櫃抽屜由遠到近一格一格晃動(§5.11-3)', when: '七月下旬', trig: 'cue', cue: 'rollcall' },
+  { id: 'cu.dark', text: '燈回來了。……你有看到嗎？', who: '不明(亡者)', why: '配合停電之後牆上多出來的字', when: '現在', trig: 'cue', cue: 'dark', ear: 'both' },
 ];
 
 // 牆上字跡(STORY.md §5.9:每一句都有作者;新增的這些要登記進 §5.9 的字跡表)
@@ -181,6 +198,74 @@ export const WRITINGS = [
 export const CAPTIONS = {
   counter: { who: '？？？', count: ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'], tail: '……還沒好。', tailNear: '……快好了。', tailEnd: '……天亮了。' },
 };
+
+// ---------- 第二輪:接起電話之後的來電腳本(互動代理呼叫 game.horror.phoneCall(ctx);src/horror/calls.js 組合) ----------
+// 每通:id、act 最早第幾幕、sys(系統錄音:不是鬼,誘集期間也可以)、ghost/who/why/when、need(情境條件)、
+//       lines [{ text, gap(這句之前多停幾秒), ear('left' = 不經過聽筒,直接在你左耳) }]、cues [{ line, kind, at(該句開始後幾秒) }]、
+//       end(對方說完之後:'dead' 斷線雜訊 | 'tone' 撥號音 | 'breath' 只剩呼吸 | 'click' 掛斷)、w 權重、once 一局一次
+// need:closedDoorBehind 背後 7m 內有關著的門 | openDoorBehind 背後有開著的門 | window 8m 內有窗 | propBehind 背後有可動的東西 |
+//       behindFree 背後 1.6m 可以站人 | lit 附近有亮著的燈 | flash 手電筒開著 | zone/theme 指定區域
+// 文字裡:{房名} 你所在的區域名、{門} 背後那扇門的種類、{物} 背後那個東西、{暱稱} 玩家暱稱
+// 鬼不說謊(§1.9):說「剛剛是關著的」的那扇門真的是關著的,而且接著就會打開;說「它停在你後面」時,後面真的有腳步停下來。
+export const CALLS = [
+  { id: 'call.sys.switch', act: 1, sys: true, who: '總機的自動語音', why: '總機的自動語音還在運作;同一區內的內線還通(§11.5)', when: '2026 年',
+    lines: [{ text: '這裡是總機。您撥的分機，已經沒有人了。' }, { text: '……如需轉接，請稍候。', gap: 1.6 }, { text: '……您撥的分機，已經沒有人了。', gap: 2.4 }], end: 'tone', w: 0.8 },
+  { id: 'call.sys.207', act: 1, sys: true, who: '院內呼叫的舊錄音', why: 'R2 護理站的舊電話放的是 207 家屬的呼叫錄音', when: '2025 年之前',
+    lines: [{ text: '……二〇七號房家屬，請至護理站。' }, { text: '二〇七號房家屬……', gap: 1.2 }, { text: '……二〇七……', gap: 1.6 }], end: 'dead', w: 0.7, once: true },
+  { id: 'call.zheng.rounds', act: 1, ghost: 'zheng', who: '鄭玉蘭(內線)', why: '她還在值夜班;世界規則「牠們聽得到」', when: '七月十一之後',
+    lines: [{ text: '這裡是護理站。' }, { text: '……你在{房名}，對不對？', gap: 0.6 }, { text: '晚上不要在走廊上走來走去。牠們聽得到。', gap: 0.8 }], cues: [{ line: 0, kind: 'clip', at: 0.2 }], end: 'click', w: 1, hint: 'rule:sound' },
+  { id: 'call.door.closed', act: 2, who: '不明(內線;亡者)', why: '鬼不說謊:那扇門真的是關著的,接著就自己打開', when: '現在', need: { closedDoorBehind: true },
+    lines: [{ text: '……你背後那扇{門}。' }, { text: '剛剛是關著的。', gap: 0.8 }, { text: '……現在呢？', gap: 2.6 }], cues: [{ line: 1, kind: 'door', at: 1.2 }], end: 'breath', w: 1.6 },
+  { id: 'call.door.open', act: 2, ghost: 'zheng', who: '鄭玉蘭(內線)', why: '她替你把背後開著的門關上;門要關好', when: '七月十一之後', need: { openDoorBehind: true },
+    lines: [{ text: '你背後的門，開著。' }, { text: '……我幫你關上。', gap: 0.8 }, { text: '門要關好。牠們聽得到。', gap: 1.4 }], cues: [{ line: 1, kind: 'doorShut', at: 1.1 }], end: 'click', w: 1.2, hint: 'rule:sound' },
+  { id: 'call.window', act: 2, ghost: 'lobby', who: '大廳的人(內線)', why: '他們還在等萬嵐的專車;專車從來沒有來', when: '七月初三', need: { window: true },
+    lines: [{ text: '別看窗外。' }, { text: '……他們還在外面等車。', gap: 1.0 }, { text: '我說了，別看。', gap: 2.4 }], cues: [{ line: 1, kind: 'window', at: 0.8 }], end: 'dead', w: 1.3 },
+  { id: 'call.prop', act: 2, who: '不明(內線;亡者)', why: '鬼不說謊:那個東西真的被推過了', when: '現在', need: { propBehind: true },
+    lines: [{ text: '你背後那張{物}……' }, { text: '剛剛不在那裡。', gap: 1.4 }, { text: '不要回頭。', gap: 1.2 }], cues: [{ line: 0, kind: 'prop', at: 1.4 }], end: 'breath', w: 1.2 },
+  { id: 'call.steps', act: 2, who: '不明(內線;亡者)', why: '腳步聲真的停在你後面', when: '現在', need: { behindFree: true },
+    lines: [{ text: '你有沒有聽到……腳步聲？' }, { text: '……它停在你後面了。', gap: 3.4 }], cues: [{ line: 0, kind: 'steps', at: 1.6 }, { line: 1, kind: 'breath', at: 1.6 }], end: 'breath', w: 1.1 },
+  { id: 'call.ear', act: 2, who: '不明(亡者)', why: '電話那頭的聲音,其實在你旁邊', when: '現在',
+    lines: [{ text: '喂？……聽得到嗎？' }, { text: '你左邊。', gap: 1.4 }, { text: '我不在電話裡。', gap: 1.0, ear: 'left' }], cues: [{ line: 2, kind: 'cold', at: 0.2 }], end: 'dead', w: 1.0, ringback: 0.3 },
+  { id: 'call.lights', act: 3, who: '不明(內線;亡者)', why: '燈真的熄了;「數到十」是小鈴節目的結尾語,護理站每個人都會背', when: '現在', need: { lit: true },
+    lines: [{ text: '你那邊的燈……還亮著嗎？' }, { text: '……現在呢？', gap: 1.6 }, { text: '數到十，燈就回來了。', gap: 2.2 }], cues: [{ line: 1, kind: 'lights', at: 0.3 }], end: 'click', w: 1.2 },
+  { id: 'call.figure', act: 3, who: '不明(內線;亡者)', why: '鬼不說謊:它真的就在你後面', when: '現在', need: { behindFree: true },
+    lines: [{ text: '不要轉頭。' }, { text: '……我在你後面。', gap: 1.6 }, { text: '我說，不要轉頭。', gap: 2.6 }], cues: [{ line: 1, kind: 'figure', at: 0.5 }], end: 'dead', w: 1.4, ringback: 0.35 },
+  { id: 'call.name', act: 3, ghost: 'caller', who: '叫名字的人', why: '永遠的未解:是誰在叫你的名字', when: '不明',
+    lines: [{ text: '……{暱稱}？' }, { text: '{暱稱}……', gap: 3.2 }], cues: [{ line: 1, kind: 'cold', at: 0 }], end: 'dead', w: 0.4, once: true },
+  { id: 'call.ringback', act: 3, who: '不明(內線;亡者)', why: '掛掉之後又打來', when: '現在', ringbackOnly: true,
+    lines: [{ text: '你掛我電話。' }, { text: '……沒關係。', gap: 1.2 }, { text: '我在你後面那間房間。', gap: 1.0 }], cues: [{ line: 2, kind: 'knock', at: 0.6 }], end: 'dead', w: 1 },
+];
+// 依地點的來電(你站的地方發生過什麼;只說那個人死前知道的事)
+export const PLACE_CALLS = {
+  f1_lobby: { ghost: 'lobby', who: '大廳的人(內線)', why: '七月初三集合事件;專車沒有來', when: '七月初三',
+    lines: [{ text: '你站的地方……七月初三那天晚上，站滿了人。' }, { text: '大家都在等車。', gap: 0.8 }, { text: '……車沒有來。', gap: 1.6 }], end: 'dead' },
+  f2_ward_207: { ghost: 'zheng', who: '鄭玉蘭(內線)', why: '1999/10/24 到 2025/02/27,207 都是秀鈴;金水伯每個星期日來', when: '七月十一之前',
+    lines: [{ text: '那張床……二十五年，都是同一個人。' }, { text: '每個星期日，都有人來看她。', gap: 0.8 }, { text: '……燈不要關。', gap: 1.4 }], end: 'click', hint: 'quest:207light' },
+  b1_morgue: { who: '回收後沒有醒來的接單員(內線;亡者)', why: '回收清冊上有你的編號「預約中」(A8)', when: '七月下旬',
+    lines: [{ text: '你腳邊那一排抽屜……' }, { text: '有一格，寫著你的編號。', gap: 1.0 }, { text: '……預約中。', gap: 1.8 }], cues: [{ line: 1, kind: 'knock', at: 0.8 }], end: 'dead' },
+  f3_corridor: { who: '試驗病房的病人(內線;亡者)', why: '三樓試驗病房的門從外面鎖;001 用刻痕數日子', when: '2025 年',
+    lines: [{ text: '三樓的門……都是從外面鎖的。' }, { text: '隔壁的姊姊，每天晚上都在數日子。', gap: 0.8 }], end: 'dead' },
+  psych_cell: { who: '試驗病房的病人(內線;亡者)', why: '三樓試驗病房的門從外面鎖;001 用刻痕數日子', when: '2025 年',
+    lines: [{ text: '你在隔離房裡。……門是從外面鎖的。' }, { text: '我們每天晚上都在數。', gap: 0.8 }], cues: [{ line: 1, kind: 'knock', at: 0.6 }], end: 'dead' },
+  f2_nursery: { who: '值夜護理師的聲音(留白;孩子們都活著離開了)', why: '七月初三夜,安修女把孩子帶到廟口', when: '七月初三',
+    lines: [{ text: '孩子們都走了。修女帶走的。' }, { text: '……這裡沒有人了。不要哭。', gap: 1.0 }], end: 'click' },
+  f1_chapel: { who: '禮拜堂的人(內線;亡者)', why: '安修女的習慣:有人在等,就點一根蠟燭', when: '現在',
+    lines: [{ text: '蠟燭……還有人在點嗎？' }, { text: '修女說，有人在等，就點一根。', gap: 0.8 }], end: 'click', hint: 'egg:candle' },
+  f1_er: { who: '急診的家屬(內線;亡者)', why: '正門焊死之後,家屬逃進急診,把門堵起來;外面一直有人在敲', when: '七月初三',
+    lines: [{ text: '急診的門……那天晚上是我們自己堵起來的。' }, { text: '外面一直有人在敲。', gap: 0.8 }, { text: '……不要開。', gap: 1.8 }], cues: [{ line: 1, kind: 'knock', at: 0.9 }], end: 'dead' },
+  b1_boiler: { ghost: 'zheng', who: '鄭玉蘭(內線)', why: '207 的燈和監控室搶同一台發電機', when: '七月初二起',
+    lines: [{ text: '發電機的油……撐不過今晚。' }, { text: '二〇七的燈，不能熄。', gap: 0.8 }], end: 'click', hint: 'quest:207light' },
+  f1_waiting: { ghost: 'lobby', who: '候診區的人(內線;亡者)', why: '叫號機停在七月初三的號碼', when: '七月初三',
+    lines: [{ text: '叫號機一直停在同一個號碼。' }, { text: '……那是我的號碼。', gap: 1.4 }], end: 'dead' },
+  f3_dorm: { ghost: 'zheng', who: '鄭玉蘭(內線)', why: '安修女七月初三 00:41 的答錄機留言:「我明天回來。」她沒有回來(她在廟口)', when: '七月初三~十一',
+    lines: [{ text: '修女走之前……打過電話給我。' }, { text: '她說，她明天回來。', gap: 0.8 }, { text: '……她還沒回來。', gap: 1.6 }], end: 'click' },
+  _default: { who: '不明(內線;亡者)', why: '它看得到你', when: '現在',
+    lines: [{ text: '你在{房名}，對不對？' }, { text: '……我看得到你。', gap: 1.2 }], end: 'breath' },
+};
+// 道具與門的名字(電話裡說「你背後那張{物}」)
+export const PROP_NAMES = { wc: '輪椅', wheelchair: '輪椅', wheel: '輪椅', cart: '推車', linen: '布巾車', gurney: '推床', trolley: '推車', iv: '點滴架', chair: '椅子', stool: '凳子', bin: '垃圾桶', box: '紙箱',
+  body_sheet: '白布', doll: '娃娃', incubator: '保溫箱', cell_door: '隔離房門', morgue_drawer: '冰櫃抽屜', mirror: '鏡子', candles: '蠟燭', generator: '發電機', bed_curtain: '隔簾', statue_mary: '聖母像', tv: '電視', cctv: '螢幕', phone: '電話', radio: '收音機' };
+export const DOOR_NAMES = { fire: '防火門', cell: '隔離房門', glass: '玻璃門', wood: '木門', chapel: '木門', metal: '鐵門', swing: '雙開門', ward: '病房門' };
 
 // 依 id 查
 export const LINE_BY_ID = Object.fromEntries(LINES.map((l) => [l.id, l]));
