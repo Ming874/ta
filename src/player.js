@@ -167,11 +167,11 @@ export class Player {
     }
     this.onStair = w.stairAt ? w.stairAt(p.x, p.y, p.z) : -1;
 
-    // ---- 蹲下:C 切換、Ctrl 按住;頭頂空間不足時不能站起來 ----
+    // ---- 蹲下:C 切換(不用 Ctrl:瀏覽器的 Ctrl+W 會關分頁);頭頂空間不足時不能站起來 ----
     const cDown = !!k.KeyC;
     if (canMove && cDown && !this._cPrev) this._crouchToggle = !this._crouchToggle;
     this._cPrev = cDown;
-    let crouch = canMove && (this._crouchToggle || !!k.ControlLeft || !!k.ControlRight);
+    let crouch = canMove && this._crouchToggle;
     if (!crouch && this.crouching && w.ceilAt && w.ceilAt(p.x, p.z, p.y) - p.y < HEIGHT + 0.02) crouch = true;
     this.crouching = crouch;
     this.height = crouch ? HEIGHT_CROUCH : HEIGHT;

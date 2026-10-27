@@ -345,8 +345,10 @@ export const flowMethods = {
   },
 
   // ---------- 擊殺獎勵 ----------
-  afterKill(z, killer = this.player, how) {
+  // 第三個參數:'melee'/'explosion' 字串,或 onKill 的命中資料(物理布娃娃用的 { point, dir, force, melee } / { blast })
+  afterKill(z, killer = this.player, hit = null) {
     if (killer && killer !== this.player) return; // 隊友的擊殺由連線層處理
+    let how = typeof hit === 'string' ? hit : hit?.melee ? 'melee' : hit?.blast ? 'explosion' : null;
     how = how || this._killHow || (z._lastPart === 'melee' ? 'melee' : null);
     const near = Math.hypot(z.pos.x - this.player.pos.x, z.pos.z - this.player.pos.z) < 2.6;
     if (!how && near && this.weapons.sinceShot > 0.35) how = 'melee'; // 沒開槍的近距離擊殺 = 近戰
