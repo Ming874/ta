@@ -265,7 +265,7 @@ function tapBuild(L, out, t) {
   return { srcs: [s], ev: dirty ? (now) => { if (now < nx) return; nx = now + rand(2, 6); bubble(out, now + 0.05, rand(120, 240), 0.12, 0.09); } : null }; // 髒水:偶爾還會咕嚕一下
 }
 const LK = {
-  ring: { r: 24, prio: 4, room: 0.6, hall: 0.2, ref: 2, roll: 1, gain: 0.45, build: ringBuild },
+  ring: { r: 42, prio: 4, room: 0.7, hall: 0.35, ref: 3, roll: 0.9, gain: 0.5, build: ringBuild }, // 響的電話要在 15~40m 外也聽得到方向(循聲找電話)
   alarm: { r: 35, prio: 5, room: 0.8, hall: 0.5, ref: 4, roll: 0.85, gain: 0.64, build: alarmBuild },
   tap: { r: 10, prio: 3, room: 0.5, hall: 0, ref: 1.2, roll: 1.1, gain: 0.5, build: tapBuild },
 };

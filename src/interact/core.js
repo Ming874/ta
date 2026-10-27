@@ -71,6 +71,7 @@ export class Interact {
     this.ev = new Map();
     this.tickers = new Set();
     this.timers = [];
+    this.ringing = new Set(); // 正在響的電話(畫面邊緣的方向提示用)
     this.modal = null; // 閱讀器/鍵盤/保險絲盒(src/interact/ui.js)
     this._cand = [];
     this.flags = game.flags = new Flags((k, v) => this.emit('flag', k, v));
@@ -129,6 +130,7 @@ export class Interact {
     for (const e of this.list) { e.used = false; e.usedRound = -1; e.cdUntil = -1; e.n = 0; e.holdP = 0; e.reset?.(this.ctx(e)); }
     this.hold = null;
     this.timers.length = 0;
+    this.ringing.clear();
     this._blur();
     this.flags.resetRun();
     this.inv.clear();
@@ -317,5 +319,6 @@ export class Interact {
     const hp = this.hold && (this.hold.t >= 0.22 || !this.hold.e.onTap) ? this.hold.e : this.focus && this.focus.holdP > 0 ? this.focus : null;
     this.ui?.holdBar(hp ? hp.holdText || (typeof hp.prompt === 'string' ? hp.prompt : hp.name) : null, hp ? hp.holdP : 0);
     this.ui?.update?.(dt);
+    if (this.ringing.size || this.ui?._ringOn) this.ui?.ringMarks?.(this.game, this.ringing);
   }
 }

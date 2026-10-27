@@ -1,5 +1,6 @@
 import './interact.css';
 import { withKeys } from '../ui/icons.js';
+import * as THREE from 'three';
 import { ix as ixs } from '../audio.js';
 
 // 互動系統的介面:按住進度條、字幕(電話/收音機/廣播)、紙條與錄音帶閱讀器、密碼鍵盤/病歷終端、保險絲盒、身上的道具。
@@ -9,6 +10,7 @@ import { ix as ixs } from '../audio.js';
 const mk = (cls, html = '', tag = 'div') => { const e = document.createElement(tag); e.className = cls; if (html) e.innerHTML = html; return e; };
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const KIND = { note: '紙條', letter: '信', log: '紀錄', chart: '病歷', photo: '照片', tape: '錄音帶', drawing: '蠟筆畫', poster: '告示', whiteboard: '白板', logbook: '登記簿', polaroid: '拍立得' };
+const _v = new THREE.Vector3();
 const MOVE = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
 export class IxUI {
@@ -167,6 +169,43 @@ export class IxUI {
     draw();
     this.openModal(m);
     return m;
+  }
+
+  // ---------- 響鈴方向提示(細、去飽和;看得到電話時淡出) ----------
+  // set:正在響的電話 { pos, li };最多 3 個。畫面外 → 貼著畫面邊緣、箭頭指方向;畫面內但被牆擋住 → 在電話的位置淡淡標一下
+  ringMarks(game, set) {
+    this._ringOn = set.size > 0;
+    this.rings ||= [];
+    const hud = this.game.ui?.hudEl || document.body, cam = game.camera, p = game.player, L = game.world.layout;
+    const Wd = window.innerWidth, Ht = window.innerHeight, t = performance.now() / 1000;
+    cam.updateMatrixWorld(); // 投影用這一幀的相機(不用上一幀渲染時的)
+    let i = 0;
+    for (const P of set) {
+      if (i >= 3) break;
+      let m = this.rings[i];
+      if (!m) { m = this.rings[i] = { el: hud.appendChild(mk('hd ix-ring', '<i class="arr"></i><span></span>')), los: false, losT: 0, k: -1, txt: '' }; m.arr = m.el.children[0]; m.lab = m.el.children[1]; }
+      i++;
+      const dx = P.pos.x - p.pos.x, dz = P.pos.z - p.pos.z, d = Math.hypot(dx, dz);
+      if (t - m.losT > 0.25 || m.P !== P) { m.losT = t; m.P = P; m.los = game.world.hasLineOfSight(p.pos.x, p.pos.y + (p.eyeH || 1.6), p.pos.z, P.pos.x, P.pos.y, P.pos.z); }
+      _v.set(P.pos.x, P.pos.y, P.pos.z).project(cam);
+      const behind = _v.z > 1;
+      let x = behind ? -_v.x : _v.x, y = behind ? -_v.y : _v.y;
+      const inView = !behind && Math.abs(x) < 0.92 && Math.abs(y) < 0.9;
+      const seen = inView && (m.los || d < 3.5); // 很近又在畫面裡:電話自己的碰撞盒擋住視線也算看到了
+      let op = seen ? 0 : 0.72;
+      if (inView && !m.los) op = 0.45; // 畫面內但隔著牆
+      if (!inView || behind) { const k = 0.86 / Math.max(Math.abs(x), Math.abs(y), 1e-3); x *= k; y *= k; }
+      const sx = (x * 0.5 + 0.5) * Wd, sy = (-y * 0.5 + 0.5) * Ht;
+      const dl = L ? L.levelOfY(P.pos.y - 0.6) - L.levelOfY(p.pos.y + 0.3) : 0;
+      const txt = `電話 · ${Math.max(1, Math.round(d))}m${dl > 0 ? ' ↑' : dl < 0 ? ' ↓' : ''}`;
+      if (txt !== m.txt) { m.txt = txt; m.lab.textContent = txt; }
+      const pulse = 0.85 + 0.15 * Math.sin(t * 6.3); // 跟著鈴聲輕輕閃
+      m.el.style.opacity = (op * pulse).toFixed(2);
+      m.el.style.transform = `translate(${sx.toFixed(0)}px, ${sy.toFixed(0)}px)`;
+      m.arr.style.transform = `rotate(${(Math.atan2(-y, x) * 180 / Math.PI + 90).toFixed(0)}deg)`;
+      m.arr.style.display = inView ? 'none' : '';
+    }
+    for (let j = i; j < (this.rings?.length || 0); j++) { this.rings[j].el.style.opacity = '0'; this.rings[j].P = null; }
   }
 
   update() {}
