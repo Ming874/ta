@@ -1,14 +1,16 @@
 import * as THREE from 'three';
 import { sfx } from '../audio.js';
 import { WEAPONS, ORDER } from '../weapons/weapon.js';
-import { WEAPON_IDS, NONE, name } from './protocol.js';
+import { WEAPON_IDS, NONE, W_KNIFE, W_BOOM, name } from './protocol.js';
 
-// 對戰死鬥:每人各自為戰。射擊端判定命中 → 被打的人套用傷害/防彈衣 → 死亡時廣播 'dead'(擊殺者、武器、爆頭)。
-// 房主統計比分並廣播('ps'),先到擊殺上限或時間到就結束('pe')。陣亡 4 秒後在離敵人最遠的出生點重生,
-// 出生時選主武器(全部武器可選),重生後 2 秒無敵。可選「殭屍騷擾」:房主持續產生少量殭屍攻擊所有人。
+// 對戰死鬥:每人各自為戰。射擊端判定命中 → 被打的人驗證/套用傷害 → 死亡時廣播 'dead'(擊殺者、武器、爆頭)。
+// 房主統計比分並廣播('ps'),先到擊殺上限或時間到就結束('pe')。陣亡 4 秒後在離敵人最遠的出生點重生,重生後 2 秒無敵(開槍就解除)。
+// 武器與商店規則:沒有回合、金幣與商店(商店不開門、殭屍不掉落物品);每次出生選一把主武器(6 把全開放),
+// 另外固定配手槍與 1 顆手榴彈;補給點(彈藥/醫療)每條命可用一次。可選「殭屍騷擾」:房主持續產生少量殭屍攻擊所有人。
 const WARMUP = 6, RESPAWN = 4, SHIELD = 2;
 const PREF = 'hz.pvpPrimary';
 const _v = new THREE.Vector3();
+const WNAME = (w) => (w === 'knife' ? '小刀' : w === 'grenade' ? '手榴彈' : WEAPONS[w]?.name || '');
 
 function rngSeed(seed) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 
@@ -46,6 +48,9 @@ export class PvpMode {
     s.hook(g, 'startRound', () => () => {}); // 沒有回合
     s.hook(g, 'endRound', () => () => {});
     s.hook(g, 'nextRound', () => () => {});
+    s.hook(g, 'openRest', () => () => {});
+    s.hook(g, 'openShop', () => () => {}); // 對戰沒有商店
+    if (g.shop) s.hook(g.shop, 'interact', () => () => null); // 商店櫃台不顯示「休息時間開放」的提示
     // 選武器:陣亡/暖身時按數字鍵
     this.onKey = (e) => {
       if (!s.hud.pickerOpen || s.hud.chatOpen) return;
@@ -60,13 +65,17 @@ export class PvpMode {
 
   listen() {
     const s = this.s;
-    s.on('dead', (d, f) => this.onDeath(f, d[0], d[1], d[2]));
-    s.on('ps', (d, f) => {
-      if (f !== s.hostSlot) return;
-      this.scores = new Map(d.s.map(([id, k, dd]) => [id, { k, d: dd }]));
-      if (d.e) this.endAt = d.e;
+    s.on('dead', (d, f) => {
+      if (!Array.isArray(d) || !s.remotes.has(f)) return;
+      const by = Number.isInteger(d[0]) && (d[0] === s.me || s.remotes.has(d[0])) ? d[0] : -1;
+      this.onDeath(f, by, typeof d[1] === 'string' ? d[1].slice(0, 12) : '', !!d[2]);
     });
-    s.on('pe', (d, f) => { if (f === s.hostSlot) this.finish(d); });
+    s.on('ps', (d, f) => {
+      if (f !== s.hostSlot || !d || !Array.isArray(d.s)) return;
+      this.scores = new Map(d.s.filter((r) => Array.isArray(r)).map(([id, k, dd]) => [id, { k: k | 0, d: dd | 0 }]));
+      if (d.e > 0) this.endAt = d.e;
+    });
+    s.on('pe', (d, f) => { if (f === s.hostSlot && d && Array.isArray(d.t)) this.finish(d); });
   }
 
   begin() {
@@ -80,32 +89,33 @@ export class PvpMode {
     const pts = this.spawnPoints();
     const r = rngSeed(this.s.seed);
     for (let i = pts.length - 1; i > 0; i--) { const j = (r() * (i + 1)) | 0; [pts[i], pts[j]] = [pts[j], pts[i]]; }
-    this.spawnAt = pts[s.me % pts.length];
+    this.spawnAt = s.late ? this.pickSpawn() : pts[s.me % pts.length];
     this.loadout();
     this.place(this.spawnAt);
     this.warmup = s.late ? 0.5 : WARMUP;
     if (s.isHost) { this.endAt = s.client.serverNow() + (this.warmup + this.minutes * 60) * 1000; this.broadcast(); }
-    s.hud.picker(this.weapons(), this.primary, (id) => this.pick(id), '選擇主武器(數字鍵)');
+    s.hud.picker(this.weapons(), this.primary, (id) => this.pick(id), '選擇主武器(數字鍵)· 另配手槍與 1 顆手榴彈');
     s.hud.center(s.late ? '中途加入對戰' : `對戰死鬥 · 先拿到 ${this.limit} 殺獲勝`, 3500);
-    document.getElementById('roundinfo')?.style.setProperty('visibility', 'hidden');
+    document.body.classList.add('mp-pvp'); // 隱藏回合資訊(見 hud.css)
   }
-  stopUi() { document.getElementById('roundinfo')?.style.removeProperty('visibility'); }
+  stopUi() { document.body.classList.remove('mp-pvp'); }
 
   spawnPoints() {
     const w = this.g.world, out = [];
     for (const p of w.spawns || []) out.push({ x: p.x, y: p.y || 0, z: p.z });
     if (w.start) out.push({ x: w.start.x, y: w.start.y || 0, z: w.start.z });
     for (const p of w.supplies || []) out.push({ x: p.x, y: p.y || 0, z: p.z });
-    return out.length ? out : [{ x: 30, y: 0, z: 42 }];
+    return out.length ? out : [{ x: (w.sizeX || 60) / 2, y: 0, z: (w.sizeZ || 60) / 2 }];
   }
   // 重生點:離活著的敵人越遠越好,避開敵人視線
   pickSpawn() {
-    const g = this.g, w = g.world, enemies = [...this.s.remotes.values()].filter((r) => r.alive);
+    const g = this.g, w = g.world;
     let best = null, bs = -Infinity;
     for (const p of this.spawnPoints()) {
       let d = 60;
       let seen = false;
-      for (const e of enemies) {
+      for (const e of this.s.remotes.values()) {
+        if (!e.alive) continue;
         const dd = Math.hypot(e.pos.x - p.x, e.pos.z - p.z) + Math.abs(e.pos.y - p.y) * 2;
         d = Math.min(d, dd);
         if (!seen && dd < 30 && w.hasLineOfSight(e.pos.x, e.pos.y + 1.6, e.pos.z, p.x, p.y + 1.6, p.z)) seen = true;
@@ -116,14 +126,13 @@ export class PvpMode {
     return best;
   }
   place(pt) {
-    const p = this.g.player;
-    p.pos.set(pt.x + (Math.random() - 0.5) * 0.6, pt.y, pt.z + (Math.random() - 0.5) * 0.6);
-    this.g.world.resolve?.(p.pos, 0.35);
-    p.vx = p.vz = 0;
+    const p = this.g.player, L = this.g.world;
+    const x = pt.x + (Math.random() - 0.5) * 0.6, z = pt.z + (Math.random() - 0.5) * 0.6;
     // 面向地圖中心
-    const L = this.g.world;
     const cx = (L.sizeX || 60) / 2, cz = (L.sizeZ || 50) / 2;
-    p.yaw = Math.atan2(-(cx - p.pos.x), -(cz - p.pos.z));
+    const yaw = Math.atan2(-(cx - x), -(cz - z));
+    if (p.place) p.place(x, pt.y, z, yaw); else { p.pos.set(x, pt.y, z); p.yaw = yaw; p.vx = p.vz = 0; }
+    L.resolve?.(p.pos, 0.35);
     p.pitch = 0;
   }
   loadout() {
@@ -136,10 +145,15 @@ export class PvpMode {
     p.hp = p.maxHp = 100;
     p.armor = 0;
     p.maxArmor = 0;
+    p.grenades = 1;
+    p.medkits = 0;
     p.alive = true;
     p.downed = false;
+    g.healT = 0;
+    g.supplies?.newRound(); // 補給點每條命一次
     g.ui.setHP(p.hp, p.maxHp);
     g.ui.setArmor?.(0, 0);
+    g.ui.setGrenades?.(1);
     g.updateAmmoHud?.();
   }
   pick(id) {
@@ -151,11 +165,13 @@ export class PvpMode {
     if (this.warmup > 0) this.loadout(); // 暖身時立刻換
   }
 
-  onPvpHit(rp, part, dmg) {
+  // 被別的玩家打中(傷害已由 session.validPvp 驗證)
+  onPvpHit(rp, part, dmg, wpn) {
     const g = this.g;
     if (this.dead || this.over || this.warmup > 0 || this.shieldT > 0 || g.state !== 'playing' || !(dmg > 0)) return;
-    const mul = part === 'head' ? 2 : part === 'leg' || part === 'arm' ? 0.85 : 1;
-    this.lastAttacker = { slot: rp.id, w: rp.weapon, head: part === 'head', t: performance.now() };
+    const boom = wpn === W_BOOM, knife = wpn === W_KNIFE;
+    const mul = boom || knife ? 1 : part === 'head' ? 2 : part === 'leg' || part === 'arm' ? 0.85 : 1;
+    this.lastAttacker = { slot: rp.id, w: knife ? 'knife' : boom ? 'grenade' : name(WEAPON_IDS, wpn, rp.weapon), head: part === 'head' && !boom && !knife, t: performance.now() };
     g.damagePlayer(g.player, dmg * mul, rp.pos);
   }
 
@@ -169,27 +185,33 @@ export class PvpMode {
     this.spectating = true;
     p.alive = false;
     p.hp = 0;
+    g.healT = 0;
     this.respawnT = RESPAWN;
     this.killer = by >= 0 ? s.remotes.get(by) : null;
     this.lastAttacker = null;
     if (g.shopUIOpen) g.closeShop();
+    g.ui.map?.close?.();
     this.onDeath(s.me, by, la?.w, la?.head);
     s.hud.picker(this.weapons(), this.primary, (id) => this.pick(id), '重生武器(數字鍵)');
     s.sendState(true);
   }
 
   onDeath(victim, by, w, head) {
-    const s = this.s;
+    const s = this.s, g = this.g;
     const sv = this.scores.get(victim) || { k: 0, d: 0 };
     sv.d++;
     this.scores.set(victim, sv);
     const killer = by >= 0 && by !== victim ? by : null;
     if (killer !== null) { const sk = this.scores.get(killer) || { k: 0, d: 0 }; sk.k++; this.scores.set(killer, sk); }
     const vn = victim === s.me ? '你' : s.nameOf(victim);
-    const wn = w && WEAPONS[w] ? WEAPONS[w].name : '';
+    const wn = WNAME(w);
     if (killer === null) s.hud.feed(`${vn} 陣亡`, 'dead');
-    else s.hud.feed(`${killer === s.me ? '你' : s.nameOf(killer)} ${head ? '⊕ ' : ''}[${wn}] ${vn}`, killer === s.me ? 'kill' : victim === s.me ? 'dead' : 'pvp');
-    if (killer === s.me) { sfx.killConfirm?.(); s.hud.center(`擊殺 ${s.nameOf(victim)}${head ? ' · 爆頭' : ''}`, 1600); }
+    else s.hud.kill(killer === s.me ? '你' : s.nameOf(killer), vn, wn, head, killer === s.me ? 'kill' : victim === s.me ? 'dead' : 'pvp');
+    if (killer === s.me) {
+      sfx.killConfirm?.();
+      g.chud?.marker('kill', !!head);
+      s.hud.center(`擊殺 ${s.nameOf(victim)}${head ? ' · 爆頭' : ''}`, 1600);
+    }
     if (s.isHost) this.broadcast();
   }
 
@@ -213,7 +235,8 @@ export class PvpMode {
     document.exitPointerLock?.();
     g.input.fireHeld = false;
     s.hud.pickerClose();
-    const rows = d.t;
+    s.hud.respawn(-1);
+    const rows = d.t.filter((r) => Array.isArray(r));
     const win = rows[0];
     s.hud.results({
       title: win && win[0] === s.me ? '你贏了!' : '對戰結束',
@@ -266,7 +289,9 @@ export class PvpMode {
       // 殭屍騷擾
       if (s.settings.zombies && this.warmup <= 0) {
         this.zT -= dt;
-        const alive = g.zombies.filter((z) => z.alive).length, cap = 2 + Math.ceil((s.remotes.size + 1) / 2);
+        let alive = 0;
+        for (const z of g.zombies) if (z.alive) alive++;
+        const cap = 2 + Math.ceil((s.remotes.size + 1) / 2);
         if (this.zT <= 0 && alive < cap) {
           this.zT = 5 + Math.random() * 4;
           g.round = Math.max(1, Math.min(8, 1 + Math.floor((performance.now() / 60000) % 8)));
@@ -288,9 +313,11 @@ export class PvpMode {
     this.shieldT = SHIELD;
     g.weaponScene.visible = true;
     s.hud.pickerClose();
-    s.hud.center('重生 · 2 秒無敵', 1400);
+    s.hud.center('重生 · 2 秒無敵(開槍即解除)', 1400);
     s.sendState(true);
   }
+  // 本機開火:重生保護立刻解除(不能邊無敵邊打人)
+  onFire() { if (this.shieldT > 0 && this.warmup <= 0) this.shieldT = 0; }
 
   afterPlayer(dt) {
     const g = this.g, p = g.player, cam = g.camera, s = this.s;
@@ -313,8 +340,11 @@ export class PvpMode {
         cam.lookAt(_v);
       }
       s.hud.respawn(Math.max(0, this.respawnT), this.killer?.name);
-    } else s.hud.respawn(-1);
+    } else {
+      if (!g.weaponScene.visible && g.state === 'playing') g.weaponScene.visible = true;
+      s.hud.respawn(-1);
+    }
   }
 
-  plateExtra() { return ''; }
+  plateExtra(rp) { return ''; }
 }
