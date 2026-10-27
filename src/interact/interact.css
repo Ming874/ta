@@ -83,3 +83,9 @@
 .ix-fuse li.on { border-color: #8a6a2a; }
 .ix-fuse li.on em { color: #ffc35a; text-shadow: 0 0 6px rgba(255,180,60,.5); }
 .ix-fuse li.no { opacity: .55; }
+
+/* 響鈴方向提示:細、淡、去飽和(恐怖遊戲不要大箭頭) */
+.ix-ring { left: 0; top: 0; margin: -0.9em 0 0 -3.2em; width: 6.4em; display: flex; flex-direction: column; align-items: center; gap: .15em; opacity: 0;
+  transition: opacity .35s; font-size: .82em; letter-spacing: .18em; color: rgba(226,224,214,.9); text-shadow: 0 0 6px rgba(0,0,0,.9), 0 1px 2px #000; will-change: transform, opacity; }
+.ix-ring .arr { width: 0; height: 0; border-left: .38em solid transparent; border-right: .38em solid transparent; border-bottom: .62em solid rgba(226,224,214,.75); }
+.ix-ring span { padding: .08em .45em; border-top: 1px solid rgba(226,224,214,.35); border-bottom: 1px solid rgba(226,224,214,.35); white-space: nowrap; }

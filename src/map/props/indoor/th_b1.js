@@ -19,6 +19,7 @@ export function dressMorgue(R) {
     const a = R.atWall(morgueWall(3, 3, -1), N, x0 + 2.6, { gap: 0.0 });
     const b = R.atWall(morgueWall(3, 3, 4), N, x0 + 6.4, { gap: 0.0 });
     if (b) R.event({ kind: 'morgue_drawer', x: x0 + 6.4, y: R.y + 1.0, z: z0 + 2.4 });
+    if (b) R.collide(new THREE.Box3(new THREE.Vector3(-0.36, 0, 0.95), new THREE.Vector3(0.36, 1.25, 2.78)), b.x, b.y ?? R.y, b.z, b.yaw, { mat: 'metal' }); // [interact 稽核] 拉出來的抽屜盤 + 屍體
     R.atWall(morgueWall(3, 3, -1), N, x0 + 10.2, { gap: 0.0 });
     R.atWall(posterSheet(sign('遺體冷藏 -4°C', { w: 256, h: 64, bg: '#d8e8f0', fg: '#1a3a6a', size: 0.42 }), 0.42, 0.11), N, x0 + 14.2, { mount: 1.6 });
     void a;
@@ -147,6 +148,7 @@ export function dressSupply(R) {
   // 棧板 + 紙箱
   for (const [x, z, yaw] of [[x0 + 13.2, z0 + 7.0, 0.1], [x0 + 13.4, z0 + 11.6, -0.2]]) {
     const p = R.tryPut(pallet(), x, z, yaw, {});
+    if (p) R.collide(new THREE.Box3(new THREE.Vector3(-0.6, 0.1, -0.55), new THREE.Vector3(0.6, 1.0, 0.55)), p.x, p.y ?? R.y, p.z, yaw, { mat: 'soft' }); // [interact 稽核] 棧板上的紙箱
     if (p) for (let i = 0; i < 4; i++) { const v = R.onTop(p, 0.25 + (i % 2) * 0.5, 0.25 + ((i / 2) | 0) * 0.5); R.put(cardboardBox(0.5, 0.45, 0.42, i, false), v.x, v.z, yaw + R.rand(-0.1, 0.1), { y: v.y }); if (i % 2 === 0) R.put(cardboardBox(0.45, 0.4, 0.4, i + 1, false), v.x, v.z, yaw + R.rand(-0.2, 0.2), { y: v.y + 0.45 }); }
   }
   if (E) { R.atWall(rotY(supplyCart(2)), E, z0 + 4.0, { gap: 0.04 }); R.atWall(rotY(oxygenCart(3)), E, z0 + 9.2, { gap: 0.04 }); }

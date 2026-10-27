@@ -7,6 +7,7 @@ import { Buckets } from './builder.js';
 // 零件是單位方塊的實例(貼圖 UV 以門扇為單位;頂點色/磨損屬性由 Buckets 產生,材質與牆面同一套 surf())。
 const _m = new THREE.Matrix4(), _b = new THREE.Matrix4(), _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3(), _y = new THREE.Vector3(0, 1, 0);
 
+const SMALL = new Set(['glass_dark', 'trim_dark', 'steel_dirty']);
 export function buildLeaves(K, list, partsOf) {
   const tmpl = new Map(); // 材質鍵 → { geometry, material }
   const template = (key) => {
@@ -44,11 +45,11 @@ export function buildLeaves(K, list, partsOf) {
     const t = template(key);
     const im = new THREE.InstancedMesh(t.geometry, t.material, n);
     im.name = `L${li}:leaves:${key}`;
-    im.castShadow = !t.material.transparent;
+    im.castShadow = !t.material.transparent && !SMALL.has(key); // 門扇本體投影;把手、踢板、窗玻璃這些小零件不投影(少畫陰影 pass)
     im.receiveShadow = true;
     im.frustumCulled = false; // 門會轉,包圍球不重算(整層的門本來就分散各處)
     im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    (K.levelGroups[li] || K.levelGroups[0]).add(im);
+    (K.propGroups?.[li] || K.levelGroups[li] || K.levelGroups[0]).add(im); // 跟著道具群組的可見性:別層的門只在樓梯口/挑空附近才畫
     meshes.set(ck, im);
   }
   for (const d of list) for (const p of d.parts) p.im = meshes.get(p.ck);

@@ -71,6 +71,7 @@ export class Interact {
     this.ev = new Map();
     this.tickers = new Set();
     this.timers = [];
+    this.ringing = new Set(); // 正在響的電話(畫面邊緣的方向提示用)
     this.modal = null; // 閱讀器/鍵盤/保險絲盒(src/interact/ui.js)
     this._cand = [];
     this.flags = game.flags = new Flags((k, v) => this.emit('flag', k, v));
@@ -94,6 +95,7 @@ export class Interact {
       obj: isObj ? target : null, pos: { x: 0, y: 0, z: 0 }, used: false, usedRound: -1, cdUntil: -1, n: 0, holdP: 0,
     };
     if (!e.id) e.id = `${e.kind}@${this.list.length}`;
+    e.reach = Math.max(2.0, e.reach); // 至少 2m(站在桌邊、低頭看地上的東西也搆得到)
     if (typeof target === 'function') e.posFn = target;
     else if (isObj && !e.dynamic) { target.updateWorldMatrix(true, false); target.getWorldPosition(_p); e.pos.x = _p.x; e.pos.y = _p.y; e.pos.z = _p.z; }
     else if (!isObj && target) { e.pos.x = target.x; e.pos.y = target.y; e.pos.z = target.z; }
@@ -128,6 +130,7 @@ export class Interact {
     for (const e of this.list) { e.used = false; e.usedRound = -1; e.cdUntil = -1; e.n = 0; e.holdP = 0; e.reset?.(this.ctx(e)); }
     this.hold = null;
     this.timers.length = 0;
+    this.ringing.clear();
     this._blur();
     this.flags.resetRun();
     this.inv.clear();
@@ -199,9 +202,9 @@ export class Interact {
       const q = this.where(e);
       const dx = q.x - ex, dy = q.y - ey, dz = q.z - ez;
       if (dy > 1.4 || dy < -2.2) continue;
-      const d2 = dx * dx + dy * dy + dz * dz, r = e.reach;
-      if (d2 > r * r) continue;
-      const d = Math.sqrt(d2) || 0.001;
+      const r = e.reach;
+      if (dx * dx + dz * dz + dy * dy * 0.36 > r * r) continue; // 距離:高低差只算六成(低頭看桌上的東西不會太嚴)
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 0.001;
       let s;
       if (e.look !== false) {
         const dot = (dx * _dir.x + dy * _dir.y + dz * _dir.z) / d;
@@ -220,7 +223,7 @@ export class Interact {
       if (e.los !== false && w?.rayDistance) {
         this.stats.rays++;
         const hit = w.rayDistance(ex, ey, ez, C[bi + 3], C[bi + 4], C[bi + 5], d);
-        if (hit < d - e.radius - 0.15 - (e.losPad || 0)) continue;
+        if (hit < d - e.radius - 0.15 - (e.losPad ?? 0.25)) continue; // 放在台面/櫃子上的東西:自己底下的碰撞盒不算擋住
       }
       best = e;
       break;
@@ -316,5 +319,6 @@ export class Interact {
     const hp = this.hold && (this.hold.t >= 0.22 || !this.hold.e.onTap) ? this.hold.e : this.focus && this.focus.holdP > 0 ? this.focus : null;
     this.ui?.holdBar(hp ? hp.holdText || (typeof hp.prompt === 'string' ? hp.prompt : hp.name) : null, hp ? hp.holdP : 0);
     this.ui?.update?.(dt);
+    if (this.ringing.size || this.ui?._ringOn) this.ui?.ringMarks?.(this.game, this.ringing);
   }
 }

@@ -40,6 +40,7 @@ export function buildInteract(game) {
   try { placed = placeAll(game, ix, kit, pack); } catch (e) { console.warn('[interact] place', e); }
   const nStatic = kit.finish();
   ix.map = { kit, doors, api: placed?.api, stats: placed?.stats, pack, nStatic };
+  ix.tick(() => { if (game.state === 'playing' && game.phase === 'shop' && !ix.flags.has('h.shop.open')) ix.flags.set('h.shop.open', true); return true; }); // 本局第一次開店(補給站的電話會響)
   ix.doors = doors;
   console.log('[interact] build', JSON.stringify({ ms: Math.round(performance.now() - t0), items: ix.list.length, placed: placed?.stats?.placed, byKind: placed?.stats?.byKind, failed: placed?.stats?.failed?.length, doors: doors?.stats?.(), statics: nStatic, kit: kit.stats() }));
   return ix;

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { sfx, ix as ixs } from '../audio.js';
 import { Model, mats } from './kit.js';
 import { rng } from '../map/props/ctx.js';
+import { MATS } from '../physics/truth.js';
 
 // 門:醫院每一扇門扇(src/map/hospital/leaves.js 的代理)都有實體碰撞盒,並且可以開關、釘木板。
 //  開著:門扇停在牆邊 → 一般碰撞盒(擋人、擋子彈、導航繞過)
@@ -14,6 +15,8 @@ const _v = new THREE.Vector3();
 const PUSH = { walker: 1, runner: 1.7, crawler: 0.7, bloater: 0.9, brute: 5 };
 const KIND = { fire: 'fire', cell: 'cell', glass: 'glass', wood: 'wood', chapel: 'wood', metal: 'fire', swing: 'ward', ward: 'ward' };
 const NAME = { fire: '防火門', cell: '隔離房門', glass: '玻璃門', wood: '木門', chapel: '禮拜堂木門', metal: '鐵門', swing: '雙開門', ward: '病房門' };
+// 子彈穿透類別(physics/truth.js MATS):木門/病房門 = wood、玻璃門 = glass、鐵門/雙開門 = metal、防火門與隔離房門 = heavy(手槍打不穿)
+const PEN = { fire: 'heavy', cell: 'heavy', metal: 'metal', swing: 'metal', glass: 'glass', ward: 'wood', wood: 'wood', chapel: 'wood' };
 const BARRICADE_COST = 10, BARRICADE_HP = 9, MAX_BARRICADES = 3;
 const angDiff = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
 
@@ -50,6 +53,7 @@ export function setupDoors(game, ix, { leaves = [], seed = 77, lockSpecs = [] } 
       const b = world.addBox(hx + c * u, hz + s * u, sx, sz, h, y0);
       if (!nav && !l.way?.lock) b.nav = false; // 上鎖的門例外:導航繞過(殭屍不會卡在門前)
       b.leaf = l;
+      b.pm = PEN[l.style] || 'wood'; b.mat = MATS[b.pm]?.fx || 'wood'; b.tag = 'door:' + l.style; // 子彈穿透與彈著效果
       l.boxes.push(b);
     }
     l.colA = a;
@@ -169,7 +173,10 @@ export function setupDoors(game, ix, { leaves = [], seed = 77, lockSpecs = [] } 
     if (game.state !== 'playing') return true;
     if ((extT -= dt) <= 0) { // 驚嚇事件甩門 → 門停下來後更新碰撞盒
       extT = 0.25;
-      for (const l of leaves) if (l.events && !l.anim && angDiff(l.group.rotation.y, l.colA) > 0.02) colliders(l);
+      for (const l of leaves) if (l.events && !l.anim && angDiff(l.group.rotation.y, l.colA) > 0.02) {
+        if ((l.way.bar || (l.way.lock && !l.way.lock.open)) && angDiff(l.group.rotation.y, l.closed) > 0.02) { l.group.rotation.y = l.closed; continue; } // 釘了木板/上鎖的門:靈異事件推不動
+        colliders(l);
+      }
     }
     if ((pushT -= dt) > 0) return true;
     pushT = 0.25;
@@ -232,8 +239,14 @@ export function setupDoors(game, ix, { leaves = [], seed = 77, lockSpecs = [] } 
   // ---------- 互動 ----------
   for (const w of list) {
     const nm = NAME[w.style] || '門';
-    const e = ix.register({ x: w.cx, y: w.y + 1.05, z: w.cz }, {
-      id: `door:${w.key}`, kind: 'door', name: nm, reach: 2.3, radius: 0.55, losPad: 0.4, hold: 0,
+    // 互動點:門扇關上時所在的那條線的中點(門洞中央);視線檢查不會被自己的門扇擋掉
+    let px = 0, pz = 0;
+    for (const l of w.leaves) { px += l.group.position.x + Math.cos(l.closed) * l.lw / 2; pz += l.group.position.z - Math.sin(l.closed) * l.lw / 2; }
+    px /= w.leaves.length; pz /= w.leaves.length;
+    if (w.leaves.length === 1) { px = w.cx; pz = w.cz; }
+    w.px = px; w.pz = pz;
+    const e = ix.register({ x: px, y: w.y + 1.05, z: pz }, {
+      id: `door:${w.key}`, kind: 'door', name: nm, reach: 2.4, radius: 0.6, losPad: 0.6, hold: 0,
       prompt: (ctx) => {
         if (w.lock && !unlocked(w)) return { text: w.lock.text || `${nm} · 上鎖了`, dim: true };
         if (w.bar) { e.hold = 1.6; e.onTap = null; e.holdText = '拆木板'; return '拆掉木板'; }
