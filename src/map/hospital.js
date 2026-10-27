@@ -9,6 +9,7 @@ import { buildDoors, buildWindows, buildRails, buildFences, buildElevators, buil
 import { buildStairs } from './hospital/stairs.js';
 import { buildSigns } from './hospital/signs.js';
 import { createEvents } from './hospital/events.js';
+import { upgradePropMaterials } from './hospital/proppbr.js';
 import { NO_FLASH_SHADOW_LAYER } from './hospital/builder.js';
 import { buildLights, setGlowFog } from './hospital/lights.js';
 import { buildAtmosphere, makeEnvironment, onGlowFog } from './hospital/atmosphere.js';
@@ -71,6 +72,7 @@ export function buildHospital(world, layout, scene, opts = {}) {
   try { dressWorld(ctx); } catch (e) { propErr = e; console.error('[hospital] dressWorld 失敗', e); }
   const { lights: propLights, events: propEvents } = ctx.finalize();
   const propMeshes = mergeStatics(statics, propGroups);
+  const propPbr = upgradePropMaterials();
   const tProps = performance.now();
 
   // ---- 燈光與氛圍 ----
@@ -115,7 +117,7 @@ export function buildHospital(world, layout, scene, opts = {}) {
 
   const stats = {
     buildMs: Math.round(performance.now() - t0), shellMs: Math.round(tShell - t0), propsMs: Math.round(tProps - tShell),
-    meshes: meshes.length, propMeshes, tris, fixtures: lights.fixtures.length, propLights: propLights.length, propEvents: propEvents.length,
+    meshes: meshes.length, propMeshes, propPbr, tris, fixtures: lights.fixtures.length, propLights: propLights.length, propEvents: propEvents.length,
     proc: procStats, pbr: pbrState, propErr: propErr ? String(propErr) : null,
   };
   console.log('[hospital] build', JSON.stringify(stats));
@@ -128,6 +130,7 @@ export function buildHospital(world, layout, scene, opts = {}) {
     // post.js 會呼叫:提供 renderer(環境貼圖、各向異性)與品質設定
     attachRenderer(r, game) {
       H.game = game || null;
+      upgradePropMaterials(); // 之後才建的共用材質(商店、補給點…)也升級
       try { setAnisotropy(Math.min(8, r.capabilities.getMaxAnisotropy())); } catch { /* 忽略 */ }
       try { scene.environment = makeEnvironment(r); } catch (e) { console.warn('[hospital] 環境貼圖失敗', e); }
       H.setQuality(game?.quality);

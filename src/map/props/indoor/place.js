@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { rng as mkRng } from '../ctx.js';
 import { compose } from './geo.js';
+import { registerMat } from '../../materials.js';
 
 // 房間擺設規劃器:每個區域一個 Room。
 //  - 細網格(0.25m)記錄牆、家具足跡;每次放有碰撞的家具前做可達性檢查(從門口 BFS,殭屍半徑膨脹),
@@ -19,6 +20,7 @@ const DYN_MATS = {
   gloss: new THREE.MeshStandardMaterial({ name: 'pi_dyn_gloss', vertexColors: true, roughness: 0.38, metalness: 0.05 }),
   matte: new THREE.MeshStandardMaterial({ name: 'pi_dyn_matte', vertexColors: true, roughness: 0.82, metalness: 0 }),
 };
+for (const m of Object.values(DYN_MATS)) registerMat(m.name, m); // 進材質庫(三平面 PBR 升級會走訪到)
 const dynCache = new Map();
 function dynParts(t) {
   let out = dynCache.get(t.name);

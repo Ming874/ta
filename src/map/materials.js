@@ -60,6 +60,8 @@ export function registerMat(key, def) {
   if (!DEF[key]) DEF[key] = def;
   return mat(key);
 }
+// 走訪所有已建立的共用材質(場景建構器用來把道具材質升級成三平面 PBR)
+export function forEachMat(fn) { for (const [k, m] of cache) fn(m, k); }
 // 由場景代理在載入 PBR 貼圖後覆寫特定鍵的材質(保留同一個實例,已建好的網格自動更新)
 export function upgradeMat(key, props) {
   const m = mat(key);
