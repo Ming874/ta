@@ -209,4 +209,5 @@ export const sfx = {
 
 // 除錯/測試用(OfflineAudioContext 量測)
 export const _internal = { A, attach, foley, voices, ui, body, step, zStep, remoteStep, jump, land, scare, startMusic, startAmbience, tick, poolInfo, SM, ambState, trackState, AMB, musicState, roomInfo, SCARE_KINDS, LOOP_KINDS, thunder, setRain };
+export { ix } from './audio/interact.js'; // 互動物件的機械音效(電話、開關、販賣機、鋼琴、門…;src/audio/interact.js)
 export { ghost } from './audio/ghost.js'; // [ghost] 耳邊低語(雙耳)、頸後呼吸、刺擊、寂靜、天花板爬行等靈異音效(src/audio/ghost.js)

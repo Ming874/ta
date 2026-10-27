@@ -146,7 +146,7 @@ export function createEvents({ K, L, lights, propEvents = [], root }) {
   function runAnchor(c, a) {
     const p = { x: a.x, y: a.y, z: a.z };
     switch (a.kind) {
-      case 'phone': sfx.scare('phone_ring', p); break;
+      case 'phone': if (c.game?.interact?.ringAt) c.game.interact.ringAt(p, 12); else sfx.scare('phone_ring', p); break; // [interact] 讓那支真的電話響(能接);電話忙線就不響,不會只有鈴聲沒有電話
       case 'tv': case 'cctv': sfx.scare('tv_static', p); break;
       case 'monitor_flatline': sfx.scare('flatline', p); sfx.scare('tv_static', p); break;
       case 'incubator': sfx.scare('crying', p); break;
