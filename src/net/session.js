@@ -479,6 +479,7 @@ export class NetSession {
     if (from.distanceTo(cam) > SHOT_FAR && Math.hypot(ex - cam.x, ey - cam.y, ez - cam.z) > SHOT_FAR) return;
     if (!g.wfx) g.initCombat();
     const to = _v2.set(ex, ey, ez);
+    if (g.ballistics) g.ballistics.remote(from, to); // [physics] 子彈沿途打破的玻璃、穿過的道具(只有效果)
     const big = rp.weapon === 'barrett';
     g.wfx.tracers.add(from, to, big ? 0.012 : 0.006, big ? 0.12 : 0.07, big ? 2.2 : 1.6, big ? 1.8 : 1.25, big ? 1.4 : 0.8, big ? 900 : 600);
     const d = _v3.subVectors(to, from);
