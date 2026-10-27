@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { assets } from './sys/assets.js';
 import { createDisplayGun } from './weapons/models.js';
 import { WEAPONS } from './weapons/weapon.js';
 import { pickupModel } from './pickups.js';
@@ -431,7 +432,7 @@ let loader = null;
 function loadModel(key) {
   if (!gltfCache[key]) {
     loader ||= new GLTFLoader();
-    gltfCache[key] = loader.loadAsync(`${BASE}models/props/${MODELS[key]}`).then((g) => {
+    gltfCache[key] = assets.task(() => loader.loadAsync(`${BASE}models/props/${MODELS[key]}`), { meta: { model: key, shop: true }, prio: 25 }).then((g) => { // 下載排隊(src/sys/assets.js)
       g.scene.traverse((o) => {
         if (!o.isMesh) return;
         o.castShadow = true;
@@ -801,10 +802,10 @@ export class Shop {
     });
     // 載入下載的捲門 PBR 貼圖(失敗就維持程式貼圖)
     const tl = new THREE.TextureLoader(), dir = `${BASE}models/props/rollershutter_door/textures/rollershutter_door_`;
-    tl.loadAsync(`${dir}diff_1k.jpg`).then((t) => {
+    assets.task(() => tl.loadAsync(`${dir}diff_1k.jpg`), { meta: { model: 'shutter', shop: true }, prio: 25 }).then((t) => {
       t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
       this.shutterMat.map = t; this.shutterMat.color.set(0x9a9c98); this.shutterMat.needsUpdate = true;
-      return Promise.all([tl.loadAsync(`${dir}nor_gl_1k.jpg`), tl.loadAsync(`${dir}arm_1k.jpg`)]);
+      return assets.task(() => Promise.all([tl.loadAsync(`${dir}nor_gl_1k.jpg`), tl.loadAsync(`${dir}arm_1k.jpg`)]), { meta: { model: 'shutter', shop: true }, prio: 26 });
     }).then(([n, arm]) => {
       this.shutterMat.normalMap = n;
       this.shutterMat.roughnessMap = this.shutterMat.metalnessMap = arm;

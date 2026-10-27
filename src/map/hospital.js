@@ -110,8 +110,8 @@ export function buildHospital(world, layout, scene, opts = {}) {
       try { setAnisotropy(Math.min(8, r.capabilities.getMaxAnisotropy())); } catch { /* 忽略 */ }
       try { scene.environment = makeEnvironment(r); } catch (e) { console.warn('[hospital] 環境貼圖失敗', e); }
       H.setQuality(game?.quality);
-      // 預先編譯 shader(KHR_parallel_shader_compile;避免第一次看到某材質時卡頓)
-      if (game?.camera) { game.camera.layers.enable(NO_FLASH_SHADOW_LAYER); r.compileAsync?.(scene, game.camera).catch(() => {}); }
+      // shader 預編譯統一由 main.js boot()(src/sys/warmup.js)在畫質設定套用後分批做;這裡先編會用錯參數、還會同步等編譯
+      if (game?.camera) game.camera.layers.enable(NO_FLASH_SHADOW_LAYER);
     },
     setQuality(q) {
       const pool = q?.get?.('lights') ?? q?.get?.('lightPool');
@@ -134,7 +134,7 @@ export function buildHospital(world, layout, scene, opts = {}) {
       lights.update(time, dt, p.x, p.y + 1.6, p.z, camFwd.x / fl, camFwd.z / fl, li, vis);
       atmo.update(time, dt, cam, mood, outdoor);
       // 月光陰影:靜態,只在一開始與貼圖載完時重算(玩家在地面以上時)
-      const loaded = pbrState.loaded + procStats.done;
+      const loaded = pbrState.alpha + procStats.done; // 只有鏤空貼圖會改變陰影形狀(其他貼圖載完不必重畫 2048 陰影圖)
       if (li !== b1 && (shadowFrames < 2 || loaded !== lastLoaded)) { atmo.moon.shadow.needsUpdate = true; shadowFrames++; lastLoaded = loaded; }
       H.zone = zone; H.level = li; H.mood = style.mood;
     },
