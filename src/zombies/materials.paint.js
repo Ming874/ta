@@ -136,13 +136,21 @@ export function hair(make) {
   return c;
 }
 
-// 眼球:混濁鞏膜 + 血絲 + 灰白虹膜(u=0.25 朝前);自發光貼圖只亮虹膜。args = { iris, glow }
-export function eye(make, { iris, glow }) {
+// 眼球:混濁泛黃的鞏膜 + 血絲 + 虹膜(u=0.25 朝前);自發光貼圖只亮虹膜。
+// args = { iris, glow, cloud }:cloud = 白內障程度 0..1(0 = 漆黑放大的瞳孔,夜行動物般)
+export function eye(make, { iris, glow, cloud = 0.5 }) {
   const W = 128, H = 64, r = rng(11);
   const [c, x] = make(W, H);
-  x.fillStyle = '#d6d0bc';
+  x.fillStyle = '#cfc6a8';
   x.fillRect(0, 0, W, H);
-  for (let i = 0; i < 40; i++) {
+  // 鞏膜:泛黃、邊緣充血
+  const sg = x.createRadialGradient(32, 32, 6, 32, 32, 34);
+  sg.addColorStop(0, 'rgba(225,218,196,0.9)');
+  sg.addColorStop(0.6, 'rgba(200,180,150,0.4)');
+  sg.addColorStop(1, 'rgba(150,60,50,0.55)');
+  x.fillStyle = sg;
+  x.fillRect(0, 0, 64, 64);
+  for (let i = 0; i < 70; i++) {
     let px = r() < 0.5 ? r() * 14 + 50 : r() * 14, py = r() * H;
     x.strokeStyle = `rgba(150,20,20,${0.3 + r() * 0.5})`;
     x.lineWidth = 0.5 + r() * 0.8;
@@ -151,19 +159,32 @@ export function eye(make, { iris, glow }) {
     for (let k = 0; k < 6; k++) { px += (32 - px) * 0.12 + (r() - 0.5) * 4; py += (32 - py) * 0.1 + (r() - 0.5) * 4; x.lineTo(px, py); }
     x.stroke();
   }
-  const g = x.createRadialGradient(32, 32, 0, 32, 32, 11);
-  g.addColorStop(0, glow ? '#fff4c0' : '#2a2a28');
-  g.addColorStop(0.25, iris);
+  const IR = cloud <= 0.01 ? 15 : 11;
+  const g = x.createRadialGradient(32, 32, 0, 32, 32, IR);
+  g.addColorStop(0, glow ? '#fff4c0' : '#0a0a0a');
+  g.addColorStop(cloud <= 0.01 ? 0.7 : 0.22, glow ? iris : '#141210');
+  g.addColorStop(cloud <= 0.01 ? 0.8 : 0.3, iris);
   g.addColorStop(0.85, iris);
-  g.addColorStop(1, 'rgba(120,110,90,0.2)');
+  g.addColorStop(1, 'rgba(90,80,60,0.25)');
   x.fillStyle = g;
   x.beginPath();
-  x.arc(32, 32, 11, 0, Math.PI * 2);
+  x.arc(32, 32, IR, 0, Math.PI * 2);
   x.fill();
-  x.fillStyle = 'rgba(235,232,215,0.35)'; // 白內障霧
-  x.beginPath();
-  x.arc(32, 32, 9, 0, Math.PI * 2);
-  x.fill();
+  // 虹膜紋理(放射狀細紋)
+  for (let i = 0; i < 48; i++) {
+    const a = (i / 48) * Math.PI * 2 + r() * 0.1;
+    x.strokeStyle = `rgba(0,0,0,${0.08 + r() * 0.12})`;
+    x.lineWidth = 0.6;
+    x.beginPath(); x.moveTo(32 + Math.cos(a) * 3.5, 32 + Math.sin(a) * 3.5); x.lineTo(32 + Math.cos(a) * IR * 0.95, 32 + Math.sin(a) * IR * 0.95); x.stroke();
+  }
+  if (cloud > 0) { // 白內障:不規則的乳白霧,中心最濃
+    const cg = x.createRadialGradient(31, 31, 0, 32, 32, 12);
+    cg.addColorStop(0, `rgba(238,236,224,${Math.min(0.95, 0.15 + cloud * 0.8)})`);
+    cg.addColorStop(0.7, `rgba(225,222,205,${cloud * 0.45})`);
+    cg.addColorStop(1, 'rgba(225,222,205,0)');
+    x.fillStyle = cg;
+    x.beginPath(); x.arc(32, 32, 12, 0, Math.PI * 2); x.fill();
+  }
   const [ce, xe] = make(W, H);
   xe.fillStyle = '#000';
   xe.fillRect(0, 0, W, H);

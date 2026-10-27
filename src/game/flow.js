@@ -1,5 +1,6 @@
 import { Zombie } from '../zombies/zombie.js';
 import { TYPES } from '../zombies/types.js';
+import { spawnAffinity } from './waves.js'; // [zombies-w3] 新類型的出生區域偏好
 import { Shop, shopTabs, purchase, modTotal } from '../shop.js';
 import { Pickups, Supplies } from '../pickups.js';
 import { sfx, resume as resumeAudio } from '../audio.js';
@@ -222,6 +223,7 @@ export const flowMethods = {
       if (q.s.dark) k *= 1.5;
       if (q.s.door) k *= 1.4;
       if (q.s.vent) k *= 2.2;
+      k *= spawnAffinity(type, q.s, L); // [zombies-w3] 手術者在手術室、焦屍在鍋爐房…
       if (now - (q.s._used ?? -99) < 6) k *= 0.15;
       if (Number.isFinite(q.fd)) k *= q.fd < lo + 4 ? 0.7 : q.fd > (calm ? 30 : 42) ? 0.6 : 1;
       return k;

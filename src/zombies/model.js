@@ -5,6 +5,7 @@ import {
   headGeo, flip, smoothNormals,
 } from './anatomy.js';
 import { materials } from './materials.js';
+import { LOOKS } from './looks.js';
 import { caps } from '../sys/caps.js';
 import { createPool } from '../sys/workers.js';
 import { unpack } from '../sys/pack.js';
@@ -15,7 +16,8 @@ import { idle } from '../sys/sched.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const col = (h) => new THREE.Color(h);
-const SLOTS = ['skin', 'cloth', 'gear', 'bone', 'hair', 'glow', 'eye'];
+// 材質槽(同一程式的不同參數;metal = 刀刃/器械、lens = 面罩鏡片)
+const SLOTS = ['skin', 'cloth', 'gear', 'bone', 'hair', 'glow', 'eye', 'metal', 'lens'];
 
 export const BONES = [
   'root', 'hips', 'spine', 'belly', 'chest', 'neck', 'head', 'jaw',
@@ -64,6 +66,14 @@ const BODY = {
   // 倖存者(多人連線的玩家角色):健康、結實的成年人
   survivor: (r) => ({ s: r.range(0.97, 1.04), sw: r.range(1.0, 1.08), hip: r.range(0.97, 1.03), g: r.range(1.02, 1.12), fat: r.range(0.97, 1.05), musc: r.range(0.35, 0.7), belly: r.range(0, 0.1), thin: 0, arm: 1, neck: r.range(1.02, 1.1), head: r.range(0.98, 1.02) }),
 };
+// 個體差異(舊類型的殭屍):同類型也有不同剪影。P.old = 老人(動畫層會讓牠駝背、步伐小)
+function varyBody(P, r, type) {
+  const k = r();
+  if (type === 'brute' || type === 'bloater') { P.s *= 0.97 + k * 0.06; return; }
+  if (k < 0.16) { P.old = 1; P.thin = Math.max(P.thin, 0.55); P.musc *= 0.3; P.s *= 0.95; P.sw *= 0.95; P.neck *= 0.92; } // 老人
+  else if (k < 0.3) { P.s *= 1.05; P.thin = Math.min(1, P.thin + 0.3); P.g *= 0.92; P.arm *= 1.03; } // 瘦高
+  else if (k < 0.42 && type === 'walker') { P.fat *= 1.14; P.belly += 0.45; P.g *= 1.1; P.s *= 0.96; } // 矮胖
+}
 
 const SKINS = {
   rot: ['#7d846e', '#4b5743', '#5a4b62'],
@@ -122,10 +132,14 @@ export function bindMaterials(v) {
   return v;
 }
 export function buildShape(type, seed, opt = {}) {
+  // 外觀提供者:有自訂建模器的類型(registerProvider,例如日後的外部骨架模型轉接)直接交給它
+  if (PROVIDERS[type]) return PROVIDERS[type](type, seed, opt);
   const r = rng(seed);
-  const P = BODY[type](r);
+  const LK = LOOKS[type] || null; // 新類型的外觀描述(looks.js);舊類型沿用本檔的表
+  const P = (LK ? LK.body : BODY[type])(r);
   const healthy = type === 'survivor'; // 倖存者:無傷口、無血、乾淨衣物(只在 healthy 分支多用亂數,殭屍外觀不變)
-  P.fem = healthy ? (opt.fem ? 1 : 0) : (type === 'walker' || type === 'runner') && r.chance(0.35) ? 1 : 0;
+  P.fem = healthy ? (opt.fem ? 1 : 0) : (type === 'walker' || type === 'runner' || LK?.fem) && r.chance(LK?.fem ?? 0.35) ? 1 : 0;
+  if (!healthy && !LK) varyBody(P, r, type); // 更多樣的體型:老人駝背、瘦高、矮胖
   if (P.fem) { P.sw *= 0.9; P.hip *= 1.05; P.g *= 0.9; P.musc *= 0.3; P.neck *= 0.88; P.head *= 0.97; }
   const rig = makeRig(P);
   const B = (n) => rig.bones[rig.index[n]];
@@ -134,7 +148,7 @@ export function buildShape(type, seed, opt = {}) {
   const add = (geo, slot, weights, painter) => { pieces.push({ geo, slot, weights, painter }); return geo; };
 
   // ---- 外觀參數 ----
-  const pal = SKINS[opt.skin || r.pick(SKIN_BY_TYPE[type])];
+  const pal = SKINS[opt.skin || r.pick(LK ? LK.skins : SKIN_BY_TYPE[type])];
   const L = {
     skin: col(pal[0]), dark: col(pal[1]), livid: col(pal[2]), ends: col(pal[1]).lerp(col('#3a3448'), 0.5),
     mottle: r.range(0.55, 0.95), livor: r.range(0.4, 1), k: r() * 100, dirt: r.range(0.15, 0.45),
@@ -142,6 +156,7 @@ export function buildShape(type, seed, opt = {}) {
     bruises: [], blood: [], clothBlood: [], wounds: [], pustules: [],
   };
   if (healthy) Object.assign(L, { ends: col(pal[2]), mottle: 0.12, livor: 0, dirt: r.range(0.03, 0.08), fresh: 1, veins: 0 });
+  if (LK?.skinL) LK.skinL(L, r, col); // 新類型的皮膚參數(L.paint = 額外的逐頂點上色)
 
   // ---- 身體各部形狀 ----
   const T0 = 0.82, T1 = 1.56;
@@ -221,7 +236,7 @@ export function buildShape(type, seed, opt = {}) {
   };
   const mouth = V(0, HC.y - 0.06, HC.z + 0.09);
   if (!healthy) {
-    WOUNDS[type]();
+    if (LK) LK.wounds({ r, wound, surf, L, P, B, HC, V, tShape, ty }); else WOUNDS[type]();
     for (let i = 0, n = 3 + ((r() * 5) | 0); i < n; i++) { const s = surf(r.pick(['torso', 'arm', 'leg', 'arm', 'neck'])); L.bruises.push({ c: s.p, r: r.range(0.03, 0.07), k: r() * 50 }); }
     // 嘴邊流下的血
     const mouthBlood = type === 'runner' ? 1 : r.range(0.3, 1);
@@ -234,7 +249,7 @@ export function buildShape(type, seed, opt = {}) {
   }
 
   // 頭部參數(skull 傷口需要)
-  const decayed = type === 'crawler' || (type === 'walker' && r.chance(0.3));
+  const decayed = type === 'crawler' || (type === 'walker' && r.chance(0.3)) || !!LK?.decayed;
   const H = healthy ? {
     w: P.head * r.range(0.97, 1.03) * (P.fem ? 0.97 : 1.02), h: P.head * r.range(0.98, 1.03), d: P.head * r.range(0.98, 1.02),
     jaw: P.fem ? r.range(0.62, 0.68) : r.range(0.7, 0.8), brow: P.fem ? r.range(0.6, 0.8) : r.range(0.9, 1.25), sock: r.range(0.55, 0.75),
@@ -246,6 +261,7 @@ export function buildShape(type, seed, opt = {}) {
     nose: decayed && r.chance(0.5) ? 0 : r.range(0.8, 1.15), cheek: r.range(0.6, 1.3), thin: P.thin, lips: decayed && r.chance(0.6) ? -0.6 : r.range(0.7, 1.2),
     decay: decayed ? 1 : 0.3, seed: r() * 100, mouthW: type === 'brute' ? 1.2 : 1,
   };
+  if (LK?.head) LK.head(H, r, P); // 新類型的頭型(下顎脫臼、焦黑塌陷…)
 
   const woundDisp = (x, y, z) => {
     let d = 0;
@@ -317,6 +333,7 @@ export function buildShape(type, seed, opt = {}) {
     let wet = woundPaint(x, y, z, c);
     const b = bloodAmt(L.blood, x, y, z);
     if (b > 0) { c.lerp(L.fresh > 0.5 ? BLOOD : BLOOD_DRY, b * 0.92); wet = Math.max(wet, b * (0.4 + L.fresh * 0.6)); }
+    if (L.paint) wet = L.paint(x, y, z, nx, ny, nz, part, c, wet); // 新類型(焦黑、縫線…);alpha > 1 = 餘燼自發光
     if (extra) wet = extra(x, y, z, nx, ny, nz, i, c, wet);
     out[0] = c.r; out[1] = c.g; out[2] = c.b; out[3] = wet;
   });
@@ -380,7 +397,7 @@ export function buildShape(type, seed, opt = {}) {
     return j;
   };
   const hairCol = col(opt.hair || r.pick(['#1b1714', '#3a2a1e', '#6e6a62', '#7a6748', '#2a2420']));
-  const hasHair = healthy ? opt.hair !== null : type !== 'brute' && type !== 'bloater' && r.chance(type === 'crawler' ? 0.4 : 0.75);
+  const hasHair = healthy ? opt.hair !== null : LK ? r.chance(LK.hair ?? 0.5) : type !== 'brute' && type !== 'bloater' && r.chance(type === 'crawler' ? 0.4 : 0.75);
   const LIP = col('#9a5048'), BROW = hairCol.clone().multiplyScalar(0.8);
   const stubble = healthy && !P.fem && opt.beard ? opt.beard : 0;
   const headExtra = healthy ? (x, y, z, nx, ny, nz, i, c, wet) => {
@@ -452,7 +469,7 @@ export function buildShape(type, seed, opt = {}) {
   if (hasHair) {
     const hair = hg.geo.clone();
     const p = hair.attributes.position.array, n = hair.attributes.normal.array;
-    const long = healthy ? !!opt.longHair : P.fem || r.chance(0.2);
+    const long = healthy ? !!opt.longHair : P.fem || r.chance(LK?.longHair ?? 0.2);
     const patchy = healthy ? -1 : type === 'crawler' || r.chance(0.4) ? r.range(-0.05, 0.15) : -1;
     const alpha = new Float32Array(p.length / 3);
     for (let i = 0; i < alpha.length; i++) {
@@ -499,10 +516,10 @@ export function buildShape(type, seed, opt = {}) {
   }
 
   // ---- 手臂與手 ----
-  const curl = healthy ? [0.85, 1.15, 0.95] : type === 'brute' ? [1.3, 1.5, 1.2] : type === 'runner' ? [0.5, 0.9, 0.7] : [r.range(0.15, 0.6), r.range(0.4, 0.9), r.range(0.3, 0.7)]; // 倖存者:握槍的手勢
+  const curl = healthy ? [0.85, 1.15, 0.95] : LK?.curl ? LK.curl(r) : type === 'brute' ? [1.3, 1.5, 1.2] : type === 'runner' ? [0.5, 0.9, 0.7] : [r.range(0.15, 0.6), r.range(0.4, 0.9), r.range(0.3, 0.7)]; // 倖存者:握槍的手勢
   const gloves = { v: null };
   const handPieces = (s) => {
-    const hs = lerp(1, P.g, 0.6) * (type === 'brute' ? 1.1 : 1);
+    const hs = lerp(1, P.g, 0.6) * (type === 'brute' ? 1.1 : 1) * (LK?.hand ?? 1); // 手掌比例(潛行者的手指特別長)
     const gs = [];
     gs.push(tube(V(0, 0.012, 0), V(0, -0.088 * hs, 0), (t, th) => {
       const w = prof([0.026, 0.034, 0.04, 0.043, 0.042], t) * hs, k = prof([0.016, 0.018, 0.017, 0.015, 0.012], t) * hs;
@@ -979,8 +996,18 @@ export function buildShape(type, seed, opt = {}) {
     bloater: ['bloat'],
     brute: ['guard'],
   };
-  const outfit = opt.outfit || r.pick(OUTFIT_BY_TYPE[type]);
+  // 新類型:外觀描述拿到整組建模工具(K),可以註冊自己的服裝、加上器械/面罩/束帶等部件
+  const K = LK ? {
+    r, P, rig, B, HC, H, hg, L, V, col, tc, add, tube, prim, mat4, displace, smoothNormals, mergeGeometries, surf, wound, skinPainter, clothPaint, cleanPaint,
+    top, bottom, skirt, offset, folds, tShape, ty, T0, T1, torsoDisp, torsoW, upperShape, foreShape, thighShape, shinShape, armR, foreR, thighR, shinR,
+    solid, piece, cutTris, dome, belt, strap, vest, jawW, mouth, gloves, legless, bloodAmt, sstep, G, fbm, noise3, lerp, clamp, prof, TAU,
+    DIRT, BLOOD, BLOOD_DRY, FLESH, FLESH_DARK, BONE, CHAR, NECRO,
+    setShoes: (v, sk) => { shoes = v; if (sk !== undefined) sock = sk; },
+  } : null;
+  if (LK?.outfits) Object.assign(OUT, LK.outfits(K));
+  const outfit = opt.outfit || r.pick(LK ? LK.outfit : OUTFIT_BY_TYPE[type]);
   if (!opt.nude) OUT[outfit]();
+  if (LK?.extras) LK.extras(K); // 器械、面罩、束帶、焦黑殘片…
   if (healthy && opt.hat) HAT[opt.hat[0]](opt.hat[1]);
   if (!legless) for (const Ls of ['L', 'R']) (shoes === 'bare' ? barefoot(Ls, sock) : shoe(Ls, shoes));
 
@@ -1030,13 +1057,13 @@ export function buildShape(type, seed, opt = {}) {
     type, geometry: geo, slots: used, rig, P, eyeKey: healthy ? opt.eye || 'brown' : null,
     legT: rig.bones[rig.index.thighL].head.distanceTo(rig.bones[rig.index.thighL].tail),
     legS: rig.bones[rig.index.shinL].head.distanceTo(rig.bones[rig.index.shinL].tail),
-    hitboxes: hitboxes(rig, P, type),
+    hitboxes: hitboxes(rig, P, type, LK),
     mouth: V(0, HC.y - 0.05 * P.s, HC.z + 0.09 * P.s),
   };
 }
 
 // ---------- 命中判定盒(隱形,掛在骨骼上) ----------
-function hitboxes(rig, P, type) {
+function hitboxes(rig, P, type, LK = null) {
   const B = (n) => rig.bones[rig.index[n]];
   const s = P.s, out = [];
   const box = (bone, center, size, part) => out.push({ bone, kind: 'box', pos: center.clone().sub(B(bone).head), scl: size, part });
@@ -1047,8 +1074,8 @@ function hitboxes(rig, P, type) {
   const HC = rig.HC;
   out.push({ bone: 'head', kind: 'sphere', pos: HC.clone().sub(B('head').head).add(V(0, -0.01 * s, 0.006 * s)), scl: V(0.082, 0.122, 0.108).multiplyScalar(P.head * s * (type === 'brute' ? 1.1 : 1)), part: 'head' });
   cyl('neck', B('neck').head, B('neck').head.clone().lerp(B('neck').tail, 0.6), 0.045 * P.neck * s, 'body');
-  box('chest', V(0, 1.375 * s, 0.0), V(0.36 * P.sw * P.fat * s, 0.22 * s, 0.22 * P.fat * s + 0.03), type === 'brute' ? 'armor' : 'body');
-  box('spine', V(0, 1.17 * s, 0.01 + P.belly * 0.05), V(0.3 * P.fat * P.hip * s, 0.18 * s, (0.2 * P.fat + P.belly * 0.12) * s), type === 'brute' ? 'armor' : 'body');
+  box('chest', V(0, 1.375 * s, 0.0), V(0.36 * P.sw * P.fat * s, 0.22 * s, 0.22 * P.fat * s + 0.03), type === 'brute' || LK?.armor ? 'armor' : 'body');
+  box('spine', V(0, 1.17 * s, 0.01 + P.belly * 0.05), V(0.3 * P.fat * P.hip * s, 0.18 * s, (0.2 * P.fat + P.belly * 0.12) * s), type === 'brute' || LK?.armor ? 'armor' : 'body');
   if (!P.legless) box('hips', V(0, 0.95 * s, 0), V(0.34 * P.hip * P.fat * s, 0.2 * s, 0.22 * P.fat * s), 'body');
   else box('hips', V(0, 1.02 * s, 0), V(0.3 * s, 0.1 * s, 0.2 * s), 'body');
   for (const L of ['L', 'R']) {
@@ -1064,8 +1091,21 @@ function hitboxes(rig, P, type) {
 }
 
 // ---------- 變體快取 ----------
-const PER_TYPE = { walker: 6, runner: 4, crawler: 4, bloater: 3, brute: 3 };
-const SEEDS = { walker: 1000, runner: 2000, crawler: 3000, bloater: 4000, brute: 5000 };
+const PER_TYPE = { walker: 6, runner: 4, crawler: 4, bloater: 3, brute: 3, screamer: 3, stalker: 3, surgeon: 3, burned: 3, hazmat: 2, straitjacket: 3 };
+const SEEDS = { walker: 1000, runner: 2000, crawler: 3000, bloater: 4000, brute: 5000, screamer: 7000, stalker: 8000, surgeon: 9000, burned: 10000, hazmat: 11000, straitjacket: 12000 };
+
+// ---------- 外觀提供者(接縫) ----------
+// 預設由 buildShape 程式生成。某類型若註冊了提供者,buildShape(type, seed, opt) 直接回傳它的結果,其餘流程
+// (Worker 建模、快取、連線同步的變體編號、命中盒、斷肢、噴血、布娃娃)全部照舊。提供者要回傳與 buildShape 相同的結構:
+//   { type, geometry, slots, rig, P, legT, legS, hitboxes, mouth }
+//   geometry:合併後的 BufferGeometry(position/normal/uv/color(RGBA, a = 濕潤度)/skinIndex/skinWeight + 依 slots 分組)
+//   rig.bones:BONES 順序的 { name, i, parent, head, tail }(模型空間、公尺);rig.index、rig.HC(頭部中心)
+//   P:{ s 縮放, legless?, … }、hitboxes:見 hitboxes();可用 makeRig/hitboxes 依骨架自動產生
+// 外部的帶骨架模型(glTF)要轉接時:把它的骨骼對應到 BONES 名稱、蒙皮權重重新映射到這組索引、頂點色可全白(a = 0)。
+// 提供者必須是純計算(不碰 DOM)才能在 Worker 執行;需要非同步載入的模型請在主執行緒先載好再註冊。
+const PROVIDERS = {};
+export function registerProvider(type, fn) { PROVIDERS[type] = fn; }
+export { makeRig, hitboxes as autoHitboxes };
 const cache = {};
 // 變體 k 用固定種子 → 每台機器、每個執行緒建出來都一樣(連線時可用 getVariant(type, k) 同步外觀)
 // 有 Worker:prewarm() 一次把全部變體平行丟給 Worker 池,主執行緒只組 BufferGeometry + 綁材質;
@@ -1125,7 +1165,10 @@ export function getVariant(type, k) {
   return list[(Math.random() * n) | 0];
 }
 // 選單期間預建:有 Worker 時第一次呼叫就全部平行送出;沒有時每次排一個到 requestIdleCallback 同步建
-const ORDER = ['walker', 'walker', 'walker', 'runner', 'crawler', 'bloater', 'brute', 'walker', 'walker', 'walker', 'runner', 'runner', 'runner', 'crawler', 'crawler', 'crawler', 'bloater', 'bloater', 'brute', 'brute'];
+const ORDER = ['walker', 'walker', 'walker', 'runner', 'crawler', 'bloater', 'brute', 'screamer', 'surgeon', 'straitjacket', 'burned', 'stalker', 'hazmat',
+  'walker', 'walker', 'walker', 'runner', 'runner', 'runner', 'crawler', 'crawler', 'crawler', 'bloater', 'bloater', 'brute', 'brute',
+  'screamer', 'screamer', 'surgeon', 'surgeon', 'straitjacket', 'straitjacket', 'burned', 'burned', 'stalker', 'stalker', 'hazmat'];
+export const VARIANT_TYPES = Object.keys(PER_TYPE);
 const TOTAL = Object.values(PER_TYPE).reduce((a, b) => a + b, 0);
 const readyCount = () => { let n = 0; for (const t in cache) for (const v of cache[t]) if (v) n++; return n; };
 function nextMissing() {
