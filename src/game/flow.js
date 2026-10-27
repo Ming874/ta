@@ -289,6 +289,7 @@ export const flowMethods = {
     p.hp = Math.min(p.maxHp, p.hp + 20);
     this.ui.setHP(p.hp, p.maxHp);
     this.coins.collectAll();
+    this.pickups?.collectAll?.(this); // 地上用得到的彈匣/醫療包也一起收
   },
 
   // 休息時間:商店捲門拉起、補給站開放;發回合獎勵
