@@ -67,7 +67,8 @@ export function buildHospital(world, layout, scene, opts = {}) {
   let propErr = null;
   try { dressWorld(ctx); } catch (e) { propErr = e; console.error('[hospital] dressWorld 失敗', e); }
   const { lights: propLights, events: propEvents } = ctx.finalize();
-  const propMeshes = mergeStatics(statics, propGroups);
+  const chunks = []; // 合併後的道具區塊(距離剔除用)
+  const propMeshes = mergeStatics(statics, propGroups, chunks);
   const tProps = performance.now();
 
   // ---- 燈光與氛圍 ----
@@ -103,19 +104,23 @@ export function buildHospital(world, layout, scene, opts = {}) {
   // ---- 每幀 ----
   const camFwd = new THREE.Vector3();
   let shadowFrames = 0, lastLoaded = -1;
+  let cullTick = 0;
   const H = {
-    group: root, stats, layout: L, lights, atmo, K, levelGroups, propEvents, propLights, vis,
+    group: root, stats, layout: L, lights, atmo, K, levelGroups, propEvents, propLights, vis, chunks,
+    propDistance: 54, // 道具區塊的顯示距離(公尺):霧裡看不到的就不畫,setQuality 依 drawDistance 調整
     // post.js 會呼叫:提供 renderer(環境貼圖、各向異性)與品質設定
     attachRenderer(r, game) {
       try { setAnisotropy(Math.min(8, r.capabilities.getMaxAnisotropy())); } catch { /* 忽略 */ }
       try { scene.environment = makeEnvironment(r); } catch (e) { console.warn('[hospital] 環境貼圖失敗', e); }
       H.setQuality(game?.quality);
-      // 預先編譯 shader(KHR_parallel_shader_compile;避免第一次看到某材質時卡頓)
-      if (game?.camera) { game.camera.layers.enable(NO_FLASH_SHADOW_LAYER); r.compileAsync?.(scene, game.camera).catch(() => {}); }
+      // shader 預編譯統一由 main.js boot()(src/sys/warmup.js)在畫質設定套用後分批做;這裡先編會用錯參數、還會同步等編譯
+      if (game?.camera) game.camera.layers.enable(NO_FLASH_SHADOW_LAYER);
     },
     setQuality(q) {
       const pool = q?.get?.('lights') ?? q?.get?.('lightPool');
       if (Number.isFinite(pool)) lights.setPoolSize(pool);
+      const dd = q?.get?.('drawDistance');
+      if (Number.isFinite(dd)) H.propDistance = dd * 0.6;
     },
     update(time, dt, player) {
       if (!player) return;
@@ -127,6 +132,15 @@ export function buildHospital(world, layout, scene, opts = {}) {
       const mood = L.moods[style.mood] || L.moods.corridor;
       const outdoor = (L.flagsAt(li, c, r) & L.F.OUTDOOR) !== 0 || L.ceilY(li, c, r) === Infinity;
       updateVisibility(li, p.x, p.z);
+      // 道具區塊距離剔除(每 4 幀一次;區塊包圍球表面到眼睛的距離)。
+      // 小東西在霧裡更早就看不清楚:半徑越小顯示距離越短(半徑 0.2m ≈ 1/3,4m 以上 = 完整距離)
+      if ((cullTick = (cullTick + 1) & 3) === 0) {
+        const ey = p.y + 1.6, far = H.propDistance;
+        for (let i = 0; i < chunks.length; i++) {
+          const m = chunks[i], s = m.geometry.boundingSphere, c = s.center;
+          m.visible = Math.hypot(c.x - p.x, c.y - ey, c.z - p.z) - s.radius < far * Math.min(1, 0.3 + s.radius / 6);
+        }
+      }
       const cam = player.camera;
       cam.layers.enable(NO_FLASH_SHADOW_LAYER);
       cam.getWorldDirection(camFwd);
@@ -134,7 +148,7 @@ export function buildHospital(world, layout, scene, opts = {}) {
       lights.update(time, dt, p.x, p.y + 1.6, p.z, camFwd.x / fl, camFwd.z / fl, li, vis);
       atmo.update(time, dt, cam, mood, outdoor);
       // 月光陰影:靜態,只在一開始與貼圖載完時重算(玩家在地面以上時)
-      const loaded = pbrState.loaded + procStats.done;
+      const loaded = pbrState.alpha + procStats.done; // 只有鏤空貼圖會改變陰影形狀(其他貼圖載完不必重畫 2048 陰影圖)
       if (li !== b1 && (shadowFrames < 2 || loaded !== lastLoaded)) { atmo.moon.shadow.needsUpdate = true; shadowFrames++; lastLoaded = loaded; }
       H.zone = zone; H.level = li; H.mood = style.mood;
     },
@@ -142,11 +156,39 @@ export function buildHospital(world, layout, scene, opts = {}) {
   return H;
 }
 
-// 道具的靜態網格依「樓層 × 材質」合併(和 ctx.finalize 相同的做法,但分樓層,才能整層隱藏)
-function mergeStatics(statics, groups) {
+// 道具的靜態網格依「樓層 × 材質」合併;三角形多的材質再依 24m 區塊切開。
+// 整層合成一個大網格雖然 draw call 少,但包圍球涵蓋整層 → 視錐剔除、距離剔除、手電筒陰影的剔除全部失效,
+// 每幀(含每個陰影 pass)都得畫整層上百萬個三角形。只切「重」的材質:三角形大幅減少,draw call 不會因為
+// 上百種輕量材質被切成很多塊而暴增。
+const CHUNK = 24, HEAVY_VERTS = 60000; // 單一材質在一層超過 ~2 萬個三角形才切區塊
+// 沒有任何貼圖的純色材質(道具材質八成以上是這種)改成頂點色,依「粗糙度/金屬度/面向」合併成少數共用材質:
+// 145 種材質 → 約 20 種,draw call 與材質切換大減。透明、自發光、有自訂 shader 的材質維持原樣。
+const MAP_KEYS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap', 'alphaMap', 'bumpMap', 'displacementMap', 'lightMap', 'envMap'];
+const plainMats = new Map();
+function plainBucket(mat) {
+  if (!mat.isMeshStandardMaterial || mat.isMeshPhysicalMaterial || mat.transparent || mat.alphaTest > 0 || mat.vertexColors || mat.wireframe || mat.fog === false) return null;
+  if (mat.onBeforeCompile !== THREE.Material.prototype.onBeforeCompile || mat.customProgramCacheKey !== THREE.Material.prototype.customProgramCacheKey) return null;
+  if (mat.defines && Object.keys(mat.defines).some((k) => k !== 'STANDARD')) return null; // STANDARD 是 MeshStandardMaterial 內建的
+  if (mat.emissive && mat.emissive.r + mat.emissive.g + mat.emissive.b > 0) return null;
+  if (MAP_KEYS.some((k) => mat[k])) return null;
+  const r = Math.round(mat.roughness * 5), mt = Math.round(mat.metalness * 5);
+  const key = r + '|' + mt + '|' + mat.side + '|' + (mat.flatShading ? 1 : 0) + '|' + Math.round((mat.envMapIntensity ?? 1) * 4);
+  let b = plainMats.get(key);
+  if (!b) plainMats.set(key, (b = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: r / 5, metalness: mt / 5, side: mat.side, flatShading: mat.flatShading, envMapIntensity: mat.envMapIntensity ?? 1, name: 'plain:' + key })));
+  return b;
+}
+function mergeStatics(statics, groups, chunks) {
   let count = 0;
   statics.forEach((list, li) => {
-    const byMat = new Map();
+    const eff = new Map(); // 原材質 → 實際合併用的材質(純色材質 → 共用頂點色材質)
+    const verts = new Map(); // 合併用材質 → 這一層的頂點數
+    for (const m of list) {
+      if (!m.parent || Array.isArray(m.material)) continue;
+      if (!eff.has(m.material)) eff.set(m.material, plainBucket(m.material) || m.material);
+      const mat = eff.get(m.material), pa = m.geometry.attributes.position;
+      verts.set(mat, (verts.get(mat) || 0) + (m.geometry.index ? m.geometry.index.count : pa ? pa.count : 0));
+    }
+    const byKey = new Map(); // 區塊 → (材質 → 幾何)
     for (const m of list) {
       if (!m.parent || Array.isArray(m.material)) continue;
       m.updateMatrixWorld(true);
@@ -155,21 +197,37 @@ function mergeStatics(statics, groups) {
       if (!g.attributes.normal) g.computeVertexNormals();
       if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
       g.applyMatrix4(m.matrixWorld);
-      const arr = byMat.get(m.material) || [];
+      const mat = eff.get(m.material);
+      if (mat !== m.material) { // 純色 → 頂點色(Color 內部已是線性值,和頂點色的解讀一致)
+        const n = g.attributes.position.count, col = new Float32Array(n * 3), c = m.material.color;
+        for (let i = 0; i < n * 3; i += 3) { col[i] = c.r; col[i + 1] = c.g; col[i + 2] = c.b; }
+        g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      }
+      g.computeBoundingBox();
+      const bb = g.boundingBox;
+      const key = verts.get(mat) < HEAVY_VERTS ? 'all' : Math.floor((bb.min.x + bb.max.x) * 0.5 / CHUNK) + ',' + Math.floor((bb.min.z + bb.max.z) * 0.5 / CHUNK);
+      let byMat = byKey.get(key);
+      if (!byMat) byKey.set(key, (byMat = new Map()));
+      const arr = byMat.get(mat) || [];
       arr.push(g);
-      byMat.set(m.material, arr);
+      byMat.set(mat, arr);
       m.parent.remove(m);
     }
-    for (const [material, geos] of byMat) {
-      for (let i = 0; i < geos.length; i += 400) {
-        const merged = mergeGeometries(geos.slice(i, i + 400));
-        if (!merged) continue;
-        const mesh = new THREE.Mesh(merged, material);
-        mesh.castShadow = !material.transparent;
-        mesh.receiveShadow = true;
-        mesh.matrixAutoUpdate = false;
-        groups[li].add(mesh);
-        count++;
+    for (const byMat of byKey.values()) {
+      for (const [material, geos] of byMat) {
+        for (let i = 0; i < geos.length; i += 400) {
+          const merged = mergeGeometries(geos.slice(i, i + 400));
+          if (!merged) continue;
+          merged.computeBoundingSphere();
+          const mesh = new THREE.Mesh(merged, material);
+          mesh.castShadow = !material.transparent;
+          mesh.receiveShadow = true;
+          mesh.matrixAutoUpdate = false;
+          mesh.updateMatrix();
+          groups[li].add(mesh);
+          chunks.push(mesh);
+          count++;
+        }
       }
     }
   });

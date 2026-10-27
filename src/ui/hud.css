@@ -26,11 +26,22 @@
 .hd-rs b { font-family: var(--num); font-size: 1.2em; color: var(--hud-text); margin: 0 .15em; }
 .hd-rs.rest b { color: var(--hud-amber); }
 .hd-rs.urgent b { color: #ff6a5a; }
+.hd-rs .nx { font-style: normal; color: #ff7a5a; letter-spacing: .1em; }
 
 /* ---- 右上:金幣 ---- */
 .hd-coins { right: 1.8em; top: 1.2em; display: flex; align-items: center; gap: .45em; font: 700 1.6em/1 var(--num); color: var(--hud-gold); }
 .hd-coins svg { width: 1.05em; height: 1.05em; filter: drop-shadow(0 0 5px rgba(240,190,60,.45)); }
 .hd-cgain { font-size: .7em; color: #ffe7a0; opacity: 0; }
+
+/* ---- 右上:分數 / 連殺 ---- */
+.hd-score { right: 1.8em; top: 4.2em; font-size: .9em; letter-spacing: .2em; color: var(--hud-dim); text-align: right; }
+.hd-score b { font: 700 1.25em/1 var(--num); letter-spacing: .04em; color: var(--hud-text); margin-left: .3em; }
+.hd-streak { right: 1.8em; top: 5.7em; width: 8.5em; text-align: right; font-weight: 700; color: #ffd27a; }
+.hd-streak b { display: inline-block; font-size: 1.15em; letter-spacing: .12em; transform-origin: 100% 50%; }
+.hd-streak span { font: 700 1em var(--num); margin-left: .45em; color: var(--hud-text); }
+.hd-streak .hd-bar { height: .22em; margin-top: .3em; border: 0; background: rgba(0,0,0,.45); }
+.hd-streak .fill { background: #ffb347; transform-origin: 100% 50%; transition: none; }
+.hd-streak.hot b { color: #ff8a4a; text-shadow: 0 0 10px rgba(255, 110, 40, .7), 0 1px 2px #000; }
 
 /* ---- 左下:生命 / 護甲 / 耐力 ---- */
 .hd-vitals { left: 1.8em; bottom: 1.6em; width: 19em; }
@@ -67,6 +78,7 @@
 .hd-weapon { right: 1.9em; bottom: 1.4em; text-align: right; }
 .hd-wname { font-size: .95em; letter-spacing: .32em; color: var(--hud-dim); font-weight: 700; }
 .hd-wname em { font-style: normal; color: var(--hud-amber); letter-spacing: .1em; margin-left: .4em; }
+.hd-wname .tier { font-style: normal; font-size: .62em; letter-spacing: .12em; color: var(--hud-amber); margin-right: .55em; vertical-align: .15em; text-shadow: 0 0 6px rgba(255, 170, 60, .6), 0 1px 2px #000; }
 .hd-ammo { font-family: var(--num); font-weight: 700; line-height: 1; margin-top: .1em; }
 .hd-ammo .mag { font-size: 3.3em; display: inline-block; }
 .hd-ammo .res { font-size: 1.55em; opacity: .7; margin-left: .25em; }
@@ -124,6 +136,19 @@
 .hd-pk small { display: block; font-size: .58em; letter-spacing: .06em; margin-top: .1em; opacity: .82; }
 .hd-pk svg { width: 1em; height: 1em; margin-right: .45em; filter: drop-shadow(0 0 5px currentColor); }
 
+/* ---- 左側中:新手提示 ---- */
+.hd-tip { left: 1.6em; top: 34%; width: 21em; padding: .6em .9em .7em; background: linear-gradient(90deg, rgba(10, 12, 11, .82), rgba(10, 12, 11, .55));
+  border-left: 3px solid var(--hud-amber); text-shadow: 0 1px 2px #000; }
+.hd-tip .tt { display: flex; align-items: center; gap: .45em; font-size: .9em; letter-spacing: .2em; color: var(--hud-amber); }
+.hd-tip .tt .ic svg { width: 1.05em; height: 1.05em; }
+.hd-tip .tt .sp { flex: 1; }
+.hd-tip .tt small { font-size: .78em; letter-spacing: .1em; color: var(--hud-dim); }
+.hd-tip .tt kbd.kc { font-size: .72em; }
+.hd-tip .tx { margin-top: .35em; font-size: .98em; line-height: 1.7; letter-spacing: .04em; color: var(--hud-text); }
+.hd-tip .tx kbd.kc { font-size: .78em; }
+.hd-tip .tl { height: 2px; margin-top: .5em; background: rgba(255, 255, 255, .1); }
+.hd-tip .tl i { display: block; height: 100%; background: var(--hud-amber); transform-origin: 0 50%; opacity: .7; }
+
 /* ---- 標題橫幅 ---- */
 .hd-banner { left: 0; right: 0; top: 22%; text-align: center; font-size: 3.5em; letter-spacing: .32em; padding-left: .32em; font-weight: 700; color: #d6d9cf; opacity: 0;
   text-shadow: 0 2px 14px #000, 0 0 40px rgba(0,0,0,.7); }
@@ -131,7 +156,5 @@
 .hd-banner.red { color: #d8483c; }
 .hd-banner.gold { color: #f0c860; }
 
-/* 舊版 index.html 的 HUD 元件由 hud.js 取代 */
-#health, #ammo, #coins, #roundinfo, #banner, #prompt, #pickfeed { display: none !important; }
 
 @keyframes hd-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }

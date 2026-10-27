@@ -3,6 +3,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { WEAPONS } from './weapons/weapon.js';
 import { sfx } from './audio.js';
+import { hpMul } from './game/waves.js';
 
 // 殭屍掉落物(彈藥箱、大彈藥箱、醫療包、手榴彈)與補給點(彈藥櫃、醫療櫃)。
 // 掉落時從屍體彈出一道拋物線落地,之後懸浮旋轉;地面發光圓環 + 淡淡光柱方便在黑暗中找到。
@@ -31,15 +32,18 @@ export const DROP_RULES = {
   medMax: 4, // 地上未撿的醫療包上限(避免洗版)
   heal: 35, // 醫療包回復量(滿血時改為收進背包)
   grenadeCap: 6, medkitCap: 3,
-  life: 35, // 存在秒數
-  blink: 6, // 最後幾秒閃爍
-  reach: 1.1, // 撿取水平距離
+  life: 40, // 存在秒數(地圖大,給玩家時間繞回來撿)
+  blink: 8, // 最後幾秒閃爍(地面光圈同時縮小)
+  reach: 1.25, // 自動撿取水平距離
   reachY: 1.2, // 撿取高度差(多樓層)
+  magnet: 2.6, // 磁吸距離:用得到的掉落物在這個距離內會飛向玩家(同樓層、看得到)
+  lateAmmo: 0.5, // 後期殭屍血量變多:彈藥機率 × (1 + 0.5 × (血量倍率 − 1))
   max: 32, // 場上上限,超過時移除最舊的
 };
 
 // 外觀:光色、圓環/光柱大小、懸浮高度、模型縮放
 const LOOK = {
+  mag: { color: 0xffa52e, css: '#ffc35a', ring: 1.3, beam: 2.5, beamW: 0.55, glow: 0.95, hover: 0.48, scale: 1.75 },
   ammo: { color: 0xffa52e, css: '#ffc35a', ring: 1.3, beam: 2.5, beamW: 0.55, glow: 0.95, hover: 0.42, scale: 1.12 },
   bigammo: { color: 0xffb83a, css: '#ffd27a', ring: 1.9, beam: 3.4, beamW: 0.8, glow: 1.4, hover: 0.5, scale: 1.08 },
   med: { color: 0x3cff86, css: '#7dffae', ring: 1.3, beam: 2.5, beamW: 0.55, glow: 0.95, hover: 0.44, scale: 1.1 },
@@ -356,7 +360,7 @@ function shared() {
   };
   R.mat.grenade = std({ map: grenadeTex(), roughness: 0.62, metalness: 0.25 });
   R.mat.fuze = std({ color: 0x5c5f58, roughness: 0.42, metalness: 0.85 });
-  R.tmpl = { ammo: buildAmmoCan(), bigammo: buildBigCrate(), med: buildMedkit(), grenade: buildGrenade() };
+  R.tmpl = { mag: buildMagPack(), ammo: buildAmmoCan(), bigammo: buildBigCrate(), med: buildMedkit(), grenade: buildGrenade() };
   return R;
 }
 
@@ -464,6 +468,24 @@ function magParts() {
   return { body: at(body), brass, tip };
 }
 
+// 彈匣包(殭屍最常掉的彈藥):兩個 STANAG 彈匣(黑色鋁 + 沙色聚合物)並排、尼龍綁帶綁在一起,供彈口露出子彈
+function buildMagPack() {
+  const M = R.mat, mag = [], pmag = [], brass = [], copper = [], strap = [];
+  [-1, 1].forEach((s, k) => {
+    const P = magParts();
+    const place = new THREE.Matrix4().makeTranslation(-0.044 + (k ? 0.004 : 0), 0.095 - (k ? 0.006 : 0), s * 0.0128);
+    (k ? pmag : mag).push(P.body.applyMatrix4(place));
+    for (const g of P.brass) brass.push(g.applyMatrix4(place));
+    for (const g of P.tip) copper.push(g.applyMatrix4(place));
+  });
+  for (const y of [0.03, -0.045]) { // 兩條綁帶
+    strap.push(at(new THREE.BoxGeometry(0.084, 0.018, 0.058), 0.004, y, 0));
+  }
+  const g = new THREE.Group();
+  g.add(mesh(mag, M.mag), mesh(pmag, M.pmag), mesh(brass, M.brass), mesh(copper, M.copper), mesh(strap, M.strap));
+  return { group: g, half: 0.098 };
+}
+
 // 大彈藥箱(M2A1 風格,更大):黃色識別帶、兩端繩把、箱蓋上綁著兩個 M4 彈匣
 function buildBigCrate() {
   const M = R.mat, L = 0.48, H = 0.27, W = 0.22;
@@ -555,8 +577,9 @@ export class Pickups {
     const hr = p.hp / (p.maxHp || 100);
     const mm = hr < Q.critHp ? Q.critHpMul : hr < Q.lowHp ? Q.lowHpMul : 1;
     const medsOut = this.items.filter((it) => it.kind === 'med' && it.state !== 'take').length;
+    const late = 1 + Q.lateAmmo * (hpMul(game.round || 1, type) - 1);
     return {
-      ammo: T.big ? 0 : Math.min(1, T.ammo * am), med: medsOut >= Q.medMax ? 0 : Math.min(1, T.med * mm), grenade: T.grenade || 0,
+      ammo: T.big ? 0 : Math.min(1, T.ammo * am * late), med: medsOut >= Q.medMax ? 0 : Math.min(1, T.med * mm), grenade: T.grenade || 0,
       ammoPity: !T.big && this.dry + 1 >= Q.pity, medPity: hr < 0.5 && this.medDry + 1 >= Q.medPity && medsOut < Q.medMax,
     };
   }
@@ -567,7 +590,7 @@ export class Pickups {
     const c = this.chances(z.type, game), p = game.player;
     const kinds = [];
     if (T.big) kinds.push('bigammo');
-    else if (c.ammoPity || rand() < c.ammo) kinds.push('ammo');
+    else if (c.ammoPity || rand() < c.ammo) kinds.push('mag');
     this.dry = kinds.length ? 0 : this.dry + 1;
     if (c.medPity || rand() < c.med) kinds.push('med');
     if (p.hp < p.maxHp * 0.5) this.medDry = kinds.includes('med') ? 0 : this.medDry + 1;
@@ -575,7 +598,7 @@ export class Pickups {
     this.stats[z.type] ||= { kills: 0 };
     const st = this.stats[z.type];
     st.kills++;
-    for (const k of kinds) st[k] = (st[k] || 0) + 1;
+    for (const k of kinds) st[k === 'mag' ? 'ammo' : k] = (st[k === 'mag' ? 'ammo' : k] || 0) + 1;
     if (game.noDrops) return kinds; // 測試/統計模式:只擲骰不生成
     const y = z.pos.y || 0;
     const h = z.type === 'crawler' ? 0.45 : z.type === 'brute' ? 1.45 : 1.05;
@@ -625,7 +648,7 @@ export class Pickups {
     const it = {
       kind, L, root, holder, ring, beam, glow, from, half: R.tmpl[kind].half * L.scale,
       age: 0, ground: -1, state: 'fly', yaw: Math.random() * 6.28, tx: (Math.random() - 0.5) * 4, tz: (Math.random() - 0.5) * 4,
-      blink: 0, denied: false, take: 0, takeFrom: new THREE.Vector3(),
+      blink: 0, denied: false, take: 0, takeFrom: new THREE.Vector3(), magT: 0, pull: false,
     };
     this.scene.add(root);
     this.items.push(it);
@@ -674,9 +697,9 @@ export class Pickups {
         h.position.set(0, y, 0);
         h.rotation.set(Math.sin(it.age * 1.3) * 0.05, it.yaw, Math.cos(it.age * 1.1) * 0.05);
         glowK = ease(Math.min(1, it.ground / (SETTLE + RISE)));
-      } else { // taken:縮小飛向玩家
+      } else { // taken:縮小飛向玩家(take < 0 = 排隊等待)
         it.take += dt / 0.22;
-        const u = Math.min(1, it.take), e = u * u;
+        const u = Math.max(0, Math.min(1, it.take)), e = u * u;
         h.position.set(
           it.takeFrom.x + (p.pos.x - pos.x - it.takeFrom.x) * e,
           it.takeFrom.y + (py + 1.15 - pos.y - it.takeFrom.y) * e,
@@ -691,10 +714,11 @@ export class Pickups {
         continue;
       }
 
-      // 壽命:最後幾秒閃爍(越來越快),最後 0.35 秒縮小消失
+      // 壽命:最後幾秒閃爍(越來越快)、地面光圈跟著縮小,最後 0.35 秒縮小消失
       const rem = Q.life - it.age;
-      let vis = 1;
+      let vis = 1, shrink = 1;
       if (rem < Q.blink) {
+        shrink = 0.45 + 0.55 * Math.max(0, rem / Q.blink);
         it.blink += dt * (2.2 + (1 - rem / Q.blink) * 7);
         const on = it.blink % 1 < 0.62;
         h.visible = on;
@@ -707,7 +731,7 @@ export class Pickups {
       const far = Math.min(1, Math.max(0, (Math.hypot(cam.x - pos.x, cam.z - pos.z) - 6) / 20));
       const pulse = Math.sin(it.age * 3.1);
       it.ring.material.opacity = (0.62 + 0.22 * pulse) * glowK * vis;
-      it.ring.scale.setScalar(L.ring * (1 + 0.035 * pulse));
+      it.ring.scale.setScalar(L.ring * (1 + 0.035 * pulse) * shrink);
       it.ring.rotation.z += dt * 0.5;
       it.beam.material.opacity = (0.26 + 0.04 * Math.sin(it.age * 1.7)) * (1 + far * 0.6) * glowK * vis;
       it.beam.scale.x = L.beamW * (1 + far * 1.3);
@@ -716,9 +740,24 @@ export class Pickups {
       it.glow.scale.setScalar(L.glow * (1 + far * 1.8));
       it.glow.material.opacity = (0.3 + 0.08 * pulse) * (1 + far * 0.4) * Math.max(glowK, it.state === 'fly' ? 0.5 : 0) * vis;
 
-      // 撿取
+      // 撿取:磁吸範圍內、用得到的東西先滑向玩家,進入撿取距離後套用
       if (it.state !== 'idle' || p.hp <= 0 || p.downed) continue;
-      const near = Math.hypot(p.pos.x - pos.x, p.pos.z - pos.z) < Q.reach && Math.abs(py - pos.y) < Q.reachY;
+      const dx = p.pos.x - pos.x, dz = p.pos.z - pos.z, dh = Math.hypot(dx, dz), dy = Math.abs(py - pos.y);
+      if (dh < Q.magnet && dh > Q.reach * 0.6 && dy < 0.6 && it.ground > SETTLE) {
+        it.magT -= dt;
+        if (it.magT <= 0) { // 每 0.4 秒重新判斷:用不用得到、有沒有隔牆
+          it.magT = 0.4;
+          const w = this.world;
+          it.pull = this.wants(it, game) && (!w?.hasLineOfSight || w.hasLineOfSight(pos.x, pos.y + 0.35, pos.z, p.pos.x, py + 0.35, p.pos.z));
+        }
+        if (it.pull) {
+          const k = Math.min(1, dt * (2.5 + 5 * (1 - dh / Q.magnet))), ox = pos.x, oz = pos.z;
+          pos.x += dx * k; pos.z += dz * k;
+          const g = this.world?.groundY ? this.world.groundY(pos.x, pos.z, pos.y + 0.3) : pos.y;
+          if (g == null || Math.abs(g - pos.y) > 0.5) { pos.x = ox; pos.z = oz; it.pull = false; } else pos.y = g;
+        }
+      } else it.magT = 0;
+      const near = dh < Q.reach && dy < Q.reachY;
       if (!near) { it.denied = false; continue; }
       if (this.apply(it, game)) {
         it.state = 'take';
@@ -734,6 +773,18 @@ export class Pickups {
         }
       }
     }
+  }
+
+  // 撿了有沒有用(只判斷,不套用;磁吸用)
+  wants(it, game) {
+    const w = game.weapons, p = game.player, Q = DROP_RULES;
+    if (it.kind === 'med') return p.hp < p.maxHp || (p.medkits || 0) < Q.medkitCap;
+    if (it.kind === 'grenade') return (p.grenades || 0) < Q.grenadeCap;
+    for (const id in w.inv) {
+      const d = WEAPONS[id], a = w.inv[id];
+      if (d && (a.reserve < d.reserveCap || (it.kind === 'bigammo' && a.mag < magOf(w, id)))) return true;
+    }
+    return false;
   }
 
   // 套用效果;已滿時回傳 false(留在地上)
@@ -775,13 +826,32 @@ export class Pickups {
         if (n > 0) { a.reserve += n; got.push(`+${n} ${d.name}`); }
       }
       if (!got.length) return false;
-      ui.pickup(`${got[0]} 彈藥`, L.css, { icon: 'ammo', sub: got.slice(1).join(' · '), panel: 'ammo' });
+      ui.pickup(`彈匣 ${got[0]}`, L.css, { icon: 'ammo', sub: got.slice(1).join(' · '), panel: 'ammo' });
     }
     if (w.ammo.mag === 0) w.startReload(); // 空槍撿到彈藥直接換彈
     if (game.updateAmmoHud) game.updateAmmoHud();
     count();
     say('pickupAmmo', 'switch');
     return true;
+  }
+
+  // 回合結束:同樓層、看得到、40m 內而且用得到的掉落物跟金幣一起飛向玩家;其餘留在原地照常倒數
+  collectAll(game) {
+    const p = game.player, w = this.world, py = p.pos.y || 0;
+    let n = 0;
+    for (const it of this.items) {
+      if (it.state !== 'idle') continue;
+      const pos = it.root.position;
+      if (Math.abs(pos.y - py) > 1.5 || Math.hypot(pos.x - p.pos.x, pos.z - p.pos.z) > 40) continue;
+      if (w?.hasLineOfSight && !w.hasLineOfSight(pos.x, pos.y + 1.5, pos.z, p.pos.x, py + 1.6, p.pos.z)) continue; // 視線高度:隔牆的不收,櫃台、矮牆後面的照收
+      if (!this.wants(it, game) || !this.apply(it, game)) continue;
+      it.state = 'take';
+      it.take = -n * 0.12; // 一個接一個飛過來
+      it.takeFrom.copy(it.holder.position);
+      it.holder.visible = true;
+      n++;
+    }
+    return n;
   }
 
   _remove(i) {
@@ -792,6 +862,8 @@ export class Pickups {
     it.glow.material.dispose();
     this.items.splice(i, 1);
   }
+
+  dispose() { this.clear(); } // 共用模型/材質(R)留著給下一張地圖
 
   clear() {
     while (this.items.length) this._remove(this.items.length - 1);

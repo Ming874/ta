@@ -3,12 +3,14 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>廢棄醫院 · 殭屍生存</title>
+<meta name="description" content="聖心醫院:網頁 3D 殭屍生存射擊遊戲。多樓層廢棄醫院、回合制屍潮、商店與武器改裝,支援合作與對戰連線。" />
+<title>聖心醫院 · 殭屍生存</title>
 <style>
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", system-ui, sans-serif; color: #d8d8d0; user-select: none; }
   canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   #hud { position: fixed; inset: 0; pointer-events: none; display: none; }
   #hud.on { display: block; }
+  /* 準心(src/weapons/scope.js 接手)、命中標記與受傷暈影;其餘 HUD 由 src/ui/hud.js 建立 */
   #crosshair { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
   #crosshair i { position: absolute; background: rgba(235,235,225,.85); box-shadow: 0 0 2px #000; }
   #crosshair i:nth-child(1) { left: -1px; top: -12px; width: 2px; height: 7px; }
@@ -20,47 +22,13 @@
   #hit::after { transform: rotate(-45deg); }
   #hit.head::before, #hit.head::after { background: #ff3b2f; }
   #damage { position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(120,0,0,0) 35%, rgba(150,0,0,.85) 100%); opacity: 0; transition: opacity .35s; }
-  .panel { position: absolute; font-weight: 700; text-shadow: 0 1px 3px #000; }
-  #health { left: 28px; bottom: 26px; width: 260px; }
-  #health .lbl { font-size: 13px; letter-spacing: 2px; opacity: .8; }
-  #health .bar { height: 14px; border: 1px solid rgba(255,255,255,.35); background: rgba(0,0,0,.5); margin-top: 4px; }
-  #health .fill { height: 100%; width: 100%; background: linear-gradient(#c93b32, #8f1d18); transition: width .2s; }
-  #health .num { font-size: 26px; }
-  #ammo { right: 30px; bottom: 24px; text-align: right; }
-  #ammo .wname { font-size: 14px; letter-spacing: 3px; opacity: .8; }
-  #ammo .count { font-size: 44px; line-height: 1; }
-  #ammo .count small { font-size: 22px; opacity: .65; }
-  #coins { right: 28px; top: 22px; font-size: 24px; color: #f2c84b; display: flex; align-items: center; gap: 8px; }
-  #coins .dot { width: 18px; height: 18px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff1a6, #d7a520 60%, #8a6410); box-shadow: 0 0 6px rgba(240,190,60,.6); }
-  #coins .gain { color: #ffe9a0; font-size: 18px; opacity: 0; transition: opacity .3s; }
-  #roundinfo { left: 50%; top: 20px; transform: translateX(-50%); text-align: center; }
-  #roundinfo .r { font-size: 30px; letter-spacing: 6px; }
-  #roundinfo .z { font-size: 14px; opacity: .75; letter-spacing: 2px; }
-  #banner { position: absolute; left: 0; right: 0; top: 24%; text-align: center; font-size: 54px; letter-spacing: 12px; font-weight: 700; color: #cfd3c8; text-shadow: 0 2px 12px #000; opacity: 0; transition: opacity .6s; }
-  #banner small { display: block; font-size: 20px; letter-spacing: 4px; margin-top: 12px; opacity: .85; }
-  #prompt { position: absolute; left: 50%; bottom: 20%; transform: translateX(-50%); font-size: 20px; text-shadow: 0 1px 4px #000; background: rgba(0,0,0,.45); padding: 8px 18px; border: 1px solid rgba(255,255,255,.25); display: none; }
-  #pickfeed { position: absolute; left: 50%; bottom: 29%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
-  #pickfeed .pk { font-size: 24px; font-weight: 700; letter-spacing: 3px; white-space: nowrap; text-align: center; text-shadow: 0 1px 3px #000, 0 0 14px rgba(0,0,0,.9); animation: pkfloat 2s ease-out forwards; }
-  #pickfeed .pk small { display: block; font-size: 14px; letter-spacing: 1px; margin-top: 1px; opacity: .8; }
-  #pickfeed .ic { display: inline-block; position: relative; width: 16px; height: 16px; margin-right: 9px; vertical-align: -1px; filter: drop-shadow(0 0 4px currentColor); }
-  #pickfeed .ic.med::before, #pickfeed .ic.med::after { content: ""; position: absolute; background: currentColor; left: 5px; top: 0; width: 6px; height: 16px; border-radius: 1px; }
-  #pickfeed .ic.med::after { left: 0; top: 5px; width: 16px; height: 6px; }
-  #pickfeed .ic.ammo::before, #pickfeed .ic.ammo::after { content: ""; position: absolute; bottom: 0; width: 5px; height: 15px; background: currentColor; border-radius: 3px 3px 1px 1px; }
-  #pickfeed .ic.ammo::before { left: 1px; }
-  #pickfeed .ic.ammo::after { left: 9px; }
-  @keyframes pkfloat { 0% { opacity: 0; transform: translateY(16px) scale(.9); } 10% { opacity: 1; transform: translateY(0) scale(1.06); } 18% { transform: scale(1); } 72% { opacity: 1; } 100% { opacity: 0; transform: translateY(-40px); } }
-  #ammo.flash .count { animation: hudflash .7s ease-out; transform-origin: right bottom; }
-  #health.flash .num { animation: hudflash .7s ease-out; transform-origin: left bottom; }
-  #health.flash .fill { animation: barflash .7s ease-out; }
-  @keyframes hudflash { 0% { color: var(--flash); transform: scale(1.18); text-shadow: 0 0 16px var(--flash), 0 1px 3px #000; } 100% { transform: scale(1); } }
-  @keyframes barflash { 0% { filter: brightness(2.2) saturate(.6); box-shadow: 0 0 12px var(--flash); } 100% { filter: none; box-shadow: none; } }
+  /* 全螢幕覆蓋層(主選單 / 暫停 / 死亡):內容由 src/ui/menu.js 建立,這裡只是載入前的樣子 */
   .overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; text-align: center; background: rgba(0,0,0,.72); z-index: 10; }
   .overlay.on { display: flex; }
   .overlay h1 { font-size: 56px; letter-spacing: 10px; margin: 0 0 8px; font-weight: 700; color: #cfd3c8; }
   .overlay p { margin: 6px 0; font-size: 17px; opacity: .85; line-height: 1.7; }
-  .overlay .btn { margin-top: 22px; padding: 12px 36px; font-size: 20px; letter-spacing: 4px; color: #e8e8e0; background: #7a1a15; border: 1px solid #b4443a; cursor: pointer; font-family: inherit; }
-  .overlay .btn:hover { background: #99241d; }
-  .keys { margin-top: 18px; font-size: 14px; opacity: .7; line-height: 1.9; }
+  .boot { letter-spacing: 6px; opacity: .55; font-size: 14px; animation: boot 1.6s ease-in-out infinite; }
+  @keyframes boot { 50% { opacity: .2; } }
 </style>
 </head>
 <body>
@@ -70,34 +38,17 @@
   <div id="crosshair"><i></i><i></i><i></i><i></i></div>
   <div id="hit"></div>
   <div id="damage"></div>
-  <div class="panel" id="health"><div class="lbl">生命</div><div class="bar"><div class="fill" id="hpfill"></div></div><div class="num" id="hpnum">100</div></div>
-  <div class="panel" id="ammo"><div class="wname" id="wname">手槍</div><div class="count"><span id="mag">17</span> <small>/ <span id="reserve">90</span></small></div></div>
-  <div class="panel" id="coins"><span class="gain" id="coingain"></span><span class="dot"></span><span id="coinnum">0</span></div>
-  <div class="panel" id="roundinfo"><div class="r">第 <span id="round">1</span> 回合</div><div class="z">殭屍剩餘 <span id="zleft">0</span></div></div>
-  <div id="banner"></div>
-  <div id="prompt"></div>
-  <div id="pickfeed"></div>
 </div>
 
 <div class="overlay on" id="menu">
-  <h1>廢棄醫院</h1>
-  <p>殭屍橫行的聖心醫院。守住大廳，撐過每一個回合。<br />每 5 回合結束，醫院大門會出現武器商店。</p>
-  <button class="btn" id="startBtn">開始遊戲</button>
-  <div class="keys">WASD 移動　Shift 奔跑　滑鼠 瞄準／射擊　R 換彈　1-4 切換武器<br />F 手電筒　E 互動（商店）　N 開始下一回合（商店內）</div>
+  <h1>聖心醫院</h1>
+  <p class="boot">載入中…</p>
+  <button id="startBtn" hidden></button>
 </div>
+<div class="overlay" id="pause"><button id="resumeBtn" hidden></button></div>
+<div class="overlay" id="dead"><div id="deadinfo"></div><button id="restartBtn" hidden></button></div>
 
-<div class="overlay" id="pause">
-  <h1>暫停</h1>
-  <p>點擊畫面繼續</p>
-  <button class="btn" id="resumeBtn">繼續</button>
-</div>
-
-<div class="overlay" id="dead">
-  <h1 style="color:#b02a22">你死了</h1>
-  <p id="deadinfo"></p>
-  <button class="btn" id="restartBtn">重新開始</button>
-</div>
-
+<noscript><p style="position:fixed;inset:0;display:grid;place-items:center;color:#ccc;font-size:18px">這個遊戲需要啟用 JavaScript 與 WebGL。</p></noscript>
 <script type="module" src="/src/main.js"></script>
 </body>
 </html>

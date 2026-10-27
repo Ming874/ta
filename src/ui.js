@@ -2,6 +2,7 @@ import { Hud } from './ui/hud.js';
 import { ShopUI } from './ui/shop.js';
 import { MapUI } from './ui/map.js';
 import { Menu } from './ui/menu.js';
+import { Tips } from './ui/tips.js';
 import { settings } from './ui/settings.js';
 
 const $ = (id) => document.getElementById(id);
@@ -12,6 +13,7 @@ export class UI {
   constructor() {
     this.hudEl = $('hud');
     this.hud = new Hud(this.hudEl);
+    this.tips = new Tips(this.hudEl); // 新手提示(src/ui/tips.js)
     this.shop = new ShopUI(this);
     this.map = new MapUI(this);
     this.menu = new Menu(this);
@@ -38,14 +40,16 @@ export class UI {
   // ---------- HUD(轉給 Hud) ----------
   setHP(hp, max) { this.hud.setHP(hp, max); }
   setArmor(a, max) { this.hud.setArmor(a, max); }
-  setAmmo(name, mag, reserve, reloading, cap) { this.hud.setAmmo(name, mag, reserve, reloading, cap); }
+  setAmmo(name, mag, reserve, reloading, cap, tier = 0) { this.hud.setAmmo(name, mag, reserve, reloading, cap, tier); }
   setCoins(n, instant = false) { this.hud.setCoins(n, instant); }
+  setScore(n, instant = false) { this.hud.setScore(n, instant); }
+  streak(n, mul, gap, t) { this.hud.streak(n, mul, gap, t); }
   coinGain(n) { this.hud.coinGain(n); }
   spend(n) { this.hud.spend(n); }
   pickup(text, color, o) { this.hud.pickup(text, color, o); }
   setRound(n) { this.hud.setRound(n); }
   setZombies(n) { this.hud.setZombies(n); }
-  setRest(sec) { this.hud.setRest(sec); }
+  setRest(sec, canSkip = true, next = '') { this.hud.setRest(sec, canSkip, next); }
   setRoundText(html) { this.hud.setRoundText(html); }
   banner(text, sub = '', ms = 3500, cls = '') { this.hud.banner(text, sub, ms, cls); }
   prompt(text, dim = false) { this.hud.prompt(text, dim); }
@@ -53,7 +57,7 @@ export class UI {
   killPop(n, tag, kind) { this.hud.killPop(n, tag, kind); }
   healing(k) { this.hud.healing(k); }
   showDeath(summary) { this.menu.showDeath(summary); }
-  resetRun() { this.hud.reset(); this._lastHurt = null; this._lastHp = null; }
+  resetRun() { this.hud.reset(); this.tips.clearQueue(); this._lastHurt = null; this._lastHp = null; }
 
   hitMarker(head) {
     const el = $('hit');
@@ -94,6 +98,7 @@ export class UI {
     }
     this._lastHp = p.hp;
     this.hud.update(game, dt);
+    this.tips.update(dt);
     if (this.map.isOpen) this.map.update(game);
   }
 }

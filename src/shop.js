@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { assets } from './sys/assets.js';
 import { createDisplayGun } from './weapons/models.js';
 import { WEAPONS } from './weapons/weapon.js';
 import { pickupModel } from './pickups.js';
@@ -12,47 +13,57 @@ import { sfx } from './audio.js';
 // 店面在遊戲建立時就建好(碰撞盒要在 buildNav 之前登記);回合間休息時 setOpen(true) 捲門拉起、霓虹點亮,戰鬥中關閉。
 
 // =====================================================================
-// 商品目錄
+// 商品目錄(4 個分頁:武器 / 彈藥 / 改裝 / 裝備)
+// 商品物件:{ key, kind, id, name, sub, desc, price, icon, preview, state, … };state:
+//   'buy' 可購買、'poor' 金幣不足、'part' 買不起補滿但可買部分彈藥、'owned' 已擁有(可裝備)、'equipped' 使用中、'max' 已滿/已滿級、'na' 未到貨
 // =====================================================================
-export const WEAPON_ITEMS = ['revolver', 'shotgun', 'ak47', 'm4a1', 'barrett'];
-const PRICE_FALLBACK = { revolver: 120, shotgun: 180, ak47: 300, m4a1: 450, barrett: 650 };
+export const WEAPON_ITEMS = ['pistol', 'revolver', 'shotgun', 'ak47', 'm4a1', 'barrett'];
+const PRICE_FALLBACK = { pistol: 0, revolver: 120, shotgun: 180, ak47: 300, m4a1: 450, barrett: 650 };
 const INFO_FALLBACK = {
   shotgun: { name: '霰彈槍', desc: 'Remington 870 · 12 號霰彈' },
   barrett: { name: '巴雷特', desc: 'M82A1 · .50 BMG 反器材步槍' },
 };
 // 每把槍的定位(商店說明文字)
 const BLURB = {
-  pistol: '可靠的隨身武器,彈藥充足。適合點射頭部。',
-  revolver: '六發 .357 馬格南,一槍打爛殭屍的頭。換彈慢,每一發都要算。',
+  pistol: '可靠的隨身武器,彈藥便宜又充足。開鏡點射頭部最划算。',
+  revolver: '六發 .357 馬格南,一槍打爛殭屍的頭,還能貫穿一隻。換彈慢,每一發都要算。',
   shotgun: '近距離的絕對火力,一發霰彈能撕開整排殭屍。距離一拉開就無力。',
-  ak47: '7.62mm 全自動,穿透力強、後座大。對付巨屍的主力。',
+  ak47: '7.62mm 全自動,穿透力強、後座大。前期對付巨屍的主力。',
   m4a1: '射速快、彈道穩,中距離精準壓制。補給站的招牌商品。',
   barrett: '.50 BMG 反器材步槍,一發貫穿多隻殭屍。開鏡狙擊,裝填極慢。',
 };
 
+// 改裝:等級倍率寫到 weapons.mods[id](WeaponSystem.stat() 套用到傷害/彈匣/換彈,spreadNow() 套用散布)
 export const MOD_DEFS = {
-  damage: { name: '傷害強化', max: 3, mul: [1, 1.15, 1.3, 1.5], base: 80, desc: (lv) => `改用高壓彈藥,傷害 +${Math.round((MOD_DEFS.damage.mul[lv] - 1) * 100)}%` },
-  mag: { name: '擴充彈匣', max: 2, mul: [1, 1.35, 1.7], base: 70, desc: (lv) => `加長彈匣,容量 +${Math.round((MOD_DEFS.mag.mul[lv] - 1) * 100)}%(購買時直接裝滿)` },
-  reload: { name: '快速換彈', max: 2, mul: [1, 0.8, 0.65], base: 60, desc: (lv) => `磁吸彈匣座與練習,換彈時間 −${Math.round((1 - MOD_DEFS.reload.mul[lv]) * 100)}%` },
-  spread: { name: '穩定', max: 1, mul: [1, 0.75], base: 90, desc: () => '握把與制退器,散布 −25%' },
+  damage: { name: '傷害強化', short: '傷害', icon: 'bolt', max: 3, mul: [1, 1.15, 1.32, 1.5], base: 80, tiers: ['高壓彈藥', '鎢芯彈頭', '特製熱處理槍管'],
+    desc: (lv) => `${MOD_DEFS.damage.tiers[lv - 1]}:傷害 +${Math.round((MOD_DEFS.damage.mul[lv] - 1) * 100)}%` },
+  mag: { name: '擴充彈匣', short: '彈匣', icon: 'ammo', max: 2, mul: [1, 1.35, 1.7], base: 70, tiers: ['加長彈匣', '雙聯彈鼓'],
+    desc: (lv) => `${MOD_DEFS.mag.tiers[lv - 1]}:彈匣容量 +${Math.round((MOD_DEFS.mag.mul[lv] - 1) * 100)}%(購買時直接裝滿)` },
+  reload: { name: '快速換彈', short: '換彈', icon: 'gear', max: 2, mul: [1, 0.8, 0.65], base: 60, tiers: ['磁吸彈匣座', '競技級擴口'],
+    desc: (lv) => `${MOD_DEFS.reload.tiers[lv - 1]}:換彈時間 −${Math.round((1 - MOD_DEFS.reload.mul[lv]) * 100)}%` },
+  spread: { name: '穩定握把', short: '穩定', icon: 'head', max: 2, mul: [1, 0.8, 0.62], base: 75, tiers: ['前握把與制退器', '雷射瞄準與配重'],
+    desc: (lv) => `${MOD_DEFS.spread.tiers[lv - 1]}:散布 −${Math.round((1 - MOD_DEFS.spread.mul[lv]) * 100)}%(腰射、開鏡、移動都更準)` },
 };
 export const MOD_ORDER = ['damage', 'mag', 'reload', 'spread'];
 const TIER = { pistol: 0.6, revolver: 0.8, shotgun: 0.9, ak47: 1, m4a1: 1.1, barrett: 1.35 };
-const LV_MUL = [1, 1.8, 2.8];
+const LV_MUL = [1, 1.8, 2.8]; // 每升一級價格遞增
 const ROMAN = ['', 'I', 'II', 'III'];
 export const roman = (n) => ROMAN[n] || String(n);
-const r5 = (v) => Math.max(5, Math.round(v / 5) * 5);
+const r5 = (v) => Math.max(5, Math.ceil(v / 5) * 5);
 export const modPrice = (id, key, lv) => r5(MOD_DEFS[key].base * (TIER[id] ?? 1) * LV_MUL[lv - 1]);
 
+// 彈藥:每發價格(補滿 = 缺少的子彈 × 單價,湊整到 5;買不起時以整個彈匣為單位買部分)
+export const AMMO_COST = { pistol: 0.4, revolver: 1.5, shotgun: 1.5, ak47: 0.5, m4a1: 0.5, barrett: 3 };
+const BUNDLE = 0.85; // 兩把以上一起補滿打 85 折
+
 export const GEAR = [
-  { id: 'vest_light', name: '輕型防彈背心', price: 150, armor: 50, icon: 'vest', desc: '軟式凱夫拉背心。護甲 50,吸收 60% 傷害直到耗盡。' },
-  { id: 'vest_heavy', name: '重型防彈背心', price: 300, armor: 100, icon: 'vest', desc: '插板式重型背心。護甲 100,吸收 60% 傷害直到耗盡。' },
-  { id: 'grenade', name: '手榴彈 ×2', price: 120, cap: 6, add: 2, icon: 'grenade', desc: 'M67 破片手榴彈。按 G 投擲,約 3 秒後爆炸。最多攜帶 6 顆。' },
-  { id: 'medkit', name: '醫療包', price: 90, cap: 3, add: 1, icon: 'medkit', desc: '按 H 使用:2 秒內回復 50 生命,使用時無法射擊。最多攜帶 3 個。' },
-];
-export const SUPPLY = [
-  { id: 'ammo_all', name: '全部彈藥補滿', price: 120, icon: 'ammo', desc: '所有已擁有武器的彈匣與備彈全部補滿。' },
-  { id: 'ammo_cur', name: '目前武器彈藥', price: 60, icon: 'ammo', desc: '補滿手上這把武器的彈匣與備彈。' },
+  { id: 'vest_light', group: '防具', name: '輕型防彈背心', price: 150, armor: 50, icon: 'vest', desc: '軟式凱夫拉背心。護甲 50,吸收 60% 傷害直到耗盡。' },
+  { id: 'vest_heavy', group: '防具', name: '重型防彈背心', price: 300, armor: 100, icon: 'vest', desc: '插板式重型背心。護甲 100,吸收 60% 傷害直到耗盡。' },
+  { id: 'armor_fix', group: '防具', name: '護甲修補', per: 2, icon: 'shield', desc: '補好目前背心的破損,恢復到滿護甲。每點 2 金幣,比買新背心便宜。' },
+  { id: 'grenade', group: '投擲物', name: '手榴彈', price: 60, add: 1, cap: 6, icon: 'grenade', desc: 'M67 破片手榴彈。按 G 投擲,約 3 秒後爆炸,半徑約 6 公尺。最多攜帶 6 顆。' },
+  { id: 'grenade3', group: '投擲物', name: '手榴彈 ×3', price: 165, add: 3, cap: 6, icon: 'grenade', desc: '三顆一組,省 15 金幣。按 G 投擲。最多攜帶 6 顆。' },
+  { id: 'medkit', group: '醫療', name: '醫療包', price: 90, add: 1, cap: 3, icon: 'medkit', desc: '按 H 使用:2 秒內回復 50 生命,使用時無法射擊。最多攜帶 3 個。' },
+  { id: 'heal', group: '醫療', name: '急救處置', per: 1, icon: 'heal', desc: '在櫃台立刻包紮,生命直接回滿。每點生命 1 金幣。' },
 ];
 
 const weaponDef = (id) => WEAPONS[id];
@@ -87,12 +98,13 @@ export function baseStats(id) {
     mobility: MOB[id] ?? 0.6,
   };
 }
-// 改裝後的五項數值
+// 改裝後的五項數值(射速條也反映換彈與彈匣:持續火力)
 export function moddedStats(id, mods = {}) {
   const s = baseStats(id);
-  const dm = mods.damage ?? 1, sp = mods.spread ?? 1;
+  const dm = mods.damage ?? 1, sp = mods.spread ?? 1, mg = mods.mag ?? 1, rl = mods.reload ?? 1;
   s.damage = Math.min(1, s.damage * (1 + (dm - 1) * 0.9));
   s.accuracy = Math.min(1, 1 - (1 - s.accuracy) * sp);
+  s.rate = Math.min(1, s.rate * (1 + (mg - 1) * 0.12 + (1 - rl) * 0.25));
   return s;
 }
 
@@ -106,85 +118,160 @@ function syncMods(game, id) {
   w.mods ||= {};
   w.mods[id] = { damage: MOD_DEFS.damage.mul[lv.damage], mag: MOD_DEFS.mag.mul[lv.mag], reload: MOD_DEFS.reload.mul[lv.reload], spread: MOD_DEFS.spread.mul[lv.spread] };
 }
+// 改裝總等級(HUD 顯示用)
+export function modTotal(game, id) {
+  const lv = game.upgrades?.[id];
+  return lv ? lv.damage + lv.mag + lv.reload + lv.spread : 0;
+}
+export const MOD_MAX = MOD_ORDER.reduce((s, k) => s + MOD_DEFS[k].max, 0);
 
-const full = (w, id) => {
+// 某把武器的彈藥報價:缺多少、補滿價、買不起時能買幾個彈匣
+export function ammoQuote(w, id, coins = Infinity) {
   const a = w.inv[id], d = weaponDef(id);
-  return !a || !d || (a.mag >= statOf(w, id, 'mag') && a.reserve >= (d.reserveCap ?? a.reserve));
-};
-function refill(w, id) {
+  if (!a || !d) return null;
+  const magCap = statOf(w, id, 'mag'), resCap = d.reserveCap ?? a.reserve;
+  const missMag = Math.max(0, magCap - a.mag), missRes = Math.max(0, resCap - a.reserve), missing = missMag + missRes;
+  const per = AMMO_COST[id] ?? 1;
+  const price = missing ? r5(missing * per) : 0;
+  const perMag = Math.max(1, Math.ceil(magCap * per));
+  const mags = coins >= price ? 0 : Math.min(Math.floor(coins / perMag), Math.ceil(missing / magCap));
+  return { id, magCap, resCap, mag: a.mag, reserve: a.reserve, missing, price, per, perMag, part: mags > 0 ? { mags, rounds: Math.min(missing, mags * magCap), price: mags * perMag } : null };
+}
+// 加子彈:先補彈匣再補備彈;回傳實際加了幾發
+function addAmmo(w, id, n) {
   const a = w.inv[id], d = weaponDef(id);
-  if (!a || !d) return;
-  a.mag = statOf(w, id, 'mag');
-  a.reserve = Math.max(a.reserve, d.reserveCap ?? a.reserve);
+  if (!a || !d) return 0;
+  const m = Math.min(n, Math.max(0, statOf(w, id, 'mag') - a.mag));
+  a.mag += m;
+  const r = Math.min(n - m, Math.max(0, (d.reserveCap ?? a.reserve) - a.reserve));
+  a.reserve += r;
+  return m + r;
 }
 
-// 依目前狀態產生分頁與商品(UI 每次重繪時呼叫)
+// 依目前狀態產生分頁與商品(UI 每次重繪、以及每次購買前都會重新產生)
 export function shopTabs(game) {
   const w = game.weapons, p = game.player, coins = p.coins;
   const st = (price, blocked) => (blocked ? blocked : coins >= price ? 'buy' : 'poor');
+  // ---- 武器 ----
   const weapons = WEAPON_ITEMS.map((id) => {
     const d = weaponDef(id), price = weaponPrice(id), owned = !!d && w.has(id);
     return {
-      key: `w:${id}`, kind: 'weapon', id, weapon: id, name: weaponName(id), sub: d?.desc || INFO_FALLBACK[id]?.desc || '',
+      key: `w:${id}`, kind: 'weapon', id, weapon: id, slot: d?.slot, name: weaponName(id), sub: d?.desc || INFO_FALLBACK[id]?.desc || '',
       desc: BLURB[id] || d?.desc || '', price, preview: { type: 'gun', id },
       state: !d ? 'na' : owned ? (w.current === id ? 'equipped' : 'owned') : st(price),
     };
   });
+  // ---- 彈藥 ----
+  const owned = WEAPON_ITEMS.filter((id) => weaponDef(id) && w.has(id));
+  const byCur = [...owned].sort((a, b) => (b === w.current) - (a === w.current));
+  const quotes = byCur.map((id) => ammoQuote(w, id, coins));
+  const needs = quotes.filter((q) => q.missing > 0);
+  const sum = needs.reduce((s, q) => s + q.price, 0);
+  const allPrice = needs.length >= 2 ? r5(sum * BUNDLE) : sum;
+  const ammo = [{
+    key: 'a:all', kind: 'ammo', id: 'ammo_all', name: '全部彈藥補滿', icon: 'ammo', preview: { type: 'bigammo' },
+    sub: needs.length ? `${needs.length} 把武器需要補充${needs.length >= 2 ? ' · 85 折' : ''}` : '所有武器彈藥都是滿的',
+    desc: '所有已擁有武器的彈匣與備彈一次補滿。兩把以上一起補打 85 折。', price: allPrice, full: sum, quotes,
+    state: needs.length ? st(allPrice) : 'max',
+  }];
+  for (const q of quotes) {
+    const id = q.id;
+    ammo.push({
+      key: `a:${id}`, kind: 'ammo', id: `ammo:${id}`, weapon: id, name: `${weaponName(id)} 彈藥`, icon: 'ammo', preview: { type: 'ammo' },
+      sub: `彈匣 ${q.mag}/${q.magCap} · 備彈 ${q.reserve}/${q.resCap}`, quote: q,
+      desc: `每發 ${q.per} 金幣,補滿缺少的 ${q.missing} 發。金幣不夠時改以彈匣為單位購買(每個 ${q.perMag} 金幣)。`,
+      price: q.part ? q.part.price : q.price,
+      state: !q.missing ? 'max' : coins >= q.price ? 'buy' : q.part ? 'part' : 'poor',
+    });
+  }
+  // ---- 改裝 ----
   const mods = [];
-  const owned = ['pistol', ...WEAPON_ITEMS].filter((id) => weaponDef(id) && w.has(id));
-  owned.sort((a, b) => (b === w.current) - (a === w.current));
-  for (const id of owned) {
+  for (const id of byCur) {
     const lv = modLevels(game, id);
-    mods.push({ key: `h:${id}`, header: true, name: weaponName(id), weapon: id });
+    mods.push({ key: `h:${id}`, header: true, name: `${weaponName(id)}${id === w.current ? ' · 使用中' : ''}`, weapon: id, total: modTotal(game, id) });
     for (const k of MOD_ORDER) {
       const D = MOD_DEFS[k], cur = lv[k], max = D.max, next = Math.min(max, cur + 1);
       const price = cur >= max ? 0 : modPrice(id, k, next);
       mods.push({
-        key: `m:${id}:${k}`, kind: 'mod', id: `${id}:${k}`, weapon: id, mod: k, level: cur, max, name: `${D.name} ${roman(Math.max(1, next))}`,
-        sub: weaponName(id), desc: D.desc(next), price, preview: { type: 'gun', id }, state: cur >= max ? 'max' : st(price),
+        key: `m:${id}:${k}`, kind: 'mod', id: `${id}:${k}`, weapon: id, mod: k, level: cur, max, icon: D.icon, name: `${D.name} ${roman(Math.max(1, next))}`,
+        sub: cur >= max ? `${weaponName(id)} · 已滿級` : `${weaponName(id)} · ${D.tiers[next - 1]}`, desc: D.desc(next), price,
+        prices: Array.from({ length: max }, (_, i) => modPrice(id, k, i + 1)), preview: { type: 'gun', id }, state: cur >= max ? 'max' : st(price),
       });
     }
   }
-  const gear = GEAR.map((g) => {
-    let blocked = null;
-    if (g.armor && p.armor >= g.armor) blocked = 'max';
-    if (g.id === 'grenade' && (p.grenades || 0) >= g.cap) blocked = 'max';
-    if (g.id === 'medkit' && (p.medkits || 0) >= g.cap) blocked = 'max';
-    const have = g.armor ? `護甲 ${Math.ceil(p.armor || 0)}/${g.armor}` : g.id === 'grenade' ? `持有 ${p.grenades || 0}/${g.cap}` : `持有 ${p.medkits || 0}/${g.cap}`;
-    return { key: `g:${g.id}`, kind: 'gear', id: g.id, name: g.name, sub: have, desc: g.desc, price: g.price, icon: g.icon, preview: { type: g.id }, state: st(g.price, blocked) };
-  });
-  const ids = Object.keys(w.inv).filter((id) => weaponDef(id));
-  const supply = SUPPLY.map((s) => {
-    const isFull = s.id === 'ammo_all' ? ids.every((id) => full(w, id)) : full(w, w.current);
-    return { key: `s:${s.id}`, kind: 'supply', id: s.id, name: s.name, sub: s.id === 'ammo_cur' ? weaponName(w.current) : `${ids.length} 把武器`, desc: s.desc, price: s.price, icon: s.icon, preview: { type: s.id === 'ammo_all' ? 'bigammo' : 'ammo' }, state: st(s.price, isFull ? 'max' : null) };
-  });
+  // ---- 裝備(防具 / 投擲物 / 醫療) ----
+  const gear = [];
+  let group = '';
+  for (const g of GEAR) {
+    if (g.group !== group) { group = g.group; gear.push({ key: `h:${group}`, header: true, name: group }); }
+    let price = g.price ?? 0, blocked = null, have = '';
+    if (g.armor) {
+      have = p.maxArmor > 0 ? `目前護甲 ${Math.ceil(p.armor || 0)}/${p.maxArmor}` : '目前沒有背心';
+      if ((p.armor || 0) >= g.armor) blocked = 'max';
+    } else if (g.id === 'armor_fix') {
+      const miss = Math.max(0, Math.ceil((p.maxArmor || 0) - (p.armor || 0)));
+      price = miss > 0 ? r5(miss * g.per) : 0;
+      have = p.maxArmor > 0 ? `護甲 ${Math.ceil(p.armor || 0)}/${p.maxArmor}` : '需要先購買背心';
+      if (!(p.maxArmor > 0)) blocked = 'na';
+      else if (!miss) blocked = 'max';
+    } else if (g.id === 'grenade' || g.id === 'grenade3') {
+      have = `持有 ${p.grenades || 0}/${g.cap}`;
+      if ((p.grenades || 0) + g.add > g.cap) blocked = 'max';
+    } else if (g.id === 'medkit') {
+      have = `持有 ${p.medkits || 0}/${g.cap}`;
+      if ((p.medkits || 0) >= g.cap) blocked = 'max';
+    } else if (g.id === 'heal') {
+      const miss = Math.max(0, Math.ceil(p.maxHp - p.hp));
+      price = miss > 0 ? r5(miss * g.per) : 0;
+      have = `生命 ${Math.ceil(p.hp)}/${p.maxHp}`;
+      if (!miss) blocked = 'max';
+    }
+    const pv = g.armor ? g.id : g.id === 'armor_fix' ? (p.maxArmor >= 100 ? 'vest_heavy' : 'vest_light') : g.id === 'grenade3' ? 'grenade3' : g.id === 'heal' ? 'medkit' : g.id;
+    gear.push({ key: `g:${g.id}`, kind: 'gear', id: g.id, group: g.group, name: g.name, sub: have, desc: g.desc, price, icon: g.icon, preview: { type: pv }, state: st(price, blocked), def: g });
+  }
   return [
     { id: 'weapons', name: '武器', items: weapons },
+    { id: 'ammo', name: '彈藥', items: ammo },
     { id: 'mods', name: '改裝', items: mods, empty: '購買武器後即可改裝' },
     { id: 'gear', name: '裝備', items: gear },
-    { id: 'supply', name: '補給', items: supply },
   ];
 }
+export function findItem(tabs, key) {
+  for (const t of tabs) for (const it of t.items) if (it.key === key && !it.header) return it;
+  return null;
+}
 
-// 購買:回傳 { ok, reason?, msg, sound }。reason:'coins' 金幣不足、'max' 已滿、'na' 尚未開放
-export function purchase(game, item) {
+// 購買:依商品 key 以目前狀態重新報價後執行(不信任 UI 手上的舊資料)。
+// 回傳 { ok, reason?, msg, sound, price, equip?, key, item }。reason:'coins' 金幣不足、'max' 已滿、'na' 尚未開放
+export function purchase(game, ref) {
   const w = game.weapons, p = game.player;
-  if (!item || item.header) return { ok: false, reason: 'na', msg: '' };
-  if (item.state === 'na') return { ok: false, reason: 'na', msg: '這項商品尚未到貨' };
+  const key = typeof ref === 'string' ? ref : ref?.key;
+  const item = key ? findItem(shopTabs(game), key) : null;
+  if (!item) return { ok: false, reason: 'na', msg: '', key };
+  const fail = (reason, msg) => ({ ok: false, reason, msg, key, item });
+  if (item.state === 'na') return fail('na', item.id === 'armor_fix' ? '需要先購買防彈背心' : '這項商品尚未到貨');
   if (item.kind === 'weapon' && (item.state === 'owned' || item.state === 'equipped')) {
     if (w.current !== item.id) w.switchTo(item.id);
-    return { ok: true, equip: true, msg: `裝備 ${item.name}` };
+    return { ok: true, equip: true, msg: `裝備 ${item.name}`, key, item, sound: 'equip', price: 0 };
   }
-  if (item.state === 'max') return { ok: false, reason: 'max', msg: item.kind === 'mod' ? '已達最高等級' : item.kind === 'supply' ? '彈藥已經是滿的' : '已達攜帶上限' };
-  if (p.coins < item.price) return { ok: false, reason: 'coins', msg: `金幣不足(還差 ${item.price - p.coins})` };
-  p.coins -= item.price;
+  if (item.state === 'max') {
+    const msg = item.kind === 'mod' ? '已達最高等級' : item.kind === 'ammo' ? '彈藥已經是滿的'
+      : item.id === 'heal' ? '生命已滿' : item.id === 'armor_fix' ? '護甲沒有破損' : item.def?.armor ? '目前的護甲已經更好' : '已達攜帶上限';
+    return fail('max', msg);
+  }
+  const price = item.price;
+  if (item.state === 'poor' || p.coins < price) return fail('coins', `金幣不足(還差 ${Math.max(1, price - p.coins)})`);
+  p.coins -= price;
+  if (game.stats) game.stats.spent = (game.stats.spent || 0) + price;
   let msg = `購買 ${item.name}`, sound = 'cash';
   if (item.kind === 'weapon') {
     w.give(item.id);
     w.mods ||= {};
-    if (!w.mods[item.id]) syncMods(game, item.id);
-    refill(w, item.id);
+    syncMods(game, item.id);
+    const a = w.inv[item.id];
+    if (a) { a.mag = statOf(w, item.id, 'mag'); a.reserve = Math.max(a.reserve, weaponDef(item.id).reserveCap ?? a.reserve); }
     w.switchTo(item.id);
+    sound = 'weapon';
   } else if (item.kind === 'mod') {
     const lv = modLevels(game, item.weapon);
     lv[item.mod] = Math.min(MOD_DEFS[item.mod].max, lv[item.mod] + 1);
@@ -192,16 +279,23 @@ export function purchase(game, item) {
     if (item.mod === 'mag' && w.inv[item.weapon]) w.inv[item.weapon].mag = statOf(w, item.weapon, 'mag'); // 新彈匣直接裝滿
     msg = `${weaponName(item.weapon)} · ${MOD_DEFS[item.mod].name} ${roman(lv[item.mod])}`;
     sound = 'upgrade';
-  } else if (item.id === 'vest_light' || item.id === 'vest_heavy') {
-    const g = GEAR.find((x) => x.id === item.id);
-    p.maxArmor = Math.max(p.maxArmor || 0, g.armor);
-    p.armor = Math.max(p.armor || 0, g.armor);
+  } else if (item.kind === 'ammo') {
+    if (item.id === 'ammo_all') { for (const id in w.inv) if (weaponDef(id)) addAmmo(w, id, 1e9); msg = '全部彈藥補滿'; }
+    else {
+      const q = item.quote, part = item.state === 'part' && q.part;
+      const n = addAmmo(w, item.weapon, part ? q.part.rounds : 1e9);
+      msg = part ? `${weaponName(item.weapon)} +${n} 發(${q.part.mags} 個彈匣)` : `${weaponName(item.weapon)} 彈藥補滿`;
+    }
+    sound = 'ammo';
+  } else if (item.def?.armor) {
+    p.maxArmor = Math.max(p.maxArmor || 0, item.def.armor);
+    p.armor = Math.max(p.armor || 0, item.def.armor);
     sound = 'armor';
-  } else if (item.id === 'grenade') p.grenades = Math.min(6, (p.grenades || 0) + 2);
-  else if (item.id === 'medkit') p.medkits = Math.min(3, (p.medkits || 0) + 1);
-  else if (item.id === 'ammo_all') for (const id in w.inv) refill(w, id);
-  else if (item.id === 'ammo_cur') refill(w, w.current);
-  return { ok: true, msg, sound, price: item.price };
+  } else if (item.id === 'armor_fix') { p.armor = p.maxArmor; msg = '護甲修補完成'; sound = 'armor'; }
+  else if (item.id === 'grenade' || item.id === 'grenade3') { p.grenades = Math.min(item.def.cap, (p.grenades || 0) + item.def.add); sound = 'item'; }
+  else if (item.id === 'medkit') { p.medkits = Math.min(item.def.cap, (p.medkits || 0) + 1); sound = 'item'; }
+  else if (item.id === 'heal') { p.hp = p.maxHp; msg = '急救完成 · 生命已回滿'; sound = 'heal'; }
+  return { ok: true, msg, sound, price, key, item };
 }
 
 // =====================================================================
@@ -242,6 +336,7 @@ class Buckets {
   flush(parent, shadow = true) {
     for (const [mat, list] of this.map) {
       const m = new THREE.Mesh(mergeGeometries(list), mat);
+      m.userData.own = true; // 店面自己的合併幾何(dispose 時釋放;材質是共用的)
       m.castShadow = shadow && !mat.transparent;
       m.receiveShadow = !mat.transparent;
       m.matrixAutoUpdate = false;
@@ -431,7 +526,7 @@ let loader = null;
 function loadModel(key) {
   if (!gltfCache[key]) {
     loader ||= new GLTFLoader();
-    gltfCache[key] = loader.loadAsync(`${BASE}models/props/${MODELS[key]}`).then((g) => {
+    gltfCache[key] = assets.task(() => loader.loadAsync(`${BASE}models/props/${MODELS[key]}`), { meta: { model: key, shop: true }, prio: 25 }).then((g) => { // 下載排隊(src/sys/assets.js)
       g.scene.traverse((o) => {
         if (!o.isMesh) return;
         o.castShadow = true;
@@ -580,6 +675,9 @@ export class Shop {
     this.boxes = [];
     this.anim = [];
     this.levelId = world.layout?.levels?.[S.level]?.id || '';
+    // 店面所在區域名稱(提示文字用)與店名字樣:都從地圖資料來,地圖可用 layout.shopBrand 覆寫
+    this.zoneName = (world.zoneAt ? world.zoneAt(S.x, (S.y || 0) + 0.2, S.z) : null)?.name || '';
+    this.brand = { sign: '聖心醫院 員工福利社', en: 'SACRED HEART HOSPITAL · STAFF STORE', term: '聖心醫院 補給終端 v2.3', ...(world.layout?.shopBrand || {}) };
     this.group = new THREE.Group();
     this.group.position.set(S.x, this.y, S.z);
     this.group.rotation.y = this.F.rot;
@@ -628,8 +726,8 @@ export class Shop {
         x.fillStyle = '#1d3a33'; x.fillRect(0, 0, w, h);
         x.strokeStyle = '#c9b27a'; x.lineWidth = 6; x.strokeRect(8, 8, w - 16, h - 16);
         x.fillStyle = '#e8dcc0'; x.font = `900 58px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle';
-        x.fillText('聖心醫院 員工福利社', w / 2, h * 0.42);
-        x.font = `700 22px ${FONT}`; x.fillStyle = '#c9b27a'; x.fillText('SACRED HEART HOSPITAL · STAFF STORE', w / 2, h * 0.78);
+        x.fillText(this.brand.sign, w / 2, h * 0.42);
+        x.font = `700 22px ${FONT}`; x.fillStyle = '#c9b27a'; x.fillText(this.brand.en, w / 2, h * 0.78);
         noise(x, w, h, 16);
       }, 1024, 248), roughness: 0.6,
     }));
@@ -801,10 +899,10 @@ export class Shop {
     });
     // 載入下載的捲門 PBR 貼圖(失敗就維持程式貼圖)
     const tl = new THREE.TextureLoader(), dir = `${BASE}models/props/rollershutter_door/textures/rollershutter_door_`;
-    tl.loadAsync(`${dir}diff_1k.jpg`).then((t) => {
+    assets.task(() => tl.loadAsync(`${dir}diff_1k.jpg`), { meta: { model: 'shutter', shop: true }, prio: 25 }).then((t) => {
       t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
       this.shutterMat.map = t; this.shutterMat.color.set(0x9a9c98); this.shutterMat.needsUpdate = true;
-      return Promise.all([tl.loadAsync(`${dir}nor_gl_1k.jpg`), tl.loadAsync(`${dir}arm_1k.jpg`)]);
+      return assets.task(() => Promise.all([tl.loadAsync(`${dir}nor_gl_1k.jpg`), tl.loadAsync(`${dir}arm_1k.jpg`)]), { meta: { model: 'shutter', shop: true }, prio: 26 });
     }).then(([n, arm]) => {
       this.shutterMat.normalMap = n;
       this.shutterMat.roughnessMap = this.shutterMat.metalnessMap = arm;
@@ -1242,11 +1340,11 @@ export class Shop {
     x.fillStyle = '#04100a'; x.fillRect(0, 0, w, h);
     x.font = `700 15px Consolas, ${FONT}`; x.textBaseline = 'top';
     if (this.open) {
-      x.fillStyle = '#7dffa0'; x.fillText('聖心醫院 補給終端 v2.3', 10, 10);
+      x.fillStyle = '#7dffa0'; x.fillText(this.brand.term, 10, 10);
       x.fillStyle = '#3fae62'; x.fillRect(10, 32, w - 20, 1);
       x.fillStyle = '#b9ffcc';
-      ['[1] 武器', '[2] 改裝', '[3] 裝備', '[4] 補給'].forEach((t, i) => x.fillText(t, 14, 44 + i * 22));
-      x.fillStyle = '#ffd27a'; x.fillText('站在櫃台前按 E', 14, 140);
+      ['[1] 武器', '[2] 彈藥', '[3] 改裝', '[4] 裝備'].forEach((t, i) => x.fillText(t, 14, 44 + i * 22));
+      x.fillStyle = '#ffd27a'; x.fillText('按 E 開啟商店', 14, 140);
       x.fillStyle = '#7dffa0'; x.fillText(blink ? '> _' : '>', 14, 164);
     } else {
       x.fillStyle = '#ff6a5a'; x.fillText('補給站 已關閉', 10, 12);
@@ -1361,12 +1459,19 @@ export class Shop {
     }
   }
 
+  // 拆除店面(換地圖時):移除場景物件與碰撞盒(登記在建立時的那個 World),釋放自己的合併幾何與動態貼圖;
+  // 共用材質、商品幾何與 GLB 快取留給下一次重建
   dispose() {
+    if (this.disposed) return;
     this.disposed = true;
     this.scene.remove(this.group);
     this.scene.remove(this.light);
+    this.light.dispose?.();
     for (const b of this.boxes) this.world.removeBox(b);
     this.boxes.length = 0;
+    this.group.traverse((o) => { if (o.userData.own) o.geometry.dispose(); });
+    for (const t of [this.tagTex, this.termTex, this.tvTex]) t?.dispose();
+    this.anim.length = 0;
   }
 }
 
