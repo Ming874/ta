@@ -325,7 +325,10 @@ export const combatMethods = {
     if (Math.abs(d.y) > 1e-3) { const t = W.rayDistance(bx, by, bz, 0, Math.sign(d.y), 0, 0.08); if (t < best) { best = t; ax = 1; } }
     if (Math.abs(d.z) > 1e-3) { const t = W.rayDistance(bx, by, bz, 0, 0, Math.sign(d.z), 0.08); if (t < best) { best = t; ax = 2; } }
     if (ax === 0) return out.set(-Math.sign(d.x), 0, 0);
-    if (ax === 1) return out.set(0, -Math.sign(d.y), 0);
+    if (ax === 1) { // 地板/天花板;往下打到樓梯坡面時用坡面法線(手榴彈才會滾下樓梯)
+      if (d.y < 0 && W.normalAt) { W.normalAt(pt.x, pt.z, pt.y, _sn); if (_sn.y < 0.999) return out.set(_sn.x, _sn.y, _sn.z); }
+      return out.set(0, -Math.sign(d.y), 0);
+    }
     if (ax === 2) return out.set(0, 0, -Math.sign(d.z));
     // 斜面(樓梯/坡道)或探測失敗:靠近地面就當地板,否則面向射手
     const g = W.groundY ? W.groundY(pt.x, pt.z, pt.y + 0.2) : null;
@@ -682,7 +685,7 @@ export const combatMethods = {
             const st = W.stairAt ? W.stairAt(g.p.x, gy, g.p.z) : -1;
             if (st >= 0 && W.normalAt) { // 樓梯:沿坡面往下滾,經過踏階邊緣時跳一下
               W.normalAt(g.p.x, g.p.z, gy, _sn);
-              g.v.x = g.v.x * 0.94 + _sn.x * 9.8 * h * 3; g.v.z = g.v.z * 0.94 + _sn.z * 9.8 * h * 3;
+              g.v.x = g.v.x * 0.975 + _sn.x * 9.8 * h * 3; g.v.z = g.v.z * 0.975 + _sn.z * 9.8 * h * 3;
               if (Math.random() < h * 5 * Math.min(1, Math.hypot(g.v.x, g.v.z))) { g.v.y += rand(0.6, 1.2); sfx.grenadeBounce(g.p); }
             } else {
               g.v.x *= 0.8; g.v.z *= 0.8;
