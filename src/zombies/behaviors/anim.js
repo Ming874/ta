@@ -13,7 +13,7 @@ import { clamp, lerp, sstep, env, rand } from './kit.js';
 
 // 各類型的個性強度:tw 抽搐間隔、twA 抽搐幅度、tilt 歪頭、stut 有定格毛病的機率、idle 閒置搖晃、back 倒退走機率、wall 面壁機率
 const PROF = {
-  walker: { tw: [1.2, 4], twA: 0.45, tilt: 0.75, stut: 0.35, idle: 1, back: 0.12, wall: 0.5 },
+  walker: { tw: [1.2, 4], twA: 0.45, tilt: 0.75, stut: 0.35, idle: 1, back: 0.12, wall: 0.35 },
   runner: { tw: [0.8, 3], twA: 0.3, tilt: 0.3, stut: 0.2, idle: 0.6 },
   crawler: { tw: [1, 3.5], twA: 0.4, tilt: 0.5, stut: 0.45, idle: 0.5 },
   bloater: { tw: [2.5, 6], twA: 0.2, tilt: 0.3, stut: 0.1, idle: 0.6 },
@@ -41,7 +41,7 @@ export function animInit(z) {
     stu: Math.random() < P.stut, stT: rand(1, 5), frz: 0, snap: new Float32Array(NB * 3 + 1), saved: false,
     hx: new Float32Array(6), hv: new Float32Array(6), hs: 1, ts: 1,
     idle: 0, back: Math.random() < (P.back || 0), bw: 0,
-    wall: Math.random() < (P.wall || 0), wallT: rand(6, 16), wallYaw: 0,
+    wall: Math.random() < (P.wall || 0), wallT: rand(10, 30), wallYaw: 0, wallDur: 4,
   };
 }
 
@@ -69,29 +69,32 @@ export function animHit(z, dmg, part, hit) {
   a.frz = 0;
 }
 
-// AI 之前(房主):行屍遠離玩家、還沒發現玩家時,偶爾停下來面壁站著(最多 9 秒)。回傳 true = 這幀不跑 AI
+// AI 之前(房主):部分行屍在玩家附近(12~28m)、還沒發現玩家而且看不到玩家時,偶爾停下來面壁站著 3~6 秒——
+// 讓玩家轉過轉角時撞見一個背對著、低著頭抽搐的身影。很少發生、時間短,回合快結束時不做(不拖慢節奏)。回傳 true = 這幀不跑 AI
 export function idleThink(z, dt, ctx, dist, w) {
   const a = z._an;
   if (!a || !a.wall) return false;
   if (z.state === 'idle') {
     a.wallT -= dt;
-    const wake = a.wallT <= -9 || a.wallT > 0 || z.alerted || (z.los && z.d3 < 20) || z.d3 < 13 || z.hp < z.maxHp;
-    if (wake) { z.go('chase'); a.wallT = rand(12, 25); return false; }
+    const wake = a.wallT <= -a.wallDur || a.wallT > 0 || z.alerted || (z.los && z.d3 < 20) || z.d3 < 10 || z.hp < z.maxHp;
+    if (wake) { z.go('chase'); a.wallT = rand(25, 45); return false; }
     w.speed = 0; w.face = a.wallYaw;
     return true;
   }
-  if (z.state !== 'chase' || z.alerted || z.los || z.d3 < 20) return false;
+  if (z.state !== 'chase' || z.alerted || z.los || z.d3 < 12 || z.d3 > 28) return false;
   a.wallT -= dt;
   if (a.wallT > 0) return false;
-  a.wallT = rand(12, 25);
-  if (Math.random() < 0.55 || !ctx.world.isNode) return false;
+  a.wallT = rand(25, 45);
+  const g = ctx.game;
+  if (Math.random() < 0.7 || !ctx.world.isNode || (g && g.toSpawn === 0)) return false;
+  a.wallDur = rand(3, 6);
   // 找最近的牆:8 個方向 1.2m 處不是導航節點
   const p = z.pos;
   for (let i = 0; i < 8; i++) {
     const ang = z.heading + (i * Math.PI) / 4, sx = Math.sin(ang), sz = Math.cos(ang);
     if (!ctx.world.isNode(p.x + sx * 1.2, p.y, p.z + sz * 1.2)) {
       a.wallYaw = ang;
-      a.wallT = -0.01; // 負值 = 面壁中,計時到 -9 秒醒來
+      a.wallT = -0.01; // 負值 = 面壁中,計時到 -wallDur 秒醒來
       z.go('idle');
       w.speed = 0; w.face = ang;
       return true;
