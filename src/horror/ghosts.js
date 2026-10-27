@@ -26,7 +26,7 @@ const POSES = {
   runB: { spine: [0.18, 0, 0], thighR: [-0.75, 0, 0], shinR: [0.95, 0, 0], thighL: [0.5, 0, 0], shinL: [0.35, 0, 0], upperArmR: [0.55, 0, 0], upperArmL: [-0.65, 0, 0], forearmR: [-0.5, 0, 0], forearmL: [-0.7, 0, 0], head: [-0.1, 0, 0] },
 };
 // 每個角色需要的姿勢
-const NEED = { nurse: ['push', 'stand'], patient: ['stand', 'tilt', 'reach'], man: ['stand', 'reach'], child: ['runA', 'runB', 'stand'] };
+const NEED = { nurse: ['push', 'stand'], patient: ['stand', 'tilt', 'reach'], man: ['stand', 'reach', 'runA', 'runB'], child: ['runA', 'runB', 'stand'] };
 
 // ---------- 材質 ----------
 const VS = `

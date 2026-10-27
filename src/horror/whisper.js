@@ -73,7 +73,7 @@ export class Whispers {
     this.cur = { prio, end: t + dur, kill, id: L.id };
     if (L.id) this.used.add(L.id);
     // 字幕標籤:電話/收音機 → 來源;鬼 → 「？？？」,認出之後才顯示名字(STORY.md §11.1)
-    const tag = filter ? TAG[filter] : o.tag ?? (L.ghost && this.h.known.has(L.ghost) && GHOSTS[L.ghost]?.name ? GHOSTS[L.ghost].name : '？？？');
+    const tag = o.tag ?? (filter ? TAG[filter] : (L.ghost && this.h.known.has(L.ghost) && GHOSTS[L.ghost]?.name ? GHOSTS[L.ghost].name : '？？？'));
     this.count++;
     this.log.push(`${L.id || 'text'}@${ear}${filter ? '/' + filter : ''}`);
     if (this.log.length > 30) this.log.shift();

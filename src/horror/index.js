@@ -4,7 +4,8 @@
 //
 // 公開介面(給 interact / story / ambush 代理):
 //   game.horror.whisper(lineId | text, { ear, subtitle, filter, priority, pos, mode }) → handle | null
-//   game.horror.phone({ pos, id, ringing }) → handle     接起電話(電話聽筒濾波,右耳)
+//   game.horror.phoneCall(ctx) → script | null          接起電話:依玩家身邊的場景組一通電話(見 calls.js;互動代理呼叫)
+//   game.horror.phone({ pos, id, ringing }) → handle     (舊)接起電話:隨機一句電話台詞
 //   game.horror.radio({ pos, id }) → handle              收音機開了(收音機濾波,在收音機的位置)
 //   game.horror.event(kind, { force }) → bool            立刻觸發一個靈異事件(見 director.KINDS);force 略過導演節奏
 //   game.horror.apparition(kind, opts) → bool            figure | window | child | nurse | behind | curtain | mirror | counter
@@ -23,24 +24,33 @@ import { Apparitions, models } from './ghosts.js';
 import { Marks } from './marks.js';
 import { ColdFx } from './fx.js';
 import { paranormalKinds } from './paranormal.js';
+import { scareKinds } from './scares.js';
+import { createCalls } from './calls.js';
 import { LINES, CAPTIONS } from './lines.js';
 import { precompile as warmCompile, initPrograms } from '../sys/warmup.js';
 
-// 導演挑事件用的清單:[種類, 權重];區域偏好另外乘
-const CATALOG = {
-  small: [['ambient', 1], ['flicker', 0.35], ['crawl', 0.6], ['silence', 0.45], ['lullaby', 0.5], ['radioOn', 0.45], ['phoneRing', 0.55], ['whisper', 1.2]],
-  medium: [['doorCreep', 0.9], ['door', 0.5], ['cart', 0.5], ['rollToward', 0.6], ['moveBehind', 0.7], ['footprints', 0.85], ['handprints', 0.8], ['writing', 0.8], ['coldBreath', 0.6], ['tvFace', 0.6], ['elevator', 0.55], ['anchor', 0.7], ['fall', 0.4],
-    ['figure', 1.1], ['window', 0.8], ['child', 0.7], ['nurse', 0.8], ['curtain', 0.9], ['mirror', 1.2]],
-  big: [['behind', 1], ['lightsDie', 1.1], ['blackout', 0.5]],
-};
-const APPARITION = new Set(['figure', 'window', 'child', 'nurse', 'behind', 'curtain', 'mirror', 'counter']);
+// 導演挑事件用的清單:由 director.KINDS 的 tier / w 產生(外部種類、劇情通稱、來電、訊號閃燈不在裡面)
+const CATALOG = { small: [], medium: [], big: [] };
+for (const [k, v] of Object.entries(DK)) if (v.w && !v.ext && CATALOG[v.tier]) CATALOG[v.tier].push([k, v.w]);
+const APPARITION = new Set(['figure', 'window', 'child', 'nurse', 'behind', 'curtain', 'mirror', 'counter', 'peripheral', 'creeper', 'flashFlick', 'reflection']);
 const BIAS = {
-  corridor: { figure: 2, nurse: 2, lightsDie: 1.8, footprints: 1.4, child: 1.3 }, ward: { curtain: 2.5, nurse: 1.3, mirror: 1.5, handprints: 1.3 },
+  corridor: { figure: 2, nurse: 2, lightsDie: 1.8, footprints: 1.4, child: 1.3, pace: 1.8, knockFollow: 1.3, runBehind: 1.4, peripheral: 1.5, flashFlick: 1.8, creeper: 1.5, doorSlamSeq: 2, gurneyPass: 1.5, doorOpen: 1.2 },
+  ward: { curtain: 2.5, nurse: 1.3, mirror: 1.5, handprints: 1.3, nurseCall: 2, reflection: 1.6, doorClose: 1.3, throw: 1.3, breathBehind: 1.2 },
   nursery: { lullaby: 4, child: 2.5, handprints: 1.5 }, peds_ward: { lullaby: 3, child: 2 }, playroom: { lullaby: 3, child: 2.5 },
-  morgue: { coldBreath: 2.5, crawl: 1.5, silence: 1.5, anchor: 1.5 }, autopsy: { coldBreath: 2, crawl: 1.4 }, psych_cell: { doorCreep: 2.5, behind: 1.5 }, stairwell: { doorCreep: 2.5, crawl: 1.3 },
-  tunnel: { crawl: 2, silence: 1.5, footprints: 1.5 }, chapel: { anchor: 2, silence: 1.5 }, rehab: { mirror: 3 }, waiting: { tvFace: 2, phoneRing: 1.5 }, lobby: { elevator: 1.5, figure: 1.3 },
-  monitor: { tvFace: 3 }, security: { tvFace: 3 }, icu: { tvFace: 1.5, coldBreath: 1.4 }, outdoor: { window: 0, crawl: 0, figure: 0.6, writing: 0, footprints: 0, doorCreep: 0 },
+  morgue: { coldBreath: 2.5, crawl: 1.5, silence: 1.5, anchor: 1.5, rollcall: 3, breathBehind: 1.5 }, autopsy: { coldBreath: 2, crawl: 1.4 }, psych_cell: { doorCreep: 2.5, behind: 1.5, cellKnock: 3 }, stairwell: { doorCreep: 2.5, crawl: 1.3, pace: 1.4, doorClose: 1.5, runBehind: 1.2 },
+  tunnel: { crawl: 2, silence: 1.5, footprints: 1.5, pace: 1.6, creeper: 1.4 }, chapel: { anchor: 2, silence: 1.5, breathBehind: 1.4 }, rehab: { mirror: 3, reflection: 1.5 }, waiting: { tvFace: 2, phoneRing: 1.5, paHijack: 1.6 }, lobby: { elevator: 1.5, figure: 1.3, paHijack: 2.5 }, psych: { cellKnock: 2, knockFollow: 1.5 },
+  monitor: { tvFace: 3 }, security: { tvFace: 3 }, icu: { tvFace: 1.5, coldBreath: 1.4 }, outdoor: { window: 0, crawl: 0, figure: 0.6, writing: 0, footprints: 0, doorCreep: 0, pace: 0, knockFollow: 0, doorOpen: 0, doorClose: 0, doorSlamSeq: 0, gurneyPass: 0, nurseCall: 0, rollcall: 0, reflection: 0, cellKnock: 0, runBehind: 0.5, creeper: 0.5, blackoutChange: 0 },
 };
+// 地圖上的驚嚇點:在這些區域、這一局還沒發生過時,這些種類權重 ×3、恐懼門檻 ×0.7;發生一次就用掉
+const HOTSPOTS = [
+  { zone: 'b1_morgue', kinds: ['rollcall', 'coldBreath'] }, { zone: 'f2_nursery', kinds: ['lullaby'] }, { zone: 'f2_playroom', kinds: ['lullaby', 'anchor'] },
+  { theme: 'psych_cell', kinds: ['cellKnock'] }, { zone: 'f3_corridor', kinds: ['cellKnock', 'creeper', 'knockFollow'] }, { zone: 'f1_lobby', kinds: ['paHijack', 'elevator'] },
+  { zone: 'f1_rehab', kinds: ['mirror', 'reflection'] }, { zone: 'f3_monitor', kinds: ['tvFace'] }, { zone: 'f1_security', kinds: ['tvFace'] },
+  { zone: 'f2_corridor', kinds: ['nurse', 'pace', 'nurseCall', 'doorSlamSeq'] }, { zone: 'f1_corridor', kinds: ['doorSlamSeq', 'flashFlick', 'figure'] },
+  { zone: 'b1_tunnel', kinds: ['pace', 'crawl', 'creeper'] }, { theme: 'stairwell', kinds: ['doorClose', 'runBehind'] }, { zone: 'f1_chapel', kinds: ['breathBehind', 'anchor'] },
+  { theme: 'ward', kinds: ['curtain', 'reflection', 'nurseCall', 'throw'] }, { zone: 'f2_icu', kinds: ['tvFace', 'coldBreath'] }, { zone: 'f1_waiting', kinds: ['paHijack', 'tvFace'] },
+  { zone: 'f1_parking', kinds: ['radioOn'] }, { zone: 'f1_cemetery', kinds: ['whisper', 'figure'] }, { zone: 'f3_dorm', kinds: ['knockFollow', 'circle'] }, { zone: 'b1_archive', kinds: ['writing', 'breathBehind'] },
+];
 const _a = new THREE.Vector3(), _b = new THREE.Vector3();
 
 export function installHorror(game) {
@@ -72,6 +82,7 @@ export function installHorror(game) {
       H.emit('phone:answer', { id: o.id ?? null, line: h?.id ?? null });
       return h;
     },
+    phoneCall(ctx = {}) { return H.calls ? H.calls.phoneCall(ctx) : null; },
     radio(o = {}) {
       const l = H.whispers.pick('radio', { round: game.round, phase: game.phase }) || 'rd.1';
       return H.whispers.say(l, { filter: 'radio', pos: o.pos, ear: o.pos ? 'world' : 'near', priority: o.auto ? 5 : 8, force: !o.auto });
@@ -130,6 +141,7 @@ export function installHorror(game) {
     resetRun() {
       H.director.reset(); H.whispers.reset(); H.app?.clear(); H.marks?.clear(); H.fx?.clear();
       later.length = 0; watchers.length = 0; H.usedWrit.clear(); H.ringing = null; H.coldK = H.coldT = 0; H.coldUntil = 0;
+      H.calls?.reset(); T.spots.clear();
       T.zones.clear(); T.props.clear(); T.still = 0; T.streak = 0; T.lastKill = 0; T.zonePend = null; T.next = 0;
       for (const d of H.events?.doors || []) d.primed = false;
       if (performance.now() > 40000) models.warm();
@@ -140,6 +152,7 @@ export function installHorror(game) {
   };
   H.director = new Director(H);
   H.whispers = new Whispers(H);
+  H.calls = createCalls(H);
   game.horror = H;
 
   // ---- 場景相關(灰盒地圖沒有 hospital.events 時只剩耳語) ----
@@ -149,6 +162,7 @@ export function installHorror(game) {
     H.marks = new Marks(H, game.scene);
     H.fx = new ColdFx(game.scene);
     E.register(paranormalKinds(H));
+    E.register(scareKinds(H)); // 第二輪驚嚇庫(src/horror/scares.js)
     E.auto = false; // 驚嚇導演接手排程
     try { H.marks.placeStatic(game.hospital.K, game.hospital.layout); } catch (e) { console.warn('[horror] 牆上字跡', e); }
   }
@@ -159,7 +173,7 @@ export function installHorror(game) {
   { const t0 = performance.now(); const wait = () => { const warm = performance.getEntriesByName('hz:warm').length; if (warm || performance.now() - t0 > 30000) { models.warm(); if (!H.warmIn) precompile(game, H); } else setTimeout(wait, 400); }; setTimeout(wait, 1000); }
 
   // ---- 觸發器與排程 ----
-  const T = { zones: new Set(), props: new Set(), still: 0, streak: 0, lastKill: 0, zonePend: null, next: 0, acc: 0, low: -1e9, dark: -1e9, strk: -1e9, prop: -1e9, warn: -1e9, guide: -1e9, sig: -1e9 };
+  const T = { spots: new Set(), zones: new Set(), props: new Set(), still: 0, streak: 0, lastKill: 0, zonePend: null, next: 0, acc: 0, low: -1e9, dark: -1e9, strk: -1e9, prop: -1e9, warn: -1e9, guide: -1e9, sig: -1e9 };
   const zoneOf = () => game.hospital?.zone || null;
   const say = (l, o) => { if (!l) return null; const r = H.whispers.say(l, { priority: 5, ...o }); if (r) H.director.notify('whisper'); return r; };
   function ambientWhisper(force) {
@@ -243,9 +257,11 @@ export function installHorror(game) {
     // 依恐懼值挑事件
     if (game.time < T.next) return;
     T.next = game.time + 1.5;
+    const spot = zone ? HOTSPOTS.find((q) => (q.zone === zone.id || q.theme === zone.theme) && !T.spots.has(q)) : null;
+    const th0 = spot ? 0.7 : 1; // 驚嚇點:門檻低一點
     let tier = null;
-    if (D.dread >= 75 && D.allowTier('big', game) && Math.random() < 0.6) tier = 'big';
-    else if (D.dread >= 40 && D.allowTier('medium', game)) tier = 'medium';
+    if (D.dread >= 75 * th0 && D.allowTier('big', game) && Math.random() < 0.6) tier = 'big';
+    else if (D.dread >= 40 * th0 && D.allowTier('medium', game)) tier = 'medium';
     else if (D.dread >= 16 && D.allowTier('small', game) && Math.random() < 0.3) tier = 'small'; // 小事件不要一直放:留給恐懼累積到看得見的事件
     if (!tier) return;
     const th = zone?.theme, mood = zone?.mood, out = /^outdoor|^roof/.test(mood || '');
@@ -256,13 +272,15 @@ export function installHorror(game) {
       if (out && BIAS.outdoor[k] != null) w *= BIAS.outdoor[k];
       if (APPARITION.has(k)) w *= 0.35 + esc; // 一局越後面越常看到人影
       if (k === 'whisper' && !H.whispers.pick('idle', c)) w = 0;
-      if (w <= 0 || !D.request(k)) continue;
+      if (spot && spot.kinds.includes(k)) w *= 3;
+      w *= D.weight(k); // 疲勞:同一種/同一類最近用過就降權
+      if (w <= 0 || !D.request(k, { weight: 1 })) continue;
       cand.push([k, w * (0.6 + Math.random() * 0.8)]);
     }
     cand.sort((a, b) => b[1] - a[1]);
     for (const [k] of cand) {
       if (k === 'whisper') { if (ambientWhisper(true)) return; continue; }
-      if (E.fire(k)) { D.notify(k, { dur: tier === 'big' ? 12 : undefined }); H.emit('event', { kind: k }); return; }
+      if (E.fire(k)) { D.notify(k, { dur: tier === 'big' ? 12 : undefined }); H.emit('event', { kind: k }); if (spot && spot.kinds.includes(k)) T.spots.add(spot); return; }
     }
   }
   function isDark(p) {
