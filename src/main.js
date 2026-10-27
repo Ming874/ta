@@ -11,11 +11,46 @@ import { prewarm, whenWarm, variantStats, getVariant, instantiate } from './zomb
 import { materials as zombieMaterials } from './zombies/materials.js';
 import * as audio from './audio.js';
 import { initNet } from './net/lobby.js';
+import { startPhysicsWorker, physicsLoad } from './physics/index.js';
+import { assets } from './sys/assets.js';
+import { installStreaming } from './sys/stream.js';
+import { loadUI } from './sys/loadui.js';
+import { pools } from './sys/workers.js';
 
 performance.mark('hz:boot');
 installPWA();
 
-const game = new Game(document.getElementById('game'));
+// ---- 關鍵檔先下載:物理 Worker(+WASM)與殭屍建模 Worker 在建世界(數秒的同步工作)之前就開始抓;
+//      貼圖/模型在 assets 佇列等閘門打開(關鍵檔就緒、最多 12 秒、或玩家按開始)才依距離排序下載 ----
+startPhysicsWorker();
+prewarm();
+// Chrome 的模組 Worker 要主執行緒有空檔才會真正開始執行;接下來建世界是好幾秒的同步工作 →
+// 先讓出主執行緒到 Worker 開機(腳本已下載並執行:物理開始抓 WASM、殭屍開始在背景建模),最多等 1.5 秒
+await new Promise((resolve) => {
+  const t0 = performance.now();
+  const tick = () => {
+    const ph = physicsLoad.state, mp = pools.find((p) => p.name === 'model');
+    const physUp = ph !== 'script', modelUp = !mp || mp.failed || mp.slots.some((s) => s.ready);
+    if ((physUp && modelUp) || performance.now() - t0 > 1500) resolve(); else setTimeout(tick, 10);
+  };
+  tick();
+});
+let game = null;
+const loading = loadUI(() => {
+  const p = game?.physics, v = variantStats(), a = assets.progress, ph = physicsLoad.state;
+  const physOK = !p ? 0 : p.ready || p.failed || ph === 'off' || ph === 'failed' ? 1 : ph === 'wasm' || ph === 'main' ? 0.55 : 0.15;
+  const fin = a.done + a.failed;
+  return {
+    playing: game?.state === 'playing',
+    steps: [
+      ['物理', physOK, ph === 'wasm' ? '編譯中' : ph === 'main' ? '載入中' : '下載中'],
+      ['殭屍', v.ready / v.total, `${v.ready}/${v.total}`],
+      ['貼圖與模型', a.total ? fin / a.total : a.open ? 1 : 0, a.open ? `${fin}/${a.total}${a.bytes ? ' · ' + (a.bytes / 1048576).toFixed(1) + ' MB' : ''}` : '等待中', 3],
+    ],
+  };
+});
+
+game = new Game(document.getElementById('game'));
 game.bindInput();
 initNet(game); // [net] 主選單的多人連線入口(src/net/lobby.js)
 window.__game = game; // 除錯用:在瀏覽器 console 操作 __game
@@ -28,6 +63,23 @@ game.perf = new Perf(game); // F3 效能面板(src/sys/perf.js)
 prewarm(); // 殭屍變體:有 Worker 時立刻全部平行送到 Worker 池建模
 performance.mark('hz:game');
 window.__perfVariants = variantStats; // 測試用
+window.__assets = assets; // 測試用:下載佇列進度
+window.__physLoad = physicsLoad;
+installStreaming(game); // 下載順序:玩家附近 → 同層 → 其他樓層
+assets.hiRes = game.quality.preset !== 'low'; // 低畫質:不下載 1K 顏色圖(省頻寬與顯示記憶體)
+game.quality.on('change', (k, q) => { assets.hiRes = q.preset !== 'low'; });
+game.hospital.setQuality?.(game.quality); // 光源池大小、道具顯示距離跟著畫質
+game.quality.on('change', (k, q) => game.hospital.setQuality?.(q));
+{
+  const t0 = performance.now();
+  const gate = setInterval(() => {
+    const v = variantStats(), ph = physicsLoad.state;
+    const ok = (ph === 'ready' || ph === 'failed' || ph === 'off') && (v.ready >= v.total || !v.pool || v.pool.failed);
+    if (ok || performance.now() - t0 > 10000) { clearInterval(gate); assets.open(ok ? 'critical' : 'timeout'); }
+  }, 100);
+  const begin0 = game.begin;
+  game.begin = function (...a) { assets.open('start'); assets.concurrency = 3; return begin0.apply(this, a); }; // 遊戲中少開幾條連線(多人時不塞滿下行)
+}
 
 game.perf.source('殭屍', () => {
   const v = variantStats();
@@ -84,6 +136,9 @@ document.addEventListener('visibilitychange', () => {
 
 // ---- 啟動:世界 shader 先在背景編好再開始畫(第一幀不會整個卡住),最多等 4 秒 ----
 async function boot() {
+  // 光源數量是 shader 參數:第一次 updateCombat 才加進場景的爆炸閃光燈(boomLight)若在預編譯之後才出現,
+  // 第一幀會把全部 program 同步重編一次(慢機器上 5~15 秒的凍結)→ 預編譯前先初始化
+  game.initCombat?.();
   await yieldNow(); // 先讓模組執行完(DOMContentLoaded、選單可互動),編譯分批在之後的任務裡做
   const t = performance.now();
   try {
