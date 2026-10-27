@@ -486,7 +486,7 @@ class Ambush {
     z.vp.x = z.pos.x; z.vp.y = z.pos.y + (cover ? 1 : s.spot.ceilH); z.vp.z = z.pos.z;
   }
   _armCorpse(z, opt) {
-    const s = this._pick(this.corpse, false, opt);
+    const s = opt?.spot || this._pick(this.corpse, false, opt);
     if (!s) return false;
     this._place(z, s, corpsePose(s.kind, z.type), s.yaw);
     this.per.corpse++; this.stats.corpse++;
