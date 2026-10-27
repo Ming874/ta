@@ -34,7 +34,7 @@ export function createEvents({ K, L, lights, propEvents = [], root }) {
   const doors = (K.dynDoors || []).map((d) => ({ ...d, anim: null, cur: d.group.rotation.y }));
   const holes = (K.ceilings || []).filter((c) => c.kind === 'hole');
   const anchors = propEvents.map((e) => ({ ...e, used: 0, last: -1e9, li: Number.isFinite(e.level) ? e.level : L.levelOfY(e.y - 0.5) }));
-  const S = { next: 25, last: {}, fired: 0, log: [], active: [], dyn: null, dynT: -1 };
+  const S = { next: -1, last: {}, fired: 0, log: [], active: [], dyn: null, dynT: -1 }; // next < 0:開局後 25 秒才開始
   const tmp = new THREE.Color();
 
   // ---- 黑影(簡單的人形,不受光的純黑 → 背光時是剪影,在霧裡淡出) ----
@@ -243,6 +243,7 @@ export function createEvents({ K, L, lights, propEvents = [], root }) {
       const c = { t, dt, player, game, px: player.pos.x, py: player.pos.y, pz: player.pos.z, li: ctx.li, zone: ctx.zone, mood: ctx.mood, outdoor: ctx.outdoor, fx: ctx.fx, fz: ctx.fz };
       tickActive(c);
       if (!game || game.state !== 'playing' || game.shopUIOpen || game.paused) return;
+      if (S.next < 0) S.next = t + 25;
       // 附近有殭屍 → 延後(戰鬥中不嚇人;安靜時才累積張力)
       let zNear = false, zClose = false;
       for (const z of game.zombies || []) { if (!z.alive) continue; const d = z.dist ?? 99; if (d < 14) zNear = true; if (d < 6) zClose = true; }
@@ -259,7 +260,7 @@ export function createEvents({ K, L, lights, propEvents = [], root }) {
         .sort((a, b) => (inView(c, b.cx, b.cz, 0.3) ? 1 : 0) - (inView(c, a.cx, a.cz, 0.3) ? 1 : 0));
       c.holeAhead = () => holes.find((h) => h.li === c.li && !(h.usedAt > 0) && (() => { const q = Math.hypot(h.x - c.px, h.z - c.pz); return q > 2.5 && q < 8; })() && inView(c, h.x, h.z, 0.6) && sees(c.li, c.px, c.pz, h.x, h.z));
       c.dynAhead = () => {
-        if (!S.dyn || t - S.dynT > 20) { S.dyn = []; S.dynT = t; root.traverse((o) => { if (o.userData?.dynamic && /wc|wheel|cart|iv|linen|gurney|trolley|chair|stool/i.test(o.userData.kind || o.name)) S.dyn.push(o); }); }
+        if (!S.dyn) { S.dyn = []; S.dynT = t; root.traverse((o) => { // 可動道具在建構時就固定了,只掃一次 if (o.userData?.dynamic && /wc|wheel|cart|iv|linen|gurney|trolley|chair|stool/i.test(o.userData.kind || o.name)) S.dyn.push(o); }); }
         for (const o of S.dyn) { o.getWorldPosition(_v); const q = Math.hypot(_v.x - c.px, _v.z - c.pz); if (Math.abs(_v.y - L.levels[c.li].y) < 1.5 && q > 4 && q < 12 && inView(c, _v.x, _v.z, 0.6) && sees(c.li, c.px, c.pz, _v.x, _v.z)) return o; }
         return null;
       };
@@ -315,7 +316,7 @@ export function createEvents({ K, L, lights, propEvents = [], root }) {
     trigger(kind, t, player, game, ctx) { const n = S.fired; api.update(t, 1 / 60, player, game, ctx, kind); return S.fired > n ? S.log[S.log.length - 1] : null; },
     reset() {
       for (const a of S.active) { if (a.f) { a.f.ov = 1; if (a.type === 'reveal') a.f.state = a.state0; } if (a.type === 'turn') a.obj.rotation.y = a.from; }
-      S.active.length = 0; S.next = 25; S.last = {}; S.fired = 0; S.thud = null;
+      S.active.length = 0; S.next = -1; S.last = {}; S.fired = 0; S.thud = null;
       figure.visible = false;
       for (const d of doors) { d.anim = null; d.group.rotation.y = d.open; }
       for (const m of fallen) m.parent?.remove(m);
