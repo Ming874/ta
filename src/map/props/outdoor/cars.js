@@ -177,7 +177,7 @@ export function placePolice(ctx, o, zone) {
 
 // ---------- 救護車 ----------
 // 擔架(含覆蓋白布的人形)
-function stretcher(P, x0, y0, z0, len = 1.9, bloody = true) {
+export function stretcher(P, x0, y0, z0, len = 1.9, bloody = true) {
   const w = 0.56, h = 0.34;
   for (const s of [-1, 1]) {
     P.add('aluminum', rod(new V3(x0 - len / 2, y0 + h, z0 + s * w / 2), new V3(x0 + len / 2, y0 + h, z0 + s * w / 2), 0.016, 8));

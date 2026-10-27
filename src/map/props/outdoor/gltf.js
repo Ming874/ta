@@ -17,6 +17,12 @@ export const MODELS = {
   shutter: { file: 'rollershutter_door/rollershutter_door_1k.gltf', tex: 512 },
   walllamp: { file: 'industrial_wall_lamp/industrial_wall_lamp_1k.gltf', tex: 256 },
   generator: { file: 'portable_generator/portable_generator_1k.gltf', tex: 512 },
+  bench: { file: 'painted_wooden_bench/painted_wooden_bench_1k.gltf', tex: 512 },
+  wetsign: { file: 'wetfloorsign_01/WetFloorSign_01_1k.gltf', tex: 256 },
+  utilitybox: { file: 'utility_box_01/utility_box_01_1k.gltf', tex: 512 },
+  propane: { file: 'propane_tank/propane_tank_1k.gltf', tex: 256 },
+  crate: { file: 'wooden_crate_02/wooden_crate_02_1k.gltf', tex: 512 },
+  seclight: { file: 'security_light/security_light_1k.gltf', tex: 256 },
 };
 let loader = null;
 const cache = new Map();
