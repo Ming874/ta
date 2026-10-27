@@ -26,13 +26,13 @@ export class Mantle {
     this.last = ''; // 除錯:最近一次判定結果
   }
 
-  // 前方 (x,z) 處擋住腳底 y 的東西的頂部高度(世界 y);NaN = 沒有擋;NO = 不能翻
-  _block(x, z, y) {
+  // 前方 (x,z) 處擋住腳底 y(所在樓層地面 gref)的東西的頂部高度(世界 y);NaN = 沒有擋;NO = 不能翻
+  _block(x, z, y, gref = y) {
     const W = this.p.world, L = W.layout;
     const c = Math.floor(x / 2), r = Math.floor(z / 2);
     if (c < 0 || r < 0 || c >= W.W || r >= W.H) return NO;
     let top = NaN;
-    if (!W._pass(c, r, x, z, y, y + STEP)) {
+    if (!W._pass(c, r, x, z, gref, gref + STEP)) {
       const li = L.levelOfY(y + 0.3), ch = L.charAt(li, c, r);
       if (ch !== '=') return NO;
       const t = W.railType ? W.railType.get(`${li},${c},${r}`) : 'parapet';
@@ -75,13 +75,14 @@ export class Mantle {
   start(dx, dz) {
     const p = this.p, W = p.world, P = p.pos, y = P.y;
     if (this.active || !W || !W.boxGrid || p.downed) return false;
+    const gf = p.ground === p.ground && p.ground != null && p.ground <= y + 0.05 ? p.ground : y; // 樓層地面(站在道具頂上時比腳底低)
     // 1) 沿前進方向三條線(中間 + 左右肩)找障礙物:進入距離 a0、離開距離 a1、頂部 top
     let a0 = -1, a1 = -1, top = -Infinity;
     for (let a = R * 0.6; a <= R + REACH + 2.3; a += 0.08) {
       let h = NaN;
       for (let s = -1; s <= 1; s++) {
         const x = P.x + dx * a - dz * s * 0.24, z = P.z + dz * a + dx * s * 0.24;
-        const t = this._block(x, z, y);
+        const t = this._block(x, z, y, gf);
         if (t === t && !(h >= t)) h = t;
       }
       if (h === h) {
@@ -102,11 +103,11 @@ export class Mantle {
       for (let a = a1 + R + 0.04, b = a1; a <= a1 + R + 1.0; a += 0.1) {
         const x = P.x + dx * a, z = P.z + dz * a;
         let bad = false;
-        for (; b <= a; b += 0.1) { const h = this._block(P.x + dx * b, P.z + dz * b, y); if (h === h) { bad = true; break; } } // 落地前又有別的障礙物
+        for (; b <= a; b += 0.1) { const h = this._block(P.x + dx * b, P.z + dz * b, y, gf); if (h === h) { bad = true; break; } } // 落地前又有別的障礙物
         if (bad) break;
         const idx = W._idx(x, z);
         if (idx < 0) break;
-        const g = W._pick(idx, x, z, y, y + STEP, DROP);
+        const g = W._pick(idx, x, z, gf, y + STEP, DROP);
         if (g !== g) continue;
         const gb = Math.max(g, W.groundY(x, z, g + 0.3) ?? g); // 地上的矮道具(路緣石)
         if (gb > top - 0.3) continue;
@@ -120,10 +121,10 @@ export class Mantle {
       const a = a0 + R * 0.75, x = P.x + dx * a, z = P.z + dz * a;
       const gt = W.groundY(x, z, top + 0.05);
       if (gt === null || Math.abs(gt - top) > 0.06 || !this._supported(x, z, top)) { this.last = 'nolanding'; return false; }
-      if (this._fits(x, z, top, y, STAND_H)) crouch = false;
-      else if (this._fits(x, z, top, y, CROUCH_H)) crouch = true;
+      if (this._fits(x, z, top, gf, STAND_H)) crouch = false;
+      else if (this._fits(x, z, top, gf, CROUCH_H)) crouch = true;
       else { this.last = 'nolanding'; return false; }
-      lx = x; lz = z; ly = top; onto = true; this.g = y;
+      lx = x; lz = z; ly = top; onto = true; this.g = gf;
     }
     // 4) 開始
     this.active = true; this.onto = onto; this.crouch = crouch;
