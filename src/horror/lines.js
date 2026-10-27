@@ -149,13 +149,13 @@ export const WRITINGS = [
   { id: 'w.playroom', kind: 'static', text: '收音機阿姨\n明天還來嗎', zone: 'f2_playroom', style: 'crayon', who: '小兒科的孩子', why: '001 醒來後偷偷下樓講故事', when: '2025 年春天', size: 0.14, h: 0.8 },
   { id: 'w.laundry', kind: 'static', text: '床單不夠了\n先用白布', zone: 'b1_laundry', style: 'marker', who: '洗衣房阿姨', why: '病房的白布都拿去蓋人了', when: '七月初四', size: 0.16, h: 1.5 },
   // 事件:沒有人看到是誰寫的(留白)
-  { id: 'a.gather', kind: 'appear', text: '你也是來集合的嗎', style: 'smear', who: '不明', why: '出現時沒有人在場', when: '本局', size: 0.22 },
-  { id: 'a.back', kind: 'appear', text: '別回頭', style: 'smear', who: '不明', why: '出現時沒有人在場', when: '本局', size: 0.3 },
-  { id: 'a.queue', kind: 'appear', text: '我們還在排隊', style: 'smear', who: '不明', why: '出現時沒有人在場', when: '本局', size: 0.22 },
-  { id: 'a.home', kind: 'appear', text: '回家', style: 'smear', who: '不明', why: '出現時沒有人在場', when: '本局', size: 0.4 },
-  { id: 'a.light', kind: 'appear', text: '燈還亮著嗎', style: 'smear', who: '不明', why: '出現時沒有人在場', when: '本局', size: 0.22, hint: 'quest:207light' },
-  { id: 'a.count', kind: 'appear', text: '一　二　三　四　五\n六　七　八　九', style: 'scratch', who: '不明', why: '少了「十」:天還沒亮', when: '本局', size: 0.18 },
-  { id: 'a.quiet', kind: 'appear', text: '小聲一點\n牠們聽得到', style: 'smear', who: '不明', why: '出現時沒有人在場', when: '本局', size: 0.2, hint: 'rule:sound' },
+  { id: 'a.gather', kind: 'appear', text: '你也是來集合的嗎', style: 'smear', who: '不明', why: '出現時沒有人在場', when: '本局', size: 0.34 },
+  { id: 'a.back', kind: 'appear', text: '別回頭', style: 'smear', who: '不明', why: '出現時沒有人在場', when: '本局', size: 0.42 },
+  { id: 'a.queue', kind: 'appear', text: '我們還在排隊', style: 'smear', who: '不明', why: '出現時沒有人在場', when: '本局', size: 0.34 },
+  { id: 'a.home', kind: 'appear', text: '回家', style: 'smear', who: '不明', why: '出現時沒有人在場', when: '本局', size: 0.5 },
+  { id: 'a.light', kind: 'appear', text: '燈還亮著嗎', style: 'smear', who: '不明', why: '出現時沒有人在場', when: '本局', size: 0.34, hint: 'quest:207light' },
+  { id: 'a.count', kind: 'appear', text: '一　二　三　四　五\n六　七　八　九', style: 'scratch', who: '不明', why: '少了「十」:天還沒亮', when: '本局', size: 0.24 },
+  { id: 'a.quiet', kind: 'appear', text: '小聲一點\n牠們聽得到', style: 'smear', who: '不明', why: '出現時沒有人在場', when: '本局', size: 0.3, hint: 'rule:sound' },
 ];
 
 // 事件字幕(不是低語:例如數數的人;灰色、標記「？？？」)

@@ -147,8 +147,9 @@ export function installHorror(game) {
     E.auto = false; // 驚嚇導演接手排程
     try { H.marks.placeStatic(game.hospital.K, game.hospital.layout); } catch (e) { console.warn('[horror] 牆上字跡', e); }
   }
-  // 選單期間就開始在背景準備幻影模型與預編譯材質(不卡第一次出現)
-  setTimeout(() => { models.warm(); precompile(game, H); }, 4000);
+  // 選單期間就開始在背景準備幻影模型;等 main.js 的開機預編譯做完(畫質、光源數都定了)再預編譯靈異材質(不卡第一次出現)
+  setTimeout(() => models.warm(), 3000);
+  { const t0 = performance.now(); const wait = () => { if (performance.getEntriesByName('hz:precompile').length || performance.now() - t0 > 20000) precompile(game, H); else setTimeout(wait, 300); }; setTimeout(wait, 500); }
 
   // ---- 觸發器與排程 ----
   const T = { zones: new Set(), props: new Set(), still: 0, streak: 0, lastKill: 0, zonePend: null, next: 0, acc: 0, low: -1e9, dark: -1e9, strk: -1e9, prop: -1e9, warn: -1e9, guide: -1e9, sig: -1e9 };
@@ -274,17 +275,18 @@ export function installHorror(game) {
 
 // 預編譯靈異材質(幻影兩種、腳印/手印、字跡、寒氣粒子):先在背景執行緒編好,第一次出現不卡
 async function precompile(game, H) {
-  if (!H.app) return;
+  if (!H.app || H.warm) return;
+  H.warm = 'compiling';
   try {
     const g = new THREE.Group();
     const geo = new THREE.SphereGeometry(0.2, 8, 6);
     for (const s of H.app.slots.slice(0, 1)) for (const m of [s.pale, s.shade, s.depth]) g.add(new THREE.Mesh(geo, m));
-    H.marks._feet(); H.marks._hands();
-    for (const P of [H.marks.feet, H.marks.hands]) { const im = P.im.clone(); im.count = 1; im.visible = true; g.add(im); }
+    for (const m of H.marks.warmList()) { const c = m.clone(); c.visible = true; if (c.isInstancedMesh) c.count = 1; g.add(c); }
     const wm = H.marks.write({ id: 'warm', text: '·', style: 'marker' }, 0, -50, 0, 0, 1, { keep: true }); wm.visible = true;
     const pts = H.fx.pts.clone(); pts.visible = true; g.add(pts);
     const res = await warmCompile(game, g, { shadows: false });
     if (res?.programs) await initPrograms(res.programs);
     wm.visible = false;
-  } catch (e) { console.warn('[horror] 預編譯', e); }
+    H.warm = 'done';
+  } catch (e) { H.warm = 'failed'; console.warn('[horror] 預編譯', e); }
 }

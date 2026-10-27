@@ -54,7 +54,7 @@ const STYLE = {
   chalk: { col: '#d6d4c8', font: FONT_HAND, w: 500, chalk: 1, rough: 0.8 },
   crayon: { col: '#2f4f9c', font: FONT_HAND, w: 700, crayon: 1, rough: 1.6 },
   scratch: { col: '#c9c1ae', font: FONT_HAND, w: 300, scratch: 1, rough: 1 },
-  smear: { col: '#3f0b08', font: FONT_HAND, w: 900, drip: 1, smear: 1, rough: 1.3 },
+  smear: { col: '#2a0605', font: FONT_HAND, w: 900, drip: 1, smear: 1, rough: 1.3 },
 };
 export function writingCanvas(text, style = 'marker', seed = 1) {
   const S = STYLE[style] || STYLE.marker;
@@ -79,7 +79,7 @@ export function writingCanvas(text, style = 'marker', seed = 1) {
         x.lineWidth = 1.4; x.strokeStyle = S.col;
         for (let k = 0; k < 3; k++) { x.globalAlpha = 0.55; x.strokeText(ch, (r() - 0.5) * 2.5, (r() - 0.5) * 2.5); }
       } else {
-        x.globalAlpha = S.smear ? 0.82 : 0.93; x.fillStyle = S.col; x.fillText(ch, 0, 0);
+        x.globalAlpha = S.smear ? 0.95 : 0.93; x.fillStyle = S.col; x.fillText(ch, 0, 0);
         if (S.smear) { x.globalAlpha = 0.3; x.fillText(ch, 2 + r() * 3, 1 + r() * 2); }
       }
       x.restore();
@@ -107,9 +107,11 @@ function silhouetteCanvas(kind) {
     return c;
   }
   // 隔簾:站著的人(頭微傾),外圍是透過布的背光
-  const g = x.createRadialGradient(64, 120, 10, 64, 120, 130);
-  g.addColorStop(0, 'rgba(255,214,160,0.9)'); g.addColorStop(1, 'rgba(255,214,160,0)');
-  x.fillStyle = g; x.fillRect(0, 0, 128, 256);
+  x.save(); x.translate(64, 124); x.scale(1, 2); // 橢圓形的背光,邊緣淡到 0(不會看到方形的邊)
+  const g = x.createRadialGradient(0, 0, 4, 0, 0, 62);
+  g.addColorStop(0, 'rgba(255,214,160,0.85)'); g.addColorStop(0.6, 'rgba(255,205,150,0.45)'); g.addColorStop(1, 'rgba(255,214,160,0)');
+  x.fillStyle = g; x.fillRect(-64, -64, 128, 128);
+  x.restore();
   x.globalCompositeOperation = 'destination-out';
   x.filter = 'blur(4px)';
   x.fillStyle = '#000';
@@ -151,7 +153,11 @@ export class Marks {
     scene.add(this.root);
     this.feet = null; this.hands = null; this.writes = []; this.wIdx = 0;
     this.fx = []; // 進行中的特殊效果(門縫光、剪影、電視臉、電梯光)
+    this._feet(); this._hands(); this._strip(); this._sil('face'); this._sil('curtain'); this._tv(); this._lift();
+    for (const m of [this.strip, this.faceM, this.curtM, this.tv, this.lift]) m.visible = false;
   }
+  // 預編譯用:每種材質一個代表(可見、在畫面外)
+  warmList() { return [this.feet.im, this.hands.im, this.strip, this.faceM, this.curtM, this.tv, this.lift]; }
   _feet() {
     if (!this.feet) {
       const g = new THREE.PlaneGeometry(0.13, 0.26); g.rotateX(-Math.PI / 2);
@@ -209,7 +215,7 @@ export class Marks {
     return m;
   }
   // 門縫下的光與走過的影子:門中心 (x,z)、門寬方向 (ux,uz)、朝玩家的法線 (nx,nz)
-  underDoor(x, y, z, ux, uz, nx, nz, dur = 5) {
+  _strip() {
     if (!this.strip) {
       this.strip = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.ShaderMaterial({
         uniforms: { uK: { value: 0 }, uS: { value: -1 } },
@@ -220,7 +226,10 @@ export class Marks {
       this.strip.raycast = () => {}; this.strip.frustumCulled = false;
       this.root.add(this.strip);
     }
-    const m = this.strip;
+    return this.strip;
+  }
+  underDoor(x, y, z, ux, uz, nx, nz, dur = 5) {
+    const m = this._strip();
     // 平面躺在地上:本地 X 沿門寬、本地 +Y 從門縫往玩家(亮邊在門縫那側)
     let X = new THREE.Vector3(ux, 0, uz).normalize();
     const Y = new THREE.Vector3(nx, 0, nz).normalize();
@@ -233,7 +242,7 @@ export class Marks {
     this.fx.push({ type: 'strip', m, t: 0, dur });
   }
   // 隔簾上的人影 / 鏡子裡的臉:x,y,z 中心、nx,nz 朝向玩家;w,h 尺寸;回傳效果物件(可呼叫 end())
-  silhouette(kind, x, y, z, nx, nz, w, h, dur = 5) {
+  _sil(kind) {
     const key = kind === 'face' ? 'faceM' : 'curtM';
     if (!this[key]) {
       const c = silhouetteCanvas(kind);
@@ -244,7 +253,10 @@ export class Marks {
       this[key].raycast = () => {}; this[key].frustumCulled = false;
       this.root.add(this[key]);
     }
-    const m = this[key];
+    return this[key];
+  }
+  silhouette(kind, x, y, z, nx, nz, w, h, dur = 5) {
+    const m = this._sil(kind);
     m.scale.set(w, h, 1);
     const off = kind === 'face' ? 0.012 : 0.1; // 隔簾有皺褶(±6cm),剪影要貼在皺褶外面
     m.position.set(x + nx * off, y, z + nz * off);
@@ -255,7 +267,7 @@ export class Marks {
     return e;
   }
   // 電視雜訊裡的臉:螢幕中心、法線、寬高
-  tvFace(x, y, z, nx, nz, w, h, dur = 2.6) {
+  _tv() {
     if (!this.tv) {
       const c = document.createElement('canvas'); c.width = 96; c.height = 72;
       const t = tex(c); t.colorSpace = THREE.SRGBColorSpace;
@@ -263,7 +275,10 @@ export class Marks {
       this.tv.userData.c = c; this.tv.raycast = () => {};
       this.root.add(this.tv);
     }
-    const m = this.tv;
+    return this.tv;
+  }
+  tvFace(x, y, z, nx, nz, w, h, dur = 2.6) {
+    const m = this._tv();
     m.scale.set(w, h, 1);
     m.position.set(x + nx * 0.012, y, z + nz * 0.012);
     m.rotation.set(0, Math.atan2(nx, nz), 0);
@@ -271,13 +286,16 @@ export class Marks {
     this.fx.push({ type: 'tv', m, t: 0, dur, k: 0 });
   }
   // 電梯門縫透出的光(門中心、朝外法線)
-  liftGlow(x, y, z, nx, nz, dur = 7) {
+  _lift() {
     if (!this.lift) {
       this.lift = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xfff0d8, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: true }));
       this.lift.raycast = () => {};
       this.root.add(this.lift);
     }
-    const m = this.lift;
+    return this.lift;
+  }
+  liftGlow(x, y, z, nx, nz, dur = 7) {
+    const m = this._lift();
     m.scale.set(0.05, 2.15, 1);
     m.position.set(x + nx * 0.06, y + 1.1, z + nz * 0.06);
     m.rotation.set(0, Math.atan2(nx, nz), 0);

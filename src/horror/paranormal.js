@@ -235,7 +235,7 @@ export function paranormalKinds(h) {
       return a;
     } },
     curtain: { ok: (c) => indoor(c) && curtains(c).length > 0, run(c) { // 隔簾後站著一個病人(背光的剪影)
-      const a = pick(curtains(c));
+      const a = curtains(c).sort((p, q) => score(c, q) - score(c, p))[0]; // 最正對著玩家的那一床
       const e = M.silhouette('curtain', a.x, lv(c) + 1.08, a.z, a.nx, a.nz, 0.95, 1.9, rand(5, 8));
       h.watch(() => {
         if (e.out >= 0) return false;
@@ -354,8 +354,10 @@ export function paranormalKinds(h) {
     return null;
   }
   function curtains(c) {
-    return c.anchors.filter((a) => a.kind === 'bed_curtain' && a.li === c.li && near(c, a.x, a.z, 1.8, 9) && c.inView(a.x, a.z, 0.6) && ((c.px - a.x) * a.nx + (c.pz - a.z) * a.nz) > 0.5 && c.sees(c.li, c.px, c.pz, a.x + a.nx * 0.8, a.z + a.nz * 0.8));
+    return c.anchors.filter((a) => a.kind === 'bed_curtain' && a.li === c.li && near(c, a.x, a.z, 1.8, 9) && c.inView(a.x, a.z, 0.6) && ((c.px - a.x) * a.nx + (c.pz - a.z) * a.nz) / Math.hypot(c.px - a.x, c.pz - a.z) > 0.3 && c.sees(c.li, c.px, c.pz, a.x + a.nx * 0.8, a.z + a.nz * 0.8));
   }
+  // 視線對準程度(越正對越高)
+  function score(c, a) { const dx = a.x - c.px, dz = a.z - c.pz, d = Math.hypot(dx, dz) || 1; return (dx * c.fx + dz * c.fz) / d - d * 0.02; }
   function mirrorNow(c) {
     return c.anchors.find((a) => a.kind === 'mirror' && a.li === c.li && near(c, a.x, a.z, 1.0, 4.5) && c.inView(a.x, a.z, 0.8) && ((c.px - a.x) * a.nx + (c.pz - a.z) * a.nz) / (Math.hypot(c.px - a.x, c.pz - a.z) || 1) > 0.35) || null;
   }
