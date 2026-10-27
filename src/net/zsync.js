@@ -199,10 +199,12 @@ export class ZombieSync {
   onKill(z, killer, hit, orig) {
     const s = this.s, g = this.g;
     if (z._proxy) {
-      // 本地預測擊殺:金幣/掉落物歸自己(與房主確認同時發生時兩邊都會拿到,合作模式可接受)
-      if (z._localKill && !z._creditLocal) {
-        z._creditLocal = true;
-        if (s.pvp) { this.corpse(z, hit); g.kills = (g.kills || 0) + 1; } else orig.call(g, z, g.player, hit);
+      // 本地預測擊殺:立刻倒地(布娃娃、斷肢)並顯示擊殺標記;金幣/獎勵/掉落等房主的 'zd' 確認是我殺的才給
+      // (兩人同時打同一隻時只有房主判定的那個人拿到,不會重複)
+      if (z._localKill && !z._pending) {
+        z._pending = { how: g._killHow || (hit?.melee ? 'melee' : hit?.blast || hit?.explosive ? 'explosion' : null), t: performance.now() };
+        this.corpse(z, hit);
+        if (g.wfx && g.chud) { g._killMark = true; g.chud.marker('kill', z.killPart === 'head'); sfx.killConfirm?.(); }
       }
       return;
     }
@@ -220,6 +222,17 @@ export class ZombieSync {
     if (z._killed) return;
     z._killed = true;
     this.g.killFx(z, hit);
+  }
+  // 房主確認是我殺的(屍體已經倒了):金幣、擊殺數、flow 的擊殺獎勵/統計/掉落物(與 combat.onKill + flow.afterKill 相同)
+  credit(z, how) {
+    const g = this.g;
+    if (z._credited) return;
+    z._credited = true;
+    z.killer = g.player;
+    g.kills = (g.kills || 0) + 1;
+    if (this.s.pvp) return;
+    g.coins.drop(z.pos.x, z.pos.y, z.pos.z, z.T.coins);
+    g.afterKill?.(z, g.player, how || null);
   }
 
   // ====================== 其他人 ======================
@@ -334,9 +347,9 @@ export class ZombieSync {
       }
       z.die(part);
       if (typeof dk === 'string' && dk.length < 12) { z.deathKind = dk; z.deathSide = ds === -1 ? -1 : 1; }
-      if (by === s.me) { z._localKill = true; z._creditLocal = true; if (s.pvp) this.corpse(z); else s.origOnKill.call(g, z, g.player); }
-      else this.corpse(z);
-    }
+      this.corpse(z);
+      if (by === s.me) { this.credit(z, null); g.chud?.marker('kill', part === 'head'); }
+    } else if (by === s.me && z._pending) this.credit(z, z._pending.how); // 預測的擊殺確認了
     s.mode.onZombieKilled?.(z, by);
   }
 

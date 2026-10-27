@@ -246,7 +246,6 @@ export class NetSession {
     const g = this.game, s = this;
     // 擊殺:代理殭屍 / 遠端玩家的擊殺 / 金幣歸屬。包在 flow 的 onKill(金幣獎勵、掉落、統計)外面:
     // 本機的擊殺照原本流程一次跑完;隊友的擊殺只留屍體(金幣與掉落在他自己的畫面生成)
-    this.origOnKill = g.onKill;
     this.hook(g, 'onKill', (orig) => function (z, killer, hit) { return s.zs.onKill(z, killer, hit, orig); });
     // 代理殭屍(膿腫者)爆開只做特效與物理,傷害由房主結算
     this.hook(g, 'explode', (orig) => function (z, fxOnly) { return orig.call(this, z, fxOnly || !!(z && z._proxy)); });
