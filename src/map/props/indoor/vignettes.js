@@ -180,7 +180,7 @@ function laundrySheets(R) {
     const p = R.wallPos(run, t, 0.75);
     const w = 1.15;
     const t2 = tpl(`gh-sheet:${k}`, (b) => { b.raw('fab_white', curtainGeo([[-w / 2, 0], [w / 2, 0]], Math.min(ceil - 0.25, 2.3), 0.45 + k * 0.08, { pleat: 0.02, rag: 0.6, holes: 0.15, seed: 90 + k }), null, 'keep'); b.box('steel', w + 0.2, 0.012, 0.012, 0, Math.min(ceil - 0.25, 2.3) + 0.01, 0); });
-    R.put(t2, p.x, p.z, run.yaw + Math.PI / 2 * 0);
+    R.put(t2, p.x, p.z, run.yaw);
   }
 }
 // 地下維修隧道:翻倒的輪椅 + 往鍋爐房拖的痕跡
