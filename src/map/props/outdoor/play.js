@@ -60,7 +60,7 @@ export function swingSet(ctx, x, y, z, yaw = 0) {
     // 中間那座自己盪(振幅慢慢起伏),兩邊的只被風吹得微動
     sp.add(base, (t, m) => m.makeRotationX(Math.sin(t * 2.28 + ph) * amp * (i === 1 ? 0.75 + 0.25 * Math.sin(t * 0.13) : 1)));
   });
-  solid(ctx, x, y, z, Math.abs(Math.cos(yaw)) > 0.5 ? 5 : 1.6, H, Math.abs(Math.cos(yaw)) > 0.5 ? 1.6 : 5);
+  solid(ctx, x, y, z, Math.abs(Math.cos(yaw)) > 0.5 ? 5 : 1.6, H, Math.abs(Math.cos(yaw)) > 0.5 ? 1.6 : 5, 'mesh');
 }
 
 // ---------- 溜滑梯塔 ----------
@@ -88,9 +88,9 @@ export function slide(ctx, x, y, z, yaw = 0) {
   for (const s of [-1, 1]) P.add('steel', cyl(0.025, 0.025, 0.4, 6), M(s * 0.22, 0.2, 3.2));
   flatDecal(P, 'rustrun', -0.6, 1.2, -0.6 - 0.052, 0.12, 0.6, 'z-');
   put(ctx, P, x, y, z, yaw);
-  solid(ctx, x, y, z, 1.5, h + 1.4, 1.5);
+  solid(ctx, x, y, z, 1.5, h + 1.4, 1.5, 'metal');
   const c = Math.cos(yaw), s = Math.sin(yaw);
-  solid(ctx, x + 2.0 * s, y, z + 2.0 * c, Math.abs(s) > 0.5 ? 2.6 : 0.65, 0.9, Math.abs(s) > 0.5 ? 0.65 : 2.6);
+  solid(ctx, x + 2.0 * s, y, z + 2.0 * c, Math.abs(s) > 0.5 ? 2.6 : 0.65, 0.9, Math.abs(s) > 0.5 ? 0.65 : 2.6, 'metal');
 }
 
 // ---------- 旋轉盤(自己慢慢轉)----------
@@ -113,7 +113,7 @@ export function merryGoRound(ctx, x, y, z) {
   const ap = animPool(ctx, 'roundabout', roundabout, 4);
   const ph = hash(x * 3 + z) * TAU;
   ap.add(M(x, y, z), (t, m) => m.makeRotationY(ph + t * 0.16 + Math.sin(t * 0.21) * 0.6));
-  solid(ctx, x, y, z, 1.9, 1.0, 1.9);
+  solid(ctx, x, y, z, 1.9, 1.0, 1.9, 'metal');
 }
 
 // ---------- 翹翹板 ----------
@@ -129,7 +129,7 @@ export function seesaw(ctx, x, y, z, yaw = 0) {
   }
   put(ctx, P, x, y, z, yaw);
   const ax = Math.abs(Math.cos(yaw)) > 0.5;
-  solid(ctx, x, y, z, ax ? 3.3 : 0.35, 0.8, ax ? 0.35 : 3.3);
+  solid(ctx, x, y, z, ax ? 3.3 : 0.35, 0.8, ax ? 0.35 : 3.3, 'metal');
 }
 
 // ---------- 彈簧搖搖馬(會微微晃)----------
@@ -149,7 +149,7 @@ export function springRider(ctx, x, y, z, yaw = 0, kind = 'horse') {
   const ap = animPool(ctx, `rider_${kind}`, () => riderParts(kind), 4);
   const ph = hash(x + z * 3) * 10;
   ap.add(M(x, y, z, 0, yaw, 0), (t, m) => m.makeRotationZ(Math.sin(t * 1.9 + ph) * 0.05 * (0.4 + 0.6 * Math.max(0, Math.sin(t * 0.17 + ph)))));
-  solid(ctx, x, y, z, 0.6, 1.0, 0.6);
+  solid(ctx, x, y, z, 0.6, 1.0, 0.6, 'plastic');
 }
 
 // ---------- 沙坑 + 臉朝下的娃娃 ----------
@@ -172,7 +172,7 @@ export function sandbox(ctx, x, y, z, rng) {
   for (const s of [-1, 1]) { D.add('po_skin_doll', cyl(0.022, 0.02, 0.15, 6).rotateX(HALF), M(s * 0.05, 0.03, -0.12, 0, s * 0.2, 0)); D.add('po_skin_doll', cyl(0.02, 0.018, 0.13, 6).rotateZ(HALF), M(s * 0.14, 0.04, 0.1, 0, s * 0.3, 0)); }
   P.merge(D, M(-0.35, 0.13, -0.2, 0, 0.7, 0));
   put(ctx, P, x, y, z, 0);
-  solid(ctx, x, y, z, S + 0.2, 0.24, S + 0.2);
+  solid(ctx, x, y, z, S + 0.2, 0.24, S + 0.2, 'wood');
 }
 
 // ---------- 泰迪熊(坐姿)/ 三輪車 / 皮球 ----------

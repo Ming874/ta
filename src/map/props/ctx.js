@@ -63,14 +63,15 @@ export function createDressCtx({ layout, world, group, seed = 1234 }) {
     occupy(li, c, r) { if (c >= 0 && r >= 0 && c < L.W && r < L.H) occ[li][r * L.W + c] = 1; },
     // 把物件加進場景。collide:登記碰撞盒(世界 AABB,shrink 往內縮);
     // static:最後依材質合併(只能用 mat() 的共用材質、不會再動的物件);block:標記佔用格子
-    add(obj, { collide = false, shrink = 0.05, static: isStatic = true, block = collide } = {}) {
+    add(obj, { collide = false, shrink = 0.05, static: isStatic = true, block = collide, mat = null, tag = null } = {}) {
       group.add(obj);
       obj.updateMatrixWorld(true);
       if (collide || block) {
         box.setFromObject(obj);
         if (collide) {
           const sx = Math.max(0.05, box.max.x - box.min.x - shrink * 2), sz = Math.max(0.05, box.max.z - box.min.z - shrink * 2);
-          world.addBox((box.min.x + box.max.x) / 2, (box.min.z + box.max.z) / 2, sx, sz, box.max.y - box.min.y, box.min.y);
+          const b = world.addBox((box.min.x + box.max.x) / 2, (box.min.z + box.max.z) / 2, sx, sz, box.max.y - box.min.y, box.min.y);
+          if (b) { if (mat) b.mat = mat; if (tag) b.tag = tag; } // 材質/來源模板(子彈穿透、彈著效果;physics/truth.js)
         }
         if (block) {
           const li = L.levelOfY(box.min.y + 0.2);

@@ -6,6 +6,8 @@ import { surf } from './surfaces.js';
 // 只動視覺/燈光/音效(sfx.scare / sfx.door / sfx.thud),不造成傷害、不擋路。全部是本機效果(多人時各自發生)。
 // 節奏:安靜時才累積(附近有殭屍時延後)、全域最短間隔、每種事件各自冷卻、每個錨點有使用次數上限。
 // 擴充:registerEvents({ kind: { w, cd, ok(c), run(c) } }) 加新事件;registerEventBias({ mood/theme: { kind: 倍率 } }) 調區域權重。
+// [ghost] 有 src/horror(驚嚇導演)時:api.auto = false 關掉這裡的自動排程,改由導演呼叫 api.fire(kind);
+//         api.register(defs) 在建好之後加入/覆寫事件種類;c(事件情境)另外提供 K、L、sees、solid、inView… 給 src/horror/paranormal.js。
 //
 // 內建事件:
 //  flicker   前方的燈一陣狂閃,有時「啪」一聲燒掉(火花 + 碎玻璃聲)
@@ -71,8 +73,8 @@ export function createEvents({ K, L, lights, propEvents = [], root }) {
   // ---- 事件 ----
   const E = {
     flicker: { w: 3, cd: 35, ok: (c) => c.fixAhead(4, 15).length > 0, run(c) {
-      const list = c.fixAhead(4, 15).sort(() => Math.random() - 0.5).slice(0, 1 + (Math.random() * 2.4 | 0));
-      const burn = Math.random() < 0.4;
+      const list = c.fixAhead(4, 15).sort(() => Math.random() - 0.5).slice(0, 1); // [ghost] 一次只閃一盞(多盞同時閃只留給刻意的演出)
+      const burn = Math.random() < 0.25;
       for (const f of list) S.active.push({ type: 'storm', f, t0: c.t, t1: c.t + rand(1.2, 2.6), burn: burn && f === list[0] });
       if (!burn) sfx.scare('metal_scrape', { x: list[0].x, y: list[0].y, z: list[0].z });
       return list[0];
@@ -192,6 +194,12 @@ export function createEvents({ K, L, lights, propEvents = [], root }) {
           }
           S.active.splice(i, 1);
         }
+      } else if (a.type === 'die') { // [ghost] 一盞一盞熄滅(t0 之前不動;熄滅前抽搐一下;t1 之後閃兩下回來)
+        if (c.t < a.t0) continue;
+        if (!a.started) { a.started = true; a.onStart?.(a); }
+        if (c.t < a.t1) a.f.ov = c.t - a.t0 < 0.18 ? (Math.random() < 0.5 ? 0.15 : 1) : 0;
+        else if (c.t < a.t1 + 0.5) a.f.ov = Math.random() < 0.45 ? 0.1 : 1;
+        else { a.f.ov = 1; S.active.splice(i, 1); }
       } else if (a.type === 'black') {
         const back = c.t > a.t1;
         a.f.ov = back ? (Math.random() < 0.5 ? 0.3 : 1) : Math.max(0, 1 - (c.t - a.t0) * 6);
@@ -235,22 +243,14 @@ export function createEvents({ K, L, lights, propEvents = [], root }) {
     }
   }
 
-  // ---- 主迴圈 ----
-  const api = {
-    S, figure, KINDS,
-    update(t, dt, player, game, ctx, force = null) {
-      if (!player) return;
-      const c = { t, dt, player, game, px: player.pos.x, py: player.pos.y, pz: player.pos.z, li: ctx.li, zone: ctx.zone, mood: ctx.mood, outdoor: ctx.outdoor, fx: ctx.fx, fz: ctx.fz };
-      tickActive(c);
-      if (!game || game.state !== 'playing' || game.shopUIOpen || game.paused) return;
-      if (S.next < 0) S.next = t + 25;
-      // 附近有殭屍 → 延後(戰鬥中不嚇人;安靜時才累積張力)
-      let zNear = false, zClose = false;
-      for (const z of game.zombies || []) { if (!z.alive) continue; const d = z.dist ?? 99; if (d < 14) zNear = true; if (d < 6) zClose = true; }
-      if (zClose && !force) { S.next = Math.max(S.next, t + 6); return; }
-      if (t < S.next && !force) return;
+  // ---- 事件情境:查詢工具(延遲計算,只在要挑事件時才建) ----
+  function buildCtx(c) {
+      let zNear = false;
+      for (const z of c.game?.zombies || []) { if (z.alive && (z.dist ?? 99) < 14) zNear = true; }
       c.zNear = zNear;
       api.lastCtx = c;
+      c.K = K; c.L = L; c.root = root; c.doors = doors; c.anchors = anchors; c.fixtures = fixtures; c.active = S.active; c.solid = solid; c.sees = sees;
+      c.inView = (x, z, minDot) => inView(c, x, z, minDot); c.seesNear = (x, z) => seesNear(c, x, z);
       c.dark = !fixtures.some((f) => f.li === c.li && f.cur > 0.3 && (f.x - c.px) ** 2 + (f.z - c.pz) ** 2 < 36);
       // 查詢工具(延遲計算,只在需要時跑)
       c.fixAhead = (a, b) => fixtures.filter((f) => f.li === c.li && f.state !== 2 && f.shape && f.cur > 0.2 && !f.prop && f.kind !== 'exit'
@@ -261,11 +261,11 @@ export function createEvents({ K, L, lights, propEvents = [], root }) {
       c.holeAhead = () => holes.find((h) => h.li === c.li && !(h.usedAt > 0) && (() => { const q = Math.hypot(h.x - c.px, h.z - c.pz); return q > 2.5 && q < 8; })() && inView(c, h.x, h.z, 0.6) && sees(c.li, c.px, c.pz, h.x, h.z));
       c.dynAhead = () => {
         // 可動道具在建構時就固定了,只掃一次
-        if (!S.dyn) { S.dyn = []; S.dynT = t; root.traverse((o) => { if (o.userData?.dynamic && /wc|wheel|cart|iv|linen|gurney|trolley|chair|stool/i.test(o.userData.kind || o.name)) S.dyn.push(o); }); }
+        if (!S.dyn) { S.dyn = []; S.dynT = c.t; root.traverse((o) => { if (o.userData?.dynamic && /wc|wheel|cart|iv|linen|gurney|trolley|chair|stool/i.test(o.userData.kind || o.name)) S.dyn.push(o); }); }
         for (const o of S.dyn) { o.getWorldPosition(_v); const q = Math.hypot(_v.x - c.px, _v.z - c.pz); if (Math.abs(_v.y - L.levels[c.li].y) < 1.5 && q > 4 && q < 12 && inView(c, _v.x, _v.z, 0.6) && sees(c.li, c.px, c.pz, _v.x, _v.z)) return o; }
         return null;
       };
-      c.anchorNear = () => anchors.find((a) => a.li === c.li && a.used < 2 && t - a.last > 120 && (() => { const q = Math.hypot(a.x - c.px, a.z - c.pz); return q > 2 && q < 8; })() && sees(c.li, c.px, c.pz, a.x, a.z));
+      c.anchorNear = () => anchors.find((a) => a.li === c.li && a.used < 2 && c.t - a.last > 120 && (() => { const q = Math.hypot(a.x - c.px, a.z - c.pz); return q > 2 && q < 8; })() && sees(c.li, c.px, c.pz, a.x, a.z));
       c.figSpot = () => { // 視線方向 12~26m:優先站在某盞天花燈正下方稍後(燈一定會亮 → 背光剪影);沒有燈才找最遠的可走點
         if (c._fig !== undefined) return c._fig;
         const under = fixtures.filter((f) => f.li === c.li && (f.shape === 'tube' || f.shape === 'bulb') && !f.prop && (() => {
@@ -292,6 +292,52 @@ export function createEvents({ K, L, lights, propEvents = [], root }) {
         }
         return (c._fig = best);
       };
+      return c;
+  }
+  const F = { t: 0, dt: 0, player: null, game: null, ctx: null }; // 最近一幀(導演呼叫 fire 時用)
+  const mk = (t, dt, player, game, ctx) => ({ t, dt, player, game, px: player.pos.x, py: player.pos.y, pz: player.pos.z, li: ctx.li, zone: ctx.zone, mood: ctx.mood, outdoor: ctx.outdoor, fx: ctx.fx, fz: ctx.fz });
+
+  // ---- 主迴圈 ----
+  const api = {
+    S, figure, KINDS, auto: true, F, doors, anchors, fixtures,
+    register(defs) { Object.assign(KINDS, defs); },
+    // [ghost] 導演用:立刻嘗試觸發某種事件(檢查 ok;opts.noCheck 略過檢查)。回傳 run() 的結果或 null
+    fire(kind, opts = {}) {
+      const E2 = KINDS[kind];
+      if (!E2 || !F.player || !F.ctx) return null;
+      const c = buildCtx(mk(F.t, F.dt, F.player, F.game, F.ctx));
+      c.opts = opts;
+      let ok = false;
+      try { ok = opts.noCheck || E2.ok(c); } catch (e) { console.warn('[events]', kind, e); ok = false; }
+      if (!ok) return null;
+      let r = null;
+      try { r = E2.run(c) ?? true; } catch (e) { console.warn('[events]', kind, e); return null; }
+      S.last[kind] = F.t; S.fired++;
+      S.log.push(F.t.toFixed(1) + ':' + kind);
+      if (S.log.length > 30) S.log.shift();
+      return r;
+    },
+    // 導演用:某種事件現在可不可以觸發(只跑 ok)
+    can(kind) {
+      const E2 = KINDS[kind];
+      if (!E2 || !F.player || !F.ctx) return false;
+      try { return !!E2.ok(buildCtx(mk(F.t, F.dt, F.player, F.game, F.ctx))); } catch { return false; }
+    },
+    update(t, dt, player, game, ctx, force = null) {
+      if (!player) return;
+      F.t = t; F.dt = dt; F.player = player; F.game = game; F.ctx = ctx;
+      const c = mk(t, dt, player, game, ctx);
+      tickActive(c);
+      if (!api.auto && !force) return; // [ghost] 驚嚇導演接手排程
+      if (!game || game.state !== 'playing' || game.shopUIOpen || game.paused) return;
+      if (S.next < 0) S.next = t + 25;
+      // 附近有殭屍 → 延後(戰鬥中不嚇人;安靜時才累積張力)
+      let zClose = false;
+      for (const z of game.zombies || []) { if (!z.alive) continue; const d = z.dist ?? 99; if (d < 6) zClose = true; }
+      if (zClose && !force) { S.next = Math.max(S.next, t + 6); return; }
+      if (t < S.next && !force) return;
+      buildCtx(c);
+      const zNear = c.zNear;
       const bias = { ...(BIAS[ctx.mood] || {}), ...(BIAS[ctx.zone?.theme] || {}), ...(ctx.outdoor ? BIAS.outdoor : {}) };
       const cand = [];
       let total = 0;

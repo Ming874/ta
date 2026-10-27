@@ -20,6 +20,7 @@ const r2 = (x) => Math.round(x * 100) / 100;
 const r3 = (x) => Math.round(x * 1000) / 1000;
 const fin = (x) => typeof x === 'number' && Number.isFinite(x);
 const SAFE_STATES = new Set(['chase', 'attack', 'stumble', 'stagger', 'recover', 'getup', 'stun']);
+const AMB = new Set(['idle', 'spawn', 'scream', 'fall']); // [ambush] 埋伏/衝出/掉落(叫聲由 ambush 自己放)
 const _p = new THREE.Vector3(), _d = new THREE.Vector3();
 const HITP = { bone: '', point: new THREE.Vector3(), dir: new THREE.Vector3(), dmg: 0, range: 0, weapon: '', explosive: false, melee: false }; // 遠端命中(房主結算用,重複使用)
 
@@ -130,7 +131,7 @@ export class ZombieSync {
       const stale = now - q.t > 1000;
       if (!full && !stale && (!changed || (near > FAR && this.nsnap % 3 !== 0))) continue;
       q.x = qx; q.y = qy; q.z = qz; q.h = qh; q.s = sc; q.hp = hp; q.t = now;
-      w.u16(z._nid); w.u8(code(ZTYPES, z.type)); w.u8(variantIndexOf(z.V)); w.u8(sc); w.u8(1);
+      w.u16(z._nid); w.u8(code(ZTYPES, z.type)); w.u8(variantIndexOf(z.V)); w.u8(sc); w.u8(1 | ((z.amb ? (z.amb.code & 7) | (z.amb.quiet ? 8 : 0) : 0) << 1)); // 旗標:bit0 存活、[ambush] bit1-3 埋伏姿勢、bit4 安靜甦醒
       w.i16(qx); w.i16(qy); w.i16(qz); w.u16(qh);
       w.u16(Math.min(65535, Math.round(Math.max(0, z.st) * 1000))); w.u16(Math.max(0, Math.min(65535, hp)));
       w.u8(Math.min(255, Math.round((z.speedNow || 0) * 20)));
@@ -309,7 +310,7 @@ export class ZombieSync {
     const n = r.u8();
     if (r.left < n * ZENTRY) return;
     for (let i = 0; i < n; i++) {
-      const id = r.u16(), ty = r.u8(), vi = r.u8(), sc = r.u8(); r.u8();
+      const id = r.u16(), ty = r.u8(), vi = r.u8(), sc = r.u8(), fl = r.u8();
       const x = r.i16() / 100, y = r.i16() / 100, zz = r.i16() / 100, h = dAng(r.u16());
       const st = r.u16() / 1000, hp = r.u16(), sp = r.u8() / 20, tg = r.u8();
       let z = this.byId.get(id);
@@ -318,6 +319,7 @@ export class ZombieSync {
         z = this.createProxy(id, ty, vi, x, y, zz, h);
       }
       if (!z._proxy) continue;
+      z._ambFl = fl >> 1; // [ambush] 埋伏姿勢 / 安靜甦醒(src/zombies/ambush.pose.js)
       const base = z.buf.pushAfterGap(t, 400);
       if (base < 0) continue;
       const v = z.buf.v;
@@ -391,9 +393,10 @@ export class ZombieSync {
     const lp = g.player.pos;
     z.dist = Math.hypot(lp.x - z.pos.x, lp.z - z.pos.z);
     z.mesh.castShadow = z.dist < 11;
+    if (z._ambFl || z.amb) { const r = z._ambProxy(dt, ctx); if (r !== undefined) return r; } // [ambush] 埋伏中:凍結不動;衝出/掉落照房主的狀態時間播
     z._slope?.(ctx.world, z.type === 'crawler' ? 1 : 0, dt);
     z._resetPose();
-    z['_pose_' + z.type](dt, ctx, dist, toX, toZ);
+    (z.amb ? z._ambPose : z['_pose_' + z.type]).call(z, dt, ctx, dist, toX, toZ);
     if (z.type === 'runner' && z.state === 'leap') { const u = z.st / 0.46; z.rootY = Math.max(0, 4 * 0.42 * u * (1 - u)); }
     z._reactions(dt);
     z._applyRoot();
@@ -429,7 +432,7 @@ export class ZombieSync {
     else if (next === 'crouch') sfx.shriek(z.vp);
     else if (next === 'stun') { sfx.wallImpact(z.vp); }
     else if (next === 'trip') sfx.thud(z.vp, false);
-    if (z.type === 'runner' && !z.spotted && next !== 'chase') { z.spotted = true; sfx.shriek(z.vp); }
+    if (z.type === 'runner' && !z.spotted && next !== 'chase' && !AMB.has(next)) { z.spotted = true; sfx.shriek(z.vp); }
   }
 
   // 每幀:房主送快照;其他人清理已確認死亡/過期的代理
