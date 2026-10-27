@@ -130,6 +130,7 @@ export const combatMethods = {
       this.boomLight.intensity = 85 * k * k * (0.85 + Math.random() * 0.3);
     } else this.boomLight.intensity = 0;
     this._updateNades(dt);
+    if (this.ballistics) this.ballistics.update(dt); // [physics] 玻璃碎片
     this._updateGore(dt);
     this.wfx.update(dt);
   },
