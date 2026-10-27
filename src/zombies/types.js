@@ -51,6 +51,11 @@ export const TYPES = {
     charge: { min: 3, max: 11, speed: 6.6, dmg: 20, cd: [4, 6.5] },
     counter: '蹲低就是要衝撞 · 側閃讓牠撞牆,趁暈眩爆頭',
   },
+  // 追逐戰專用(src/zombies/chase.js 生成,不在出怪表裡):殺不死,子彈只會讓牠踉蹌/變慢;比走路快、比衝刺慢
+  pursuer: {
+    name: '追獵者', hp: 99999, speed: [4.1, 4.1], coins: 0, radius: 0.36, mass: 3, reach: 1.25, dmg: 0, cd: 1, turn: 10, groan: 3, chaseOnly: true,
+    burst: 4.7, catchDmg: 45,
+  },
 };
 
 // 第 n 回合的出怪清單:第 1 回合只有行屍,之後逐步加入新類型(首次出現的回合保證至少一隻)

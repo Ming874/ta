@@ -7,6 +7,7 @@ import { sfx, resume as resumeAudio } from '../audio.js';
 import { settings } from '../ui/settings.js';
 import { buildInteract } from '../interact/index.js';
 import { createAmbush } from '../zombies/ambush.js';
+import { createChase } from '../zombies/chase.js'; // [zombies-w3] 追逐戰
 import { waveRoster, wavePace, waveKind, hpMul, SPECIAL, restTime, roundBonus, cleanBonus, POINTS, HOW_MUL, streakMul, streakTier, roundScore, saveBest } from './waves.js';
 
 // 回合流程:重開、開始/結束回合、出怪、休息與商店、補給、醫療包、擊殺獎勵、計分、死亡結算。以 mixin 方式掛到 Game 上
@@ -94,6 +95,7 @@ export const flowMethods = {
     }
     window.addEventListener('keydown', (e) => this.onGameplayKey(e), true); // 捕獲階段:比 input.js 先處理
     this.weaponScene.visible = false; // 標題畫面不顯示手持武器
+    this.chase = createChase(this); // [zombies-w3] 追逐戰(src/zombies/chase.js)
     this.ambush = createAmbush(this); // [ambush] 埋伏/天花板掉落(src/zombies/ambush.js;場景物件在開機預編譯前就建好)
     document.addEventListener('pointerlockchange', () => {
       if (document.pointerLockElement !== this.canvas && this.ui.map.isOpen) this.ui.map.close();
@@ -113,6 +115,7 @@ export const flowMethods = {
     this.physics?.reset(); // 物理:道具回原位、清掉布娃娃與碎片
     this.interact?.resetRun(); // 互動物件、門、旗標與道具歸零
     this.ambush?.reset(); // [ambush] 假屍體、格柵、血漬
+    this.chase?.reset(); // [zombies-w3]
     const p = this.player, st = this.world.start;
     p.hp = p.maxHp;
     p.alive = true;
@@ -281,6 +284,7 @@ export const flowMethods = {
     // 載入後馬上開局、戰鬥 shader 還在背景預熱(main.js warmRuntime):先不出怪、不擺假屍體,最多等 12 秒
     this.spawnHeld = this.phase === 'fighting' && this.warmed === false && (this._warmHold = (this._warmHold || 0) + dt) < 12;
     this.ambush?.update(dt); // [ambush] 觸發、線索、假屍體
+    this.chase?.update(dt); // [zombies-w3] 追逐戰:導演觸發、逃脫/被抓判定、各端的畫面與聲音
     if (this.phase === 'fighting') {
       let alive = 0, near = Infinity, lurk = 0; // lurk:埋伏中的(不佔同場上限,但回合要等牠們)
       for (const z of this.zombies) if (z.alive) { if (z.amb?.dormant) { lurk++; continue; } alive++; if (z.dist < near && Math.abs(z.dy || 0) < 3) near = z.dist; }
