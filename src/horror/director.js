@@ -69,6 +69,7 @@ export const INTENSITY = {
 };
 export const LEVELS = ['off', 'low', 'normal', 'high'];
 const CALM_START = 60; // 開局多少秒內不放 medium/big 與閃燈
+const LIGHT_KINDS = new Set(['flicker', 'signal', 'lightsDie', 'blackout']);
 
 export class Director {
   constructor(horror) {
@@ -149,6 +150,7 @@ export class Director {
     if (K.jump && this.t - this.lastJump < (K.tier === 'big' ? 60 : 18) * I.cd * w) return deny(); // 跳嚇不連發
     if (K.jump && this.t - this.lastTier.big < 40 * I.cd) return deny(); // 大場面之後的喘息
     if (this.phase === 'fighting' && this.roundT < 6) return deny(); // 回合剛開始
+    if (this.t < CALM_START && LIGHT_KINDS.has(kind)) return deny(); // 開局 60 秒內燈不閃
     // 恐懼值不夠:外部(伏擊)看得見的驚嚇只要求一半門檻(牠們本身就是戰鬥的一部分)
     const need = TIER[K.tier].dread * (K.ext ? 0.5 : 1) * Math.min(1.6, w);
     if (this.dread < need && !o.force) return deny();
