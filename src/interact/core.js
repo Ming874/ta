@@ -199,9 +199,9 @@ export class Interact {
       const q = this.where(e);
       const dx = q.x - ex, dy = q.y - ey, dz = q.z - ez;
       if (dy > 1.4 || dy < -2.2) continue;
-      const d2 = dx * dx + dy * dy + dz * dz, r = e.reach;
-      if (d2 > r * r) continue;
-      const d = Math.sqrt(d2) || 0.001;
+      const r = e.reach;
+      if (dx * dx + dz * dz + dy * dy * 0.36 > r * r) continue; // 距離:高低差只算六成(低頭看桌上的東西不會太嚴)
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 0.001;
       let s;
       if (e.look !== false) {
         const dot = (dx * _dir.x + dy * _dir.y + dz * _dir.z) / d;
@@ -220,7 +220,7 @@ export class Interact {
       if (e.los !== false && w?.rayDistance) {
         this.stats.rays++;
         const hit = w.rayDistance(ex, ey, ez, C[bi + 3], C[bi + 4], C[bi + 5], d);
-        if (hit < d - e.radius - 0.15 - (e.losPad || 0)) continue;
+        if (hit < d - e.radius - 0.15 - (e.losPad ?? 0.25)) continue; // 放在台面/櫃子上的東西:自己底下的碰撞盒不算擋住
       }
       best = e;
       break;

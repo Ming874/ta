@@ -80,7 +80,7 @@ export class IxUI {
     m.el.classList.remove('on');
     setTimeout(() => m.el.remove(), 220);
     const g = this.game;
-    if (m.paused && g.paused && document.pointerLockElement) g.paused = false;
+    if (m.paused && g.paused && !document.getElementById('pause')?.classList.contains('on')) g.paused = false; // 是我們暫停的(不是 Esc 叫出的暫停選單)才恢復
   }
   onKey(e) {
     const m = this.modal;
