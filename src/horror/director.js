@@ -117,6 +117,7 @@ export class Director {
     this.fired = 0;
     this.denied = 0;
     this.uses = {}; // 這一局每種用了幾次(疲勞)
+    this.lastAny = -1e9; // 上一個(非耳語)驚嚇的時間
     this.recent = []; // 最近的驚嚇 [{ kind, cat, t }]
   }
   // 第幾幕:第 1~2 回合 = 1(有人在)、3~5 = 2(看得見的痕跡)、6 以後 = 3(正面遭遇);靜默期拖很久也會往後推
@@ -147,7 +148,7 @@ export class Director {
   // 新的一局
   reset() {
     this.t = 0; this.dread = 0; this.tension = 0; this.calm = 0; this.bigUntil = 0; this.roundT = 0;
-    this.last = {}; this.lastTier = { small: -1e9, medium: -1e9, big: -1e9 }; this.lastJump = -1e9; this.log.length = 0; this.uses = {}; this.recent.length = 0;
+    this.last = {}; this.lastTier = { small: -1e9, medium: -1e9, big: -1e9 }; this.lastJump = -1e9; this.log.length = 0; this.uses = {}; this.recent.length = 0; this.lastAny = -1e9;
   }
   // 每幀(遊戲中、非暫停):張力與恐懼值
   update(dt, game) {
@@ -199,6 +200,7 @@ export class Director {
     if (K.jump && this.t - this.lastJump < (K.tier === 'big' ? 60 : 18) * I.cd * w) return deny(); // 跳嚇不連發
     if (K.jump && this.t - this.lastTier.big < 40 * I.cd) return deny(); // 大場面之後的喘息
     if (this.phase === 'fighting' && this.roundT < 6) return deny(); // 回合剛開始
+    if (!K.ext && kind !== 'whisper' && kind !== 'call' && this.t - this.lastAny < (K.tier === 'small' ? 7 : 12) * I.cd) return deny(); // 任兩個驚嚇之間至少隔幾秒(不疊在一起)
     if (!this.silent && !FIGHT_OK.has(kind)) return deny(); // 鬼只在靜默期
     if (!K.ext && !o.force && (K.act || 1) > this.act) return deny(); // 還沒到那一幕
     if (this.t < CALM_START && LIGHT_KINDS.has(kind)) return deny(); // 開局 60 秒內燈不閃
@@ -213,6 +215,7 @@ export class Director {
     this.last[kind] = this.t;
     this.lastTier[K.tier] = this.t;
     this.uses[kind] = (this.uses[kind] || 0) + 1;
+    if (!K.ext && kind !== 'whisper' && kind !== 'call') this.lastAny = this.t;
     this.recent.push({ kind, cat: K.cat || 'other', t: this.t });
     if (this.recent.length > 8) this.recent.shift();
     if (K.jump) this.lastJump = this.t;

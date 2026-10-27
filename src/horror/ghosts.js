@@ -68,7 +68,7 @@ void main(){
 function makeMat(shade) {
   return new THREE.ShaderMaterial({
     uniforms: { uTime: { value: 0 }, uWob: { value: 1 }, uH: { value: 1.75 }, uColor: { value: new THREE.Color(shade ? 0x8fb0d8 : 0xb8d4ff) }, uAlpha: { value: 0 }, uFog: { value: 0.03 }, uDissolve: { value: 0 }, uShade: { value: shade ? 1 : 0 } },
-    vertexShader: VS, fragmentShader: FS, transparent: true, depthWrite: false, fog: false,
+    vertexShader: VS, fragmentShader: FS, transparent: true, depthWrite: false, fog: false, name: shade ? 'ghost-shade' : 'ghost-pale',
     blending: shade ? THREE.NormalBlending : THREE.AdditiveBlending, side: THREE.FrontSide,
   });
 }
@@ -157,7 +157,7 @@ export class Apparitions {
       mesh.renderOrder = 6;
       mesh.name = 'ghost';
       // 深度預先繪製:只留最外層表面(不然加法混合會透出身體裡層的管狀結構,像假人)
-      const depth = new THREE.ShaderMaterial({ uniforms: { uTime: { value: 0 }, uWob: { value: 1 }, uH: { value: 1.75 } }, vertexShader: VS, fragmentShader: 'void main(){}', colorWrite: false, depthWrite: true, transparent: true, fog: false });
+      const depth = new THREE.ShaderMaterial({ uniforms: { uTime: { value: 0 }, uWob: { value: 1 }, uH: { value: 1.75 } }, vertexShader: VS, fragmentShader: 'void main(){}', colorWrite: false, depthWrite: true, transparent: true, fog: false, name: 'ghost-depth' });
       const dm = new THREE.Mesh(mesh.geometry, depth);
       dm.renderOrder = 5; dm.castShadow = false; dm.frustumCulled = false; dm.raycast = () => {};
       mesh.add(dm);
