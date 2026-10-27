@@ -12,19 +12,20 @@ const SH_MAX = 220, CU_MAX = 900;
 const FREE = 0, FLY = 1, REST = 2, WAIT = 3, FADE = 4;
 const REST_LIFE = 110, FADE_T = 1.6;
 const _m = new THREE.Matrix4(), _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _s = new THREE.Vector3(), _e = new THREE.Euler(), _ax = new THREE.Vector3();
-const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+const ZERO = new THREE.Matrix4().makeScale(0, 0, 0), _m2 = new THREE.Matrix4(), _one = new THREE.Vector3(1, 1, 1);
 const rand = (a, b) => a + Math.random() * (b - a);
 
-// 三角柱(平放:法線 +Y,厚 5mm),單位大小;實例的 x/z 縮放做出長短寬窄不同的尖碎片。側面頂點色偏綠(玻璃斷面)
+// 不規則尖四邊形薄片(平放:法線 +Y,厚 5mm),單位大小;每片再加上隨機的縮放與錯切(_shear),形狀各不相同。
+// 斷面(側面)頂點色偏綠、亮(玻璃邊緣);正反面暗、低粗糙度 → 主要靠反光與邊緣被看到,不像白紙片
 function shardGeo() {
-  const A = [0, -0.5], B = [0.48, 0.32], C = [-0.42, 0.45], t = 0.0025;
+  const Q = [[0, -0.56], [0.34, -0.06], [0.12, 0.5], [-0.3, 0.16]], t = 0.0025;
   const pos = [], col = [], nor = [];
   const face = (a, b, c, n, cl) => { for (const v of [a, b, c]) { pos.push(v[0], v[1], v[2]); nor.push(n[0], n[1], n[2]); col.push(cl[0], cl[1], cl[2]); } };
-  const top = [1, 1, 1], edge = [0.42, 0.62, 0.55];
+  const top = [1, 1, 1], edge = [1.6, 2.2, 1.9];
   const P = (q, y) => [q[0], y, q[1]];
-  face(P(A, t), P(C, t), P(B, t), [0, 1, 0], top);
-  face(P(A, -t), P(B, -t), P(C, -t), [0, -1, 0], top);
-  for (const [a, b] of [[A, B], [B, C], [C, A]]) {
+  face(P(Q[0], t), P(Q[2], t), P(Q[1], t), [0, 1, 0], top); face(P(Q[0], t), P(Q[3], t), P(Q[2], t), [0, 1, 0], top);
+  face(P(Q[0], -t), P(Q[1], -t), P(Q[2], -t), [0, -1, 0], top); face(P(Q[0], -t), P(Q[2], -t), P(Q[3], -t), [0, -1, 0], top);
+  for (const [a, b] of [[Q[0], Q[1]], [Q[1], Q[2]], [Q[2], Q[3]], [Q[3], Q[0]]]) {
     const dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz), n = [dz / l, 0, -dx / l];
     face(P(a, -t), P(b, t), P(b, -t), n, edge);
     face(P(a, -t), P(a, t), P(b, t), n, edge);
@@ -50,7 +51,7 @@ class Pool {
     scene.add(this.mesh);
     const F = (n) => new Float32Array(cap * n);
     this.P = F(3); this.V = F(3); this.Q = F(4); this.W = F(3); this.S = F(3);
-    this.fl = F(1); this.t = F(1); this.hr = F(1);
+    this.fl = F(1); this.t = F(1); this.hr = F(1); this.sh = F(1); // sh:錯切(碎片形狀變化)
     this.st = new Uint8Array(cap); this.gen = new Uint8Array(cap); this.nb = new Uint8Array(cap);
     this.ptr = 0;
     this.awake = 0; // FLY + WAIT + FADE 的數量
@@ -69,8 +70,12 @@ class Pool {
     const o3 = i * 3, o4 = i * 4;
     _p.set(this.P[o3], this.P[o3 + 1], this.P[o3 + 2]);
     _q.set(this.Q[o4], this.Q[o4 + 1], this.Q[o4 + 2], this.Q[o4 + 3]);
-    _s.set(this.S[o3], this.S[o3 + 1], this.S[o3 + 2]);
-    _m.compose(_p, _q, _s);
+    const k = this.sh[i];
+    if (k) { // T·R·錯切·S
+      _m.compose(_p, _q, _one);
+      _m2.set(this.S[o3], 0, k * this.S[o3 + 2], 0, 0, this.S[o3 + 1], 0, 0, 0, 0, this.S[o3 + 2], 0, 0, 0, 0, 1);
+      _m.multiply(_m2);
+    } else _m.compose(_p, _q, _s.set(this.S[o3], this.S[o3 + 1], this.S[o3 + 2]));
     this.mesh.setMatrixAt(i, _m);
     this.dirty = true;
   }
@@ -93,9 +98,9 @@ export class GlassFX {
   constructor(game) {
     this.game = game;
     this.world = game.world;
-    const shardMat = new THREE.MeshStandardMaterial({ color: 0xe2f3ef, roughness: 0.04, metalness: 0.05, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide, vertexColors: true, envMapIntensity: 2 });
+    const shardMat = new THREE.MeshStandardMaterial({ color: 0x46564f, roughness: 0.03, metalness: 0.1, transparent: true, opacity: 0.42, depthWrite: false, side: THREE.DoubleSide, vertexColors: true, envMapIntensity: 2 });
     shardMat.name = 'glass_shard';
-    const cubeMat = new THREE.MeshStandardMaterial({ color: 0xd4e9e3, roughness: 0.2, metalness: 0.05, transparent: true, opacity: 0.75, depthWrite: false });
+    const cubeMat = new THREE.MeshStandardMaterial({ color: 0xa8bdb7, roughness: 0.18, metalness: 0.05, transparent: true, opacity: 0.7, depthWrite: false });
     cubeMat.name = 'glass_cube';
     this.sh = new Pool(game.scene, shardGeo(), shardMat, SH_MAX, 'glassShards');
     this.cu = new Pool(game.scene, new THREE.BoxGeometry(1, 1, 1), cubeMat, CU_MAX, 'glassCubes');
@@ -118,6 +123,7 @@ export class GlassFX {
     pool.t[i] = delay;
     pool.hr[i] = hr;
     pool.gen[i] = gen; pool.nb[i] = 0;
+    pool.sh[i] = pool === this.sh ? rand(-0.9, 0.9) : 0;
     pool.st[i] = delay > 0 ? WAIT : FLY;
     pool.awake++;
     pool.write(i);
@@ -287,7 +293,7 @@ export class GlassFX {
   // 落地靜止:碎片平躺(微傾),方粒隨意轉一個朝向
   _settle(pool, i, shard) {
     const o3 = i * 3, o4 = i * 4;
-    if (shard) _q.setFromEuler(_e.set(rand(-0.06, 0.06), rand(0, 6.28), rand(-0.06, 0.06)));
+    if (shard) _q.setFromEuler(_e.set(rand(-0.22, 0.22), rand(0, 6.28), rand(-0.22, 0.22))); // 碎片互相疊著、不是完全平:有的會反光
     else _q.setFromEuler(_e.set(0, rand(0, 6.28), 0));
     pool.Q[o4] = _q.x; pool.Q[o4 + 1] = _q.y; pool.Q[o4 + 2] = _q.z; pool.Q[o4 + 3] = _q.w;
     pool.P[o3 + 1] = pool.fl[i] + pool.hr[i] + Math.random() * 0.002;

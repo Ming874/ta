@@ -40,21 +40,24 @@ vec3 ckHit( vec2 p, vec2 c, float R, float sd, float aa, inout vec2 pert ) {
 	o.y = big > 0.5 ? 0.0 : 1.0 - smoothstep( hole * 1.4, hole * 3.6, r );
 	float N = 9.0 + floor( ckH( vec2( sd, 3.1 ) ) * 7.0 );
 	float sec = 6.2831853 / N;
-	float a = ang + 0.12 * sin( r * 31.0 + sd * 11.0 ) + 0.05 * sin( r * 97.0 + sd * 5.0 );
-	float lw = 0.0004 + 0.00045 * ( 1.0 - clamp( r / R, 0.0, 1.0 ) );
+	float a = ang + ( 0.05 * sin( r * 29.0 + sd * 11.0 ) + 0.025 * sin( r * 83.0 + sd * 5.0 ) ) * min( 1.0, r * 12.0 );
+	float lw = 0.0002 + 0.0005 * ( 1.0 - clamp( r / R, 0.0, 1.0 ) ); // 越外面越細
+	float cov = clamp( 2.5 * lw / max( aa, 1e-5 ), 0.55, 1.0 ); // 比一個像素細:變淡一點(看起來細,不是粗白線)
 	float k0 = floor( a / sec + 0.5 );
-	for ( int j = - 1; j <= 1; j ++ ) { // 放射裂紋(最近的三條)
+	for ( int j = - 1; j <= 1; j ++ ) { // 放射裂紋(最近的三條;每條在中段分岔一次)
 		float k = k0 + float( j );
-		float h1 = ckH( vec2( k, sd ) ), h2 = ckH( vec2( k + 7.3, sd ) );
+		float h1 = ckH( vec2( k, sd ) ), h2 = ckH( vec2( k + 7.3, sd ) ), h3 = ckH( vec2( k + 2.9, sd ) );
 		float ak = ( k + ( h1 - 0.5 ) * 0.7 ) * sec;
+		float len = R * ( 0.35 + 0.65 * h2 );
 		float da = a - ak;
 		float dist = abs( sin( da ) ) * r;
-		float len = R * ( 0.35 + 0.65 * h2 );
+		float rf = len * ( 0.35 + 0.35 * h3 ); // 分岔點之後多一條斜出去的
+		if ( r > rf ) { float ab = ak + ( h3 > 0.5 ? 0.32 : - 0.32 ) * sec; vec2 q = d - rf * vec2( cos( ak ), sin( ak ) ); float db = abs( dot( q, vec2( - sin( ab ), cos( ab ) ) ) ); if ( dot( q, vec2( cos( ab ), sin( ab ) ) ) > 0.0 && r < len * 0.85 ) dist = min( dist, db ); }
 		float m = ( 1.0 - smoothstep( lw, lw + aa, dist ) ) * step( 0.0, cos( da ) ) * ( 1.0 - smoothstep( len * 0.7, len, r ) );
 		if ( m > 0.002 ) {
-			float t = ckH( vec2( floor( r * 45.0 ) + k * 13.0, sd + 4.0 ) ) - 0.5; // 每 2cm 一段各自傾斜
+			float t = ckH( vec2( floor( r * 45.0 ) + k * 13.0, sd + 4.0 ) ) - 0.5; // 每 2cm 一段各自傾斜:有的段反光
 			pert += vec2( - sin( ak ), cos( ak ) ) * t * m * 1.8;
-			o.x = max( o.x, m );
+			o.x = max( o.x, m * cov * min( 1.0, 0.7 + 0.8 * abs( t ) ) );
 		}
 	}
 	float sa = floor( a / sec ), mid = ( sa + 0.5 ) * sec;
@@ -67,7 +70,7 @@ vec3 ckHit( vec2 p, vec2 c, float R, float sd, float aa, inout vec2 pert ) {
 		if ( m > 0.002 ) {
 			float t = ckH( vec2( sa + float( j ) * 5.0, sd + 9.0 ) ) - 0.5;
 			pert += vec2( cos( mid ), sin( mid ) ) * t * m * 1.8;
-			o.x = max( o.x, m );
+			o.x = max( o.x, m * cov * min( 1.0, 0.7 + 0.8 * abs( t ) ) );
 		}
 	}
 	return o;
@@ -81,9 +84,10 @@ float ckSeg( vec2 p, vec2 a, vec2 b, float sd, float aa, inout vec2 pert ) {
 	if ( s < 0.0 || s > L ) return 0.0;
 	float off = 0.006 * sin( s * 41.0 + sd * 7.0 ) + 0.003 * sin( s * 113.0 + sd * 3.0 );
 	float dist = abs( dot( p - a, n ) - off );
-	float m = 1.0 - smoothstep( 0.00045, 0.00045 + aa, dist );
-	if ( m > 0.002 ) pert += n * ( ckH( vec2( floor( s * 40.0 ), sd ) ) - 0.5 ) * m * 1.8;
-	return m;
+	float m = 1.0 - smoothstep( 0.0003, 0.0003 + aa, dist );
+	float tj = ckH( vec2( floor( s * 40.0 ), sd ) ) - 0.5;
+	if ( m > 0.002 ) pert += n * tj * m * 1.8;
+	return m * clamp( 0.0008 / max( aa, 1e-5 ), 0.55, 1.0 ) * min( 1.0, 0.7 + 0.8 * abs( tj ) );
 }
 // 強化玻璃整片龜裂(小塊多邊形網)
 float ckCraze( vec2 p, float sd, float aa, inout vec2 pert ) {
@@ -113,7 +117,7 @@ float ckRemnant( vec2 p, vec2 S, float sd, float temp, float aa, out float edge 
 		float cn = min( min( length( p ), length( p - vec2( S.x, 0.0 ) ) ), min( length( p - S ), length( p - vec2( 0.0, S.y ) ) ) );
 		H += 0.2 * ( 1.0 - smoothstep( 0.0, 0.32, cn ) ) * ( 0.4 + 0.6 * ckH( vec2( sd, floor( p.x / S.x * 1.99 ) + 2.0 * floor( p.y / S.y * 1.99 ) ) ) );
 	}
-	edge = 1.0 - smoothstep( 0.0, 0.002 + aa, abs( H - e ) );
+	edge = 1.0 - smoothstep( 0.0, 0.003 + aa, abs( H - e ) );
 	return step( e, H );
 }
 `;
@@ -124,7 +128,12 @@ const FRAG_MAP = /* glsl */`
 		vec2 p = vCkA.xy;
 		float aa = max( fwidth( p.x ), fwidth( p.y ) ) * 1.3; // 一個像素寬(公尺):細線反鋸齒
 		float sd = vCkB.x, dmg = vCkB.y, temp = vCkB.z, hole = 0.0;
-		if ( dmg >= 1.9 ) { float ed; if ( ckRemnant( p, vCkA.zw, sd, temp, aa, ed ) < 0.5 ) discard; ckL = max( ckL, ed ); }
+		if ( dmg >= 1.9 ) { // 框邊殘留的玻璃:稍微亮一點、不透明一點(看得出是一片片尖玻璃),斷口是亮線
+			float ed; if ( ckRemnant( p, vCkA.zw, sd, temp, aa, ed ) < 0.5 ) discard;
+			ckL = max( ckL, ed );
+			diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.78, 0.86, 0.84 ), 0.28 );
+			diffuseColor.a = max( diffuseColor.a, 0.5 );
+		}
 		vec3 h;
 		h = ckHit( p, vCkC.xy, vCkE.x, sd + 1.0, aa, ckP ); ckL = max( ckL, h.x ); ckC = max( ckC, h.y ); hole = max( hole, h.z );
 		h = ckHit( p, vCkC.zw, vCkE.y, sd + 2.0, aa, ckP ); ckL = max( ckL, h.x ); ckC = max( ckC, h.y ); hole = max( hole, h.z );
@@ -155,17 +164,17 @@ const FRAG_NORMAL = /* glsl */`
 		vec3 ckUp = normalize( ( viewMatrix * vec4( 0.0, 1.0, 0.0, 0.0 ) ).xyz );
 		vec3 ckT = normalize( cross( ckUp, normal ) + 1e-5 );
 		vec3 ckBt = cross( normal, ckT );
-		normal = normalize( normal + ( ckT * ckP.x + ckBt * ckP.y ) * 0.85 );
+		normal = normalize( normal + ( ckT * ckP.x + ckBt * ckP.y ) * 0.4 );
 	}
 `;
-// 窗另一側的燈光從裂縫散射進來(裂縫是亮線);同側的燈也讓斷面微亮
+// 裂縫是亮線:窗另一側的點光源從裂縫散射進來、同側的燈讓斷面微亮,手電筒(聚光燈)照到的裂縫會亮起來
 const FRAG_EMIT = /* glsl */`
-	#if NUM_POINT_LIGHTS > 0
 	if ( ckL > 0.01 ) {
 		vec3 ckPv = - vViewPosition;
+		vec3 ckAcc = vec3( 0.0 );
+		#if NUM_POINT_LIGHTS > 0
 		vec3 ckNv = normalize( vNormal );
 		float ckSc = dot( - ckPv, ckNv );
-		vec3 ckAcc = vec3( 0.0 );
 		#pragma unroll_loop_start
 		for ( int i = 0; i < NUM_POINT_LIGHTS; i ++ ) {
 			{
@@ -175,9 +184,21 @@ const FRAG_EMIT = /* glsl */`
 			}
 		}
 		#pragma unroll_loop_end
-		totalEmissiveRadiance += min( ckAcc * ckL * 0.4, vec3( 1.2 ) );
+		#endif
+		#if NUM_SPOT_LIGHTS > 0
+		#pragma unroll_loop_start
+		for ( int i = 0; i < NUM_SPOT_LIGHTS; i ++ ) {
+			{
+				vec3 dl = spotLights[ i ].position - ckPv;
+				float dd = length( dl );
+				float sf = smoothstep( spotLights[ i ].coneCos, spotLights[ i ].penumbraCos, dot( dl / dd, spotLights[ i ].direction ) );
+				ckAcc += spotLights[ i ].color * sf * 0.3 / ( 1.0 + dd * dd * 0.35 );
+			}
+		}
+		#pragma unroll_loop_end
+		#endif
+		totalEmissiveRadiance += min( ckAcc * ckL * 0.4, vec3( 1.5 ) );
 	}
-	#endif
 `;
 
 // 掛到玻璃材質上(建立場景後、預編譯前呼叫一次)
