@@ -43,6 +43,10 @@ export const SanitizeShader = {
       if (!(c.r >= 0.0 && c.r < 60.0)) c.r = 0.0;
       if (!(c.g >= 0.0 && c.g < 60.0)) c.g = 0.0;
       if (!(c.b >= 0.0 && c.b < 60.0)) c.b = 0.0;
+      // 高光軟壓縮:手電筒貼近牆面時 HDR 值可達上百 → Bloom 變成一大團白。超過 2 的部分平滑壓到約 8 以下
+      // (色調映射後幾乎看不出差別,燈管光暈仍保留,只是不再炸成整片)
+      float m = max(c.r, max(c.g, c.b));
+      if (m > 2.0) { float e = m - 2.0; c.rgb *= (2.0 + e / (1.0 + e / 6.0)) / m; }
       c.a = 1.0;
       gl_FragColor = c;
     }`,

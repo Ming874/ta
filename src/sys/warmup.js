@@ -133,10 +133,11 @@ export async function precompile(game, root, { shadows = true, target = game.sce
   const before = r.info.programs ? r.info.programs.length : 0;
   // 陰影 pass 是以「沒有霧的空場景」渲染(fog 也是 program 參數),所以代理材質編譯時暫時拿掉霧
   const run = (obj, noFog) => {
-    const prev = r.getRenderTarget(), fog = target.fog;
+    const prev = r.getRenderTarget(), fog = target.fog, vis = target.visible;
     r.setRenderTarget(rt); // 與 RenderPass 一樣畫進 HDR target(決定 outputColorSpace / toneMapping 參數)
     if (noFog) target.fog = null;
-    try { return r.compileAsync(obj, camera, target); } finally { r.setRenderTarget(prev); target.fog = fog; }
+    target.visible = true; // 光源用 traverseVisible 收集:選單時隱藏的手持武器場景要當作可見,光源數才會對(否則第一槍重編)
+    try { return r.compileAsync(obj, camera, target); } finally { r.setRenderTarget(prev); target.fog = fog; target.visible = vis; }
   };
   const jobs = [];
   const chunked = async (list, noFog) => {
