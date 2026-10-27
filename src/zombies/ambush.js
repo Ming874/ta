@@ -234,7 +234,7 @@ class Ambush {
     this.props.update(dt);
     this._tickFlick(dt);
     this._tickDecoys(dt);
-    if (this.decoys.length < (this.decoyWant || 0) && (this._dT -= dt) <= 0) {
+    if (this.decoys.length < (this.decoyWant || 0) && !g.spawnHeld && (this._dT -= dt) <= 0) {
       this._dT = 0.35;
       const s = this._decoySpot();
       if (s) this._addDecoy(s); else if (++this._dFail > 8) this.decoyWant = this.decoys.length;

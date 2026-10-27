@@ -1339,6 +1339,13 @@ export function whenWarm() {
     tick();
   });
 }
+// 每種類型的第 0 個變體都建好時 resolve(預熱 shader 每種類型只要一個,不必等全部變體)
+export function whenTypesReady() {
+  return new Promise((res) => {
+    const tick = () => { prewarm(); if (VARIANT_TYPES.every((t) => cache[t]?.[0])) res(); else setTimeout(tick, 50); };
+    tick();
+  });
+}
 export function variantStats() {
   return { ready: readyCount(), total: TOTAL(), pending: vstat.pending, worker: vstat.worker, sync: vstat.sync, syncMs: Math.round(vstat.syncMs), warmMs: vstat.tDone && vstat.t0 ? Math.round(vstat.tDone - vstat.t0) : null, pool: pool ? pool.info() : null };
 }
