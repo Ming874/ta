@@ -32,7 +32,7 @@ export const PostShader = {
     }`,
 };
 
-// 清掉 HDR 緩衝裡偶發的 NaN/Inf,避免 Bloom 把整個畫面染成全黑
+// 清掉 HDR 緩衝裡偶發的 NaN/Inf,避免 Bloom 把整個畫面染成全黑;並把亮度上限壓在 12(極亮的反光不會暈開成整片白光)
 export const SanitizeShader = {
   uniforms: { tDiffuse: { value: null } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
@@ -43,6 +43,7 @@ export const SanitizeShader = {
       if (!(c.r >= 0.0 && c.r < 60.0)) c.r = 0.0;
       if (!(c.g >= 0.0 && c.g < 60.0)) c.g = 0.0;
       if (!(c.b >= 0.0 && c.b < 60.0)) c.b = 0.0;
+      c.rgb = min(c.rgb, vec3(12.0));
       c.a = 1.0;
       gl_FragColor = c;
     }`,
