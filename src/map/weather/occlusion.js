@@ -7,7 +7,7 @@ import { OCC } from './wet.js';
 //  - 不經過 CPU 解碼/上傳:烘焙完當幀就能用;CPU 副本用非同步讀回(PBO),查詢時才解那一格(heightAt / exposed)
 //  - 頂層挑空('o',建築內)= 玻璃天窗:烘焙時多畫一片只給烘焙用的板子,雨停在屋頂面
 //  - 烘焙前(或失敗時)用地圖格子的雨停高度(2m 一格,weather.js buildMasks)當備援
-//  - 下載的模型晚一點才進場景 → 資源佇列有進度時節流重烘(最多幾次;只多一次俯視繪製 + 非同步讀回)
+//  - 下載的模型晚一點才進場景 → 資源佇列有進度時節流重烘(選單/暫停/回合休息時才做;一次俯視繪製 + 非同步讀回)
 //  - 屋簷滴水點(edges):分幀掃描,每幀最多 ~1.5ms
 
 const N = 1024; // 貼圖邊長(texel)
@@ -202,9 +202,12 @@ export class RainOcclusion {
     return out;
   }
 
-  // 資源佇列(下載的模型)有新進度時節流重烘(最多 5 次);都載完後再烘最後一次
+  // 資源佇列(下載的模型)有新進度時節流重烘;都載完後再烘最後一次。
+  // 重烘會畫整張地圖(第一次碰到的幾何要上傳 GPU,可達數十 ms):只在選單/暫停/回合間的休息與商店時做,戰鬥中不做
   maybeRebake(t, assets, hide) {
     if (this.busy || this.renders > 6) return;
+    const g = this.game;
+    if (g.state === 'playing' && !g.paused && !g.shopUIOpen && g.phase !== 'shop' && g.phase !== 'break') return;
     const p = assets ? assets.progress : null;
     const done = p ? p.done + p.failed : 0;
     const idle = assets ? assets.idle : true;
