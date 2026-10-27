@@ -4,6 +4,7 @@ import { WeaponFX, DECAL } from '../weapons/fx.js';
 import { CenterHud } from '../weapons/scope.js';
 import { castZombies, HITS } from '../weapons/ballistics.js';
 import { createGrenadeProjectile } from '../weapons/models.js';
+import { Ballistics, powerOf } from '../physics/penetration.js';
 
 // 射擊、擊殺、爆炸、手榴彈、近戰、開鏡視野、玩家受傷。以 mixin 方式掛到 Game 上
 // 熱路徑(fire / updateCombat)只用下列暫存物件,不配置新記憶體
@@ -16,6 +17,7 @@ const ONE = [null]; // 小刀用:只對單一殭屍做射線
 const rand = (a, b) => a + Math.random() * (b - a);
 const RAD = Math.PI / 180;
 const NADE_R = 0.034;
+const _sn = { x: 0, y: 1, z: 0 }, _bc = new THREE.Vector3(); // 樓梯坡面法線(手榴彈滾下樓梯)
 
 // 障礙物種類 → 材質
 const OBST_MAT = { statue: 'concrete', fountain: 'concrete', barricade: 'wood', health: 'wood', ammo: 'wood' };
@@ -39,6 +41,7 @@ export const combatMethods = {
   initCombat() {
     if (this.wfx) return;
     this.wfx = new WeaponFX(this.scene, this.world);
+    this.ballistics = new Ballistics(this); // [physics] 子彈穿透/玻璃/鐵網(src/physics/penetration.js)
     this.chud = new CenterHud();
     this.nades = []; // 飛行中的手榴彈
     this.gore = []; // 噴血源
@@ -220,8 +223,11 @@ export const combatMethods = {
   // 單一子彈/彈丸:穿透殭屍(每穿一隻 × penMul),最後打到牆/地板
   _bullet(o, d, def, id, dmg0, idx, pellets) {
     const maxD = 140;
-    const W = this.world;
+    const W = this.world, B = this.ballistics;
     let lim = W.rayDistance(o.x, o.y, o.z, d.x, d.y, d.z, maxD);
+    const P0 = powerOf(def, id);
+    if (B) lim = B.trace(o, d, lim, maxD, P0); // [physics] 依材質與厚度穿過玻璃/木板/鐵網/可穿透道具
+    const endBox = B ? B.endBox : W.rayBox;
     const n = castZombies(this._targets(), o, d, lim);
     const pen = def.penetrate || 0, penMul = def.penMul ?? 0.7;
     let mul = 1, count = 0, stopped = false, endT = lim;
@@ -230,7 +236,7 @@ export const combatMethods = {
       const h = HITS[i], z = h.z;
       if (!z.alive) continue;
       _p.copy(o).addScaledVector(d, h.t);
-      const dmg = dmg0 * mul * this._falloff(def, h.t);
+      const dmg = dmg0 * mul * (B ? B.mulAt(h.t) * this._falloff(def, h.t + B.extraAt(h.t)) : this._falloff(def, h.t)); // 遮蔽物後方的殭屍傷害較低
       HIT.bone = h.bone; HIT.point.copy(_p); HIT.dir.copy(d); HIT.dmg = dmg * (h.part === 'head' ? 2 : 1); HIT.range = h.t; HIT.weapon = id; HIT.explosive = false; HIT.melee = false;
       this._impulse(z, _p, d, dmg * (pellets > 1 ? 2.5 : 4));
       const killed = z.damage(dmg, h.part, HIT);
@@ -252,7 +258,8 @@ export const combatMethods = {
       if (count > pen) { stopped = true; endT = h.t; break; }
     }
     _end.copy(o).addScaledVector(d, endT);
-    if (!stopped && lim < maxD) this._worldHit(_end, d, def, power, idx, pellets);
+    if (B) B.emit(o, d, endT, power, pellets === 1 || idx === 0, P0); // 被穿過的玻璃/道具的效果(子彈先被殭屍擋下就不畫)
+    if (!stopped && lim < maxD) this._worldHit(_end, d, def, power, idx, pellets, endBox);
     // 曳光:霰彈只畫部分彈丸
     if (pellets === 1 || idx % 3 === 0) {
       const cam = this.camera;
@@ -288,9 +295,9 @@ export const combatMethods = {
   },
 
   // 子彈打到世界:估算法線(世界都是軸對齊方塊/水平樓板)→ 判斷材質 → 碎屑/火花/粉塵/彈孔 → 物理物件
-  _worldHit(pt, d, def, power, idx, pellets) {
+  _worldHit(pt, d, def, power, idx, pellets, box = null) {
     const n = this._surfaceNormal(pt, d, _nd);
-    const mat = this._surfaceMat(pt, n);
+    const mat = box && box.mat ? box.mat : this._surfaceMat(pt, n);
     if (pellets === 1 || idx < 4) this.wfx.impact(pt, n, d, mat, power);
     else this.wfx.decals.add(pt, n, 0.035 + Math.random() * 0.02, mat === 'wood' ? DECAL.wood : mat === 'metal' ? DECAL.metal : mat === 'tile' ? DECAL.tile : DECAL.concrete, 40);
     if (idx === 0) sfx.wall(pt, mat);
@@ -322,7 +329,10 @@ export const combatMethods = {
     if (ax === 2) return out.set(0, 0, -Math.sign(d.z));
     // 斜面(樓梯/坡道)或探測失敗:靠近地面就當地板,否則面向射手
     const g = W.groundY ? W.groundY(pt.x, pt.z, pt.y + 0.2) : null;
-    if (g !== null && g !== undefined && Math.abs(pt.y - g) < 0.15) return out.set(0, 1, 0);
+    if (g !== null && g !== undefined && Math.abs(pt.y - g) < 0.15) { // 地面:樓梯/坡道用坡面法線
+      if (W.normalAt) { W.normalAt(pt.x, pt.z, g, _sn); return out.set(_sn.x, _sn.y, _sn.z); }
+      return out.set(0, 1, 0);
+    }
     return out.copy(d).negate();
   },
 
@@ -479,8 +489,9 @@ export const combatMethods = {
     const dist = (q) => Math.hypot(q.x - c.x, q.z - c.z) + Math.abs(q.y - c.y) * 1.5;
     for (const pl of this.players) {
       const d = dist(pl.pos);
-      if (d < E.radius) {
-        this.damagePlayer(pl, Math.round(E.player * (1 - d / E.radius) + 5), c);
+      const cov = d < E.radius ? this._blastCover(at, pl.pos.x, pl.pos.y, pl.pos.z, 1.7) : 0; // 牆後不受傷(矮掩體擋一部分)
+      if (cov > 0) {
+        this.damagePlayer(pl, Math.round((E.player * (1 - d / E.radius) + 5) * cov), c);
         if (pl === p) p.addShake(0.7);
       }
     }
@@ -489,9 +500,11 @@ export const combatMethods = {
       if (o === z || !o.alive) continue;
       const od = dist(o.pos);
       if (od >= E.radius) continue;
+      const cov = this._blastCover(at, o.pos.x, o.pos.y, o.pos.z, o.type === 'crawler' ? 0.6 : 1.6);
+      if (cov <= 0) continue;
       _d.set(o.pos.x - c.x, 0.4, o.pos.z - c.z).normalize();
-      this._impulse(o, o.pos, _d, 200 * (1 - od / E.radius));
-      if (o.damage(E.zombie * (1 - od / E.radius) + 10, 'body')) this.onKill(o, z.killer, blast);
+      this._impulse(o, o.pos, _d, 200 * (1 - od / E.radius) * cov);
+      if (o.damage((E.zombie * (1 - od / E.radius) + 10) * cov, 'body')) this.onKill(o, z.killer, blast);
     }
   },
 
@@ -523,6 +536,7 @@ export const combatMethods = {
       sfx.explosion(c, size);
     }
     if (this.physics && this.physics.impulseAt) this.physics.impulseAt(c, radius * 1.2, damage * 0.1);
+    if (this.ballistics) this.ballistics.blast(c, radius); // 震碎附近(看得到爆心)的窗玻璃
     if (opts.harmless) { // 只有震動(傷害由丟的人那一端結算)
       const pl = this.player, d = Math.hypot(pl.pos.x - c.x, pl.pos.y + 1 - c.y, pl.pos.z - c.z);
       pl.addShake(Math.min(1.2, (opts.shake ?? 1) * 1.4 * Math.max(0, 1 - d / (radius * 3.5))));
@@ -536,8 +550,7 @@ export const combatMethods = {
       let f = Math.pow(1 - dist / radius, 1.25);
       const dh = Math.abs(feetY - gy);
       if (dh > 2.4) f *= 0.15; // 不同樓層:樓板擋住大部分
-      if (!W.hasLineOfSight(c.x, c.y + 0.25, c.z, x, y, z)) f *= 0.3; // 牆後
-      return f;
+      return f * this._blastCover(_bc.set(c.x, c.y + 0.25, c.z), x, feetY, z, y - feetY + 0.7); // 牆後沒有傷害、矮掩體後只有一部分
     };
     let hits = 0, head = false;
     for (const z of this.zombies) {
@@ -573,6 +586,19 @@ export const combatMethods = {
     }
     if (hits && owner === this.player && !this._killMark) this.chud.marker('hit');
     this._killMark = false;
+  },
+
+  // 爆炸遮蔽(0..1):爆心 c → 目標(腳底 feetY、身高 h)的胸口線看得到 = 1;
+  // 否則看頭頂/腳邊兩條線:看得到各 0.4、被道具(矮牆、車、櫃子)擋住各 0.12(碎片/衝擊波繞過去一點)、被牆/樓板擋住 0
+  _blastCover(c, x, feetY, z, h) {
+    const W = this.world;
+    if (W.hasLineOfSight(c.x, c.y, c.z, x, feetY + h * 0.6, z)) return 1;
+    let f = W.rayBox ? (W.rayBox.pm === 'fabric' ? 0.6 : 0.12) : 0;
+    for (let k = 0; k < 2; k++) {
+      if (W.hasLineOfSight(c.x, c.y, c.z, x, feetY + (k ? 0.2 : h * 0.95), z)) f += 0.4;
+      else if (W.rayBox) f += 0.12;
+    }
+    return f > 1 ? 1 : f;
   },
 
   // ---------- 手榴彈 ----------
@@ -632,6 +658,7 @@ export const combatMethods = {
           if (sp < 1e-4) break;
           _d.copy(g.v).multiplyScalar(1 / sp);
           const move = sp * h;
+          if (this.ballistics && this.ballistics.smash(g.p, _d, move + NADE_R)) g.v.multiplyScalar(0.7); // 撞破玻璃:穿過去、減速
           const hit = W.rayDistance(g.p.x, g.p.y, g.p.z, _d.x, _d.y, _d.z, move + NADE_R);
           if (hit < move + NADE_R) {
             g.p.addScaledVector(_d, Math.max(0, hit - NADE_R));
@@ -642,7 +669,7 @@ export const combatMethods = {
               _b.copy(g.v).addScaledVector(n, -g.v.dot(n)); // 切線方向摩擦
               g.v.addScaledVector(_b, -0.3);
               if (-vn > 1.3) { sfx.grenadeBounce(g.p); g.spin.multiplyScalar(0.6); }
-              if (n.y > 0.7 && g.v.length() < 0.7) { g.rest = true; g.v.set(0, 0, 0); }
+              if (n.y > 0.97 && g.v.length() < 0.7) { g.rest = true; g.v.set(0, 0, 0); } // 斜面(樓梯)上不會停住,會滾下去
             }
             g.p.addScaledVector(n, 0.002);
           } else g.p.addScaledVector(_d, move);
@@ -652,8 +679,15 @@ export const combatMethods = {
             g.p.y = gy + NADE_R;
             if (g.v.y < -1.3) sfx.grenadeBounce(g.p);
             if (g.v.y < 0) g.v.y *= -0.35;
-            g.v.x *= 0.8; g.v.z *= 0.8;
-            if (g.v.length() < 0.7) { g.rest = true; g.v.set(0, 0, 0); }
+            const st = W.stairAt ? W.stairAt(g.p.x, gy, g.p.z) : -1;
+            if (st >= 0 && W.normalAt) { // 樓梯:沿坡面往下滾,經過踏階邊緣時跳一下
+              W.normalAt(g.p.x, g.p.z, gy, _sn);
+              g.v.x = g.v.x * 0.94 + _sn.x * 9.8 * h * 3; g.v.z = g.v.z * 0.94 + _sn.z * 9.8 * h * 3;
+              if (Math.random() < h * 5 * Math.min(1, Math.hypot(g.v.x, g.v.z))) { g.v.y += rand(0.6, 1.2); sfx.grenadeBounce(g.p); }
+            } else {
+              g.v.x *= 0.8; g.v.z *= 0.8;
+              if (g.v.length() < 0.7) { g.rest = true; g.v.set(0, 0, 0); }
+            }
           }
         }
         g.mesh.rotation.x += g.spin.x * dt;

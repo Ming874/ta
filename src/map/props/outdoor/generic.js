@@ -156,7 +156,7 @@ export const GENERIC = {
       const k = R.pick(kinds), yaw = R.pick([0, HALF, Math.PI, -HALF]) + R.range(-0.1, 0.1);
       if (k === 'broken') brokenSlab(ctx, cell.x, y, cell.z, yaw); else tomb(ctx, k, cell.x, y, cell.z, yaw, k === 'ledger' ? [0, 0] : [R.range(-0.12, 0.12), R.range(-0.1, 0.1)]);
       if (k === 'slab') epitaph(P, epi++, cell.x, y, cell.z, yaw, 0.42, 0.42, 0.52, 0.065);
-      solid(ctx, cell.x, y, cell.z, 0.7, k === 'obelisk' ? 2.0 : 1.0, 0.7);
+      solid(ctx, cell.x, y, cell.z, 0.7, k === 'obelisk' ? 2.0 : 1.0, 0.7, 'stone');
     }
     for (let k = 0; k < 3; k++) { const b = freeBlock(ctx, zone, R, 1, 1); if (b) tree(ctx, R.pick(['gnarl', 'snag', 'oak']), b.x, y, b.z, R.range(0.9, 1.2), R() * TAU); }
     edgeDress(ctx, zone, R, P, { leaves: 9, ivy: 0.35, tufts: 4, litter: 0.05 });

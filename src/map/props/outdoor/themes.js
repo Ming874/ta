@@ -60,7 +60,7 @@ function dressParking(ctx, zone) {
     curb(ctx, P, mx0, mz0, mx1, mz0, { step: false }); curb(ctx, P, mx0, mz1, mx1, mz1, { step: false });
     curb(ctx, P, mx0, mz0, mx0, mz1, { step: false }); curb(ctx, P, mx1, mz0, mx1, mz1, { step: false });
     P.add('po_soil', box(mx1 - mx0 - 0.3, 0.13, mz1 - mz0 - 0.3), M((mx0 + mx1) / 2, 0.065, (mz0 + mz1) / 2));
-    solid(ctx, (mx0 + mx1) / 2, 0, (mz0 + mz1) / 2, mx1 - mx0, 0.15, mz1 - mz0);
+    solid(ctx, (mx0 + mx1) / 2, 0, (mz0 + mz1) / 2, mx1 - mx0, 0.15, mz1 - mz0, 'concrete');
     for (const x of [51.5, 59, 67.5]) tree(ctx, R() < 0.5 ? 'oak' : 'poplar', x + R.range(-0.4, 0.4), 0.13, 83 + R.range(-0.3, 0.3), R.range(0.9, 1.15), R() * TAU);
     tuftPatch(ctx, R, 60, 83, 0.13, 10, 26, { dryP: 0.75, tallP: 0.35 });
     leafPatch(P, R, 60, 83, 10, 60, 0.145);
@@ -101,7 +101,7 @@ function dressParking(ctx, zone) {
   // ---- 被布蓋著的車、燒毀的車(空車格)----
   const covered = pool(ctx, 'covered_car', () => { const S = new Parts(); S.add('po_fabric_dirty', rbox(1.8, 1.3, 4.3, 0.35), M(0, 0.72, 0)); return S; }, 4);
   bindModel(covered, 'covered_car', [], { origin: 'base' });
-  for (const [x, z, yaw] of [[29, 89.9, 0.04], [101, 82.2, Math.PI + 0.03]]) if (freeRect(ctx, li, x - 1, z - 2.2, x + 1, z + 2.2, true)) { covered.add(M(x, 0, z, 0, yaw, 0)); solid(ctx, x, 0, z, 1.8, 1.4, 4.2); }
+  for (const [x, z, yaw] of [[29, 89.9, 0.04], [101, 82.2, Math.PI + 0.03]]) if (freeRect(ctx, li, x - 1, z - 2.2, x + 1, z + 2.2, true)) { covered.add(M(x, 0, z, 0, yaw, 0)); solid(ctx, x, 0, z, 1.8, 1.4, 4.2, 'car'); }
   for (const [x, z] of [[33, 82]]) {
     if (!freeRect(ctx, li, x - 1, z - 2, x + 1, z + 2, true)) continue;
     placeVehicle(ctx, { x, y: 0, z, sx: 2, sz: 4, axis: 'NS', levelIndex: li }, 'sedan', {
@@ -185,7 +185,7 @@ function dressPlaza(ctx, zone) {
     P.add('po_granite', box(4.4, 0.12, 0.62), M(40, 1.06, 71.6));
     P.add('po_label', labelQuad('hosp_stone', 3.9, 0.95), M(40, 0.52, 71.86));
     P.add('po_curb', box(4.8, 0.2, 1.0), M(40, 0.1, 71.6));
-    solid(ctx, 40, 0, 71.6, 4.6, 1.1, 0.9);
+    solid(ctx, 40, 0, 71.6, 4.6, 1.1, 0.9, 'stone');
     flatDecal(P, 'moss', 38.5, 0.25, 71.87, 1.4, 0.5, 'z+');
   }
   for (const x of [48, 72]) if (freeAt(ctx, li, x, 69.4, 0.3)) flagPole(ctx, P, x, 0, 69.4, 8);
@@ -208,7 +208,7 @@ function dressPlaza(ctx, zone) {
     P.add('po_sheet', new THREE.PlaneGeometry(2.4, 2.0), M(90.8, 1.15, 68.62));
     P.add('po_sheet', new THREE.PlaneGeometry(2.8, 2.0).rotateY(HALF), M(89.62, 1.15, 70));
     groundDecal(P, 'water', 90.8, 70, 2.4, 2.4, 0, 0.006);
-    solid(ctx, 90.8, 0, 68.6, 2.6, 2.2, 0.15);
+    solid(ctx, 90.8, 0, 68.6, 2.6, 2.2, 0.15, 'fabric');
     hazmatSuit(P, 91.5, 0.005, 72.6, 2.6);
   }
   for (const [x, z] of [[82.2, 73.6], [88.4, 73.9]]) bioBin(ctx, x, 0, z, R() * TAU);
@@ -280,7 +280,7 @@ function dressAlley(ctx, zone) {
   if (freeRect(ctx, li, 47.8, 2.2, 50.6, 4.6)) { // 沾血的床墊靠牆
     P.add('po_mattress', rbox(1.9, 0.2, 0.9, 0.08), M(49.2, 0.95, 2.45, -HALF + 0.25, 0, 0.03));
     flatDecal(P, 'blood1', 49.2, 1.0, 2.62, 0.8, 0.8, 'z+');
-    solid(ctx, 49.2, 0, 2.6, 2.0, 1.8, 0.6);
+    solid(ctx, 49.2, 0, 2.6, 2.0, 1.8, 0.6, 'soft');
   }
   cart(ctx, 58.5, 0, 3.4, 1.2, true);
   // 停屍間外梯口:推床 + 屍袋
@@ -289,7 +289,7 @@ function dressAlley(ctx, zone) {
     stretcher(S, 0, 0, 0, 1.9, false);
     put(ctx, S, 62.2, 0, 9.6, HALF + 0.2);
     bodyBag(ctx, 62.2, 0.42, 9.6, HALF + 0.2);
-    solid(ctx, 62.2, 0, 9.6, 0.8, 0.9, 2.0);
+    solid(ctx, 62.2, 0, 9.6, 0.8, 0.9, 2.0, 'metal');
   }
   // 焚化爐周圍:醫療廢棄物桶
   for (const [x, z] of [[9.6, 4.2], [10.3, 5.3], [9.4, 6.4]]) bioBin(ctx, x, 0, z, R() * TAU);
@@ -380,15 +380,15 @@ function dressCemetery(ctx, zone) {
     if (k === 'chinese') epitaph(P, epi++, xx, 0, zz, yaw, 0.6, 0.6, 0.55, -0.025);
     groundDecal(P, R.pick(['moss', 'leaves', 'mud']), xx, zz, 1.2, 1.2, R() * TAU, 0.008);
     if (R() < 0.35) for (let j = 0; j < R.int(1, 3); j++) { const cx = xx + R.range(-0.4, 0.4) + (x < 6 ? 0.45 : -0.45), cz = zz + R.range(-0.3, 0.3), h = R.range(0.04, 0.12); P.add('candle_wax', cyl(0.025, 0.028, h, 8), M(cx, h / 2, cz)); }
-    solid(ctx, xx, 0, zz, 0.7, k === 'obelisk' ? 2.0 : 1.0, 0.7);
+    solid(ctx, xx, 0, zz, 0.7, k === 'obelisk' ? 2.0 : 1.0, 0.7, 'stone');
   }
   // 天使像、空墓穴(新挖,鐵鏟還插著)、還亮著的燭火
   angelMonument(P, 6.2, 45.2, 0, R);
-  solid(ctx, 6.2, 0, 45.2, 0.9, 2.4, 0.9);
+  solid(ctx, 6.2, 0, 45.2, 0.9, 2.4, 0.9, 'stone');
   crow(ctx, 6.2, 2.4, 45.15, 1.0);
   openGrave(P, 6.2, 33.2, 0.05, R);
-  solid(ctx, 6.2, -0.3, 33.2, 0.9, 0.35, 2.0);
-  solid(ctx, 7.15, 0, 33.3, 1.0, 0.45, 2.1);
+  solid(ctx, 6.2, -0.3, 33.2, 0.9, 0.35, 2.0, 'stone');
+  solid(ctx, 7.15, 0, 33.3, 1.0, 0.45, 2.1, 'sand');
   for (const [x, z] of [[5.4, 31.6], [7.1, 46.6]]) {
     P.add('candle_wax', cyl(0.03, 0.032, 0.14, 10), M(x, 0.07, z));
     ctx.light({ x, y: 0.3, z, color: 0xffa040, intensity: 1.6, distance: 5, kind: 'candle', flicker: 0.6, zone: zone.id, glow: 0.3 });
@@ -422,7 +422,7 @@ function dressYard(ctx, zone) {
     for (let k = 0; k < 8; k++) S.add('rust', box(0.03, h, 0.05), M(-w / 2 + k * w / 7, h / 2, -d / 2 - 0.02));
     flatDecal(S, 'rustrun', 0, 1.2, d / 2 + 0.03, 1.6, 1.6, 'z+');
     put(ctx, S, 4.5, 0, 14.0, 0);
-    solid(ctx, 4.5, 0, 14.0 - 0.3, 4.3, 2.5, 2.6);
+    solid(ctx, 4.5, 0, 14.0 - 0.3, 4.3, 2.5, 2.6, 'metal');
   }
   wheelbarrow(P, 9.6, 0, 14.6, 0.7);
   for (let k = 0; k < 3; k++) tyre(ctx, 12.6 + R.range(-0.3, 0.3), 0.17 * k, 13.2 + R.range(-0.2, 0.2), true, R() * TAU);
@@ -431,7 +431,7 @@ function dressYard(ctx, zone) {
   if (freeRect(ctx, li, 6.8, 17.6, 9.4, 20.4)) { // 帆布蓋著的雜物堆
     P.add('po_tarp', new THREE.SphereGeometry(1.0, 12, 8, 0, TAU, 0, HALF).scale(1.3, 0.75, 1.0), M(8.1, 0, 19.0, 0, 0.3, 0));
     for (const [a, b] of [[7.0, 18.2], [9.2, 19.9]]) P.add('cast_iron', box(0.2, 0.1, 0.2), M(a, 0.05, b));
-    solid(ctx, 8.1, 0, 19.0, 2.4, 0.8, 1.9);
+    solid(ctx, 8.1, 0, 19.0, 2.4, 0.8, 1.9, 'soft');
   }
   // 南半部:抽菸區(長椅 + 沙桶 + 菸蒂)
   if (freeAt(ctx, li, 3.2, 58, 0.6)) bench(ctx, 3.1, 0, 58, HALF);
@@ -482,7 +482,7 @@ function dressAmbulanceBay(ctx, zone) {
   groundDecal(P, 'pool', 115.2, 63.5, 1.8, 1.2, 0.3, 0.006);
   postSign(ctx, P, 117.4, 0, 59.2, -HALF, 'morgue', 0.8, 0.4, 1.7);
   for (let k = 0; k < 6; k++) litter(P, R, 115.6, 60.5 + k * 1.1, 0.3, 1, ['tag'], 0.2);
-  if (freeAt(ctx, li, 112.6, 52.2, 1.0)) { const S = new Parts(); stretcher(S, 0, 0, 0, 1.9, true); put(ctx, S, 112.8, 0, 52.2, 0.3); solid(ctx, 112.8, 0, 52.2, 2.0, 0.9, 0.8); }
+  if (freeAt(ctx, li, 112.6, 52.2, 1.0)) { const S = new Parts(); stretcher(S, 0, 0, 0, 1.9, true); put(ctx, S, 112.8, 0, 52.2, 0.3); solid(ctx, 112.8, 0, 52.2, 2.0, 0.9, 0.8, 'metal'); }
   wheelchair(ctx, 107.2, 0, 61.2, 2.4, false);
   wheelchair(ctx, 112.2, 0, 63.6, 0.4, true);
   ivStand(ctx, 111.4, 0, 54.0, false); ivStand(ctx, 107.6, 0, 52.4, true);
@@ -492,7 +492,7 @@ function dressAmbulanceBay(ctx, zone) {
     const g = pool(ctx, 'portgen', () => { const S = new Parts(); S.add('po_gen_yellow', rbox(0.82, 0.58, 0.56, 0.04), M(0, 0.29, 0)); return S; }, 2);
     bindModel(g, 'generator', ['portable_generator', 'portable_generator_dial', 'portable_generator_switch', 'portable_generator_toggle'], { origin: 'base' });
     g.add(M(112.6, 0, 66.0, 0, 0.3, 0));
-    solid(ctx, 112.6, 0, 66.0, 0.85, 0.6, 0.6);
+    solid(ctx, 112.6, 0, 66.0, 0.85, 0.6, 0.6, 'heavy');
     P.add('rubber', tube([new V3(112.9, 0.3, 66.0), new V3(113.4, 0.02, 65.4), new V3(114.6, 0.02, 63.8), new V3(115.5, 0.02, 62.9)], 0.02, { radial: 5 }));
   }
   floodlight(ctx, P, 115.8, 0, 66.6, Math.PI + 0.6, true, zone, 0xdde8ff);
@@ -546,7 +546,7 @@ function dressCourtyard(ctx, zone) {
   for (const [x, z] of [[50, 34], [70, 34.5], [49.5, 46], [70.5, 46.2]]) if (freeAt(ctx, li, x, z, 0.6)) tree(ctx, R() < 0.6 ? 'oak' : 'gnarl', x, 0, z, R.range(0.95, 1.2), R() * TAU);
   for (let x = 45; x < 75; x += 1.3) for (const z of [37.3, 42.7]) if (Math.abs(x - 60) > 2.8 && Math.abs(x - 55.4) > 1.2 && Math.abs(x - 64.6) > 1.2 && R() < 0.8) shrub(ctx, x + R.range(-0.2, 0.2), 0, z + R.range(-0.15, 0.15), R.range(0.6, 0.95));
   // 被推到草地上的病床(白布)、點滴架、輪椅
-  if (freeRect(ctx, li, 66.6, 31.4, 69.4, 35.4)) { hospitalBed(P, 68, 0, 33.2, 0.4); solid(ctx, 68, 0, 33.2, 1.0, 0.9, 2.1); ivStand(ctx, 69.3, 0, 32.4, false); }
+  if (freeRect(ctx, li, 66.6, 31.4, 69.4, 35.4)) { hospitalBed(P, 68, 0, 33.2, 0.4); solid(ctx, 68, 0, 33.2, 1.0, 0.9, 2.1, 'metal'); ivStand(ctx, 69.3, 0, 32.4, false); }
   wheelchair(ctx, 51.2, 0, 44.2, 1.1, false);
   P.add('fabric_blue', box(0.5, 0.02, 0.4), M(55.4, 0.46, 37.15, 0, 0.2, 0)); // 長椅上的病人服
   tuftPatch(ctx, R, 60, 40, 0, 15, 110, { dryP: 0.55, tallP: 0.3 });
@@ -586,25 +586,25 @@ function dressRooftop(ctx, zone) {
     S.add('plastic_white', cyl(0.045, 0.045, 0.28, 8), M(1.5, 0.14, 1.2)); S.add('plastic_white', cyl(0.045, 0.045, 0.28, 8), M(1.62, 0.14, 1.05, HALF, 0.3, 0));
     S.add('po_sign', signQuad('lies', 1.2, 0.6), M(0, 0.4, -1.18, -0.25, 0, 0));
     put(ctx, S, 43, y, 59.4, 0);
-    solid(ctx, 43, y, 59.4 - 1.2, 4.2, 1.8, 0.4);
+    solid(ctx, 43, y, 59.4 - 1.2, 4.2, 1.8, 0.4, 'wood');
     litter(P, R, 43, 60.4, 2.4, 16, ['bag', 'cup', 'pack', 'news', 'photo', 'receipt'], y + 0.009);
   }
   // 晾衣繩上的床單(隨風擺)
   if (freeRect(ctx, li, 61.6, 52.2, 74.4, 53.8)) {
-    for (const x of [62, 68, 74]) { P.add('steel', cyl(0.03, 0.03, 2.2, 6), M(x, y + 1.1, 53)); solid(ctx, x, y, 53, 0.1, 2.2, 0.1); }
+    for (const x of [62, 68, 74]) { P.add('steel', cyl(0.03, 0.03, 2.2, 6), M(x, y + 1.1, 53)); solid(ctx, x, y, 53, 0.1, 2.2, 0.1, 'metal'); }
     P.add('po_cable', tube(sagLine(new V3(62, y + 2.05, 53), new V3(74, y + 2.05, 53), 0.25, 16), 0.006, { radial: 3 }));
     for (const x of [63.4, 65.5, 69.8, 72.2]) sheet(ctx, x, y + 2.0, 53, 1.5, 1.6);
   }
   // 屋頂設備:排氣帽、通風管、天線桅杆(紅色航空燈)、衛星天線、避雷針、電纜槽
-  for (const [x, z] of [[22, 52.4], [48, 64.4], [72, 64.6], [98, 52.6], [56, 52.4]]) if (freeAt(ctx, li, x, z, 0.4)) { P.add('metal_gray', cyl(0.18, 0.18, 0.8, 12), M(x, y + 0.4, z)); P.add('metal_gray', new THREE.ConeGeometry(0.32, 0.22, 12), M(x, y + 0.92, z)); P.add('metal_gray', cyl(0.3, 0.3, 0.06, 12), M(x, y + 0.82, z)); solid(ctx, x, y, z, 0.4, 1.0, 0.4); }
+  for (const [x, z] of [[22, 52.4], [48, 64.4], [72, 64.6], [98, 52.6], [56, 52.4]]) if (freeAt(ctx, li, x, z, 0.4)) { P.add('metal_gray', cyl(0.18, 0.18, 0.8, 12), M(x, y + 0.4, z)); P.add('metal_gray', new THREE.ConeGeometry(0.32, 0.22, 12), M(x, y + 0.92, z)); P.add('metal_gray', cyl(0.3, 0.3, 0.06, 12), M(x, y + 0.82, z)); solid(ctx, x, y, z, 0.4, 1.0, 0.4, 'metal'); }
   if (freeAt(ctx, li, 100.4, 64.6, 0.4)) {
     P.add('steel', cyl(0.06, 0.08, 7, 8), M(100.4, y + 3.5, 64.6));
     for (let k = 0; k < 4; k++) P.add('steel', rod(new V3(100.4, y + 6, 64.6), new V3(100.4 + Math.cos(k * HALF) * 1.5, y, 64.6 + Math.sin(k * HALF) * 1.5), 0.006, 3));
     P.add('glow_red', sph(0.08, 8, 6), M(100.4, y + 7.08, 64.6));
     ctx.light({ x: 100.4, y: y + 7.1, z: 64.6, color: 0xff2010, intensity: 2.5, distance: 6, kind: 'beacon', flicker: 0, zone: zone.id, glow: 0.9 });
-    solid(ctx, 100.4, y, 64.6, 0.3, 7, 0.3);
+    solid(ctx, 100.4, y, 64.6, 0.3, 7, 0.3, 'metal');
   }
-  if (freeAt(ctx, li, 20.4, 64.4, 0.6)) { const S = new Parts(); S.add('metal_white', new THREE.SphereGeometry(0.6, 16, 8, 0, TAU, 0, 0.9).rotateX(-0.9), M(0, 1.2, 0)); S.add('steel', cyl(0.04, 0.04, 1.2, 6), M(0, 0.6, 0)); S.add('steel', rod(new V3(0, 1.0, 0.1), new V3(0, 1.45, 0.62), 0.012, 4)); put(ctx, S, 20.4, y, 64.4, 0.6); solid(ctx, 20.4, y, 64.4, 0.6, 1.6, 0.6); }
+  if (freeAt(ctx, li, 20.4, 64.4, 0.6)) { const S = new Parts(); S.add('metal_white', new THREE.SphereGeometry(0.6, 16, 8, 0, TAU, 0, 0.9).rotateX(-0.9), M(0, 1.2, 0)); S.add('steel', cyl(0.04, 0.04, 1.2, 6), M(0, 0.6, 0)); S.add('steel', rod(new V3(0, 1.0, 0.1), new V3(0, 1.45, 0.62), 0.012, 4)); put(ctx, S, 20.4, y, 64.4, 0.6); solid(ctx, 20.4, y, 64.4, 0.6, 1.6, 0.6, 'metal'); }
   for (const [x0, x1, z] of [[19, 50, 65.3], [62, 101, 52.3]]) { P.add('steel', box(x1 - x0, 0.08, 0.3), M((x0 + x1) / 2, y + 0.18, z)); for (let x = x0; x < x1; x += 2.5) P.add('steel', box(0.05, 0.18, 0.3), M(x, y + 0.09, z)); }
   postSign(ctx, P, 52.6, y, 51.1, 0, 'roof', 0.9, 0.45, 1.7);
   for (const [x, z] of [[30, 60], [70, 62], [90, 56], [60, 54.6]]) puddle(P, R, x, z, R.range(1.0, 1.8), 1.6, 1.0, y + 0.005);

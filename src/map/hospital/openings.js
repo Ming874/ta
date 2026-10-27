@@ -227,8 +227,10 @@ export function buildWindows(K) {
       if (tr) lbox(B, li, fk, F, u0, tr - 0.03, wf - 0.04, u1, tr + 0.03, wf + 0.04, {});
       // 玻璃
       const panes = store ? [[u0 + 0.07, u1 - 0.035, s0 + 0.06, s1 - 0.07]] : [[u0 + 0.07, mid - 0.03, s0 + 0.06, tr - 0.03], [mid + 0.03, u1 - 0.035, s0 + 0.06, tr - 0.03], [u0 + 0.07, mid - 0.03, tr + 0.03, s1 - 0.07], [mid + 0.03, u1 - 0.035, tr + 0.03, s1 - 0.07]];
+      const glassP = []; // 各窗格 [a0, a1, b0, b1, 貼圖格 k](子彈打破玻璃用:physics/penetration.js)
       for (const [a0, a1, b0, b1] of panes) {
         const k = store ? (R() < 0.6 ? 0 : 1) : R.pick([0, 1, 1, 2, 2, 3, 3, -1, -1]);
+        glassP.push([a0, a1, b0, b1, k]);
         if (k < 0) { K.glassFloor = K.glassFloor || []; K.glassFloor.push({ li, x: F.X((a0 + a1) / 2, wf + inDir * 0.6), y, z: F.Z((a0 + a1) / 2, wf + inDir * 0.6) }); continue; }
         const uA = (k % 2) * 0.5, vA = 1 - (((k / 2) | 0) + 1) * 0.5;
         const ua = uA + R.r(0, 0.1), ub = uA + 0.5 - R.r(0, 0.1), va = vA + R.r(0, 0.1), vb = vA + 0.5 - R.r(0, 0.1);
@@ -240,10 +242,12 @@ export function buildWindows(K) {
       const Uv = F.U, Nv = F.W;
       // 木板封窗(室內側)
       const boarded = !store && R() < (lv.id === '1F' && (outA || outB) ? 0.32 : lv.id === 'B1' ? 0.5 : 0.14);
+      const boards = [];
       if (boarded) {
         const n = R.i(2, 4), wb = wf + inDir * 0.075;
         for (let k = 0; k < n; k++) {
           const a = R.r(-0.35, 0.35), cy = s0 + 0.2 + R() * 1.1, cu = mid + R.r(-0.15, 0.15);
+          boards.push([cu, cy, a]);
           const L2 = [Uv[0] * Math.cos(a), Math.sin(a), Uv[2] * Math.cos(a)], V2 = [-Uv[0] * Math.sin(a), Math.cos(a), -Uv[2] * Math.sin(a)];
           basisPlane(B, li, 'board', box1, F.X(cu, wb), cy, F.Z(cu, wb), L2, V2, Nv, R.r(2.0, 2.3), R.r(0.14, 0.22), 0.025);
         }
@@ -272,7 +276,7 @@ export function buildWindows(K) {
       // 外側窗台石(外牆)
       if (outA || outB) { const wo = outA ? w0 : w1, sg = outA ? -1 : 1; lbox(B, li, 'trim_stone', F, u0 - 0.06, s0 - 0.07, Math.min(wo, wo + sg * 0.09), u1 + 0.06, s0 + 0.02, Math.max(wo, wo + sg * 0.09), {}); }
       K.windowInfo = K.windowInfo || [];
-      K.windowInfo.push({ li, c, r, axis, wf, inDir, outA, outB, zone: zoneIn, x: F.X(mid, wf), z: F.Z(mid, wf), u0, u1, boarded, store });
+      K.windowInfo.push({ li, c, r, axis, wf, inDir, outA, outB, zone: zoneIn, x: F.X(mid, wf), z: F.Z(mid, wf), u0, u1, boarded, store, panes: glassP, boards });
     }
   }
 }
@@ -340,6 +344,7 @@ export function buildRails(K) {
             B.box(li, 'trim_alu', x0, y + hgt + 0.07, zc - 0.03, x0 + 0.05, y + 2.45, zc + 0.03, {});
             B.box(li, 'trim_alu', x0, y + 2.4, zc - 0.03, x1, y + 2.46, zc + 0.03, {});
             const k = R.pick([0, 1, 2, 3, -1]);
+            (K.counterGlass ||= []).push({ li, c, r, k, x0: x0 + 0.05, x1, zc, y0: y + 1.3, y1: y + 2.4 }); // 櫃台玻璃隔板(子彈打破、能否翻越)
             if (k >= 0) { const uA = (k % 2) * 0.5, vA = 1 - (((k / 2) | 0) + 1) * 0.5; B.quad(li, 'glass', [x0 + 0.05, y + 1.3, zc], [x1, y + 1.3, zc], [x1, y + 2.4, zc], [x0 + 0.05, y + 2.4, zc], [0, 0, 1], [[uA, vA], [uA + 0.5, vA], [uA + 0.5, vA + 0.5], [uA, vA + 0.5]]); }
           } else {
             const xc = (x0 + x1) / 2;

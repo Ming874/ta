@@ -16,6 +16,7 @@ import { combatMethods } from './game/combat.js';
 import { flowMethods } from './game/flow.js';
 import { inputMethods } from './game/input.js';
 import { createPhysics } from './physics/index.js';
+import { applyTruth } from './physics/truth.js';
 import { Weather } from './map/weather.js';
 
 // 遊戲主體:建立渲染器/場景/各系統,並跑主迴圈。
@@ -74,6 +75,7 @@ export class Game {
     this.scene.add(this.hospital.group);
     this.weather = new Weather(this); // 雨、濕地、低霧、閃電、暴風雲與城市剪影(src/map/weather.js;每幀掛在 hospital.update 之後)
     this.buildGameplayWorld(); // 補給站店面與補給點(碰撞盒要在 buildNav 之前登記)
+    this.truth = applyTruth(this.world, this.hospital); // [physics] 碰撞高度 = 看到的高度、道具材質(src/physics/truth.js)
     this.world.buildNav(); // 場景與道具的碰撞盒都登記好之後才建導航
 
     this.player = new Player(this.camera, this.world);

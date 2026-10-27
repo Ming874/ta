@@ -35,7 +35,7 @@ export function streetLamp(ctx, x, y, z, yaw = 0, { kind = 'tall', on = true, fl
   const hx = kind === 'tall' ? 1.62 : 0, hy = kind === 'tall' ? 7.62 : 3.65;
   const p = new V3(hx, hy, 0).applyAxisAngle(new V3(0, 0, 1), lean).applyAxisAngle(new V3(0, 1, 0), yaw).add(new V3(x, y, z));
   if (on) ctx.light({ x: p.x, y: p.y - 0.15, z: p.z, color: 0xffa048, intensity: kind === 'tall' ? 22 : 9, distance: kind === 'tall' ? 24 : 12, kind: 'sodium', flicker, zone: zone?.id, glow: kind === 'tall' ? 1.7 : 1.0 });
-  solid(ctx, x, y, z, 0.24, kind === 'tall' ? 7.2 : 3.4, 0.24);
+  solid(ctx, x, y, z, 0.24, kind === 'tall' ? 7.2 : 3.4, 0.24, 'heavy');
   return p;
 }
 // 被撞彎、倒在車頂的路燈(單件,靜態合併):path 為桿身經過的世界座標點(由下往上,第一點為桿底)
@@ -54,7 +54,7 @@ export function bentLamp(ctx, path) {
   P.add('po_gap', rbox(0.5, 0.03, 0.24, 0.02), M(head.x, head.y - 0.26, head.z, 0.5, Math.atan2(-dir.z, dir.x), -1.1));
   P.add('rubber', tube([head.clone().add(new V3(0, -0.1, 0)), head.clone().add(new V3(0.1, -0.8, 0.05)), head.clone().add(new V3(0.15, -1.3, 0.1))], 0.008, { radial: 4 })); // 垂下的電線
   put(ctx, P, 0, 0, 0);
-  solid(ctx, b.x, b.y, b.z, 0.3, 1.0, 0.3);
+  solid(ctx, b.x, b.y, b.z, 0.3, 1.0, 0.3, 'heavy');
 }
 
 // ---------- 警用拒馬(鐵架 + 交叉腳 + 刺絲捲)----------
@@ -80,7 +80,7 @@ function barricadeParts() {
 export function barricade(ctx, x, y, z, yaw) {
   pool(ctx, 'barricade', barricadeParts, 16).add(M(x, y, z, 0, yaw, 0));
   const c = Math.abs(Math.cos(yaw)) > 0.5;
-  solid(ctx, x, y, z, c ? 1.9 : 0.8, 1.4, c ? 0.8 : 1.9);
+  solid(ctx, x, y, z, c ? 1.9 : 0.8, 1.4, c ? 0.8 : 1.9, 'mesh');
 }
 // 封鎖線:a→b(世界座標)下垂的膠帶;broken 時從中間斷掉垂地
 export function tape(P, a, b, { sag = 0.12, broken = false, w = 0.075 } = {}) {

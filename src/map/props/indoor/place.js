@@ -281,7 +281,7 @@ export class Room {
       if (!this.reachOK(fp)) return null;
     } else this.mark(fp);
     const p = this.put(t, x, z, yaw, o);
-    if (o.collide !== false) this.collide(bb, x, o.y ?? this.y, z, yaw, o);
+    if (o.collide !== false) { this._tag = t.name; this.collide(bb, x, o.y ?? this.y, z, yaw, o); this._tag = null; }
     return p;
   }
   // 以代理盒呼叫 ctx.add(collide) 登記碰撞(斜放時拆成數段近似 OBB),然後移除代理
@@ -299,7 +299,7 @@ export class Room {
       proxy.scale.set(longX ? sx / n : sx, sy, longX ? sz : sz / n);
       proxy.position.set(x + px * cs + pz * sn, y + bb.min.y + sy / 2, z - px * sn + pz * cs);
       proxy.rotation.y = aligned ? Math.round(yaw / (Math.PI / 2)) * (Math.PI / 2) : yaw;
-      this.ctx.add(proxy, { collide: true, static: false, shrink: o.shrink ?? (aligned ? 0.03 : 0.08) });
+      this.ctx.add(proxy, { collide: true, static: false, shrink: o.shrink ?? (aligned ? 0.03 : 0.08), tag: this._tag, mat: o.mat });
       proxy.parent?.remove(proxy); // 場景建構器可能把物件改放到別的群組,直接從實際的父節點移除
       this.count.colliders++;
     }
