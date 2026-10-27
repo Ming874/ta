@@ -138,6 +138,7 @@ export class Game {
     this.time += dt;
     if (this.net) this.net.update(dt); // [net] 多人連線:殭屍快照、遠端玩家、回合同步、多人 HUD(src/net/session.js)
     this.hospital.update(this.time, dt, this.player);
+    this.horror?.update(dt); // [ghost] 靈異導演、耳語、幻影(src/horror)
     this.post.uniforms.time.value = this.time % 100;
     this.updateParticles(dt);
     this.updateCombat(dt); // 武器:開鏡視野、準心/狙擊鏡、手榴彈、彈殼與彈孔等特效(src/game/combat.js)
