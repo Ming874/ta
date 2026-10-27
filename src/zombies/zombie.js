@@ -1171,6 +1171,8 @@ export class Zombie {
 
   dispose() {
     this.scene.remove(this.root);
+    // 每個實例的骨架各有一張 GPU 骨骼貼圖(boneTexture),不 dispose 就每隻殭屍漏一張
+    this.root.traverse((o) => { if (o.isSkinnedMesh && o.skeleton?.boneTexture) o.skeleton.dispose(); });
     this.bar.tex.dispose();
     this.bar.sprite.material.dispose();
   }
