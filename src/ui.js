@@ -40,10 +40,10 @@ export class UI {
   // ---------- HUD(轉給 Hud) ----------
   setHP(hp, max) { this.hud.setHP(hp, max); }
   setArmor(a, max) { this.hud.setArmor(a, max); }
-  setAmmo(name, mag, reserve, reloading, cap) { this.hud.setAmmo(name, mag, reserve, reloading, cap); }
+  setAmmo(name, mag, reserve, reloading, cap, tier = 0) { this.hud.setAmmo(name, mag, reserve, reloading, cap, tier); }
   setCoins(n, instant = false) { this.hud.setCoins(n, instant); }
   setScore(n, instant = false) { this.hud.setScore(n, instant); }
-  streak(n, mul, gap) { this.hud.streak(n, mul, gap); }
+  streak(n, mul, gap, t) { this.hud.streak(n, mul, gap, t); }
   coinGain(n) { this.hud.coinGain(n); }
   spend(n) { this.hud.spend(n); }
   pickup(text, color, o) { this.hud.pickup(text, color, o); }

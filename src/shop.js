@@ -1338,8 +1338,8 @@ export class Shop {
       x.fillStyle = '#7dffa0'; x.fillText('聖心醫院 補給終端 v2.3', 10, 10);
       x.fillStyle = '#3fae62'; x.fillRect(10, 32, w - 20, 1);
       x.fillStyle = '#b9ffcc';
-      ['[1] 武器', '[2] 改裝', '[3] 裝備', '[4] 補給'].forEach((t, i) => x.fillText(t, 14, 44 + i * 22));
-      x.fillStyle = '#ffd27a'; x.fillText('站在櫃台前按 E', 14, 140);
+      ['[1] 武器', '[2] 彈藥', '[3] 改裝', '[4] 裝備'].forEach((t, i) => x.fillText(t, 14, 44 + i * 22));
+      x.fillStyle = '#ffd27a'; x.fillText('按 E 開啟商店', 14, 140);
       x.fillStyle = '#7dffa0'; x.fillText(blink ? '> _' : '>', 14, 164);
     } else {
       x.fillStyle = '#ff6a5a'; x.fillText('補給站 已關閉', 10, 12);

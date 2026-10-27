@@ -1,6 +1,6 @@
 import { Zombie } from '../zombies/zombie.js';
 import { TYPES } from '../zombies/types.js';
-import { Shop, shopTabs, purchase } from '../shop.js';
+import { Shop, shopTabs, purchase, modTotal } from '../shop.js';
 import { Pickups, Supplies } from '../pickups.js';
 import { sfx, resume as resumeAudio } from '../audio.js';
 import { settings } from '../ui/settings.js';
@@ -429,10 +429,10 @@ export const flowMethods = {
     this._addScore(Math.round((POINTS[z.type] || 100) * mul));
     const tag = how === 'melee' ? '近戰' : head ? '爆頭' : how === 'explosion' ? '爆炸' : '';
     this.ui.killPop(base + bonus, tag, how === 'melee' ? 'melee' : head ? 'head' : '');
-    this.ui.streak?.(S.streak, streakMul(S.streak), STREAK_GAP);
+    this.ui.streak?.(S.streak, streakMul(S.streak), STREAK_GAP, this.time);
     const name = TYPES[z.type]?.name || TYPE_NAME[z.type] || '殭屍';
     const tier = streakTier(S.streak);
-    if (z.type === 'brute' || head || how === 'melee') {
+    if (z.type === 'brute' || how === 'melee' || (head && z.type === 'bloater')) { // 一般爆頭只在準心旁跳字,不洗訊息列
       this.ui.feed(`${tag ? `${tag} · ` : ''}擊殺 ${name} <b>+${base + bonus}</b>`, { icon: how === 'melee' ? 'knife' : head ? 'head' : 'skull', color: z.type === 'brute' ? '#ff6a5a' : head ? '#ff9a6a' : '#e8e3d6', html: true });
     }
     if (tier) { // 連殺門檻:訊息 + 金幣獎勵(掉在屍體上,回合結束一起收)
@@ -574,7 +574,7 @@ export const flowMethods = {
     const w = this.weapons;
     const cap = typeof w.stat === 'function' ? Math.round(w.stat(w.current, 'mag')) : Math.round(w.def.mag * (w.mods?.[w.current]?.mag ?? 1));
     const prev = this._ammoLow;
-    this.ui.setAmmo(w.def.name, w.ammo.mag, w.ammo.reserve, w.reloading > 0, cap);
+    this.ui.setAmmo(w.def.name, w.ammo.mag, w.ammo.reserve, w.reloading > 0, cap, modTotal(this, w.current));
     const low = w.ammo.mag <= Math.max(1, Math.floor(cap * 0.25)) && w.ammo.mag > 0;
     if (low && !prev && this.state === 'playing') sfx.lowAmmo();
     this._ammoLow = low;

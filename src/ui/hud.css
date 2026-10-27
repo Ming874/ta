@@ -77,6 +77,7 @@
 .hd-weapon { right: 1.9em; bottom: 1.4em; text-align: right; }
 .hd-wname { font-size: .95em; letter-spacing: .32em; color: var(--hud-dim); font-weight: 700; }
 .hd-wname em { font-style: normal; color: var(--hud-amber); letter-spacing: .1em; margin-left: .4em; }
+.hd-wname .tier { font-style: normal; font-size: .62em; letter-spacing: .12em; color: var(--hud-amber); margin-right: .55em; vertical-align: .15em; text-shadow: 0 0 6px rgba(255, 170, 60, .6), 0 1px 2px #000; }
 .hd-ammo { font-family: var(--num); font-weight: 700; line-height: 1; margin-top: .1em; }
 .hd-ammo .mag { font-size: 3.3em; display: inline-block; }
 .hd-ammo .res { font-size: 1.55em; opacity: .7; margin-left: .25em; }
