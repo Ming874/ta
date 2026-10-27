@@ -49,7 +49,7 @@ export const LOOKS = {
     body: (r) => ({ s: r.range(1.0, 1.07), sw: r.range(0.88, 0.95), hip: 0.94, g: r.range(0.72, 0.78), fat: r.range(0.82, 0.87), musc: 0, belly: 0, thin: 1, arm: 1.08, neck: 0.8, head: r.range(0.98, 1.02) }),
     fem: 0.6, skins: ['pale', 'blue', 'pale'], hair: 0.9, longHair: 0.85, decayed: true,
     curl: (r) => [r.range(0.05, 0.2), r.range(0.2, 0.4), r.range(0.15, 0.3)], // 手指張開成爪
-    skinL: (L, r) => { L.veins = 0.9; L.mottle = 0.95; L.livor = 0.9; L.fresh = 0.35; L.dirt = 0.25; },
+    skinL: (L) => { L.veins = 0.9; L.mottle = 0.95; L.livor = 0.9; L.fresh = 0.35; L.dirt = 0.25; L.marble = 0.9; L.lidUp = 0.8; },
     wounds: ({ r, wound }) => {
       for (let i = 0; i < 3; i++) wound('gash', r.pick(['neck', 'arm', 'arm']), 0.012); // 自己抓出來的抓痕
       wound('bite', 'arm', 0.026);
@@ -99,7 +99,7 @@ export const LOOKS = {
     body: (r) => ({ s: r.range(1.04, 1.1), sw: 0.9, hip: 0.9, g: r.range(0.64, 0.7), fat: 0.8, musc: 0.15, belly: 0, thin: 1, arm: 1.32, neck: 0.78, head: 0.93 }),
     fem: 0, skins: ['blue', 'pale'], hair: 0.06, longHair: 0, hand: 1.45, decayed: true,
     curl: (r) => [r.range(0.5, 0.7), r.range(0.8, 1.0), r.range(0.6, 0.8)],
-    skinL: (L) => { L.veins = 1; L.mottle = 1; L.livor = 0.5; L.fresh = 0.2; L.dirt = 0.5; L.livid.set('#2a2a40'); },
+    skinL: (L) => { L.veins = 1; L.mottle = 1; L.livor = 0.5; L.fresh = 0.2; L.dirt = 0.5; L.livid.set('#2a2a40'); L.marble = 1; L.lidUp = 0.6; L.lidLo = 2.5; },
     wounds: ({ wound, r }) => { wound('gash', 'torso', 0.02); wound('bite', r.pick(['arm', 'leg']), 0.025); },
     head: (H) => { H.thin = 1; H.sock = 1.7; H.cheek = 1.45; H.jaw = 0.56; H.mouthW = 1.4; H.lips = -0.6; H.nose = 0; H.decay = 1; H.brow = 1.5; H.h *= 1.06; },
     outfits: (K) => ({
@@ -227,7 +227,7 @@ export const LOOKS = {
     body: (r) => ({ s: r.range(0.95, 1.02), sw: 0.98, hip: 0.95, g: r.range(0.8, 0.88), fat: 0.86, musc: 0.15, belly: 0, thin: 0.85, arm: 1, neck: 0.88, head: 0.96 }),
     fem: 0.2, skins: ['dark'], hair: 0.08, longHair: 0, decayed: true,
     curl: () => [1.35, 1.55, 1.25], // 拳擊姿勢(熱收縮)的握拳
-    skinL: (L, r) => { L.veins = 0; L.livor = 0; L.mottle = 0.5; L.fresh = 0.6; L.dirt = 0.1; L.burnK = r() * 50; L.burnLo = r.range(0.25, 0.45); },
+    skinL: (L, r) => { L.veins = 0; L.livor = 0; L.mottle = 0.5; L.fresh = 0.6; L.dirt = 0.1; L.burnK = r() * 50; L.burnLo = r.range(0.25, 0.45); L.putre = 0; L.marble = 0; L.slip = 0; },
     wounds: ({ wound }) => { wound('burn', 'torso', 0.08); wound('burn', 'arm', 0.07); wound('skull', 'head', 0.035); },
     head: (H) => { H.lips = -0.6; H.nose = 0; H.decay = 1; H.sock = 1.2; H.cheek = 0.8; H.thin = 0.9; },
     outfits: (K) => ({
@@ -248,18 +248,18 @@ export const LOOKS = {
         const n1 = fbm(x * 7 + k, y * 7, z * 7, 3);
         const charK = sstep(-0.35, 0.15, n1 + sev - 0.6);
         c.lerp(tc.copy(CHAR1).lerp(CHAR0, sstep(-0.2, 0.3, fbm(x * 22, y * 22 + k, z * 22, 2))), Math.min(1, charK * 1.1));
-        const raw = sstep(0.25, 0.4, fbm(x * 11 + 40, y * 11, z * 11 + k, 3)) * sev;
-        if (raw > 0) { c.lerp(RAW, raw * 0.85); wet = Math.max(wet, raw * 0.9); }
+        const raw = sstep(0.34, 0.46, fbm(x * 11 + 40, y * 11, z * 11 + k, 3)) * sev;
+        if (raw > 0) { c.lerp(RAW, raw * 0.6); wet = Math.max(wet, raw * 0.9); }
         const bl = sstep(0.55, 0.6, noise3(x * 70 + k, y * 70, z * 70)) * (1 - charK) * sev;
         if (bl > 0) c.lerp(BLISTER, bl * 0.7);
         // 裂縫:1 - |噪聲| 的稜線
         const ridge = 1 - Math.abs(noise3(x * 16 + k, y * 13, z * 16));
-        const crack = sstep(0.9, 0.975, ridge) * charK * sev;
+        const crack = sstep(0.94, 0.985, ridge) * charK * sev * sstep(-0.1, 0.2, fbm(x * 3 + k, y * 3, z * 3, 2));
         if (part === 'head' && y > HC.y + 0.06) c.lerp(K.BONE, sstep(0.0, 0.3, fbm(x * 30, y * 30, z * 30, 2) + 0.15) * 0.6); // 頭頂燒穿露出頭骨
         if (crack > 0.05) {
           c.lerp(EMBER, crack);
-          const glow = crack * (0.55 + 0.45 * sstep(-0.2, 0.4, fbm(x * 5, y * 5 + k, z * 5, 2)));
-          return 1 + Math.min(0.95, glow);
+          const glow = crack * (0.35 + 0.45 * sstep(-0.2, 0.4, fbm(x * 5, y * 5 + k, z * 5, 2)));
+          return 1 + Math.min(0.8, glow);
         }
         return Math.min(wet, 1);
       };
@@ -269,7 +269,7 @@ export const LOOKS = {
   // ====================== 防護衣士兵 ======================
   hazmat: {
     body: (r) => ({ s: r.range(1.0, 1.06), sw: 1.12, hip: 1.08, g: 1.12, fat: 1.12, musc: 0.4, belly: 0.12, thin: 0, arm: 1.02, neck: 1.25, head: 1.0 }),
-    fem: 0, skins: ['rot', 'blue'], hair: 0, longHair: 0, armor: true,
+    fem: 0, skins: ['rot', 'blue'], hair: 0, longHair: 0, armor: true, noLids: true,
     curl: () => [0.9, 1.2, 1.0],
     skinL: (L) => { L.fresh = 0.4; L.veins = 0.6; },
     wounds: ({ wound }) => { wound('bite', 'arm', 0.03); wound('gash', 'torso', 0.03); wound('bite', 'leg', 0.03); },

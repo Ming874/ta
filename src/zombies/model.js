@@ -105,7 +105,20 @@ const BRUISE = col('#3a2038'), BRUISE_Y = col('#7a7a3a'), DIRT = col('#2e2820'),
 const FLESH = col('#6a1414'), FLESH_DARK = col('#220404'), NECRO = col('#1e1a1e'), BONE = col('#cfc2a2'), CHAR = col('#141010');
 const SOCKET = col('#2a2026'), LIPS = col('#3a2228'), CAVITY = col('#120808'), PUS = col('#9a9a30'), VEIN = col('#2a2a3a');
 const NAIL = col('#e0b4a6');
+const BLOOD_FRESH_CLOTH = col('#3e0505'), BAGS = col('#2e2230'), SOAK_HALO = col('#4a2e1a'), BLOOD_CLOTH = col('#46120a'), STAIN_C = col('#4a3c1c'), RIM = col('#5a1210'), GUM = col('#4a1414'), TONGUE = col('#3a1620');
+const FAT = col('#a8904a'), MUSCLE = col('#3a0808'), PUTRE = col('#3e4a26'), PUTRE_Y = col('#6a6236'), MARBLE = col('#1c2418'), DERMIS = col('#7a3a36');
 
+// 布料吸血:回傳未取門檻的強度(painter 自己分出深色核心與外圈褐色暈開)
+function soakRaw(list, x, y, z) {
+  let m = 0;
+  for (const s of list) {
+    const dx = x - s.c.x, dy = y - s.c.y, dz = z - s.c.z;
+    let w = G(dx * dx + dy * dy * (s.sq ?? 1) + dz * dz, s.r * 1.15);
+    if (s.drip && dy < 0 && dy > -s.drip) { const k = -dy / s.drip; w = Math.max(w, G(dx * dx + dz * dz * 0.5, s.r * 0.45) * (1 - k * k)); }
+    if (w > m) m = w;
+  }
+  return m < 0.02 ? 0 : m + fbm(x * 14, y * 14, z * 14, 3) * 0.35;
+}
 function bloodAmt(list, x, y, z) {
   let m = 0;
   for (const s of list) {
@@ -153,7 +166,10 @@ export function buildShape(type, seed, opt = {}) {
     skin: col(pal[0]), dark: col(pal[1]), livid: col(pal[2]), ends: col(pal[1]).lerp(col('#3a3448'), 0.5),
     mottle: r.range(0.55, 0.95), livor: r.range(0.4, 1), k: r() * 100, dirt: r.range(0.15, 0.45),
     fresh: type === 'runner' ? 1 : r.range(0.1, 0.5), veins: type === 'brute' || type === 'bloater' ? 1 : type === 'runner' ? 0.6 : r.range(0, 0.4),
-    bruises: [], blood: [], clothBlood: [], wounds: [], pustules: [],
+    bruises: [], blood: [], clothBlood: [], wounds: [], pustules: [], prints: [],
+    // 腐敗的寫實細節:putre 腹部/側腹的綠色腐敗斑、marble 皮下血管腐敗後的大理石紋、slip 表皮剝落露出真皮
+    putre: r.range(0.2, 0.7), marble: r.range(0.25, 0.85), slip: r.chance(0.55) ? r.range(0.4, 1) : 0,
+    lidUp: r.chance(0.5) ? r.range(0.8, 1.0) : r.range(1.25, 1.5), lidLo: r.range(1.95, 2.3), // 眼皮:瞪大 / 半閉;下眼皮外翻程度
   };
   if (healthy) Object.assign(L, { ends: col(pal[2]), mottle: 0.12, livor: 0, dirt: r.range(0.03, 0.08), fresh: 1, veins: 0 });
   if (LK?.skinL) LK.skinL(L, r, col); // 新類型的皮膚參數(L.paint = 額外的逐頂點上色)
@@ -246,6 +262,8 @@ export function buildShape(type, seed, opt = {}) {
     // 衣服上的血:領口、胸前抹痕、噴濺
     L.clothBlood.push({ c: V(0, 1.42, 0.12), r: 0.06 + mouthBlood * 0.08, drip: 0.15 + mouthBlood * 0.35, sq: 0.4, k: r() * 50 });
     for (let i = 0, n = 2 + ((r() * 4) | 0); i < n; i++) { const s = surf(r.pick(['torso', 'torso', 'leg'])); L.clothBlood.push({ c: s.p.addScaledVector(s.n, 0.02), r: r.range(0.03, 0.08), drip: r.chance(0.5) ? r.range(0.05, 0.25) : 0, sq: 0.7, k: r() * 50 }); }
+    // 血手印(別人/自己抓過的痕跡):胸前、背後、大腿
+    for (let i = 0, n = (r() * 2.6) | 0; i < n; i++) L.prints.push({ x: r.range(-0.12, 0.12), y: r.pick([r.range(1.15, 1.42), r.range(0.95, 1.2), r.range(0.6, 0.85)]), front: r.chance(0.6), drag: r.range(0.02, 0.18) });
   }
 
   // 頭部參數(skull 傷口需要)
@@ -263,16 +281,17 @@ export function buildShape(type, seed, opt = {}) {
   };
   if (LK?.head) LK.head(H, r, P); // 新類型的頭型(下顎脫臼、焦黑塌陷…)
 
+  // 傷口:凹陷的坑 + 撕裂外翻的邊緣 + 坑底不平的組織
   const woundDisp = (x, y, z) => {
     let d = 0;
     for (const w of L.wounds) {
       const d2 = w.kind === 'gash' ? segDist2(x, y, z, w.a, w.b) : (x - w.c.x) ** 2 + (y - w.c.y) ** 2 + (z - w.c.z) ** 2;
       if (d2 > w.r * w.r * 6) continue;
       const g = G(d2, w.r * 0.85);
-      if (w.kind === 'ribs') d += -0.02 * g + 0.012 * g * sstep(0.2, 0.8, Math.max(0, Math.sin((y - w.c.y) * TAU / 0.026)));
-      else if (w.kind === 'skull') d += -0.004 * g;
+      if (w.kind === 'ribs') d += -0.026 * g + 0.014 * g * sstep(0.2, 0.8, Math.max(0, Math.sin((y - w.c.y) * TAU / 0.026)));
+      else if (w.kind === 'skull') d += -0.006 * g;
       else if (w.kind === 'burn') d += noise3(x * 60, y * 60, z * 60) * 0.003 * g;
-      else d += -0.009 * g + 0.002 * G(d2, w.r * 1.3);
+      else d += -0.015 * g + 0.0035 * Math.max(0, G(d2, w.r * 1.25) - g) * 2 + noise3(x * 90 + w.k, y * 90, z * 90) * 0.003 * g;
     }
     return d;
   };
@@ -286,16 +305,31 @@ export function buildShape(type, seed, opt = {}) {
       c.lerp(w.kind === 'burn' ? CHAR : NECRO, rim * 0.8);
       if (core <= 0) continue;
       if (w.kind === 'burn') { c.lerp(CHAR, core); c.lerp(FLESH, core * sstep(0.55, 0.75, noise3(x * 70, y * 70, z * 70) + 0.5) * 0.7); wet = Math.max(wet, core * 0.2); continue; }
-      c.lerp(FLESH, core);
-      c.lerp(FLESH_DARK, core * sstep(0.7, 0.0, q) * 0.8);
+      // 由外而內:黃色脂肪層 → 帶纖維紋的肌肉 → 深處近黑的暗紅
+      c.lerp(FAT, sstep(1.0, 0.85, q) * (1 - sstep(0.82, 0.68, q)) * 0.75);
+      const fib = 0.5 + 0.5 * Math.sin((x * 0.6 + z) * 900 + y * 40 + noise3(x * 40 + w.k, y * 40, z * 40) * 6);
+      c.lerp(tc3.copy(FLESH).lerp(MUSCLE, fib * 0.6), core * sstep(0.85, 0.7, q));
+      c.lerp(FLESH_DARK, core * sstep(0.55, 0.0, q) * 0.9);
       if (w.kind === 'ribs') c.lerp(BONE, core * sstep(0.45, 0.85, Math.sin((y - w.c.y) * TAU / 0.026)));
       if (w.kind === 'skull') c.lerp(BONE, core * 0.85);
-      wet = Math.max(wet, core * (w.kind === 'skull' ? 0.4 : 1));
+      wet = Math.max(wet, core * (w.kind === 'skull' ? 0.45 : 1));
     }
     return wet;
   };
   // 皮下血管(隆起的網狀紋路)
   const veinAt = (x, y, z) => (L.veins > 0 ? sstep(0.9, 0.97, 1 - Math.abs(noise3(x * 14 + L.k, y * 9, z * 14))) * L.veins : 0);
+  const tc3 = new THREE.Color();
+  // 環境光遮蔽(烘進頂點色):下側、腋下、手臂/大腿內側、下巴下方、鼻翼耳後;讓手電筒下的體積感不再像塑膠模型
+  const aoAt = (part, x, y, z, nx, ny, nz) => {
+    let ao = sstep(0.05, -0.85, ny) * 0.3;
+    const ax = Math.abs(x), inward = -Math.sign(x) * nx;
+    if (part === 'torso') ao += sstep(0.1, 0.17, ax) * G((y - 1.36) ** 2, 0.07) * 0.45 + G(x * x + (y - 0.92) ** 2, 0.06) * Math.max(0, nz) * 0.3;
+    else if (part === 'arm' || part === 'hand') ao += sstep(0.0, 0.8, inward) * 0.32;
+    else if (part === 'leg') ao += sstep(0.0, 0.8, inward) * sstep(0.2, 0.08, ax) * 0.4 + sstep(0.85, 0.7, y) * sstep(0.7, 0.9, y) * 0.0;
+    else if (part === 'neck') ao += sstep(HC.y - 0.06, HC.y - 0.14, y) * Math.max(0, nz) * 0.5 + 0.12;
+    else if (part === 'head') { const ly = y - HC.y, lz = z - HC.z; ao += G((ax - 0.02) ** 2 + (ly + 0.025) ** 2 + (lz - 0.085) ** 2, 0.012) * 0.35 + sstep(-0.04, -0.1, ly) * sstep(0.0, 0.06, lz) * Math.max(0, -ny) * 0.35; }
+    return Math.min(0.62, ao);
+  };
 
   const tc = new THREE.Color();
   // 健康皮膚:細微的膚色不均、手腳末端與臉頰較紅潤、極淡的灰塵(戰場上的倖存者)
@@ -313,11 +347,25 @@ export function buildShape(type, seed, opt = {}) {
   const skinPainter = (part, extra) => (healthy ? healthyPainter(part, extra) : (x, y, z, nx, ny, nz, i, out) => {
     const c = tc.copy(L.skin);
     c.lerp(L.dark, sstep(-0.1, 0.4, fbm(x * 3.1 + L.k, y * 3.1, z * 3.1, 4)) * L.mottle);
-    c.multiplyScalar(0.6 + fbm(x * 13, y * 13 + L.k, z * 13, 3) * 0.25);
+    c.multiplyScalar(0.42 + fbm(x * 13, y * 13 + L.k, z * 13, 3) * 0.22);
+    // 腐敗變色:軀幹/大腿根部偏綠、局部發黃
+    const pz = part === 'torso' ? 1 : part === 'leg' || part === 'neck' ? 0.5 : 0.25;
+    c.lerp(PUTRE, sstep(0.05, 0.45, fbm(x * 1.7 + L.k, y * 1.7, z * 1.7, 3)) * L.putre * pz * 0.75);
+    c.lerp(PUTRE_Y, sstep(0.25, 0.55, fbm(x * 2.3, y * 2.3 + L.k, z * 2.3, 3)) * 0.35);
     c.lerp(L.livid, sstep(0.75, 0.1, y) * 0.4 * L.livor);
     c.lerp(L.livid, sstep(0.1, -0.6, nz) * 0.15 * L.livor); // 背側屍斑
     if (part === 'hand' || part === 'foot') c.lerp(L.ends, 0.45);
     c.lerp(VEIN, veinAt(x, y, z) * 0.55);
+    // 大理石紋:皮下靜脈腐敗後的暗綠黑網紋
+    if (L.marble > 0 && part !== 'head') c.lerp(MARBLE, sstep(0.93, 0.985, 1 - Math.abs(noise3(x * 9 + L.k, y * 6, z * 9))) * L.marble * pz * 0.85);
+    // 表皮剝落:露出濕潤的粉紅真皮,邊緣捲起的死皮較暗
+    let slipWet = 0;
+    if (L.slip > 0) {
+      const sv = fbm(x * 6 + L.k * 2, y * 6, z * 6, 3), sl = sstep(0.4, 0.46, sv) * L.slip;
+      if (sl > 0) { c.lerp(DERMIS, sl * 0.85); slipWet = sl * 0.7; }
+      c.multiplyScalar(1 - sstep(0.36, 0.4, sv) * (1 - sstep(0.4, 0.43, sv)) * 0.5 * L.slip);
+    }
+    c.multiplyScalar(1 - aoAt(part, x, y, z, nx, ny, nz));
     for (const b of L.bruises) {
       const d2 = (x - b.c.x) ** 2 + (y - b.c.y) ** 2 + (z - b.c.z) ** 2;
       if (d2 > b.r * b.r * 5) continue;
@@ -330,7 +378,7 @@ export function buildShape(type, seed, opt = {}) {
       if (d2 < p.r * p.r * 9) c.lerp(FLESH, G(d2, p.r * 1.8) * 0.6);
     }
     c.lerp(DIRT, sstep(0.15, 0.5, fbm(x * 2.5 + 40, y * 2.5, z * 2.5, 3)) * L.dirt);
-    let wet = woundPaint(x, y, z, c);
+    let wet = Math.max(0.06, slipWet, woundPaint(x, y, z, c)); // 冰冷黏膩:整體帶一點濕氣
     const b = bloodAmt(L.blood, x, y, z);
     if (b > 0) { c.lerp(L.fresh > 0.5 ? BLOOD : BLOOD_DRY, b * 0.92); wet = Math.max(wet, b * (0.4 + L.fresh * 0.6)); }
     if (L.paint) wet = L.paint(x, y, z, nx, ny, nz, part, c, wet); // 新類型(焦黑、縫線…);alpha > 1 = 餘燼自發光
@@ -421,7 +469,14 @@ export function buildShape(type, seed, opt = {}) {
     if (H.lips < 0) c.lerp(FLESH_DARK, G(lx * lx * 0.3 + (ly - hg.my) ** 2 * 1.5, 0.014) * sstep(0.06, 0.08, lz));
     if (H.nose < 0.3) c.lerp(CAVITY, G(lx * lx * 1.5 + (ly + 0.012) ** 2 + (lz - 0.095) ** 2, 0.015));
     if (hasHair) c.lerp(hairCol, G(((ly - 0.04) * 1.6) ** 2 + (Math.abs(lx) - 0.032) ** 2 * 0.5, 0.008) * sstep(0.07, 0.09, lz) * 0.8); // 眉毛
-    return wet;
+    // 臉部細節:發紫的眼袋、凹陷的雙頰、額頭皺紋、鼻頭與耳朵發紺、鼻孔乾血、濕亮的嘴唇
+    const ax = Math.abs(lx);
+    c.lerp(BAGS, G((ax - 0.031 * H.w) ** 2 + ((ly + 0.013) * 1.4) ** 2 + (lz - 0.078) ** 2 * 0.5, 0.013) * 0.55);
+    c.multiplyScalar(1 - G((ax - 0.046) ** 2 + (ly + 0.045) ** 2, 0.02) * Math.max(0, nz) * 0.3 * (0.5 + H.thin));
+    if (lz > 0.04 && ly > 0.035 && ly < 0.09) c.multiplyScalar(1 - sstep(0.55, 0.95, Math.sin(ly * 380 + noise3(lx * 40, 0, 3) * 2)) * 0.2);
+    c.lerp(L.livid, G(lx * lx + (ly + 0.02) ** 2 + (lz - 0.1) ** 2, 0.012) * 0.3 + sstep(0.06, 0.075, ax) * sstep(0.02, -0.03, lz) * 0.25);
+    c.lerp(BLOOD_DRY, G(((ax - 0.009) * 1.5) ** 2 + (ly + 0.03) ** 2 + (lz - 0.095) ** 2, 0.006) * 0.8);
+    return Math.max(wet, G(lx * lx * 0.3 + (ly - hg.my) ** 2 * 2.2, 0.012) * sstep(0.05, 0.08, lz) * 0.85);
   };
   add(hg.geo, 'skin', (x, y, z, i) => { const j = jawW(x, y, z, i); return [['head', 1 - j], ['jaw', j]]; }, skinPainter('head', headExtra));
   // 耳朵
@@ -445,11 +500,25 @@ export function buildShape(type, seed, opt = {}) {
           return wet;
         }));
       }
+    } else if (!LK?.noLids) { // 殭屍眼皮:上眼皮後縮(瞪大)或下垂(半閉),下眼皮外翻露出充血的眼瞼內側;邊緣濕亮
+      const er = 0.0125 * Math.min(1, P.head * 1.05), ec = V(HC.x + s * 0.031 * H.w, HC.y + 0.012, HC.z + eyeZ);
+      const lidUp = s > 0 ? L.lidUp : L.lidUp + r.range(-0.15, 0.25), lidLo = L.lidLo + r.range(-0.08, 0.08);
+      for (const [t0, t1, up] of [[0, lidUp, 1], [lidLo, Math.PI, 0]]) {
+        const lid = prim(new THREE.SphereGeometry(er * 1.13, 18, 7, 0, Math.PI * 2, t0, t1 - t0), mat4(ec, [up ? 0.1 : -0.06, s * 0.15, 0]));
+        add(lid, 'skin', 'head', skinPainter('head', (x, y, z, nx, ny, nz, i, c, wet) => {
+          if (z < ec.z) return wet;
+          const ly = y - ec.y, rim = up ? sstep(er * 0.55, er * 0.15, ly) * sstep(-er * 0.4, er * 0.1, ly) : sstep(-er * 0.6, -er * 0.2, ly) * sstep(-er * 0.05, -er * 0.35, ly);
+          c.lerp(RIM, rim * 0.9);
+          c.multiplyScalar(lerp(1, 0.55, sstep(er * 0.3, er * 0.7, Math.abs(ly)) * 0.5));
+          return Math.max(wet, rim * 0.95);
+        }));
+      }
     }
   }
   // 牙齒 + 口腔
   const zf = hg.mouthZ;
   const toothCol = healthy ? [col('#e8e2cf'), col('#ddd5bd'), col('#d2c8ab')] : [col('#b8a878'), col('#8a7a52'), col('#5a4a30')];
+  const STAIN = col('#2e2414');
   for (const up of healthy ? [] : [true, false]) { // 倖存者閉著嘴,不需要牙齒
     for (let k = 0; k < 10; k++) {
       if (!healthy && r.chance(decayed ? 0.3 : 0.12)) continue;
@@ -458,9 +527,19 @@ export function buildShape(type, seed, opt = {}) {
       const tx = Math.sin(a) * 0.024 * H.w, tz = zf - 0.0055 - (1 - Math.cos(a)) * 0.03;
       const yc = up ? hg.my + 0.0045 - h / 2 : hg.my - 0.0035 + h / 2 - 0.006;
       const t = prim(new THREE.BoxGeometry(0.0058, h, 0.0042), mat4(V(HC.x + tx, HC.y + yc, HC.z + tz), [r.range(-0.15, 0.15), a, r.range(-0.15, 0.15)]));
-      const tcol = toothCol[(r() * 2.2) | 0];
-      add(t, 'bone', up ? 'head' : 'jaw', (x, y, z, nx, ny, nz, i, out) => { out[0] = tcol.r; out[1] = tcol.g; out[2] = tcol.b; out[3] = 1; });
+      const tcol = toothCol[(r() * 2.2) | 0], gy = HC.y + (up ? hg.my + 0.0045 : hg.my - 0.0095);
+      // 牙根(靠牙齦處)染成褐黑、牙尖較亮;偶有斷牙(短)
+      add(t, 'bone', up ? 'head' : 'jaw', (x, y, z, nx, ny, nz, i, out) => { const c = tc3.copy(tcol).lerp(STAIN, sstep(0.006, 0.0, Math.abs(y - gy)) * 0.7); out[0] = c.r; out[1] = c.g; out[2] = c.b; out[3] = 1; });
     }
+    // 牙齦:沿齒列的暗紅濕潤肉條(萎縮、發黑)
+    const gp = [];
+    for (let k = 0; k <= 8; k++) { const a = ((k - 4) / 4) * 0.95; gp.push(V(HC.x + Math.sin(a) * 0.0245 * H.w, HC.y + (up ? hg.my + 0.0098 : hg.my - 0.0118), HC.z + zf - 0.007 - (1 - Math.cos(a)) * 0.03)); }
+    const gum = prim(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(gp), 16, 0.0042, 6, false));
+    add(gum, 'skin', up ? 'head' : 'jaw', (x, y, z, nx, ny, nz, i, out) => { const c = tc3.copy(GUM).lerp(CAVITY, sstep(0.2, 0.6, noise3(x * 300, y * 300, z * 300) + 0.3) * 0.6); out[0] = c.r; out[1] = c.g; out[2] = c.b; out[3] = 1; });
+  }
+  if (!healthy) { // 舌頭(嘴張開時看得到;濕亮、發紫)
+    const tg = prim(new THREE.SphereGeometry(1, 12, 8), mat4(V(HC.x, HC.y + hg.my - 0.013, HC.z + zf - 0.036), [0.15, 0, 0], [0.017 * H.w, 0.007, 0.026]));
+    add(tg, 'skin', 'jaw', (x, y, z, nx, ny, nz, i, out) => { const c = tc3.copy(TONGUE).multiplyScalar(0.8 + noise3(x * 200, y * 200, z * 200) * 0.3); out[0] = c.r; out[1] = c.g; out[2] = c.b; out[3] = 1; });
   }
   const mouthIn = flip(prim(new THREE.SphereGeometry(1, 16, 12), mat4(V(HC.x, HC.y + hg.my - 0.004, HC.z + zf - 0.03), [0, 0, 0], [0.023 * H.w, 0.02, 0.028])));
   add(mouthIn, 'skin', (x, y) => (y > HC.y + hg.my ? [['head', 1]] : [['jaw', 1]]), (x, y, z, nx, ny, nz, i, out) => { out[0] = 0.03; out[1] = 0.005; out[2] = 0.005; out[3] = 1; });
@@ -512,6 +591,27 @@ export function buildShape(type, seed, opt = {}) {
       }
       const sg = mergeGeometries(strands);
       add(sg, 'hair', ['head', 'neck', 'chest'], (x, y, z, nx, ny, nz, i, out) => { const v = 0.8 + noise3(x * 40, y * 10, z * 40) * 0.4; out[0] = hairCol.r * v; out[1] = hairCol.g * v; out[2] = hairCol.b * v; out[3] = sstep(HC.y - 0.33, HC.y - 0.12, y); });
+    } else if (!healthy) { // 短髮的殭屍:幾撮油膩、黏成一束一束垂下的頭髮(糾結、沾血)
+      const clumps = [];
+      for (let k = 0, n = 4 + ((r() * 6) | 0); k < n; k++) {
+        const a = r.range(-2.7, 2.7), out = V(Math.sin(a), 0, Math.cos(a)), tan = V(out.z, 0, -out.x);
+        const len = r.range(0.05, 0.13) * (Math.abs(a) < 0.8 ? 0.6 : 1), w = r.range(0.01, 0.022);
+        const top = V(HC.x + out.x * 0.07 * H.w, HC.y + r.range(0.03, 0.09), HC.z + out.z * 0.096 - 0.004);
+        const pos = [], uv = [], ids = [];
+        for (let s2 = 0; s2 <= 4; s2++) {
+          const u = s2 / 4, c = top.clone().addScaledVector(out, 0.012 * Math.sin(Math.min(1, u * 2) * Math.PI * 0.5) + u * 0.012).add(V(0, -u * len, 0));
+          for (const sd of [-1, 1]) { const q = c.clone().addScaledVector(tan, (sd * w * (1 - u * 0.7)) / 2); pos.push(q.x, q.y, q.z); uv.push((sd + 1) * 0.25 + k * 0.17, u * len * 4); }
+          if (s2 < 4) { const b = s2 * 2; ids.push(b, b + 2, b + 1, b + 1, b + 2, b + 3); }
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+        g.setIndex(ids);
+        g.computeVertexNormals();
+        clumps.push(g);
+      }
+      const cg = mergeGeometries(clumps);
+      add(cg, 'hair', 'head', (x, y, z, nx, ny, nz, i, out) => { const v = 0.6 + noise3(x * 40, y * 10, z * 40) * 0.3; const c = tc3.copy(hairCol).multiplyScalar(v).lerp(BLOOD_DRY, sstep(0.2, 0.5, noise3(x * 20, y * 20, z * 20)) * 0.5); out[0] = c.r; out[1] = c.g; out[2] = c.b; out[3] = 1; });
     }
   }
 
@@ -620,7 +720,7 @@ export function buildShape(type, seed, opt = {}) {
     const up = col({ sneaker: r.pick(['#d8d8d0', '#3a3a3a', '#6a6a70']), clog: r.pick(['#d8d8e0', '#5a8aa8', '#a86a7a']), leather: '#1c1814', boot: '#141414', desert: '#7d6a4c', work: '#4a3322', trainer: '#2a2c30' }[style]);
     const sole = col(style === 'sneaker' || style === 'clog' ? '#d0d0c8' : '#0e0e0e');
     add(g, 'gear', ['shin' + Ls, 'foot' + Ls], (x, y, z, nx, ny, nz, i, out) => {
-      const c = tc.copy(y < 0.024 ? sole : up);
+      const c = tc.copy(y < 0.024 ? sole : up).multiplyScalar(0.62); // 鞋子也髒
       c.lerp(DIRT, sstep(0.2, 0.6, fbm(x * 15, y * 15, z * 15, 3)) * 0.5 + (y < 0.024 ? 0.3 : 0));
       if (y < 0.024 && style !== 'sneaker') c.multiplyScalar(0.6);
       out[0] = c.r; out[1] = c.g; out[2] = c.b; out[3] = 1;
@@ -666,14 +766,30 @@ export function buildShape(type, seed, opt = {}) {
   const dirtyPaint = (g, o) => {
     const base = col(o.color), edge = g.userData.edge, k = r() * 50;
     const fade = o.fade ? col(o.fade) : null;
+    const wear = o.wear + 0.16; // 破洞少一點(洞後的皮膚被衣服擋住手電筒的光,大片黑洞看起來像色塊),改由汙漬與血跡表現
     return (x, y, z, nx, ny, nz, i, out) => {
       const c = tc2.copy(base);
       if (fade) c.lerp(fade, sstep(-0.1, 0.5, fbm(x * 4 + k, y * 2, z * 4, 3)) * 0.7);
-      c.multiplyScalar(0.5 + fbm(x * 7 + k, y * 7, z * 7, 3) * 0.2);
+      c.multiplyScalar(0.34 + fbm(x * 7 + k, y * 7, z * 7, 3) * 0.18);
       if (o.pattern) c.multiplyScalar(1 - 0.12 * o.pattern(x, y, z));
       c.lerp(DIRT, clamp(sstep(0.1, 0.55, fbm(x * 2.3 + 11, y * 2.3, z * 2.3 + k, 4)) * o.dirt + sstep(0.75, 0.15, y) * 0.3 * o.dirt, 0, 0.85));
-      const b = bloodAmt(L.clothBlood, x, y, z);
-      if (b > 0) c.lerp(L.fresh > 0.5 ? BLOOD : BLOOD_DRY, b * 0.85);
+      // 體液汙漬:黃褐色、乾掉的邊緣有一圈較深的水漬線
+      const sv = fbm(x * 4.5 + k, y * 4.5, z * 4.5 + 7, 3);
+      c.lerp(STAIN_C, sstep(0.18, 0.26, sv) * 0.45 * (0.5 + o.dirt));
+      c.multiplyScalar(1 - sstep(0.24, 0.27, sv) * (1 - sstep(0.27, 0.3, sv)) * 0.35);
+      c.multiplyScalar(1 - Math.max(0, -ny) * 0.25); // 朝下的皺褶較暗
+      const sr = soakRaw(L.clothBlood, x, y, z);
+      if (sr > 0) c.lerp(SOAK_HALO, sstep(0.12, 0.3, sr) * 0.45); // 血水暈開的褐色外圈
+      let b = sstep(0.3, 0.62, sr);
+      for (const h of L.prints) { // 血手印:手掌 + 四指,往下拖的抹痕
+        if ((nz > 0) !== h.front || Math.abs(x - h.x) > 0.09 || y - h.y > 0.13 || h.y - y > h.drag + 0.05) continue;
+        const dx = x - h.x, dy = y - h.y;
+        let w = G((dx / 0.034) ** 2 + (dy / 0.042) ** 2, 1);
+        for (let f = 0; f < 4; f++) { const fx = (f - 1.5) * 0.017; w = Math.max(w, G(((dx - fx) / 0.0075) ** 2, 1) * sstep(0.02, 0.04, dy) * sstep(0.1 - Math.abs(f - 1.5) * 0.012, 0.075 - Math.abs(f - 1.5) * 0.012, dy)); }
+        w = Math.max(w, G((dx / 0.03) ** 2, 1) * sstep(0, -0.02, dy) * sstep(-h.drag, 0, dy) * 0.7 * (0.6 + 0.4 * noise3(x * 90, y * 20, 3)));
+        b = Math.max(b, clamp(w * 1.2, 0, 1));
+      }
+      if (b > 0) c.lerp(L.fresh > 0.5 ? BLOOD_FRESH_CLOTH : BLOOD_CLOTH, b * 0.9);
       let a = 1;
       if (edge && edge[i] < 0.05) {
         const e = edge[i] + fbm(x * 30, y * 30, z * 30, 2) * (o.hem ?? 0.02) * 0.9;
@@ -681,8 +797,8 @@ export function buildShape(type, seed, opt = {}) {
         c.multiplyScalar(lerp(0.65, 1, sstep(0, 0.03, e)));
       }
       const h = fbm(x * 6 + k * 3, y * 6, z * 6, 3);
-      a *= sstep(o.wear, o.wear - 0.06, h);
-      c.multiplyScalar(lerp(0.6, 1, sstep(o.wear - 0.02, o.wear - 0.1, h))); // 破洞邊緣磨黑
+      a *= sstep(wear, wear - 0.06, h);
+      c.lerp(DIRT, (1 - sstep(wear - 0.01, wear - 0.04, h)) * 0.35); // 破洞邊緣一圈磨損發黑
       if (o.cut) a *= o.cut(x, y, z, nx, ny, nz);
       out[0] = c.r; out[1] = c.g; out[2] = c.b; out[3] = a;
     };
@@ -1044,6 +1160,12 @@ export function buildShape(type, seed, opt = {}) {
     const g = pc.geo;
     if (!g.attributes.normal) g.computeVertexNormals();
     paint(g, pc.painter);
+    // 布料:整個被剪掉的三角形直接刪掉(陰影 pass 不看頂點色 alpha,留著的話破洞/領口後的皮膚會被「看不見的布」擋住手電筒而變全黑;也省三角形)
+    if (pc.slot === 'cloth' && g.index) {
+      const a = g.attributes.color.array, idx = g.index.array, keep = [];
+      for (let k = 0; k < idx.length; k += 3) if (a[idx[k] * 4 + 3] > 0.3 || a[idx[k + 1] * 4 + 3] > 0.3 || a[idx[k + 2] * 4 + 3] > 0.3) keep.push(idx[k], idx[k + 1], idx[k + 2]);
+      if (keep.length < idx.length) g.setIndex(keep);
+    }
     skin(g, rig, pc.weights);
     for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', 'color', 'skinIndex', 'skinWeight'].includes(k)) g.deleteAttribute(k);
     g.userData = {};

@@ -141,7 +141,7 @@ export function hair(make) {
 export function eye(make, { iris, glow, cloud = 0.5 }) {
   const W = 128, H = 64, r = rng(11);
   const [c, x] = make(W, H);
-  x.fillStyle = '#cfc6a8';
+  x.fillStyle = '#a89e80';
   x.fillRect(0, 0, W, H);
   // 鞏膜:泛黃、邊緣充血
   const sg = x.createRadialGradient(32, 32, 6, 32, 32, 34);
@@ -179,8 +179,8 @@ export function eye(make, { iris, glow, cloud = 0.5 }) {
   }
   if (cloud > 0) { // 白內障:不規則的乳白霧,中心最濃
     const cg = x.createRadialGradient(31, 31, 0, 32, 32, 12);
-    cg.addColorStop(0, `rgba(238,236,224,${Math.min(0.95, 0.15 + cloud * 0.8)})`);
-    cg.addColorStop(0.7, `rgba(225,222,205,${cloud * 0.45})`);
+    cg.addColorStop(0, `rgba(196,194,182,${Math.min(0.9, 0.15 + cloud * 0.75)})`);
+    cg.addColorStop(0.7, `rgba(180,176,160,${cloud * 0.4})`);
     cg.addColorStop(1, 'rgba(225,222,205,0)');
     x.fillStyle = cg;
     x.beginPath(); x.arc(32, 32, 12, 0, Math.PI * 2); x.fill();

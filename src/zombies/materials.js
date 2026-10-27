@@ -71,7 +71,7 @@ export function materials() {
   if (M) return M;
   const sk = paintTextures(NS + 'skin', null, { map: SRGB, bump: LINEAR });
   const cl = paintTextures(NS + 'cloth', null, { map: SRGB, alpha: LINEAR });
-  const skinMat = new THREE.MeshStandardMaterial({ vertexColors: true, map: sk.map, bumpMap: sk.bump, bumpScale: 1.6, roughness: 0.66 });
+  const skinMat = new THREE.MeshStandardMaterial({ vertexColors: true, map: sk.map, bumpMap: sk.bump, bumpScale: 2.6, roughness: 0.66 });
   skinMat.onBeforeCompile = skinShader;
   skinMat.customProgramCacheKey = () => 'zskin2';
   // 眼睛:iris 虹膜色、emissive 虹膜自發光、shine 手電筒反光色、cloud 白內障程度(0..1)
@@ -97,17 +97,17 @@ export function materials() {
     // 防毒面具鏡片:深色、非常光滑(手電筒下有一道亮反光)
     lens: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.04, metalness: 0.6 }),
     eye: {
-      walker: eye('#8d9088', 0x3a3a30, 0.5, 0x6a7a50, 0.62),
+      walker: eye('#8d9088', 0x3a3a30, 0.18, 0x6a7a50, 0.62),
       runner: eye('#a01808', 0xff3010, 1.5, 0xff5020, 0.25),
-      crawler: eye('#b8b090', 0x403a28, 0.5, 0x8a8a60, 0.7),
+      crawler: eye('#b8b090', 0x403a28, 0.2, 0x8a8a60, 0.7),
       bloater: eye('#b8c020', 0xc8e020, 1.3, 0xc0e040, 0.4),
       brute: eye('#ff5a10', 0xff4a08, 1.7, 0xff6a20, 0.2),
-      screamer: eye('#e8e4d8', 0x605a50, 0.6, 0xd8e0e8, 0.9), // 全白、幾乎看不到瞳孔
+      screamer: eye('#e8e4d8', 0x605a50, 0.3, 0xd8e0e8, 0.9), // 全白、幾乎看不到瞳孔
       stalker: eye('#101010', 0x000000, 0.0, 0x9adcc8, 0.0), // 全黑大瞳孔,照到時泛綠的眼底反光(像夜行動物)
-      surgeon: eye('#6a6458', 0x2a2620, 0.4, 0xa09070, 0.55),
-      burned: eye('#d8d0c0', 0x3a2a20, 0.4, 0xb0a090, 1.0), // 煮熟的眼球:不透明灰白
-      hazmat: eye('#7a8070', 0x303028, 0.4, 0x8a9070, 0.6),
-      straitjacket: eye('#5a6a40', 0x2a3018, 0.5, 0xc8d070, 0.3),
+      surgeon: eye('#6a6458', 0x2a2620, 0.15, 0xa09070, 0.55),
+      burned: eye('#d8d0c0', 0x3a2a20, 0.15, 0xb0a090, 1.0), // 煮熟的眼球:不透明灰白
+      hazmat: eye('#7a8070', 0x303028, 0.15, 0x8a9070, 0.6),
+      straitjacket: eye('#5a6a40', 0x2a3018, 0.2, 0xc8d070, 0.3),
     },
   };
   return M;
