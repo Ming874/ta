@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { stageConfig, warmMaterials } from './warmup.js';
 
 // ===== 畫質管理 → game.quality =====
 // 預設檔 low / medium / high / ultra(首次自動依 GPU 挑選,之後記在 localStorage)。
@@ -12,12 +13,15 @@ import * as THREE from 'three';
 //   fog('low'|'medium'|'high' 霧/體積光品質)、decals(貼花密度 0..1)、drawDistance(公尺)。
 
 export const PRESETS = {
-  low: { label: '低', shadows: false, shadowType: 'basic', shadowScale: 0.5, shadowLights: 0, bloom: false, msaa: 0, pixelMin: 0.6, pixelMax: 0.85, lights: 4, particles: 100, fog: 'low', decals: 0.4, anisotropy: 2, drawDistance: 70, flashFar: 12 },
+  // 陰影類型一律 pcf(低畫質只是關掉陰影):類型是所有 program 的參數,換預設檔時不要連類型也換
+  low: { label: '低', shadows: false, shadowType: 'pcf', shadowScale: 0.5, shadowLights: 0, bloom: false, msaa: 0, pixelMin: 0.6, pixelMax: 0.85, lights: 4, particles: 100, fog: 'low', decals: 0.4, anisotropy: 2, drawDistance: 70, flashFar: 12 },
   medium: { label: '中', shadows: true, shadowType: 'pcf', shadowScale: 0.5, shadowLights: 1, bloom: true, msaa: 2, pixelMin: 0.6, pixelMax: 1.0, lights: 6, particles: 160, fog: 'medium', decals: 0.7, anisotropy: 4, drawDistance: 90, flashFar: 14 },
   high: { label: '高', shadows: true, shadowType: 'pcf', shadowScale: 1, shadowLights: 2, bloom: true, msaa: 4, pixelMin: 0.7, pixelMax: 1.25, lights: 8, particles: 240, fog: 'high', decals: 1, anisotropy: 8, drawDistance: 120, flashFar: 18 },
   ultra: { label: '極致', shadows: true, shadowType: 'pcf', shadowScale: 2, shadowLights: 4, bloom: true, msaa: 4, pixelMin: 0.85, pixelMax: 1.5, lights: 12, particles: 400, fog: 'high', decals: 1, anisotropy: 16, drawDistance: 150, flashFar: 28 },
 };
 const COMMON = { dynamicRes: true, targetFps: 60 };
+// 會改變 shader program 參數的設定:先在背景依新設定編好全部材質,編完才真正套用(見 syncProgramKeys)
+const PROGRAM_KEYS = ['shadows', 'shadowType', 'lights'];
 const KEY = 'hz.quality.v1';
 const SHADOW_TYPES = { basic: THREE.BasicShadowMap, pcf: THREE.PCFShadowMap, vsm: THREE.VSMShadowMap };
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
@@ -25,6 +29,24 @@ const now = () => performance.now();
 
 function load() { try { return JSON.parse(localStorage.getItem(KEY)) || null; } catch { return null; } }
 function save(d) { try { localStorage.setItem(KEY, JSON.stringify(d)); } catch { /* 隱私模式 */ } }
+
+// 「套用畫質中…」小提示(注入 DOM;不擋滑鼠)
+function toast() {
+  if (typeof document === 'undefined') return { set() {}, done() {} };
+  let el = document.getElementById('hzq');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'hzq';
+    el.style.cssText = 'position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:2000;pointer-events:none;padding:6px 14px;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.2);color:#e6e2d0;font:13px/1.4 "Microsoft JhengHei","PingFang TC",system-ui,sans-serif;letter-spacing:1px;transition:opacity .4s';
+    document.body.appendChild(el);
+  }
+  el.style.opacity = '1';
+  el.textContent = '套用畫質中…';
+  return {
+    set(f) { el.textContent = `套用畫質中… ${Math.round(Math.max(0, Math.min(1, f)) * 100)}%`; },
+    done() { el.style.opacity = '0'; setTimeout(() => { if (el.style.opacity === '0') el.remove(); }, 500); },
+  };
+}
 
 // 依 GPU 字串粗估(只挑 low/medium/high;ultra 讓玩家自己開)
 export function detectPreset(gl) {
@@ -104,6 +126,9 @@ export class Quality {
     const saved = load();
     this.preset = saved && PRESETS[saved.preset] ? saved.preset : this.detected.preset;
     this.over = (saved && saved.over) || {};
+    this.live = {}; // PROGRAM_KEYS 目前真正套用中的值(切換時在背景編譯完才換)
+    for (const k of PROGRAM_KEYS) this.live[k] = this.want(k);
+    this.staging = null;
     this.listeners = new Set();
     this.frame = new Ring(240); // rAF 間隔
     this.cpu = new Ring(240); // update + render 的 JS 時間
@@ -119,7 +144,10 @@ export class Quality {
   }
 
   get presets() { return Object.entries(PRESETS).map(([id, p]) => ({ id, label: p.label })); }
-  get(key) { return key in this.over ? this.over[key] : key in PRESETS[this.preset] ? PRESETS[this.preset][key] : COMMON[key]; }
+  // get:目前生效的值(會改 shader 的設定在背景編譯完成前仍回傳舊值);want:玩家選的值
+  get(key) { return key in this.live ? this.live[key] : this.want(key); }
+  want(key) { return key in this.over ? this.over[key] : key in PRESETS[this.preset] ? PRESETS[this.preset][key] : COMMON[key]; }
+  get pending() { return !!this.staging; }
   get pixelRatio() { return this.scale; }
   on(ev, fn) { if (ev === 'change') { this.listeners.add(fn); return () => this.listeners.delete(fn); } return () => {}; }
   off(ev, fn) { this.listeners.delete(fn); }
@@ -145,7 +173,36 @@ export class Quality {
     const after = this.snapshot(), keys = new Set();
     for (const k in after) if (after[k] !== before[k]) keys.add(k);
     this.apply(false, keys);
-    if (keys.size) for (const fn of this.listeners) { try { fn(keys, this); } catch (e) { console.error(e); } }
+    this.notify(keys);
+    this.syncProgramKeys();
+  }
+  notify(keys) { if (keys.size) for (const fn of this.listeners) { try { fn(keys, this); } catch (e) { console.error(e); } } }
+
+  // 光源池燈數、陰影開關/類型:直接套用 → 所有 program 下一幀同步重編(D3D11 上數十秒的凍結)。
+  // 改成先用新設定的光源組在背景平行編好場景與 registry 的全部材質(warmup.stageConfig),編完才一次切換;
+  // 編譯期間遊戲照常用舊設定跑,畫面上方顯示「套用畫質中…」。編譯中又改設定:這次完成後再補一輪
+  syncProgramKeys() {
+    const want = {};
+    let diff = false;
+    for (const k of PROGRAM_KEYS) { want[k] = this.want(k); if (want[k] !== this.live[k]) diff = true; }
+    if (!diff) return;
+    if (this.staging) { this.restage = true; return; }
+    const g = this.game, swap = () => {
+      const before = this.snapshot();
+      Object.assign(this.live, want);
+      const after = this.snapshot(), keys = new Set();
+      for (const k in after) if (after[k] !== before[k]) keys.add(k);
+      this.apply(false, keys);
+      this.notify(keys);
+    };
+    // 還沒開始預編譯(載入早期)或沒有渲染器狀態:直接套用,開機預編譯會用新設定
+    if (!g.warmed || !g.composer) { swap(); return; }
+    const t0 = now(), ui = toast();
+    const type = SHADOW_TYPES[want.shadowType] ?? THREE.PCFShadowMap;
+    this.staging = stageConfig(g, { lights: Math.max(0, Math.min(16, want.lights | 0)), shadows: !!want.shadows, type, weapon: type !== g.renderer.shadowMap.type }, (f) => ui.set(f))
+      .catch((e) => console.warn('[quality] 預先編譯失敗,直接套用', e))
+      .then(() => { swap(); this.lastStageMs = Math.round(now() - t0); performance.measure?.('hz:quality-stage', { start: t0 }); })
+      .finally(() => { ui.done(); this.staging = null; if (this.restage) { this.restage = false; this.syncProgramKeys(); } });
   }
 
   minScale() { return this.get('pixelMin'); }
@@ -216,25 +273,29 @@ export class Quality {
     }
     if (has('anisotropy')) {
       const a = Math.min(this.get('anisotropy'), r.capabilities.getMaxAnisotropy());
-      const seen = new Set();
+      const seen = new Set(), todo = [];
       g.scene.traverse((o) => {
         for (const m of [].concat(o.material || [])) {
           for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'bumpMap', 'aoMap', 'emissiveMap', 'alphaMap']) {
             const t = m[k];
             if (!t || seen.has(t) || t.anisotropy === a || t.isRenderTargetTexture) continue;
             seen.add(t);
-            t.anisotropy = a;
-            if (t.image) t.needsUpdate = true;
+            todo.push(t);
           }
         }
       });
+      // 改異向過濾要重新上傳貼圖:一次幾百張會頓好幾百 ms → 開機前一次做完,之後每幀 6 張
+      const step = () => { for (let i = 0; i < (first ? 1e9 : 6) && todo.length; i++) { const t = todo.shift(); t.anisotropy = a; if (t.image) t.needsUpdate = true; } if (todo.length) requestAnimationFrame(step); };
+      step();
     }
     if (first || has('pixelMin') || has('pixelMax') || has('dynamicRes')) this.setScale(this.get('dynamicRes') ? this.scale : this.startScale(), true);
   }
 
   // 陰影開關變了:所有材質要重編(設定頁切換時會頓一下,屬正常)
   recompile() {
-    this.game.scene.traverse((o) => { for (const m of [].concat(o.material || [])) m.needsUpdate = true; });
+    const all = warmMaterials();
+    this.game.scene.traverse((o) => { for (const m of [].concat(o.material || [])) all.add(m); });
+    for (const m of all) m.needsUpdate = true; // 已在背景依新設定編好:這裡只是讓 three 換用(找到現成 program,不會再編)
   }
 
   // ---- 每幀:由主迴圈呼叫 ----

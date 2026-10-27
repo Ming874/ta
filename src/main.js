@@ -4,7 +4,7 @@ import { Quality } from './sys/quality.js';
 import { Perf } from './sys/perf.js';
 import { caps } from './sys/caps.js';
 import { idle } from './sys/sched.js';
-import { precompile, precompilePasses, initPrograms, warmDraw, warmDrawScene, yieldNow } from './sys/warmup.js';
+import { precompile, precompilePasses, initPrograms, warmDraw, warmDrawScene, warmPMREM, yieldNow } from './sys/warmup.js';
 import { backgroundTicker } from './sys/ticker.js';
 import { texStats, texturesReady } from './sys/texworker.js';
 import { prewarm, whenTypesReady, variantStats, getVariant, instantiate, VARIANT_TYPES } from './zombies/model.js';
@@ -152,21 +152,29 @@ async function boot() {
   await yieldNow(); // 先讓模組執行完(DOMContentLoaded、選單可互動),編譯分批在之後的任務裡做
   const t = performance.now();
   try {
+    // 等距柱狀環境貼圖的 PMREM shader 先在背景編好(否則預編譯途中 three 就地轉換 → 同步等編譯 1~2 秒)
+    await warmPMREM(game, [game.scene, game.weaponScene]);
+    performance.mark('hz:pmrem');
     const all = Promise.all([
       precompile(game, game.scene),
       precompile(game, game.weaponScene, { target: game.weaponScene, camera: game.weaponCamera, shadows: false }),
       precompilePasses(game),
     ]);
-    const res = await Promise.race([all, new Promise((r) => setTimeout(() => r(null), 4000))]);
+    // 等全部 program 編好才開始畫(不再用 4 秒逾時:先畫的話第一幀會在主執行緒上同步等還沒編完的 shader,數秒凍結);
+    // 編譯期間選單與載入條照常可用。最多等 60 秒
+    const res = await Promise.race([all, new Promise((r) => setTimeout(() => r(null), 60000))]);
+    performance.mark('hz:compiled');
     if (res) {
       game.perf.time('預編譯', performance.now() - t);
-      // 選單畫面看不到的物件(背後、被擋住、隱藏中)的 program 也在閒置時先做第一次使用的初始化
-      all.then(([a, b]) => initPrograms(new Set([...a.programs, ...b.programs]))).then(() => idle(() => { performance.mark('hz:wds'); warmDrawScene(game); performance.measure('hz:warmDrawScene', 'hz:wds'); }, 500));
+      await initPrograms(new Set([...res[0].programs, ...res[1].programs]));
+      performance.mark('hz:programs');
     }
   } catch (e) { console.warn('[warmup]', e); }
   performance.measure('hz:precompile', { start: t });
   last = performance.now();
   if (!raf && !document.hidden) raf = requestAnimationFrame(frame);
+  // 每種「材質 × 頂點格式」離屏各畫一次(分批、每批之間讓出主執行緒並等 GPU 追上)
+  idle(async () => { const t1 = performance.now(); await warmDrawScene(game); performance.measure('hz:warmDrawScene', { start: t1 }); }, 500);
   // 殭屍與常見特效材質:每種殭屍的第一個變體一建好就在閒置時段預編譯(不等全部變體、也不等貼圖下載),
   // 第一隻殭屍出現/第一槍不會頓一下
   whenTypesReady().then(() => { performance.mark('hz:variants'); warmStage = 1; return idle(warmRuntime, 300); })
