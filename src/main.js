@@ -68,6 +68,8 @@ window.__physLoad = physicsLoad;
 installStreaming(game); // 下載順序:玩家附近 → 同層 → 其他樓層
 assets.hiRes = game.quality.preset !== 'low'; // 低畫質:不下載 1K 顏色圖(省頻寬與顯示記憶體)
 game.quality.on('change', (k, q) => { assets.hiRes = q.preset !== 'low'; });
+game.hospital.setQuality?.(game.quality); // 光源池大小、道具顯示距離跟著畫質
+game.quality.on('change', (k, q) => game.hospital.setQuality?.(q));
 {
   const t0 = performance.now();
   const gate = setInterval(() => {
