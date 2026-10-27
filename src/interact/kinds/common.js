@@ -21,7 +21,7 @@ export function makeApi(game, ix, kit, R) {
     // 局部 → 世界
     mtx(s, x = 0, y = 0, z = 0, ry = 0, rx = 0, rz = 0) { return T(s.x, s.y, s.z, 0, s.yaw, 0).multiply(T(x, y, z, rx, ry, rz)); },
     wp(s, x = 0, y = 0, z = 0) { _v.set(x, y, z).applyMatrix4(T(s.x, s.y, s.z, 0, s.yaw, 0)); return { x: _v.x, y: _v.y, z: _v.z }; },
-    reg(s, x, y, z, o) { return ix.register(api.wp(s, x, y, z), { scope: 'map', ...o }); },
+    reg(s, x, y, z, o) { return ix.register(api.wp(s, x, y, z), { scope: 'map', face: { x: s.nx || 0, z: s.nz || 0 }, ...o }); }, // face:物件正面朝向(測試/截圖用)
     // 碰撞盒:局部矩形 (x0..x1, z0..z1)、高度 h(轉成世界 AABB;yaw 是 90° 的倍數)
     // pm = 子彈穿透類別(physics/truth.js MATS:wood/metal/heavy/plastic/glass…)
     box(s, x0, z0, x1, z1, h, y0 = 0, pm = 'wood') {
