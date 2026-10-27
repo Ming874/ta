@@ -472,6 +472,7 @@ export const flowMethods = {
     if (this.paused || e.repeat) return;
     switch (e.code) {
       case 'KeyE': {
+        this.player.keys.KeyE = true; // [net] 合作模式按住 E 救援隊友要讀這個(放開時 input.js 的 keyup 會清掉)
         e.stopPropagation();
         const s = this.shop?.interact(this.player);
         if (s === 'open') { this.openShop(); return; }
@@ -481,6 +482,7 @@ export const flowMethods = {
         return;
       }
       case 'KeyN':
+        if (this.net) return; // [net] 多人:N = 準備/取消準備,由連線模組自己的按鍵處理(這裡再呼叫一次會互相抵銷)
         e.stopPropagation();
         this.nextRound();
         return;

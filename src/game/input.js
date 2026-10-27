@@ -2,7 +2,7 @@ import { ORDER } from '../weapons/weapon.js';
 import { resume as resumeAudio } from '../audio.js';
 
 // 鍵盤/滑鼠/指標鎖定與選單按鈕。以 mixin 方式掛到 Game 上
-// 右鍵:按住開鏡;G:手榴彈;V:小刀;1~6:切換武器;滾輪:循環武器;巴雷特開鏡時 Shift 改為屏息
+// 右鍵:按住開鏡;G:手榴彈;V:小刀;1~6:切換武器;滾輪:循環武器;巴雷特開鏡時 Shift 改為屏息;C:蹲下(player.js)
 export const inputMethods = {
   bindInput() {
     const canvas = this.canvas;
@@ -46,10 +46,7 @@ export const inputMethods = {
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') inp.shift = true;
       this.player.keys[e.code] = true;
       if (this.state !== 'playing') return;
-      if (e.code === 'KeyE' && this.phase === 'shop' && this.shop) {
-        if (this.shopUIOpen) this.closeShop();
-        else if (this.shop.near(this.player)) this.openShop();
-      }
+      // E(商店/補給櫃)、N、H、M 與商店介面內的按鍵由 flow.js 的 onGameplayKey(捕獲階段)處理
       if (e.code === 'Escape' && this.shopUIOpen) this.closeShop(false), this.ui.overlay('pause', true), (this.paused = true);
       if (this.paused || this.shopUIOpen) {
         if (e.code === 'KeyN' && this.phase === 'shop') this.nextRound();

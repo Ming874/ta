@@ -561,7 +561,7 @@ export class ShopUI {
       case 'Enter': case 'NumpadEnter': case 'Space': e.preventDefault(); this.buy(); break;
       case 'KeyE': g.closeShop(true); break;
       case 'Escape': g.closeShop(false); g.paused = true; g.ui.overlay('pause', true); break;
-      case 'KeyN': g.nextRound(); break;
+      case 'KeyN': if (!g.net) g.nextRound(); break; // 多人時 N(準備)由連線模組處理
       default:
     }
   }
