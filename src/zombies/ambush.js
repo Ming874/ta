@@ -13,9 +13,9 @@ import { precompile } from '../sys/warmup.js';
 // 原則:玩家永遠不會看到「在那邊等著嚇人」的殭屍。
 //  - 掩蔽處的埋伏與天花板掉落是「虛擬」的:只從出怪佇列預留一隻(仍算在 toSpawn、回合數量裡),場上沒有實體。
 //    觸發當下才在「所有玩家都看不到」的位置現身,而且只有方向對了才觸發:
-//      掩蔽點 H(凸牆角/門洞旁/高櫃後)對每個玩家都看不到(每人 7 條視線)、
-//      附近有個現身點 E(H 旁 0.8~1.7m)是觸發的玩家看得到、從 H 走得到、走得到玩家的 → 殭屍在 H 現身,0.14 秒內起身,
-//      衝過 E 撲向玩家(玩家看到牠從轉角/門口衝出來)。
+//      掩蔽點 H(凸牆角/門洞旁/高櫃後;往掩蔽深處再退 0.3m)整個身體範圍(每人 19 條視線)對每個玩家都看不到、
+//      沿導航場從 H 走向玩家的路線上 3m 內有一點 E 是觸發的玩家看得到的(繞出轉角/門口就進入視野)、路線總長在觸發距離內
+//      → 殭屍在 H 現身,0.14 秒內起身,沿路線衝出來撲向玩家(玩家看到牠從轉角/門口衝出來)。
 //    從錯的方向接近(H 被任何玩家看到、近距離)= 這個點作廢,稍後改到別的點(本來就沒有實體,所以什麼都看不到)。
 //    天花板:觸發當下才在夾層裡現身(看不到)→ 格柵/天花板碎開 → 落下。
 //  - 唯一會先擺在場上的是「裝死的屍體」:只用屍體姿勢(靠牆癱坐/趴地/仰躺)+ 血泊,跟假屍體一模一樣,被看到也只是一具屍體;
@@ -34,8 +34,9 @@ const COVER_TYPES = new Set(['walker', 'runner', 'surgeon', 'straitjacket', 'bur
 const DROP_TYPES = new Set(['runner', 'crawler', 'walker', 'surgeon', 'straitjacket']);
 const CORPSE_TYPES = new Set(['walker', 'runner', 'crawler']);
 const POSE_H = { [POSE.slump]: 0.75, [POSE.lie]: 0.3, [POSE.supine]: 0.3 };
-// 掩蔽點 H 的可見性測試點(相對 H 的 x / 高度 / z):身體中線三個高度 + 左右前後各偏 0.28m
-const HPTS = [[0, 0.45, 0], [0, 1.1, 0], [0, 1.7, 0], [0.28, 1.1, 0], [-0.28, 1.1, 0], [0, 1.1, 0.28], [0, 1.1, -0.28]];
+// 掩蔽點 H 的可見性測試點(相對 H 的 x / 高度 / z):身體中線三個高度 + 半徑 0.45m 的兩圈(伸出的手、肩膀、膝蓋)
+const HPTS = [[0, 0.45, 0], [0, 1.1, 0], [0, 1.75, 0]];
+for (const h of [0.85, 1.45]) for (let k = 0; k < 8; k++) HPTS.push([Math.cos((k * Math.PI) / 4) * 0.45, h, Math.sin((k * Math.PI) / 4) * 0.45]);
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
 const rand = (a, b) => a + Math.random() * (b - a);
 const r2 = (x) => Math.round(x * 100) / 100;
@@ -266,6 +267,11 @@ class Ambush {
     this.hintAcc += dt;
     if (this.hintAcc >= 0.08) { this._hints(this.hintAcc); this.hintAcc = 0; }
     if (!this._host()) return;
+    // 玩家就在附近的虛擬點每幀檢查(觸發窗口可能只有零點幾秒:從轉角/門口經過)
+    if (this.slots.length && g.phase === 'fighting' && g.state === 'playing') {
+      let pl = null;
+      for (let i = this.slots.length - 1; i >= 0; i--) { const s = this.slots[i]; if (s && s.hot) this._tickSlot(s, pl || (pl = this._players()), g.time); }
+    }
     this.acc += dt;
     if (this.acc < 0.25) return;
     const step = this.acc;
@@ -310,57 +316,71 @@ class Ambush {
       if (d < bd) { bd = d; best = p; }
     }
     if (s.kind === 'drop') {
+      s.hot = !!best && bd <= s.R + 1.5;
       if (!best || bd > s.R) return;
       if (!W.hasLineOfSight(sp.x, sp.y + sp.ceilH - 0.25, sp.z, best.pos.x, best.pos.y + 1.2, best.pos.z)) return;
       if (this._allow('ceilingDrop', best, sp)) this._fire(s, null, best);
       return;
     }
+    s.hot = !!best && bd <= s.R + 1.5;
     if (!best || bd > s.R + 3) return;
+    const hs = this._coverPos(sp);
+    if (!hs) return;
     // 掩蔽點有人看得到:絕不在那裡現身;近距離被看到(從錯的方向繞過來)= 這個點作廢,稍後搬家
-    if (this._hSeen(sp, pl)) {
+    if (this._hSeen(hs, sp.y, pl)) {
       s.seenT = t;
       if (bd < s.R + 2.5 && !s.spoiled) { s.spoiled = true; this.stats.spoiled++; }
       return;
     }
     if (s.spoiled || bd > s.R || bd < 1.2 || t - s.seenT < 4) return;
-    const E = this._emerge(sp, best);
+    const E = this._emerge(hs, sp.y, best, s.R);
     if (!E) { s.wrong = (s.wrong || 0) + 1; if (s.wrong === 1) this.stats.wrongDir++; return; }
-    if (this._allow('ambush', best, sp)) this._fire(s, E, best);
+    if (this._allow('ambush', best, sp)) this._fire(s, E, best, hs);
   }
-  // 掩蔽點 H 是否有任何玩家看得到(每人 7 條視線;霧外 35m 不算)
-  _hSeen(sp, pl) {
+  // 現身位置:從 H 往「離開路線」的反方向再退 0.3m(更深的掩蔽),退不了就用 H;順便記下路線方向(現身時面向)
+  _coverPos(sp) {
+    const W = this.g.world, y = sp.y, o = this._fo || (this._fo = { x: 0, z: 0 }), c = this._cp || (this._cp = { x: 0, z: 0, fx: 0, fz: 1 });
+    const f = W.flowDir(sp.x, y + 0.1, sp.z, o, 1);
+    if (!f) return null;
+    c.fx = f.x; c.fz = f.z; c.x = sp.x; c.z = sp.z;
+    const bx = sp.x - f.x * 0.3, bz = sp.z - f.z * 0.3;
+    if (W._navFree ? W._navFree(bx, bz, y, 0.3) : W.isNode(bx, y, bz)) { c.x = bx; c.z = bz; }
+    return c;
+  }
+  // 掩蔽點(c = {x, z},地面 y)整個身體範圍是否有任何玩家看得到(每人 19 條視線;霧外 35m 不算)
+  _hSeen(c, y, pl) {
     const W = this.g.world;
     for (const p of pl) {
       const ex = p.pos.x, ey = p.pos.y + (p.eyeH || 1.6), ez = p.pos.z;
-      if (Math.abs(sp.x - ex) + Math.abs(sp.z - ez) > 50 || Math.hypot(sp.x - ex, sp.y - p.pos.y, sp.z - ez) > 35) continue;
-      for (const q of HPTS) if (W.hasLineOfSight(ex, ey, ez, sp.x + q[0], sp.y + q[1], sp.z + q[2])) return p;
+      if (Math.abs(c.x - ex) + Math.abs(c.z - ez) > 50 || Math.hypot(c.x - ex, y - p.pos.y, c.z - ez) > 35) continue;
+      for (const q of HPTS) if (W.hasLineOfSight(ex, ey, ez, c.x + q[0], y + q[1], c.z + q[2])) return p;
     }
     return null;
   }
-  // 現身點 E:H 旁 0.8~1.65m、從 H 走得到、觸發的玩家看得到、從 E 走得到玩家;取最近的。沒有 = 方向不對
-  _emerge(sp, p) {
-    const W = this.g.world, y = sp.y, px = p.pos.x, pz = p.pos.z, ey = p.pos.y + (p.eyeH || 1.6);
-    let best = null, bs = 1e9;
-    for (const r of [0.8, 1.2, 1.65]) for (let k = 0; k < 16; k++) {
-      const a = (k / 16) * Math.PI * 2, x = sp.x + Math.cos(a) * r, z = sp.z + Math.sin(a) * r;
-      const dP = Math.hypot(px - x, pz - z), sc = r * 0.6 + dP;
-      if (sc >= bs || dP > 5.5 || !W.isNode(x, y, z)) continue;
-      if (!W.walkLine(sp.x, y, sp.z, x, z, 0.45)) continue;
-      if (!W.hasLineOfSight(px, ey, pz, x, y + 1.2, z)) continue;
-      if (dP > 1.1 && !W.walkLine(x, y, z, px, pz, 0.45)) continue;
-      bs = sc; best = { x, z };
+  // 現身點 E:沿導航場從掩蔽點走向玩家(繞出轉角、穿過門口),3m 內第一個觸發的玩家看得到的點;路線總長要在觸發距離內。沒有 = 方向不對
+  _emerge(c, y, p, R) {
+    const W = this.g.world, px = p.pos.x, pz = p.pos.z, ey = p.pos.y + (p.eyeH || 1.6);
+    const fd = W.flowDistance(c.x, y + 0.1, c.z);
+    if (!Number.isFinite(fd) || fd > R + 2.5) return null;
+    const o = this._fo2 || (this._fo2 = { x: 0, z: 0 });
+    let x = c.x, z = c.z;
+    for (let i = 1; i <= 12; i++) {
+      const f = W.flowDir(x, y + 0.1, z, o, 1);
+      if (!f) break;
+      x += f.x * 0.25; z += f.z * 0.25;
+      if (i >= 2 && W.hasLineOfSight(px, ey, pz, x, y + 1.2, z)) return { x, z, d: i * 0.25 };
     }
-    return best;
+    return null;
   }
 
   // 現身:在 H(或天花板夾層)生成一隻殭屍(flow.spawnZombie,扣掉預留的 toSpawn、套用回合血量、連線照常同步)
-  _fire(s, E, p) {
+  _fire(s, E, p, hs) {
     const g = this.g, sp = s.spot;
     const i = this.slots.indexOf(s);
     if (i >= 0) this.slots.splice(i, 1);
     if (sp.busy === s) sp.busy = null;
     sp.usedT = g.time;
-    g._ambAt = { x: sp.x, y: sp.y, z: sp.z, yaw: E ? Math.atan2(E.x - sp.x, E.z - sp.z) : sp.yaw };
+    g._ambAt = hs ? { x: hs.x, y: sp.y, z: hs.z, yaw: Math.atan2(hs.fx, hs.fz) } : { x: sp.x, y: sp.y, z: sp.z, yaw: sp.yaw };
     this._mat = { s, E, p };
     let z = null;
     try { z = g.spawnZombie(s.type); } catch (e) { console.warn('[ambush]', e); } finally { g._ambAt = null; this._mat = null; }
@@ -368,7 +388,7 @@ class Ambush {
     this.lastTrig = g.time;
     this.blockT = g.time + 8; // 不會兩隻同時衝出來
     this.stats.fired++; this.stats.scares++;
-    this.log.push({ t: +g.time.toFixed(2), kind: s.kind, spot: sp.kind, type: z.type, x: r2(sp.x), y: sp.y, z: r2(sp.z), E: E ? [r2(E.x), r2(E.z)] : null, by: p === g.player ? 'local' : p?.id ?? '?', d: r2(Math.hypot(p.pos.x - sp.x, p.pos.z - sp.z)) });
+    this.log.push({ t: +g.time.toFixed(2), kind: s.kind, spot: sp.kind, type: z.type, x: r2(z.pos.x), y: sp.y, z: r2(z.pos.z), E: E ? [r2(E.x), r2(E.z), E.d] : null, by: p === g.player ? 'local' : p?.id ?? '?', d: r2(Math.hypot(p.pos.x - sp.x, p.pos.z - sp.z)) });
     if (this.log.length > 60) this.log.shift();
     return z;
   }

@@ -7,7 +7,7 @@ import { sfx } from '../audio.js';
 //   'idle'   裝死(LURK):只有「屍體」姿勢(靠牆癱坐/趴地/仰躺,跟假屍體一模一樣),不跑 AI/動畫/LOD,矩陣凍結(幾乎零成本)
 //   'spawn'  天花板上(PERCH):舊流程,現在不再使用(天花板掉落改成觸發當下才在夾層裡現身,見 ambush.js)
 //   'scream' 衝出(BURST):掩蔽處的埋伏是觸發當下才在「所有玩家都看不到」的位置現身,直接進這個狀態:
-//            0.14 秒內起身 → 先衝到現身點 a.via(玩家看得到的轉角/門口)→ 撲向玩家;裝死的屍體則是猛然彈起
+//            0.14 秒內起身 → 沿導航場衝出轉角/門口(進入玩家視野)→ 撲向玩家;裝死的屍體則是猛然彈起
 //   'fall'   掉落(DROP):觸發當下才在天花板夾層裡現身(看不到)→ 格柵/天花板碎開 → 腳先落下 → 蹲伏落地 → 尖叫起身
 // z.amb = { code 姿勢代碼, quiet 安靜甦醒(不放跳嚇), dormant, ceilH 天花板高度, rise, lungeV, t1 落地時間… }
 // 連線:房主把 code / quiet 放進快照每筆的旗標位元組(bit1-3 = code、bit4 = quiet),代理殭屍用同一套姿勢函式播放。
@@ -170,19 +170,14 @@ const M = {
     let dealt = 0;
     const hd = this.dist || 1e-3, face = Math.atan2(toX, toZ);
     if (S === BURST) {
-      // 掩蔽處現身:先衝到現身點(轉角外/門口,玩家看得到的地方),再撲向玩家
-      let tx = toX, tz = toZ, tl = hd;
-      if (a.via && !a.viaDone) {
-        const vx = a.via.x - this.pos.x, vz = a.via.z - this.pos.z, vl = Math.hypot(vx, vz);
-        if (vl < 0.35 || st > a.rise + 0.6 || this.blocked) a.viaDone = true; else { tx = vx; tz = vz; tl = vl; }
-      }
-      const f2 = Math.atan2(tx, tz);
+      // 方向:update 已算好 w.x/w.z(看得到又走得到就直衝,否則沿導航場繞出轉角、穿過門口)
+      const f2 = Math.atan2(w.x, w.z);
       w.face = f2;
       this.heading += wrapA(f2 - this.heading) * Math.min(1, dt * (a.quiet ? 5 : 14)); // 猛然轉身
       if (a.quiet) { w.speed = st > a.rise ? this.speed * 0.8 : 0; }
       else if (st < a.rise) w.speed = 0;
       else if (st < a.rise + a.lungeT) { // 撲擊
-        w.x = tx / tl; w.z = tz / tl; w.instant = true;
+        w.instant = true;
         w.speed = a.lungeV * (1 - 0.45 * (st - a.rise) / a.lungeT);
         if (!a.hit && dist < T.reach + 0.3 && this._canHit(ctx.world)) {
           a.hit = true;
