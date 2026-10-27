@@ -73,6 +73,10 @@ export function buildHospital(world, layout, scene, opts = {}) {
   const { lights: propLights, events: propEvents } = ctx.finalize();
   const propMeshes = mergeStatics(statics, propGroups);
   const propPbr = upgradePropMaterials();
+  // 可推動的小道具是各自獨立的物件(不能合併):離玩家 34m 以外就不畫(夜裡有霧,看不出來),省 draw call
+  const dynProps = [];
+  for (const g of propGroups) for (const o of g.children) if (o.userData?.dynamic && !o.isInstancedMesh) dynProps.push(o);
+  let dynTick = 0;
   const tProps = performance.now();
 
   // ---- 燈光與氛圍 ----
@@ -151,6 +155,7 @@ export function buildHospital(world, layout, scene, opts = {}) {
       const mood = L.moods[style.mood] || L.moods.corridor;
       const outdoor = (L.flagsAt(li, c, r) & L.F.OUTDOOR) !== 0 || L.ceilY(li, c, r) === Infinity;
       updateVisibility(li, p.x, p.z, outdoor);
+      if ((dynTick = (dynTick + 1) % 12) === 0) for (const o of dynProps) { const dx = o.position.x - p.x, dz = o.position.z - p.z; o.visible = dx * dx + dz * dz < 34 * 34; }
       const cam = player.camera;
       cam.layers.enable(NO_FLASH_SHADOW_LAYER);
       cam.getWorldDirection(camFwd);

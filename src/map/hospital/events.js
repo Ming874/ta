@@ -260,7 +260,8 @@ export function createEvents({ K, L, lights, propEvents = [], root }) {
         .sort((a, b) => (inView(c, b.cx, b.cz, 0.3) ? 1 : 0) - (inView(c, a.cx, a.cz, 0.3) ? 1 : 0));
       c.holeAhead = () => holes.find((h) => h.li === c.li && !(h.usedAt > 0) && (() => { const q = Math.hypot(h.x - c.px, h.z - c.pz); return q > 2.5 && q < 8; })() && inView(c, h.x, h.z, 0.6) && sees(c.li, c.px, c.pz, h.x, h.z));
       c.dynAhead = () => {
-        if (!S.dyn) { S.dyn = []; S.dynT = t; root.traverse((o) => { // 可動道具在建構時就固定了,只掃一次 if (o.userData?.dynamic && /wc|wheel|cart|iv|linen|gurney|trolley|chair|stool/i.test(o.userData.kind || o.name)) S.dyn.push(o); }); }
+        // 可動道具在建構時就固定了,只掃一次
+        if (!S.dyn) { S.dyn = []; S.dynT = t; root.traverse((o) => { if (o.userData?.dynamic && /wc|wheel|cart|iv|linen|gurney|trolley|chair|stool/i.test(o.userData.kind || o.name)) S.dyn.push(o); }); }
         for (const o of S.dyn) { o.getWorldPosition(_v); const q = Math.hypot(_v.x - c.px, _v.z - c.pz); if (Math.abs(_v.y - L.levels[c.li].y) < 1.5 && q > 4 && q < 12 && inView(c, _v.x, _v.z, 0.6) && sees(c.li, c.px, c.pz, _v.x, _v.z)) return o; }
         return null;
       };
