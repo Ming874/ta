@@ -24,6 +24,7 @@ export const OBSTACLE_H = {
 };
 const DI = [1, -1, 0, 0, 1, 1, -1, -1];
 const DJ = [0, 0, 1, -1, 1, -1, 1, -1];
+const CDX = Float32Array.from({ length: 16 }, (_, a) => Math.cos((a * Math.PI) / 8)), CDZ = Float32Array.from({ length: 16 }, (_, a) => Math.sin((a * Math.PI) / 8));
 
 // 射線與 AABB(slab 法);回傳進入距離或 Infinity
 function boxRay(b, ox, oy, oz, dx, dy, dz, tmax) {
@@ -111,6 +112,8 @@ export class World {
     this.sY0 = new Float32Array(ns);
     this.sDY = new Float32Array(ns);
     this.sLower = new Int8Array(ns);
+    this.sN = new Int16Array(ns); // 實體踏階數(stepOffset 用)
+    this.sRamp = new Uint8Array(ns); // 1 = 平順坡道(救護車坡道),沒有踏階
     S.forEach((s, k) => {
       this.sAx[k] = s.axis === 'z' ? 1 : 0;
       this.sLo[k] = s.lowAt;
@@ -118,6 +121,8 @@ export class World {
       this.sY0[k] = s.yLow;
       this.sDY[k] = s.yHigh - s.yLow;
       this.sLower[k] = s.lower;
+      this.sN[k] = Math.max(4, Math.round((s.yHigh - s.yLow) / 0.175));
+      this.sRamp[k] = L.zones.find((z) => z.id === s.zone)?.theme === 'ramp' ? 1 : 0;
     });
 
     // 可站面:walk[li*WH + idx] = -1 不可站 / 0 平地 / k+1 第 k 座樓梯坡面(在樓梯的下層)
@@ -264,35 +269,30 @@ export class World {
 
   // 水平推出牆/欄杆/窗/障礙物/樓梯開口/挑空與道具盒,並把 pos.y 貼到地面。
   // body(可省略,玩家用):{ vy, onGround, ground, height, landV } —— 支援跳躍/落下/頂到天花板。
+  // 玩家另外有:掉出世界(NaN / y < -20)送回起點;一幀位移超過半徑的 0.6 倍(被撞飛、卡頓)時分段推出,不會穿過薄道具
   resolve(pos, r, body = null) {
+    if (body !== null) {
+      if (!(pos.x === pos.x && pos.y === pos.y && pos.z === pos.z) || pos.y < -20 || pos.x < -20 || pos.z < -20 || pos.x > this.sizeX + 20 || pos.z > this.sizeZ + 20) this._safety(pos, body);
+      const lx = body._rx, lz = body._rz;
+      if (lx !== undefined && lx === lx) {
+        const ddx = pos.x - lx, ddz = pos.z - lz, dd = ddx * ddx + ddz * ddz;
+        if (dd > r * r * 0.36 && dd < 2.25) {
+          const gref = body.ground === body.ground && body.ground != null ? body.ground : pos.y;
+          const n = Math.ceil(Math.sqrt(dd) / (r * 0.5)), sx = ddx / n, sz = ddz / n;
+          pos.x = lx; pos.z = lz;
+          for (let k = 1; k < n; k++) { pos.x += sx; pos.z += sz; this._push(pos, r, gref, pos.y + STEP, body.height || BODY_H, pos.y); }
+          pos.x += sx; pos.z += sz;
+        }
+      }
+    }
     const W = this.W, y = pos.y;
     const gref = body !== null && body.ground === body.ground && body.ground != null ? body.ground : y;
     const top = y + STEP;
     const bodyH = body !== null && body.height ? body.height : BODY_H;
-    // 1) 不可通行的格子
-    let c0 = Math.floor((pos.x - r) / 2), c1 = Math.floor((pos.x + r) / 2);
-    let r0 = Math.floor((pos.z - r) / 2), r1 = Math.floor((pos.z + r) / 2);
-    for (let rr = r0; rr <= r1; rr++) for (let cc = c0; cc <= c1; cc++) {
-      if (!this._pass(cc, rr, pos.x, pos.z, gref, top)) this._pushOut(pos, r, cc * 2, cc * 2 + 2, rr * 2, rr * 2 + 2);
-    }
-    // 中心仍在不可通行的格(瞬移/出生在牆裡等極端情況):移到附近最近的可通行格
-    const ci = Math.floor(pos.x / 2), ri = Math.floor(pos.z / 2);
-    if (!this._pass(ci, ri, pos.x, pos.z, gref, top)) this._rescue(pos, r, ci, ri, gref, top);
-    // 2) 道具盒(只有高度範圍與身體重疊的才擋;低於 BOX_STEP 的可以踏上去)
-    c0 = Math.max(0, Math.floor((pos.x - r) / 2)); c1 = Math.min(W - 1, Math.floor((pos.x + r) / 2));
-    r0 = Math.max(0, Math.floor((pos.z - r) / 2)); r1 = Math.min(this.H - 1, Math.floor((pos.z + r) / 2));
-    let st = ++this._stamp;
-    for (let rr = r0; rr <= r1; rr++) for (let cc = c0; cc <= c1; cc++) {
-      const list = this.boxGrid[rr * W + cc];
-      for (let k = 0; k < list.length; k++) {
-        const b = list[k];
-        if (b._s === st) continue;
-        b._s = st;
-        if (b.maxY <= y + BOX_STEP || b.minY >= y + bodyH) continue;
-        if (pos.x + r <= b.minX || pos.x - r >= b.maxX || pos.z + r <= b.minZ || pos.z - r >= b.maxZ) continue;
-        this._pushOut(pos, r, b.minX, b.maxX, b.minZ, b.maxZ);
-      }
-    }
+    this._push(pos, r, gref, top, bodyH, y);
+    const c0 = Math.max(0, Math.floor((pos.x - r) / 2)), c1 = Math.min(W - 1, Math.floor((pos.x + r) / 2));
+    const r0 = Math.max(0, Math.floor((pos.z - r) / 2)), r1 = Math.min(this.H - 1, Math.floor((pos.z + r) / 2));
+    let st;
     // 3) 地面:中心所在格中與參考地面連續的面
     const idx = this._idx(pos.x, pos.z);
     let g = NaN;
@@ -337,7 +337,51 @@ export class World {
       pos.y = Math.max(sup, ce - bodyH);
       if (body.vy > 0) body.vy = 0;
     }
+    body._rx = pos.x;
+    body._rz = pos.z;
     return pos;
+  }
+
+  // 1) 不可通行的格子 2) 道具盒(只有高度範圍與身體重疊的才擋;低於 BOX_STEP 的可以踏上去)
+  _push(pos, r, gref, top, bodyH, y) {
+    const W = this.W;
+    let c0 = Math.floor((pos.x - r) / 2), c1 = Math.floor((pos.x + r) / 2);
+    let r0 = Math.floor((pos.z - r) / 2), r1 = Math.floor((pos.z + r) / 2);
+    for (let rr = r0; rr <= r1; rr++) for (let cc = c0; cc <= c1; cc++) {
+      if (!this._pass(cc, rr, pos.x, pos.z, gref, top)) this._pushOut(pos, r, cc * 2, cc * 2 + 2, rr * 2, rr * 2 + 2);
+    }
+    // 中心仍在不可通行的格(瞬移/出生在牆裡等極端情況):移到附近最近的可通行格
+    const ci = Math.floor(pos.x / 2), ri = Math.floor(pos.z / 2);
+    if (!this._pass(ci, ri, pos.x, pos.z, gref, top)) this._rescue(pos, r, ci, ri, gref, top);
+    c0 = Math.max(0, Math.floor((pos.x - r) / 2)); c1 = Math.min(W - 1, Math.floor((pos.x + r) / 2));
+    r0 = Math.max(0, Math.floor((pos.z - r) / 2)); r1 = Math.min(this.H - 1, Math.floor((pos.z + r) / 2));
+    const st = ++this._stamp;
+    for (let rr = r0; rr <= r1; rr++) for (let cc = c0; cc <= c1; cc++) {
+      const list = this.boxGrid[rr * W + cc];
+      for (let k = 0; k < list.length; k++) {
+        const b = list[k];
+        if (b._s === st) continue;
+        b._s = st;
+        if (b.maxY <= y + BOX_STEP || b.minY >= y + bodyH) continue;
+        if (pos.x + r <= b.minX || pos.x - r >= b.maxX || pos.z + r <= b.minZ || pos.z - r >= b.maxZ) continue;
+        this._pushOut(pos, r, b.minX, b.maxX, b.minZ, b.maxZ);
+      }
+    }
+  }
+
+  // 安全網:玩家座標變成 NaN 或掉出世界 → 送回起點(清掉速度與跳躍狀態)
+  _safety(pos, body) {
+    const s = this.start || { x: this.sizeX / 2, y: 0, z: this.sizeZ / 2 };
+    pos.x = s.x; pos.y = s.y || 0; pos.z = s.z;
+    body.vy = 0;
+    if (body.vx !== undefined) body.vx = 0;
+    if (body.vz !== undefined) body.vz = 0;
+    body.onGround = true;
+    body.ground = pos.y;
+    if (body.viewY !== undefined) body.viewY = pos.y;
+    body._rx = undefined;
+    this.rescues = (this.rescues || 0) + 1;
+    console.warn('[world] 玩家掉出世界或座標無效,送回起點');
   }
 
   _rescue(pos, r, ci, ri, gref, top) {
@@ -613,9 +657,10 @@ export class World {
     }
   }
 
-  // 導航節點中心 (x,z)、地面 h:半徑 NAV_R 內沒有不可通行格與擋路道具
-  _navFree(x, z, h) {
-    const R = NAV_R, top = h + STEP, W = this.W;
+  // 導航節點中心 (x,z)、地面 h:半徑 R 內沒有不可通行格與擋路道具。
+  // lowH > 0 時頂部 ≤ h + lowH 的道具不算(可翻越);clear = 道具底部至少要高於這個淨空才不擋(爬行者可鑽過的高度)
+  _navFree(x, z, h, R = NAV_R, lowH = 0, clear = BODY_H) {
+    const top = h + STEP, W = this.W;
     const c0 = Math.floor((x - R) / 2), c1 = Math.floor((x + R) / 2), r0 = Math.floor((z - R) / 2), r1 = Math.floor((z + R) / 2);
     for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
       const nx = x < c * 2 ? c * 2 : x > c * 2 + 2 ? c * 2 + 2 : x;
@@ -626,13 +671,82 @@ export class World {
       const list = this.boxGrid[r * W + c];
       for (let k = 0; k < list.length; k++) {
         const b = list[k];
-        if (b.maxY <= h + BOX_STEP || b.minY >= h + BODY_H) continue;
+        if (b.maxY <= h + BOX_STEP || b.minY >= h + clear || (lowH > 0 && b.maxY <= h + lowH)) continue;
         const bx = x < b.minX ? b.minX : x > b.maxX ? b.maxX : x;
         const bz = z < b.minZ ? b.minZ : z > b.maxZ ? b.maxZ : z;
         if ((x - bx) * (x - bx) + (z - bz) * (z - bz) < R * R) return false;
       }
     }
     return true;
+  }
+
+  // ======================================================================
+  // 直線可走判定(殭屍直衝/攻擊/飛撲/衝鋒前用):沿 (ax,ay,az)→(bx,bz) 每 0.25m 取樣,
+  // 每點都要有與前一點高度連續的導航節點(=地面連續、沒有牆/欄杆/窗/擋路道具/挑空/樓梯開口)。
+  // 起終點 skip 公尺內允許沒有節點(貼牆站的玩家、被擠到節點外的殭屍)。
+  // vaultH > 0:沒有節點、但只被頂部 ≤ 地面 + vaultH 的道具擋住的點算「可翻越」。
+  // 回傳 0 不通 / 1 可直走 / 2 中間要翻越矮障礙
+  // ======================================================================
+  walkLine(ax, ay, az, bx, bz, skip = 0.45, vaultH = 0) {
+    if (!this.navM) return 0;
+    const dx = bx - ax, dz = bz - az, len = Math.sqrt(dx * dx + dz * dz);
+    if (len < 1e-4) return 1;
+    const n = Math.ceil(len / 0.25), gh = this.gh;
+    let h = ay, res = 1;
+    for (let k = 1; k < n; k++) {
+      const d = (k / n) * len;
+      if (d < skip || len - d < skip) continue;
+      const x = ax + (dx * d) / len, z = az + (dz * d) / len;
+      const g = this._navFind(Math.floor(x / FINE), Math.floor(z / FINE), h);
+      if (g >= 0) { h = gh[g]; continue; }
+      if (vaultH > 0 && this._navFree(x, z, h, 0.3, vaultH)) { res = 2; continue; }
+      return 0;
+    }
+    return res;
+  }
+
+  // 翻越:從 (x,y,z) 往 (dx,dz) 方向前方 r+0.4 內的矮道具(頂部 ≤ y + maxH)另一側的落地點。
+  // 落地點要有同高度的導航節點、中間不經過牆/欄杆;找到回傳 out { x, z, top },否則 null
+  vaultAhead(x, y, z, dx, dz, r, maxH, out) {
+    const W = this.W, reach = r + 0.4;
+    const c0 = Math.max(0, Math.floor((Math.min(x, x + dx * reach) - r) / 2)), c1 = Math.min(W - 1, Math.floor((Math.max(x, x + dx * reach) + r) / 2));
+    const r0 = Math.max(0, Math.floor((Math.min(z, z + dz * reach) - r) / 2)), r1 = Math.min(this.H - 1, Math.floor((Math.max(z, z + dz * reach) + r) / 2));
+    let exit = -1, top = 0;
+    const st = ++this._stamp;
+    for (let rr = r0; rr <= r1; rr++) for (let cc = c0; cc <= c1; cc++) {
+      const list = this.boxGrid[rr * W + cc];
+      for (let k = 0; k < list.length; k++) {
+        const b = list[k];
+        if (b._s === st) continue;
+        b._s = st;
+        if (b.maxY <= y + BOX_STEP || b.minY >= y + BODY_H) continue;
+        // 膨脹 r 後的方塊與前進射線的進出距離(2D slab)
+        let t0 = 0, t1 = reach + 3, a, c, s;
+        if (dx > -1e-9 && dx < 1e-9) { if (x < b.minX - r || x > b.maxX + r) continue; }
+        else { a = (b.minX - r - x) / dx; c = (b.maxX + r - x) / dx; if (a > c) { s = a; a = c; c = s; } if (a > t0) t0 = a; if (c < t1) t1 = c; }
+        if (dz > -1e-9 && dz < 1e-9) { if (z < b.minZ - r || z > b.maxZ + r) continue; }
+        else { a = (b.minZ - r - z) / dz; c = (b.maxZ + r - z) / dz; if (a > c) { s = a; a = c; c = s; } if (a > t0) t0 = a; if (c < t1) t1 = c; }
+        if (t0 > t1 || t0 > reach) continue;
+        if (b.maxY > y + maxH) return null; // 前面有高的東西:不能翻
+        if (t1 > exit) exit = t1;
+        if (b.maxY > top) top = b.maxY;
+      }
+    }
+    if (exit < 0 || exit > 2.6) return null;
+    // 落地點:越過方塊後第一個有導航節點的位置(節點離道具至少 NAV_R,所以往前多找幾步)
+    let L = -1;
+    for (let e = 0.12; e <= 0.9; e += 0.13) {
+      const lx = x + dx * (exit + e), lz = z + dz * (exit + e);
+      if (this._navFind(Math.floor(lx / FINE), Math.floor(lz / FINE), y) >= 0) { L = exit + e; break; }
+    }
+    if (L < 0) return null;
+    // 路徑上的格子不能是牆/欄杆/窗(只能翻道具)
+    for (let k = 1; k <= 6; k++) {
+      const t = L * (k / 6), px = x + dx * t, pz = z + dz * t;
+      if (!this._pass(Math.floor(px / 2), Math.floor(pz / 2), px, pz, y, y + STEP)) return null;
+    }
+    out.x = x + dx * L; out.z = z + dz * L; out.top = top;
+    return out;
   }
 
   // 導航圖:每層一張 240×200 的 0.5m 細格(稠密索引 g = 層 * FN + j * fw + i)。
@@ -674,12 +788,53 @@ export class World {
     this._qh = new Int32Array(4);
     this._qt = new Int32Array(4);
     this.navDirty = false;
+    this._navDirty = false;
     this.navBuildMs = performance.now() - t0;
     // 先從起點完整算一次(預熱 JIT,第一幀就有可用的距離場)
     const st = this.start;
     if (st) { const b = this.flowBudget; this.flowBudget = 0x3fffffff; this.updateFlow([{ x: st.x, y: st.y, z: st.z }]); this.flowBudget = b; } // 整數預算(避免 JIT 型別回饋變成浮點)
+    this._fixSpawns(); // 用起點的距離場確認出生點可達
     this._nRun = -1;
     return this;
+  }
+
+  // 出生點檢查(導航建好後):出生點半徑 0.6m 內不能有牆/道具(殭屍出生時有 ±0.6m 的隨機偏移),
+  // 否則移到同層附近(4m 內)最近的空位;找不到就標記 bad(不使用)。
+  // 同時標記心理學屬性:zone 區域、dark 暗處、door 門後(房間內緊鄰門口)、vent 通風口(爬行者專用)、node 導航節點
+  _fixSpawns() {
+    const L = this.layout, { FN, fw } = this;
+    const DARK = new Set(['none', 'moon', 'candle', 'fluoro_dying', 'bare_bulb', 'nightlight', 'emergency', 'fire', 'sodium']);
+    let moved = 0, bad = 0;
+    for (const s of this.spawns) {
+      const li = s.level, h = L.levels[li].y;
+      const free = (x, z, R) => { const g = this._navFind(Math.floor(x / FINE), Math.floor(z / FINE), h); return g >= 0 && ((g / FN) | 0) === li && this._navFree(x, z, h, R) ? g : -1; };
+      let g = free(s.x, s.z, 0.6);
+      if (g < 0) {
+        let best = -1, bd = Infinity, bx = s.x, bz = s.z;
+        for (const R of [0.6, 0.45]) {
+          const i0 = Math.floor(s.x / FINE), j0 = Math.floor(s.z / FINE);
+          for (let dj = -8; dj <= 8; dj++) for (let di = -8; di <= 8; di++) {
+            const x = (i0 + di + 0.5) * FINE, z = (j0 + dj + 0.5) * FINE, d = (x - s.x) ** 2 + (z - s.z) ** 2;
+            if (d >= bd) continue;
+            const gg = free(x, z, R);
+            if (gg >= 0 && Number.isFinite(this.flowDistance(x, h, z))) { bd = d; best = gg; bx = x; bz = z; }
+          }
+          if (best >= 0) break;
+        }
+        if (best >= 0) { s.x = bx; s.z = bz; g = best; moved++; s.moved = Math.sqrt(bd); }
+        else { s.bad = true; bad++; }
+      }
+      s.node = g;
+      const c = Math.floor(s.x / 2), r = Math.floor(s.z / 2);
+      const zn = L.zoneAt(li, c, r);
+      s.zone = zn ? zn.id : null;
+      s.dark = !!s.vent || (zn ? DARK.has(zn.light) : !s.outdoor);
+      let door = false;
+      if (zn && zn.theme !== 'corridor' && !s.outdoor) for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) if (L.charAt(li, c + dc, r + dr) === '+') door = true;
+      s.door = door;
+    }
+    this.spawnFix = { moved, bad };
+    if (moved || bad) console.info(`[world] 出生點檢查:移動 ${moved} 個、無效 ${bad} 個`);
   }
 
   // 細格 (i,j) 上與高度 h 連續的節點;沒有回傳 -1
@@ -729,9 +884,10 @@ export class World {
       this.navM += (h === h ? 1 : 0) - (was ? 1 : 0);
     }
     for (let li = 0; li < NL; li++) for (let j = Math.max(0, j0 - 1); j <= Math.min(fh - 1, j1 + 1); j++) for (let i = Math.max(0, i0 - 1); i <= Math.min(fw - 1, i1 + 1); i++) this._navLinks(li * FN + j * fw + i);
-    // 跨層邊只連相鄰細格,另一端一定在上面重算的範圍(多一圈)內
-    this._nRun = -1;
-    if (this._bfsOn) this._bfsOn = false; // 進行中的這一輪作廢,下次重新開始
+    // 跨層邊只連相鄰細格,另一端一定在上面重算的範圍(多一圈)內。
+    // 進行中的這一輪不作廢(重物被推動時每 6 幀就會改一次,作廢會讓距離場一直算不完而停在舊的):
+    // 這輪照算完(局部誤差很小),算完後立刻再補算一輪
+    this._navDirty = true;
   }
 
   // 離 (x,y,z) 最近的導航節點(稠密索引):同一細格高度最接近者;沒有則在附近 rad 圈內找
@@ -773,9 +929,10 @@ export class World {
       for (let q = 0; q < ns; q++) if (seeds[q] === n) dup = true;
       if (!dup) seeds[ns++] = n;
     }
-    if (!this._bfsOn) { // 沒有進行中的計算:目標節點有變才開始新的一輪
-      if (ns === this._nRun) { let eq = true; for (let q = 0; q < ns; q++) if (this._runSeeds[q] !== seeds[q]) eq = false; if (eq) return; }
+    if (!this._bfsOn) { // 沒有進行中的計算:目標節點有變(或導航圖被局部修改)才開始新的一輪
+      if (ns === this._nRun && !this._navDirty) { let eq = true; for (let q = 0; q < ns; q++) if (this._runSeeds[q] !== seeds[q]) eq = false; if (eq) return; }
       if (!ns) return;
+      this._navDirty = false;
       this._nRun = ns;
       for (let q = 0; q < ns; q++) this._runSeeds[q] = seeds[q];
       dialStart(this._back, this._q, this._qh, this._qt, this._runSeeds, ns, this._bfs);
@@ -814,6 +971,89 @@ export class World {
     return best;
   }
 
+  // 爬行者的窄縫/低矮捷徑:附近 3.5m 內找一條「一般殭屍過不去(沒有導航節點)、爬行者過得去」
+  // (半徑 0.3、頭上只需 0.62m 淨空 → 家具間 0.6~0.8m 的窄縫、桌下)而且出口的路徑距離省很多的直線;
+  // 找到時把方向寫進 out 並回傳 true
+  crawlDir(x, y, z, out) {
+    const n = this._nodeNear(x, y, z, 2);
+    if (n < 0) return false;
+    const d0 = this.dist[n];
+    if (d0 === INF) return false;
+    const gh = this.gh, W = this.W;
+    let best = 1.5, bx = 0, bz = 0;
+    for (let a = 0; a < 16; a++) {
+      const dx = CDX[a], dz = CDZ[a];
+      let h = y, ok = false, gap = false;
+      for (let s = 1; s <= 14; s++) {
+        const l = s * 0.25, px = x + dx * l, pz = z + dz * l;
+        const g = this._navFind(Math.floor(px / FINE), Math.floor(pz / FINE), h);
+        if (g >= 0) {
+          h = gh[g];
+          if (gap) { // 穿過窄縫回到一般節點:省下的路徑距離
+            const gain = (d0 - this.dist[g]) * (FINE / 2) - l;
+            if (this.dist[g] !== INF && gain > best) { best = gain; bx = dx; bz = dz; }
+            ok = true;
+            break;
+          }
+          continue;
+        }
+        const c = Math.floor(px / 2), r = Math.floor(pz / 2);
+        if (c < 0 || r < 0 || c >= W || r >= this.H) break;
+        const hh = this._pick(r * W + c, px, pz, h, h + STEP, STEP);
+        if (hh !== hh || !this._navFree(px, pz, hh, 0.3, 0, 0.62)) break;
+        h = hh;
+        gap = true;
+      }
+      if (ok) continue;
+    }
+    if (best <= 1.5) return false;
+    out.x = bx; out.z = bz;
+    return true;
+  }
+
+  // (x,z) 所在細格是否有與高度 y 連續的導航節點(卡住時找空的一側用)
+  isNode(x, y, z) {
+    if (!this.navM) return false;
+    return this._navFind(Math.floor(x / FINE), Math.floor(z / FINE), y) >= 0;
+  }
+
+  // 最近導航節點的中心(被擠到節點外時拉回導航圖);沒有回傳 null
+  navSnap(x, y, z, out) {
+    const n = this._nodeNear(x, y, z, 4);
+    if (n < 0) return null;
+    const r = n % this.FN;
+    out.x = ((r % this.fw) + 0.5) * FINE;
+    out.z = (((r / this.fw) | 0) + 0.5) * FINE;
+    out.y = this.gh[n];
+    return out;
+  }
+
+  // 往 (dx,dz) 前進時擋住的是什麼:'cell'(牆/欄杆/窗/障礙物/挑空)、'box'(道具,存在 this.hitBox)或 null
+  blockedBy(x, y, z, dx, dz, r) {
+    const ax = x + dx * (r + 0.15), az = z + dz * (r + 0.15);
+    if (!this._pass(Math.floor(ax / 2), Math.floor(az / 2), ax, az, y, y + STEP)) return 'cell';
+    const idx = this._idx(ax, az);
+    if (idx < 0) return 'cell';
+    const list = this.boxGrid[idx];
+    for (let k = 0; k < list.length; k++) {
+      const b = list[k];
+      if (b.maxY <= y + BOX_STEP || b.minY >= y + BODY_H) continue;
+      const nx = ax < b.minX ? b.minX : ax > b.maxX ? b.maxX : ax, nz = az < b.minZ ? b.minZ : az > b.maxZ ? b.maxZ : az;
+      if ((ax - nx) * (ax - nx) + (az - nz) * (az - nz) < r * r) { this.hitBox = b; return 'box'; }
+    }
+    return null;
+  }
+
+  // 樓梯踏面高度與坡面的差(角色腳底對齊實體踏階,±半階高;踏階算法同 hospital/stairs.js);坡道回傳 0
+  stepOffset(k, x, z) {
+    if (k < 0 || this.sRamp[k]) return 0;
+    const s = this.layout.stairs[k], len = Math.abs(s.highAt - s.lowAt), rise = s.yHigh - s.yLow;
+    const u = ((s.axis === 'z' ? z : x) - s.lowAt) * (s.highAt > s.lowAt ? 1 : -1);
+    if (u <= 0 || u >= len) return 0;
+    const N = this.sN[k], i = Math.min(N - 1, Math.floor((u * N) / len));
+    return (rise / N) * (i + 0.5) - (rise * u) / len;
+  }
+
   // 沿導航路徑到最近目標的距離(公尺),不可達回傳 Infinity
   flowDistance(x, y, z) {
     if (z === undefined) { z = y; y = 0; }
@@ -822,8 +1062,9 @@ export class World {
     return this.dist[n] * (FINE / 2);
   }
 
-  // 前往最近目標的水平方向(單位向量,會引導上下樓梯);找不到路回傳 null。舊的 (x, z, out) 仍相容
-  flowDir(x, y, z, out) {
+  // 前往最近目標的水平方向(單位向量,會引導上下樓梯);找不到路回傳 null。舊的 (x, z, out) 仍相容。
+  // look = 2:往前看兩個節點(路徑較平順);1:對準下一個節點中心(卡住時重新找路用,不切角)
+  flowDir(x, y, z, out, look = 2) {
     if (typeof z === 'object') { out = z; z = y; y = 0; }
     const n = this._nodeNear(x, y, z, 3);
     if (n < 0) return null;
@@ -831,7 +1072,7 @@ export class World {
     if (d0 === INF || d0 === 0) return null;
     const m1 = this._next(n);
     if (m1 < 0) return null;
-    const m2 = this._next(m1); // 再往前看一步,讓路徑較平順
+    const m2 = look > 1 ? this._next(m1) : -1; // 再往前看一步,讓路徑較平順
     const { FN, fw } = this;
     let r = (m2 >= 0 ? m2 : m1) % FN;
     let tx = ((r % fw) + 0.5) * FINE - x, tz = (((r / fw) | 0) + 0.5) * FINE - z;
