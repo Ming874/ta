@@ -12,6 +12,43 @@ import { compose } from './geo.js';
 const FINE = 0.25, INFL_N = 2; // 膨脹半徑(格):約 0.45m(殭屍半徑 0.42)
 const ctxState = new WeakMap();
 const UNIT = new THREE.BoxGeometry(1, 1, 1);
+// 可推動道具的網格:純色材質依「金屬/亮面/霧面」合成三種頂點色材質(一個可動道具只要 1~3 個 draw call,不是十幾個);
+// 有貼圖/透明/自發光的部位保留原材質
+const DYN_MATS = {
+  metal: new THREE.MeshStandardMaterial({ name: 'pi_dyn_metal', vertexColors: true, roughness: 0.42, metalness: 0.85 }),
+  gloss: new THREE.MeshStandardMaterial({ name: 'pi_dyn_gloss', vertexColors: true, roughness: 0.38, metalness: 0.05 }),
+  matte: new THREE.MeshStandardMaterial({ name: 'pi_dyn_matte', vertexColors: true, roughness: 0.82, metalness: 0 }),
+};
+const dynCache = new Map();
+function dynParts(t) {
+  let out = dynCache.get(t.name);
+  if (out) return out;
+  const groups = new Map();
+  for (const { mat, geo } of t.parts) {
+    const plain = !mat.map && !mat.transparent && !(mat.emissiveIntensity > 0 && mat.emissive && mat.emissive.getHex()) && !mat.userData?.tick;
+    const key = !plain ? mat : mat.metalness > 0.5 ? 'metal' : mat.roughness < 0.5 ? 'gloss' : 'matte';
+    if (!plain) { (groups.get(key) || groups.set(key, []).get(key)).push(geo); continue; }
+    const g = (geo.index ? geo.toNonIndexed() : geo.clone());
+    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
+    if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+    const n = g.attributes.position.count, col = new Float32Array(n * 3), c = mat.color;
+    for (let i = 0; i < n; i++) { col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    (groups.get(key) || groups.set(key, []).get(key)).push(g);
+  }
+  out = [];
+  for (const [key, list] of groups) {
+    const mat = typeof key === 'string' ? DYN_MATS[key] : key;
+    const geo = list.length === 1 ? list[0] : mergeGeometries(list);
+    if (geo) out.push({ mat, geo });
+  }
+  dynCache.set(t.name, out);
+  return out;
+}
+// 自動改成可推動的小道具(依模板名稱):[名稱前綴, 質量 kg, 形狀]
+const MOVABLE = [[/^bin:(pedal|office|bio|kick|bucket)/, 5, 'cylinder'], [/^iv:/, 6, 'cylinder'], [/^wetsign/, 1.5, 'box'], [/^chairshell/, 4, 'box'], [/^chairwood/, 5, 'box'],
+  [/^stool/, 5, 'cylinder'], [/^kidchair/, 2, 'box'], [/^chairoffice/, 12, 'box'], [/^cbox:/, 3, 'box'], [/^wc:/, 16, 'box'], [/^walker/, 3, 'box'], [/^teddy/, 0.5, 'box']];
+const movable = (t) => { for (const [re, mass, shape] of MOVABLE) if (re.test(t.name)) return { mass, shape }; return null; };
 const _v = new THREE.Vector3(), _c = new THREE.Color();
 
 export function hashStr(s) {
@@ -317,6 +354,9 @@ export class Room {
   putChecked(t, x, z, yaw, o = {}) {
     const fp = this.footprint(t.bbox, x, z, yaw, 0);
     if (!this.cellsOK(fp, this.plain)) return null;
+    // 地上的小道具(垃圾桶、點滴架、椅子、紙箱…)改成可推動的物理道具(每區最多 10 個)
+    const mv = !o.mount && (o.y == null || o.y === this.y) && !o.rx && !o.rz && o.static !== true && movable(t);
+    if (mv && (this.autoDyn = (this.autoDyn || 0) + 1) <= 10) { if (o.mark !== false) this.mark(fp); return this.dyn(t, x, z, yaw, mv, { force: true, y: this.y }) && { t, x, z, yaw, y: this.y, M: placeM(x, this.y, z, yaw) }; }
     if (o.mark !== false) this.mark(fp);
     return this.put(t, x, z, yaw, o);
   }
@@ -390,7 +430,7 @@ export class Room {
     if (!o.force && !o.y && !this.cellsOK(fp, this.plain)) return null;
     if (!o.y) this.mark(fp);
     const g = new THREE.Group();
-    for (const { mat, geo } of t.parts) {
+    for (const { mat, geo } of dynParts(t)) {
       const m = new THREE.Mesh(geo, mat);
       m.castShadow = !mat.transparent;
       m.receiveShadow = true;

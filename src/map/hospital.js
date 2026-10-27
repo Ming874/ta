@@ -87,13 +87,29 @@ export function buildHospital(world, layout, scene, opts = {}) {
   const connectors = []; // B1 ↔ 1F 的通道(樓梯、坡道)
   for (const s of L.stairs) if (s.lower === b1) connectors.push({ x: (s.x0 + s.x1) / 2, z: (s.z0 + s.z1) / 2 });
   const vis = L.levels.map(() => true);
-  const updateVisibility = (li, x, z) => {
+  // 其他樓層的「道具」(draw call 大宗):只有在戶外、靠近連通兩層的樓梯、或在挑空(大廳中庭)附近時才畫;
+  // 結構(外牆、窗、樓板)照舊,從窗外看建築不會缺一塊
+  const stairsP = L.stairs.map((s) => ({ lo: s.lower, hi: s.upper, x: (s.x0 + s.x1) / 2, z: (s.z0 + s.z1) / 2, r: 9 + Math.max(s.x1 - s.x0, s.z1 - s.z0) / 2 }));
+  const voids = [];
+  L.levels.forEach((lv, lj) => {
+    let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9;
+    for (let r = 0; r < L.H; r++) for (let c = 0; c < L.W; c++) if (lv.rows[r][c] === 'o') { x0 = Math.min(x0, c * 2); x1 = Math.max(x1, c * 2 + 2); z0 = Math.min(z0, r * 2); z1 = Math.max(z1, r * 2 + 2); }
+    if (x1 > x0) voids.push({ lj, x0: x0 - 8, z0: z0 - 8, x1: x1 + 8, z1: z1 + 8 });
+  });
+  const propVis = L.levels.map(() => true);
+  const updateVisibility = (li, x, z, outdoor) => {
     let nearB1 = false;
     for (const c of connectors) if ((c.x - x) ** 2 + (c.z - z) ** 2 < 15 * 15) nearB1 = true;
+    let atrium = false;
+    for (const v of voids) if (x > v.x0 && x < v.x1 && z > v.z0 && z < v.z1) atrium = true;
     for (let i = 0; i < vis.length; i++) {
       if (li === b1) vis[i] = i === b1 || i === b1 + 1 || nearB1;
       else vis[i] = i === b1 ? nearB1 || li === b1 : true;
       levelGroups[i].visible = vis[i];
+      let pv = i === li || outdoor || atrium;
+      if (!pv) for (const s of stairsP) if (((s.lo === li && s.hi === i) || (s.hi === li && s.lo === i)) && (s.x - x) ** 2 + (s.z - z) ** 2 < s.r * s.r) { pv = true; break; }
+      propVis[i] = pv;
+      propGroups[i].visible = pv;
     }
   };
 
@@ -108,7 +124,7 @@ export function buildHospital(world, layout, scene, opts = {}) {
   const camFwd = new THREE.Vector3();
   let shadowFrames = 0, lastLoaded = -1;
   const H = {
-    group: root, stats, layout: L, lights, atmo, K, levelGroups, propEvents, propLights, vis, events, game: null,
+    group: root, stats, layout: L, lights, atmo, K, levelGroups, propGroups, propEvents, propLights, vis, propVis, events, game: null,
     // post.js 會呼叫:提供 renderer(環境貼圖、各向異性)與品質設定
     attachRenderer(r, game) {
       H.game = game || null;
@@ -131,7 +147,7 @@ export function buildHospital(world, layout, scene, opts = {}) {
       const style = zone || L.levelDefault[L.levels[li].id];
       const mood = L.moods[style.mood] || L.moods.corridor;
       const outdoor = (L.flagsAt(li, c, r) & L.F.OUTDOOR) !== 0 || L.ceilY(li, c, r) === Infinity;
-      updateVisibility(li, p.x, p.z);
+      updateVisibility(li, p.x, p.z, outdoor);
       const cam = player.camera;
       cam.layers.enable(NO_FLASH_SHADOW_LAYER);
       cam.getWorldDirection(camFwd);
