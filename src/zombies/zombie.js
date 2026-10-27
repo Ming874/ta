@@ -10,7 +10,7 @@ const env = (t, a, b, c, d) => sstep(a, b, t) * (1 - sstep(c, d, t)); // 進場 
 const wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const TAU = Math.PI * 2;
 // 每幀預算(以 10ms 時間窗近似一幀,所有殭屍共用):語音是在主執行緒即時合成的(每次 2~5ms,第一次可到 20ms),
-// 人多時(爆炸波及整群、一起撲上來)同一幀全部叫會卡頓 → 語音每幀 1 個、其他音效 3 個、視線/直線更新 10 次;
+// 人多時(爆炸波及整群、一起撲上來)同一幀全部叫會卡頓 → 語音每幀 1 個、其他音效 2 個、視線/直線更新 10 次;
 // 預警用的聲音(咆哮、尖嘯、撞牆、擊中玩家)不受限
 const BUD = { t: -1, voice: 0, fx: 0, sense: 0, bar: 0 };
 const budget = () => { const now = performance.now(); if (now - BUD.t > 10) { BUD.t = now; BUD.voice = 0; BUD.fx = 0; BUD.sense = 0; BUD.bar = 0; } return BUD; };
@@ -21,6 +21,7 @@ const say = (name, ...a) => {
   if (!ALWAYS.has(name)) { const B = budget(); if (VOICE.has(name) ? ++B.voice > VOICE_MAX : ++B.fx > FX_MAX) return; }
   sfx[name](...a);
 };
+const ZR = 0.4; // 殭屍碰撞半徑上限 = 導航膨脹半徑(collision.js NAV_R):導航走得過的縫,碰撞也一定過得去
 const VAULT_H = 1.05; // 狂奔者可翻越的道具高度(相對腳底)
 const VAULT_T = 0.5; // 翻越動作時間
 const FUSE_R = 2.0; // 膿腫者貼近到這個距離開始膨脹自爆
@@ -349,7 +350,7 @@ export class Zombie {
     if (this.onStair >= 0 && !w.instant && this.state !== 'charge') w.speed *= 0.86;
 
     // ---- 移動 ----
-    const rad = Math.min(this.T.radius, 0.42);
+    const rad = Math.min(this.T.radius, ZR);
     if (this.state === 'climb') this._climbMove(world, rad);
     else {
       if (w.instant) { this.vel.x = w.x * w.speed; this.vel.z = w.z * w.speed; }
@@ -507,7 +508,7 @@ export class Zombie {
     const s = g && g.pickSpawn ? g.pickSpawn(this.type, maxFd) : world.spawns && world.spawns[0];
     if (!s) return false;
     this.pos.set(s.x, s.y || 0, s.z);
-    world.resolve(this.pos, Math.min(this.T.radius, 0.42));
+    world.resolve(this.pos, Math.min(this.T.radius, ZR));
     this.vel.set(0, 0, 0);
     this._noProg = 0; this._lv = 0; this._nudgeT = 0; this._repathT = 0;
     this._sx = this.pos.x; this._sy = this.pos.y; this._sz = this.pos.z;
@@ -582,7 +583,7 @@ export class Zombie {
         if (this.los && this.line === 1 && dist > L.min && dist < L.max && this.specialCd <= 0) { this.go('crouch'); say('shriek', this.vp); }
         else if (dist < T.reach + 0.1 && this.attackCd <= 0 && this._canHit(world)) { this.go('attack'); say('zAttack', this.type, this.vp); }
         else if (this.blocked && this.speedNow > 1.2 && world.vaultAhead) {
-          if (world.vaultAhead(this.pos.x, this.pos.y, this.pos.z, w.x, w.z, Math.min(T.radius, 0.42), VAULT_H, _vault)) {
+          if (world.vaultAhead(this.pos.x, this.pos.y, this.pos.z, w.x, w.z, Math.min(T.radius, ZR), VAULT_H, _vault)) {
             const v = this.vault || (this.vault = { x0: 0, z0: 0, x1: 0, z1: 0, h: 0 });
             v.x0 = this.pos.x; v.z0 = this.pos.z; v.x1 = _vault.x; v.z1 = _vault.z; v.h = _vault.top - this.pos.y;
             this.go('climb');
@@ -757,7 +758,7 @@ export class Zombie {
           say('knock');
           this.go('recover');
         } else if (this.blocked && this.st > 0.3) {
-          const what = world.blockedBy ? world.blockedBy(this.pos.x, this.pos.y, this.pos.z, ch.x, ch.z, Math.min(T.radius, 0.42)) : 'cell';
+          const what = world.blockedBy ? world.blockedBy(this.pos.x, this.pos.y, this.pos.z, ch.x, ch.z, Math.min(T.radius, ZR)) : 'cell';
           if (what === 'box' && ch.smash < 2 && ph && ph.impulseAt) { // 撞到道具:用力撞開,繼續衝(撞不動的第三次就停)
             ch.smash++;
             const b = world.hitBox;
