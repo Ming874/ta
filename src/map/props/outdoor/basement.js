@@ -11,8 +11,13 @@ import { barrel, crate, propane, tyre, pallet, wetSign } from './furniture.js';
 // 沿牆管線/線槽(每格一段,接起來連續)、閥門與壓力錶、大型機械(碰撞)、雜物與水漬。
 const zrng = (zone) => { let h = 2166136261; for (const ch of zone.id + '#b') h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return mkRng(h >>> 0); };
 const finish = (ctx, P) => { if (P.map.size) put(ctx, P, 0, 0, 0); };
+// 固定座標的大件(醫院地圖的位置):格子要可放,而且要在目前這個區域裡(換地圖時自然略過)
+let curZone = null;
 const freeAt = (ctx, li, x, z, r = 0.6) => {
-  for (let c = Math.floor((x - r) / 2); c <= Math.floor((x + r - 1e-3) / 2); c++) for (let rr = Math.floor((z - r) / 2); rr <= Math.floor((z + r - 1e-3) / 2); rr++) if (!ctx.isPlain(li, c, rr) || ctx.occupied(li, c, rr) || ctx.nearDoor(li, c, rr)) return false;
+  for (let c = Math.floor((x - r) / 2); c <= Math.floor((x + r - 1e-3) / 2); c++) for (let rr = Math.floor((z - r) / 2); rr <= Math.floor((z + r - 1e-3) / 2); rr++) {
+    if (!ctx.isPlain(li, c, rr) || ctx.occupied(li, c, rr) || ctx.nearDoor(li, c, rr)) return false;
+    if (curZone && ctx.L.zoneAt(li, c, rr) !== curZone) return false;
+  }
   return true;
 };
 // 牆面座標系:spot.x/z 在牆面上,(nx,nz) 朝房間;along = 沿牆方向
@@ -228,7 +233,7 @@ function dressMachine(ctx, zone) {
   finish(ctx, P);
 }
 // 納骨堂:牆上骨龕(頭骨一排)、地上棺木、燭火、石祭壇
-const skullParts = () => { const T = new Parts(); T.add('bone', sph(0.09, 10, 8).scale(0.85, 1, 1.05), M(0, 0.1, 0)); T.add('bone', box(0.1, 0.05, 0.08), M(0, 0.03, 0.03)); for (const s of [-1, 1]) T.add('po_gap', sph(0.025, 6, 4), M(s * 0.035, 0.11, 0.075)); T.add('po_gap', box(0.02, 0.03, 0.02), M(0, 0.07, 0.085)); return T; };
+const skullParts = () => { const T = new Parts(); T.add('po_bone', sph(0.09, 10, 8).scale(0.85, 1, 1.05), M(0, 0.1, 0)); T.add('po_bone', box(0.1, 0.05, 0.08), M(0, 0.03, 0.03)); for (const s of [-1, 1]) T.add('po_gap', sph(0.025, 6, 4), M(s * 0.035, 0.11, 0.075)); T.add('po_gap', box(0.02, 0.03, 0.02), M(0, 0.07, 0.085)); return T; };
 function dressOssuary(ctx, zone) {
   const R = zrng(zone), P = new Parts(), li = zone.levelIndex, y = ctx.L.levels[li].y;
   const sk = pool(ctx, 'skull', skullParts, 256);
@@ -239,7 +244,7 @@ function dressOssuary(ctx, zone) {
       const yy = y + 0.6 + row * 0.62;
       P.add('stone_statue', box(ax ? 1.9 : 0.36, 0.06, az ? 1.9 : 0.36), M(s.x + s.nx * 0.18, yy, s.z + s.nz * 0.18));
       for (let k = -3; k <= 3; k++) if (R() < 0.82) sk.add(M(s.x + s.nx * 0.18 + ax * k * 0.25, yy + 0.03, s.z + s.nz * 0.18 + az * k * 0.25, R.range(-0.2, 0.1), yaw + R.range(-0.3, 0.3), R.range(-0.1, 0.1), R.range(0.9, 1.1)));
-      for (let k = 0; k < 4; k++) P.add('bone', cyl(0.025, 0.025, 1.6, 6).rotateZ(HALF).rotateY(ax ? 0 : HALF), M(s.x + s.nx * 0.12, yy + 0.3 + k * 0.05, s.z + s.nz * 0.12));
+      for (let k = 0; k < 4; k++) P.add('po_bone', cyl(0.025, 0.025, 1.6, 6).rotateZ(HALF).rotateY(ax ? 0 : HALF), M(s.x + s.nx * 0.12, yy + 0.3 + k * 0.05, s.z + s.nz * 0.12));
     }
     if (R() < 0.2 && lit < 4) { // 燭台 + 燭光
       const cx = s.x + s.nx * 0.25, cz = s.z + s.nz * 0.25;
@@ -251,8 +256,8 @@ function dressOssuary(ctx, zone) {
     flatDecal(P, R.pick(['moss', 'drip', 'stain2']), s.x + s.nx * 0.012, y + 0.3, s.z + s.nz * 0.012, 1.6, 0.6, s.nx > 0.5 ? 'x+' : s.nx < -0.5 ? 'x-' : s.nz > 0.5 ? 'z+' : 'z-');
   }
   // 地上的棺木(部分泡在水裡)、散落骨頭
-  for (const [x, z, a] of [[44.6, 30.8, 0.3], [75.2, 48.4, -0.4], [46, 48.6, 1.4]]) if (freeAt(ctx, li, x, z, 0.6)) { const T = new Parts(); T.add('wood_dark', rbox(2.0, 0.42, 0.6, 0.04), M(0, 0.21, 0)); T.add('wood_dark', rbox(1.4, 0.08, 0.62, 0.03), M(-0.3, 0.46, 0, 0, 0, 0.08)); T.add('bone', sph(0.09, 8, 6), M(0.7, 0.45, 0.1)); P.merge(T, M(x, y, z, 0, a, 0)); solid(ctx, x, y, z, 2.0, 0.5, 0.7); }
-  for (const c of ctx.cells(zone, { allowNearDoor: true })) if (R() < 0.15) { P.add('bone', cyl(0.02, 0.025, R.range(0.25, 0.45), 6).rotateZ(HALF), M(c.x + R.range(-0.6, 0.6), y + 0.03, c.z + R.range(-0.6, 0.6), 0, R() * TAU, 0)); if (R() < 0.4) sk.add(M(c.x + R.range(-0.6, 0.6), y + 0.0, c.z + R.range(-0.6, 0.6), R.range(-1, 1), R() * TAU, R.range(-0.6, 0.6))); }
+  for (const [x, z, a] of [[44.6, 30.8, 0.3], [75.2, 48.4, -0.4], [46, 48.6, 1.4]]) if (freeAt(ctx, li, x, z, 0.6)) { const T = new Parts(); T.add('wood_dark', rbox(2.0, 0.42, 0.6, 0.04), M(0, 0.21, 0)); T.add('wood_dark', rbox(1.4, 0.08, 0.62, 0.03), M(-0.3, 0.46, 0, 0, 0, 0.08)); T.add('po_bone', sph(0.09, 8, 6), M(0.7, 0.45, 0.1)); P.merge(T, M(x, y, z, 0, a, 0)); solid(ctx, x, y, z, 2.0, 0.5, 0.7); }
+  for (const c of ctx.cells(zone, { allowNearDoor: true })) if (R() < 0.15) { P.add('po_bone', cyl(0.02, 0.025, R.range(0.25, 0.45), 6).rotateZ(HALF), M(c.x + R.range(-0.6, 0.6), y + 0.03, c.z + R.range(-0.6, 0.6), 0, R() * TAU, 0)); if (R() < 0.4) sk.add(M(c.x + R.range(-0.6, 0.6), y + 0.0, c.z + R.range(-0.6, 0.6), R.range(-1, 1), R() * TAU, R.range(-0.6, 0.6))); }
   finish(ctx, P);
 }
 // 停屍間外梯:梯底積落葉、排水孔、牆上壁燈污漬
@@ -267,4 +272,5 @@ function dressStairExt(ctx, zone) {
   finish(ctx, P);
 }
 
-export const BASEMENT = { tunnel: dressTunnel, boiler: dressBoiler, dock: dressDock, ramp: dressRamp, incinerator: dressIncinerator, pump: dressPump, machine: dressMachine, ossuary: dressOssuary, stair_ext: dressStairExt };
+const wrap = (fn) => (ctx, zone) => { curZone = zone; try { fn(ctx, zone); } finally { curZone = null; } };
+export const BASEMENT = { tunnel: wrap(dressTunnel), boiler: wrap(dressBoiler), dock: wrap(dressDock), ramp: wrap(dressRamp), incinerator: wrap(dressIncinerator), pump: wrap(dressPump), machine: wrap(dressMachine), ossuary: wrap(dressOssuary), stair_ext: wrap(dressStairExt) };

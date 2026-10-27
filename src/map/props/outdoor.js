@@ -7,6 +7,11 @@ import { initCamp } from './outdoor/camp.js';
 import { initFurniture } from './outdoor/furniture.js';
 import { buildObstacle } from './outdoor/obstacles.js';
 import { THEMES } from './outdoor/themes.js';
+import { dressEdges } from './outdoor/edges.js';
+import { resetEnv } from './outdoor/env.js';
+import { resetCars } from './outdoor/cars.js';
+import { resetVehicles } from './outdoor/vehicles.js';
+import { resetFurniture } from './outdoor/furniture.js';
 
 // 戶外與工業區道具(停車場、後巷、墓園、遊戲場、中庭、頂樓、逃生梯、地下工業房間、納骨堂)
 // 以及大型障礙物('X' 格:車、救護車、靈車、子母車、發電機、焚化爐、噴水池、雕像、水塔、冷氣主機…)。
@@ -21,16 +26,29 @@ export const OUTDOOR_THEMES = new Set([
 ]);
 
 function initAll() { initMats(); initGround(); initNature(); initPlay(); initCamp(); initFurniture(); }
-export function dressOutdoor(ctx, zone) {
+// 每個新的擺設 ctx(= 每次建世界/換地圖)只做一次:歸零模組計數器(同地圖、同種子 → 每個客戶端結果相同)、外圍景
+const begun = new WeakSet();
+function begin(ctx) {
+  if (begun.has(ctx)) return;
+  begun.add(ctx);
   initAll();
+  resetEnv(); resetCars(); resetVehicles(); resetFurniture();
+  const t0 = performance.now();
+  try { dressEdges(ctx); } catch (e) { console.error('[props-out] 外圍景失敗', e); }
+  console.log('[props-out] edges', Math.round(performance.now() - t0), 'ms');
+}
+export function dressOutdoor(ctx, zone) {
+  begin(ctx);
   const fn = THEMES[zone.theme];
   if (!fn) return;
+  const t0 = performance.now();
   try { fn(ctx, zone); } catch (e) { console.error('[props-out] 擺設失敗', zone.id, e); }
+  const dt = performance.now() - t0; if (dt > 60) console.log('[props-out]', zone.id, Math.round(dt), 'ms');
 }
 
 // 大型障礙物:佔滿 rect 的格子並登記碰撞
 export function dressObstacle(ctx, o) {
-  initAll();
+  begin(ctx);
   if (buildObstacle(ctx, o)) return;
   // 未知種類:有碰撞的方塊(確保碰撞/導航/視線正確)
   const h = 1.5;

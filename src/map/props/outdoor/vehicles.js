@@ -710,6 +710,7 @@ export const strobe = (t, phase) => { const c = (t * 1.6 + phase) % 1; return (c
 // ---------- 擺放 ----------
 const PAINTS = ['po_paint_white', 'po_paint_silver', 'po_paint_black', 'po_paint_blue', 'po_paint_red', 'po_paint_green', 'po_paint_beige', 'po_paint_gray', 'po_paint_maroon', 'po_paint_skyblue', 'po_paint_taxi', 'po_paint_white', 'po_paint_silver', 'po_paint_black'];
 let carSerial = 0;
+export function resetVehicles() { carSerial = 0; }
 // 依障礙物格子放一台車;回傳 { root, tilt, car, yaw, S }
 export function placeVehicle(ctx, o, kind, extra = {}) {
   const rng = ctx.rng;

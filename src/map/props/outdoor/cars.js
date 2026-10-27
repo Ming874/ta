@@ -273,6 +273,8 @@ function ambLights(car) {
   return lenses;
 }
 let ambIdx = 0;
+// 每次重建世界時歸零(同一張地圖每次都得到同樣的車)
+export function resetCars() { carIdx = 0; policeIdx = 0; ambIdx = 0; }
 export function placeAmbulance(ctx, o, zone, crashed = false) {
   const rng = ctx.rng;
   ambIdx++;

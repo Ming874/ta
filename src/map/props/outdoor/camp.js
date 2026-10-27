@@ -6,6 +6,8 @@ import { Parts, M, box, rbox, cyl, sph, tor, lathe, rod, beam, tube, extrude, gr
 import { canvas, tex, lazy, text, wear, softBlob, splat, BLOOD, rr, R, FONT_TC } from './mats.js';
 import { flatDecal } from './industrial.js';
 import { glowMat } from './env.js';
+import { rng as mkRng } from '../ctx.js';
+const posRng = (x, z) => mkRng((Math.round(x * 100) * 73856093) ^ (Math.round(z * 100) * 19349663));
 
 // 災難現場道具(故事場景):檢疫/醫療帳篷、軍用遮陽棚、沙包牆、紐澤西護欄、臨時圍籬、折疊桌椅、屍袋、輪椅、點滴架、
 // 氧氣瓶、醫療廢棄物桶、三腳架投光燈、A 字告示牌、行李箱、嬰兒車、防護衣、燃燒的道路信號彈。
@@ -71,7 +73,7 @@ export function initCamp() {
     m.roughnessMap = pbrTex('fabric', 'orm', { tile: 0.9 });
     registerMat(k, makeWet(m, { darken: o.darken ?? 0.35, gloss: 0.35 }));
   };
-  fab('po_tent_white', 0xc8c8c0); fab('po_tent_green', 0x5a6248); fab('po_tent_blue', 0x4a6a8e); fab('po_sandbag', 0x9a8a68, { side: THREE.FrontSide }); fab('po_canvas_olive', 0x6a6a4a);
+  fab('po_tent_white', 0x9c9a90); fab('po_tent_green', 0x50583e); fab('po_tent_blue', 0x3e5a78); fab('po_sandbag', 0x9a8a68, { side: THREE.FrontSide }); fab('po_canvas_olive', 0x6a6a4a);
   registerMat('po_sign', makeWet(new THREE.MeshStandardMaterial({ map: SIGN_TEX(), roughness: 0.6, metalness: 0.05 }), { darken: 0.1, gloss: 0.6 }));
   registerMat('po_sheet', new THREE.MeshStandardMaterial({ color: 0xd8dcd8, roughness: 0.3, transparent: true, opacity: 0.38, side: THREE.DoubleSide, depthWrite: false }));
   registerMat('po_wiremesh', new THREE.MeshStandardMaterial({ map: MESH_TEX(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.6, metalness: 0.7, color: 0x9a9c98 }));
@@ -79,7 +81,7 @@ export function initCamp() {
   registerMat('po_tarp', makeWet(new THREE.MeshStandardMaterial({ color: 0x2a4a82, roughness: 0.55, side: THREE.DoubleSide }), { darken: 0.2, gloss: 0.6 }));
   registerMat('po_ivbag', [0xd8e4e0, 0.15, 0, 0.55]);
   registerMat('po_olive', [0x4a4e36, 0.7, 0.2]);
-  registerMat('po_flare', glowMat(new THREE.MeshStandardMaterial({ color: 0x400404, emissive: 0xff2010, emissiveIntensity: 4, roughness: 0.6 }), 4, (t) => 0.75 + 0.25 * Math.sin(t * 31) * Math.sin(t * 17.3)));
+  registerMat('po_flare', glowMat(new THREE.MeshStandardMaterial({ color: 0x400404, emissive: 0xff2010, emissiveIntensity: 4, roughness: 0.6 }), 4, (t) => 0.75 + 0.25 * Math.sin(t * 31) * Math.sin(t * 17.3), true));
 }
 
 // ======================================================================
@@ -87,13 +89,15 @@ export function initCamp() {
 // ======================================================================
 // 下垂的布面:四角 a,b,c,d(世界/本地),細分 n×m,中間往下 sag
 function cloth(P, key, a, b, c, d, sag, n = 6, m = 6, ripple = 0.02) {
-  const rows = [];
+  const rows = [], nn = new V3().subVectors(b, a).cross(new V3().subVectors(d, a)).normalize(), roof = Math.abs(nn.y) > 0.5;
   for (let i = 0; i <= n; i++) {
     const u = i / n, r = [];
     for (let j = 0; j <= m; j++) {
       const v = j / m;
       const p = new V3().lerpVectors(new V3().lerpVectors(a, b, u), new V3().lerpVectors(d, c, u), v);
-      p.y -= sag * Math.sin(u * Math.PI) * Math.sin(v * Math.PI) + ripple * Math.sin(u * 17 + v * 5) * Math.sin(v * Math.PI);
+      const w = ripple * (Math.sin(u * 17 + v * 5) * 0.7 + Math.sin(u * 7.3 - v * 11) * 0.3) * Math.sin(v * Math.PI) * Math.sin(u * Math.PI);
+      if (roof) p.y -= sag * Math.sin(u * Math.PI) * Math.sin(v * Math.PI) + w;
+      else p.addScaledVector(nn, w + sag * Math.sin(u * Math.PI) * Math.sin(v * Math.PI));
       r.push(p);
     }
     rows.push(r);
@@ -101,7 +105,8 @@ function cloth(P, key, a, b, c, d, sag, n = 6, m = 6, ripple = 0.02) {
   P.add(key, smoothNormals(gridSurface(rows, { uvFn: (p, i, j) => [i / n * a.distanceTo(b), j / m * a.distanceTo(d)] }), 0.5));
 }
 // 醫療/隔離帳篷(4×3m 框架帳):正面(+Z)門簾捲起;cross:側面紅十字
-export function tent(ctx, x, y, z, yaw = 0, { key = 'po_tent_white', L = 4, W = 3, H = 2.0, ridge = 2.7, open = true, cross = true, sign = null, inside = null, rng = Math.random } = {}) {
+export function tent(ctx, x, y, z, yaw = 0, { key = 'po_tent_white', L = 4, W = 3, H = 2.0, ridge = 2.7, open = true, cross = true, sign = null, inside = null, rng = null } = {}) {
+  rng = rng || posRng(x, z);
   const P = new Parts(), hx = L / 2, hz = W / 2;
   // 框架
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) P.add('aluminum', cyl(0.025, 0.025, H, 6), M(sx * hx, H / 2, sz * hz));
@@ -112,14 +117,17 @@ export function tent(ctx, x, y, z, yaw = 0, { key = 'po_tent_white', L = 4, W = 
   cloth(P, key, new V3(-hx - 0.1, ridge + 0.02, 0), new V3(hx + 0.1, ridge + 0.02, 0), new V3(hx + 0.1, H - 0.05, hz + 0.15), new V3(-hx - 0.1, H - 0.05, hz + 0.15), 0.06, 8, 4);
   for (const sx of [-1, 1]) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute([sx * hx, H, -hz, sx * hx, H, hz, sx * hx, ridge, 0], 3)); g.computeVertexNormals(); P.add(key, g); }
   // 牆面:後牆、兩側(下擺略為外翻)、正面捲起的門簾
-  cloth(P, key, new V3(-hx, H, -hz), new V3(hx, H, -hz), new V3(hx, 0.02, -hz - 0.06), new V3(-hx, 0.02, -hz - 0.06), 0.0, 6, 4, 0.025);
-  for (const sx of [-1, 1]) cloth(P, key, new V3(sx * hx, H, -hz), new V3(sx * hx, H, hz), new V3(sx * (hx + 0.06), 0.02, hz), new V3(sx * (hx + 0.06), 0.02, -hz), 0.0, 6, 4, 0.025);
+  cloth(P, key, new V3(-hx, H, -hz), new V3(hx, H, -hz), new V3(hx, 0.02, -hz - 0.06), new V3(-hx, 0.02, -hz - 0.06), 0.0, 8, 5, 0.045);
+  for (const sx of [-1, 1]) cloth(P, key, new V3(sx * hx, H, -hz), new V3(sx * hx, H, hz), new V3(sx * (hx + 0.06), 0.02, hz), new V3(sx * (hx + 0.06), 0.02, -hz), 0.0, 8, 5, 0.045);
   if (open) {
     for (const sx of [-1, 1]) cloth(P, key, new V3(sx * hx, H, hz), new V3(sx * hx * 0.45, H, hz), new V3(sx * hx * 0.45, 0.02, hz + 0.04), new V3(sx * hx, 0.02, hz + 0.04), 0, 3, 4, 0.02);
     P.add(key, cyl(0.12, 0.12, hx * 1.1, 10).rotateZ(HALF), M(0, H - 0.08, hz + 0.08)); // 捲起的門簾
     P.add(key, box(hx * 1.1, 0.02, 0.01), M(0, H + 0.1, hz + 0.02));
   } else cloth(P, key, new V3(-hx, H, hz), new V3(hx, H, hz), new V3(hx, 0.02, hz + 0.05), new V3(-hx, 0.02, hz + 0.05), 0, 6, 4, 0.025);
   if (cross) for (const sx of [-1, 1]) flatDecal(P, 'cross_paint', sx * (hx + 0.07), 1.3, 0, 0.9, 0.9, sx > 0 ? 'x+' : 'x-');
+  for (const sx of [-1, 1]) { flatDecal(P, 'mud', sx * (hx + 0.075), 0.35, rng() - 0.5, W * 0.9, 0.7, sx > 0 ? 'x+' : 'x-'); flatDecal(P, rng() < 0.5 ? 'stain2' : 'water', sx * (hx + 0.074), 1.4, rng() - 0.5, 1.2, 1.0, sx > 0 ? 'x+' : 'x-'); }
+  flatDecal(P, 'mud', 0, 0.35, -hz - 0.075, L * 0.9, 0.7, 'z-');
+  if (rng() < 0.6) flatDecal(P, rng() < 0.5 ? 'blood3' : 'hand', hx * 0.7, 1.0, hz + 0.05, 0.6, 0.6, 'z+');
   // 營繩 + 營釘
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) { const a = new V3(sx * hx, H, sz * hz), b = new V3(sx * (hx + 0.9), 0.02, sz * (hz + 0.7)); P.add('po_cable', rod(a, b, 0.004, 3)); P.add('steel', cyl(0.008, 0.008, 0.2, 4), M(b.x, 0.08, b.z, 0, 0, 0.4)); }
   // 地墊、污漬
@@ -164,7 +172,8 @@ function sandbagParts() {
   return P;
 }
 // 沿線段疊沙包牆:rows 層,從 (x0,z0) 到 (x1,z1)
-export function sandbagWall(ctx, x0, y, z0, x1, z1, rows = 3, rng = Math.random) {
+export function sandbagWall(ctx, x0, y, z0, x1, z1, rows = 3, rng = null) {
+  rng = rng || posRng(x0, z1);
   const L = Math.hypot(x1 - x0, z1 - z0), yaw = Math.atan2(-(z1 - z0), x1 - x0), n = Math.max(1, Math.round(L / 0.6));
   const p = pool(ctx, 'sandbag', sandbagParts, 160);
   for (let r = 0; r < rows; r++) for (let k = 0; k < n - (r & 1); k++) {
@@ -208,7 +217,8 @@ export function heras(ctx, x, y, z, yaw = 0, tilt = 0) {
 // ======================================================================
 // 桌椅、器材
 // ======================================================================
-export function foldTable(P, x, y, z, yaw = 0, rng = Math.random, items = true) {
+export function foldTable(P, x, y, z, yaw = 0, rng = null, items = true) {
+  rng = rng || posRng(x, z);
   const T = new Parts(), L = 1.8, W = 0.75, H = 0.74;
   T.add('plastic_white', rbox(L, 0.045, W, 0.015), M(0, H, 0));
   for (const s of [-1, 1]) { T.add('steel', rod(new V3(s * 0.75, 0, -0.32), new V3(s * 0.7, H - 0.03, -0.3), 0.014, 6)); T.add('steel', rod(new V3(s * 0.75, 0, 0.32), new V3(s * 0.7, H - 0.03, 0.3), 0.014, 6)); T.add('steel', rod(new V3(s * 0.75, 0.15, -0.32), new V3(s * 0.75, 0.15, 0.32), 0.01, 6)); }

@@ -232,9 +232,10 @@ export function initGround() {
   registerMat('po_jersey', makeWet(pbr('concrete', { tile: 1.4, color: 0xd4d0c6 }), { darken: 0.3, gloss: 0.5 }));
   registerMat('po_soil', makeWet(pbr('dirt', { tile: 1.6, color: 0x9a8e80 }), { darken: 0.3, gloss: 0.55 }));
   registerMat('po_mud', makeWet(pbr('dirt', { tile: 1.3, color: 0x6a5e50, rough: 0.8 }), { puddle: 0.8, darken: 0.3, gloss: 0.7 }));
-  registerMat('po_bark', pbr('bark', { tile: 1.2, color: 0x8a8278 }));
+  registerMat('po_bark', pbr('bark', { tile: 1.2, color: 0x5e564c }));
   registerMat('po_burnt', makeWet(pbr('rust', { tile: 1.4, color: 0x3a3430, metal: 0.4 }), { darken: 0.2, gloss: 0.3 }));
   registerMat('po_brick_far', pbr('brick', { tile: 1.5, color: 0x8a7a70 }));
+  registerMat('po_bone', [0x847a64, 0.8]);
   registerMat('po_gravel', makeWet(pbr('gravel', { tile: 1.6, color: 0xb0aca4 }), { darken: 0.3, gloss: 0.4 }));
   // 既有的貼花/水窪也要會濕
   makeWet(mat('po_decal'), { darken: 0.1, gloss: 0.5 });
@@ -287,7 +288,7 @@ export const mark = (P, name, x, z, w, h, rot = 0, y = 0.011) => flatQuad(P, 'po
 export const MARKS = MARK;
 
 // 停車格:沿 x 方向一排,每格寬 sw,深 d(往 dir = +1 南 / -1 北);x0..x1 為格線範圍;num0 起始編號
-export function stalls(P, x0, x1, zHead, d, dir, sw = 3, { num0 = 1, band = BAND.white, nums = true, R = Math.random, skip = null } = {}) {
+export function stalls(P, x0, x1, zHead, d, dir, sw = 3, { num0 = 1, band = BAND.white, nums = true, R = () => 0.5, skip = null } = {}) {
   const zEnd = zHead + d * dir;
   line(P, band, x0, zHead, x1, zHead, 0.12);
   let k = 0;

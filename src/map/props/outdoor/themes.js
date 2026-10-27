@@ -14,61 +14,14 @@ import { tent, canopy, sandbagWall, jersey, heras, foldTable, foldChair, bodyBag
 import { bench, bollard, hydrant, busStop, utilityBox, trashCan, barrel, crate, propane, wetSign, tyre, lamp, wallLamp, secLight, neonSign, flagPole, planter, payStation, cart, pallet } from './furniture.js';
 import { stretcher } from './cars.js';
 import { BASEMENT } from './basement.js';
+import { GENERIC, zrng, freeRect, freeAt, edgeDress, scatter, finish } from './generic.js';
 import { windify } from './env.js';
 
 // 各主題擺設(dressOutdoor 依 zone.theme 呼叫)。戶外區域以世界座標手工構圖(故事場景),
 // 每個會擋路的物件先檢查格子(可走、未佔用、不靠門);共用的「邊緣處理」替每個靠牆/圍籬的格子加上
 // 牆腳污垢、落葉、雜草、垃圾、枯藤。
 const C2 = 2;
-const zrng = (zone) => { let h = 2166136261; for (const ch of zone.id) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return mkRng(h >>> 0); };
-// 世界矩形 [x0,z0]-[x1,z1] 覆蓋的格子是否都可放(可走的一般格、未佔用、不緊貼門口)
-function freeRect(ctx, li, x0, z0, x1, z1, nearDoorOk = false) {
-  for (let c = Math.floor(x0 / C2); c <= Math.floor((x1 - 1e-3) / C2); c++) for (let r = Math.floor(z0 / C2); r <= Math.floor((z1 - 1e-3) / C2); r++) {
-    if (!ctx.isPlain(li, c, r) || ctx.occupied(li, c, r)) return false;
-    if (!nearDoorOk && ctx.nearDoor(li, c, r)) return false;
-  }
-  return true;
-}
-const freeAt = (ctx, li, x, z, rx = 0.6, rz = rx) => freeRect(ctx, li, x - rx, z - rz, x + rx, z + rz);
 const inZone = (ctx, zone, x, z) => ctx.L.zoneAt(zone.levelIndex, Math.floor(x / C2), Math.floor(z / C2)) === zone;
-
-// ---------- 共用:邊緣處理 + 地面散布 ----------
-function edgeDress(ctx, zone, R, P, o = {}) {
-  const L = ctx.L, li = zone.levelIndex, y = L.levels[li].y;
-  const leaves = o.leaves ?? 7, ivyP = o.ivy ?? 0.12, grime = o.grime ?? true, tufts = o.tufts ?? 2, litterP = o.litter ?? 0.25;
-  for (const [c0, r0, c1, r1] of zone.rects) for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
-    if (!(L.flagsAt(li, c, r) & L.F.WALK) || L.charAt(li, c, r) === '+') continue;
-    const x = c * C2, z = r * C2;
-    for (const e of edgeInfo(ctx, li, c, r)) {
-      if (e.door) continue;
-      const nch = L.charAt(li, c + e.dc, r + e.dr);
-      if ('^v<>%o_'.includes(nch)) continue;
-      // 牆/圍籬所在的邊(世界座標線段),法線朝本格
-      let ax, az, bx, bz;
-      if (e.dr === -1) { ax = x; az = z; bx = x + C2; bz = z; } else if (e.dr === 1) { ax = x; az = z + C2; bx = x + C2; bz = z + C2; } else if (e.dc === -1) { ax = x; az = z; bx = x; bz = z + C2; } else { ax = x + C2; az = z; bx = x + C2; bz = z + C2; }
-      const nx = -e.dc, nz = -e.dr, off = e.fence ? 0.25 : 0.12;
-      const lx0 = ax + nx * off, lz0 = az + nz * off, lx1 = bx + nx * off, lz1 = bz + nz * off;
-      if (e.wall && grime) wallStrip(P, BAND.grime, ax, az, bx, bz, y, R.range(0.5, 1.1), nx, nz);
-      if (e.wall && R() < ivyP) ivy(P, (ax + bx) / 2 + R.range(-0.4, 0.4) * (bx - ax !== 0 ? 1 : 0), y, (az + bz) / 2 + R.range(-0.4, 0.4) * (bz - az !== 0 ? 1 : 0), Math.atan2(nx, nz), R.range(1.1, 2.0), R.range(1.6, 3.2), R() < 0.5);
-      if (leaves) leafLine(P, R, lx0, lz0, lx1, lz1, 0.5, R.int(leaves >> 1, leaves), y + 0.012);
-      if (tufts && R() < 0.75) tuftLine(ctx, R, lx0, lz0, lx1, lz1, y, R.int(1, tufts), { jitter: 0.25, dryP: 0.65 });
-      if (R() < litterP) litter(P, R, (lx0 + lx1) / 2 + nx * 0.2, (lz0 + lz1) / 2 + nz * 0.2, 0.7, R.int(1, 3), undefined, y + 0.009);
-      if (e.wall && R() < (o.stain ?? 0.08)) flatDecal(P, R.pick(['rustrun', 'drip', 'mud', 'moss']), (ax + bx) / 2 + nx * 0.013, y + R.range(0.6, 1.6), (az + bz) / 2 + nz * 0.013, R.range(0.6, 1.1), R.range(0.8, 1.6), nx > 0.5 ? 'x+' : nx < -0.5 ? 'x-' : nz > 0.5 ? 'z+' : 'z-');
-    }
-  }
-}
-function scatter(ctx, zone, R, P, { leaves = 0.25, litter: lp = 0.15, cracks = 0, puddles = 0, tufts = 0, stains = 0.06, kinds } = {}) {
-  const li = zone.levelIndex, y = ctx.L.levels[li].y;
-  for (const cell of ctx.cells(zone, { allowNearDoor: true })) {
-    if (R() < leaves) leafPatch(P, R, cell.x + R.range(-0.6, 0.6), cell.z + R.range(-0.6, 0.6), R.range(0.3, 0.9), R.int(2, 7), y + 0.011);
-    if (R() < lp) litter(P, R, cell.x, cell.z, 0.9, R.int(1, 3), kinds, y + 0.009);
-    if (R() < cracks) tarCrack(P, R, cell.x + R.range(-0.8, 0.8), cell.z + R.range(-0.8, 0.8), R.range(2, 7));
-    if (R() < puddles) puddle(P, R, cell.x + R.range(-0.5, 0.5), cell.z + R.range(-0.5, 0.5), R.range(0.35, 0.8), R.range(0.8, 1.6), R.range(0.6, 1.1), y + 0.004);
-    if (R() < tufts) tuftPatch(ctx, R, cell.x, cell.z, y, 0.8, R.int(1, 3));
-    if (R() < stains) groundDecal(P, R.pick(['oil', 'water', 'stain2', 'mud', 'water2']), cell.x + R.range(-0.5, 0.5), cell.z + R.range(-0.5, 0.5), R.range(0.8, 1.8), R.range(0.8, 1.8), R() * TAU, y + 0.005);
-  }
-}
-const finish = (ctx, P) => { if (P.map.size) put(ctx, P, 0, 0, 0); };
 
 // ======================================================================
 // 停車場
@@ -695,8 +648,19 @@ function dressFireEscape(ctx, zone) {
   finish(ctx, P);
 }
 
+// 醫院地圖的手工場景:區域 id 與範圍(rects)都吻合時才用;換地圖或改了版面就退回通用版(generic.js)
+const SETPIECES = {
+  f1_parking: [dressParking, [[1, 38, 58, 48]]], f1_plaza: [dressPlaza, [[1, 34, 58, 37]]], f1_alley: [dressAlley, [[1, 1, 51, 5]]],
+  f1_playground: [dressPlayground, [[52, 1, 58, 9]]], f1_cemetery: [dressCemetery, [[1, 12, 5, 24]]], f1_westyard: [dressYard, [[1, 6, 7, 11], [7, 12, 7, 25], [1, 25, 7, 33]]],
+  f1_ambulance: [dressAmbulanceBay, [[52, 10, 58, 33]]], f1_courtyard: [dressCourtyard, [[22, 15, 37, 24]]], f3_roof: [dressRooftop, [[9, 26, 50, 32], [22, 25, 37, 25]]],
+};
+const theme = (name) => (ctx, zone) => {
+  const sp = SETPIECES[zone.id];
+  if (sp && JSON.stringify(zone.rects) === JSON.stringify(sp[1])) return sp[0](ctx, zone);
+  return GENERIC[name](ctx, zone);
+};
 export const THEMES = {
-  parking: dressParking, plaza: dressPlaza, alley: dressAlley, playground: dressPlayground, cemetery: dressCemetery,
-  yard: dressYard, ambulance_bay: dressAmbulanceBay, courtyard: dressCourtyard, rooftop: dressRooftop, fire_escape: dressFireEscape,
+  parking: theme('parking'), plaza: theme('plaza'), alley: theme('alley'), playground: theme('playground'), cemetery: theme('cemetery'),
+  yard: theme('yard'), ambulance_bay: theme('ambulance_bay'), courtyard: theme('courtyard'), rooftop: theme('rooftop'), fire_escape: dressFireEscape,
   ...BASEMENT,
 };

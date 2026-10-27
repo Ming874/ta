@@ -22,16 +22,21 @@ export function lightMod(spec) { LIGHT_MODS.push(spec); return spec; }
 
 // 自己控制亮度的發光材質(霓虹招牌、警示燈…):fn(t) → 0..1;weather.js 每幀更新 emissiveIntensity = ei × fn(t)
 export const GLOWS = [];
-export function glowMat(m, ei, fn) { GLOWS.push({ m, ei, fn }); return m; }
+export function glowMat(m, ei, fn, perm = false) { GLOWS.push({ m, ei, fn, perm }); return m; }
+// 新地圖開始擺設前清空(換地圖 / 重建時不留舊的燈具調整與發光材質;perm = 共用材質,保留)
+export function resetEnv() { LIGHT_MODS.length = 0; for (let i = GLOWS.length - 1; i >= 0; i--) if (!GLOWS[i].perm) GLOWS.splice(i, 1); ENV.flash = 0; }
 
-// 風吹頂點動畫:mode 'grass'(uv.y 越高擺越大)| 'tree'(本地高度越高擺越大)| 'cloth'(uv.x 越遠離掛點擺越大)
-// amp:最大位移(公尺);h:參考高度(tree 模式)
+// 風吹頂點動畫:mode 'grass'(uv.y 越高擺越大)| 'tree'(本地高度越高擺越大,只用在實例池)| 'cloth'(uv.x 越遠離掛點擺越大)
+// amp:最大位移(公尺);h:參考高度(tree 模式)。模式與參數都是 uniform → 所有風吹材質共用同一份 shader 程式碼(少編譯幾個 program)
+const WIND_MODE = { grass: 0, tree: 1, cloth: 2 };
 export function windify(m, { mode = 'grass', amp = 0.12, h = 4 } = {}) {
   const prev = m.onBeforeCompile;
+  const hasPrev = prev && prev !== THREE.Material.prototype.onBeforeCompile;
+  m.userData.wind = { uWAmp: { value: amp }, uWH: { value: h }, uWMode: { value: WIND_MODE[mode] ?? 0 } };
   m.onBeforeCompile = function (s, r) {
-    s.uniforms.uWindT = WIND.uWindT; s.uniforms.uWind = WIND.uWind; s.uniforms.uGust = WIND.uGust;
+    Object.assign(s.uniforms, WIND, this.userData.wind);
     s.vertexShader = s.vertexShader
-      .replace('void main() {', 'uniform float uWindT;\nuniform float uWind;\nuniform float uGust;\nvoid main() {')
+      .replace('void main() {', 'uniform float uWindT;\nuniform float uWind;\nuniform float uGust;\nuniform float uWAmp;\nuniform float uWH;\nuniform float uWMode;\nvoid main() {')
       .replace('#include <begin_vertex>', `#include <begin_vertex>
 	{
 		vec4 wO = vec4( 0.0, 0.0, 0.0, 1.0 );
@@ -40,19 +45,20 @@ export function windify(m, { mode = 'grass', amp = 0.12, h = 4 } = {}) {
 		#endif
 		wO = modelMatrix * wO;
 		vec4 wV = modelMatrix * vec4( position, 1.0 );
-		vec2 wp = ${mode === 'tree' ? 'wO.xz' : 'wV.xz'};
+		bool isTree = uWMode > 0.5 && uWMode < 1.5;
+		vec2 wp = isTree ? wO.xz : wV.xz;
 		float ph = wp.x * 0.21 + wp.y * 0.17;
 		float sway = sin( uWindT * 1.31 + ph ) * 0.6 + sin( uWindT * 2.73 + ph * 1.7 ) * 0.25 + sin( uWindT * 6.1 + ph * 3.1 ) * 0.15;
-		float k = ${mode === 'tree' ? `pow( max( 0.0, position.y - 0.4 ) / ${h.toFixed(2)}, 1.6 )` : mode === 'cloth' ? 'uv.x' : 'uv.y * uv.y'};
-		float a = ${amp.toFixed(3)} * k * ( uWind * 0.7 + uGust );
+		float k = isTree ? pow( max( 0.0, position.y - 0.4 ) / uWH, 1.6 ) : uWMode > 1.5 ? uv.x : uv.y * uv.y;
+		float a = uWAmp * k * ( uWind * 0.7 + uGust );
 		transformed.x += ( sway * 0.8 + 0.5 * uGust ) * a;
 		transformed.z += sin( uWindT * 1.07 + ph * 1.3 ) * 0.45 * a;
-		${mode === 'cloth' ? 'transformed.y += sin( uWindT * 3.3 + uv.x * 7.0 + ph ) * a * 0.35;' : ''}
+		if ( uWMode > 1.5 ) transformed.y += sin( uWindT * 3.3 + uv.x * 7.0 + ph ) * a * 0.35;
 	}`);
-    if (prev) prev.call(this, s, r);
+    if (hasPrev) prev.call(this, s, r);
   };
-  const key = m.customProgramCacheKey ? m.customProgramCacheKey() : '';
-  m.customProgramCacheKey = () => `wind_${mode}_${amp}_${h}_${key}`;
+  const key = hasPrev ? (m.customProgramCacheKey !== THREE.Material.prototype.customProgramCacheKey ? m.customProgramCacheKey() : prev.toString()) : '';
+  m.customProgramCacheKey = () => 'wind|' + key;
   return m;
 }
 

@@ -67,6 +67,7 @@ export function initNature() {
   registerMat('po_twig_wind', makeWet(windify(std({ color: 0x3a3028, roughness: 1 }), { mode: 'tree', amp: 0.22, h: 2.2 }), { darken: 0.3, gloss: 0.4 }));
   registerMat('po_grass_wind', windify(std({ map: GRASS_TEX(), alphaTest: 0.42, side: THREE.DoubleSide, roughness: 1 }), { mode: 'grass', amp: 0.14 }));
   registerMat('po_leafcard_wind', windify(std({ map: mat('po_leaf_card').map, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1 }), { mode: 'tree', amp: 0.28, h: 5 }));
+  registerMat('po_twigcard_wind', windify(std({ map: TWIG_TEX(), alphaTest: 0.35, side: THREE.DoubleSide, roughness: 1, color: 0x8a8070 }), { mode: 'tree', amp: 0.22, h: 5.5 }));
   registerMat('po_ivy', std({ map: IVY_TEX(), alphaTest: 0.4, side: THREE.DoubleSide, roughness: 1 }));
   registerMat('po_crow', std({ color: 0x0b0b0d, roughness: 0.35, metalness: 0.15 }));
   registerMat('po_crow_beak', std({ color: 0x18161a, roughness: 0.5 }));
@@ -84,64 +85,103 @@ function limb(a, b, r0, r1, seg = 7) {
   g.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
   return g;
 }
-// kind:'oak' 寬展 / 'poplar' 高瘦 / 'gnarl' 墓園老樹(粗矮、扭曲)/ 'snag' 斷頭枯樹 / 'sapling' 細苗(含支柱)
+// 細枝卡片(256×256 透明:分岔的黑色細枝,樹梢用)
+const TWIG_TEX = lazy(() => {
+  const [c, ctx] = canvas(256, 256);
+  ctx.lineCap = 'round';
+  const br = (x, y, a, len, w, d) => {
+    const x2 = x + Math.cos(a) * len, y2 = y + Math.sin(a) * len;
+    ctx.strokeStyle = `rgb(${(28 + d * 6) | 0},${(24 + d * 5) | 0},${(20 + d * 4) | 0})`; ctx.lineWidth = w;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo((x + x2) / 2 + rr(-6, 6), (y + y2) / 2 + rr(-6, 6), x2, y2); ctx.stroke();
+    if (d < 5 && len > 6) for (let k = 0; k < 2 + (R() < 0.4 ? 1 : 0); k++) br(x2, y2, a + rr(-0.75, 0.75), len * rr(0.55, 0.78), w * 0.68, d + 1);
+  };
+  for (let k = 0; k < 3; k++) br(128 + rr(-20, 20), 256, -HALF + rr(-0.35, 0.35), rr(60, 90), 4.5, 0);
+  return tex(c, { repeat: false });
+});
+// kind:'oak' 寬展 / 'poplar' 高瘦(中央主幹)/ 'gnarl' 墓園老樹(粗矮扭曲)/ 'snag' 斷頭枯樹 / 'sapling' 細苗(含支柱)
 function treeParts(kind, seed) {
   const P = new Parts();
-  let s = seed * 9301 + 49297;
-  const rnd = () => ((s = (s * 9301 + 49297) % 233280) / 233280);
+  let sd = seed * 9301 + 49297;
+  const rnd = () => ((sd = (sd * 9301 + 49297) % 233280) / 233280);
   const rng = (a, b) => a + rnd() * (b - a);
   const cfg = {
-    oak: { h: 3.0, r: 0.2, depth: 4, spread: 0.8, up: 0.25, n: [2, 3], kLen: 0.72 },
-    poplar: { h: 5.0, r: 0.15, depth: 4, spread: 0.4, up: 0.6, n: [2, 3], kLen: 0.68 },
-    gnarl: { h: 2.2, r: 0.34, depth: 4, spread: 1.0, up: 0.05, n: [2, 4], kLen: 0.78 },
-    snag: { h: 3.6, r: 0.22, depth: 2, spread: 0.7, up: 0.3, n: [1, 2], kLen: 0.55 },
-    sapling: { h: 2.0, r: 0.045, depth: 3, spread: 0.6, up: 0.5, n: [2, 3], kLen: 0.6 },
+    oak: { h: 2.4, r: 0.22, limbs: [3, 4], ang: [0.55, 0.95], depth: 3, kLen: 0.72, kR: 0.62, up: 0.12, wob: 0.06, len0: 2.4, twig: 1.2 },
+    poplar: { h: 5.6, r: 0.17, limbs: [5, 7], ang: [0.35, 0.6], depth: 2, kLen: 0.6, kR: 0.5, up: 0.3, wob: 0.04, len0: 1.6, twig: 0.9, excurrent: true },
+    gnarl: { h: 1.7, r: 0.38, limbs: [3, 4], ang: [0.8, 1.25], depth: 3, kLen: 0.78, kR: 0.6, up: -0.05, wob: 0.16, len0: 2.6, twig: 1.3 },
+    snag: { h: 3.4, r: 0.24, limbs: [2, 2], ang: [0.6, 1.0], depth: 1, kLen: 0.55, kR: 0.5, up: 0.05, wob: 0.08, len0: 1.2, twig: 0.7, broken: true },
+    sapling: { h: 1.4, r: 0.05, limbs: [3, 4], ang: [0.4, 0.8], depth: 2, kLen: 0.65, kR: 0.6, up: 0.3, wob: 0.05, len0: 0.9, twig: 0.7 },
   }[kind];
-  const twig = (a, dir, len) => { const b = a.clone().addScaledVector(dir, len); P.add('po_twig_wind', limb(a, b, 0.008, 0.003, 3)); };
-  const grow = (a, dir, len, r, depth) => {
+  const up = new V3(0, 1, 0), tmp = new V3();
+  // 一段會彎的枝幹:回傳末端點/方向/半徑
+  const grow = (a, dir, len, r0, r1, wob, upK) => {
     const segs = Math.max(2, Math.round(len / 0.45));
-    let p = a.clone(), d = dir.clone(), rr0 = r;
+    let p = a.clone(); const d = dir.clone();
     for (let i = 0; i < segs; i++) {
-      d.x += rng(-0.18, 0.18) * (kind === 'gnarl' ? 2 : 1); d.z += rng(-0.18, 0.18) * (kind === 'gnarl' ? 2 : 1); d.y += cfg.up * 0.08 - (depth > 2 ? 0.04 : 0);
-      d.normalize();
+      d.x += rng(-wob, wob); d.z += rng(-wob, wob); d.y += upK; d.normalize();
       const q = p.clone().addScaledVector(d, len / segs);
-      const rr1 = rr0 * (depth === cfg.depth ? 0.94 : 0.85);
-      P.add(rr0 > 0.02 ? 'po_bark_wind' : 'po_twig_wind', limb(p, q, rr0, rr1, rr0 > 0.08 ? 9 : rr0 > 0.03 ? 6 : 4));
-      p = q; rr0 = rr1;
+      const ra = lerp(r0, r1, i / segs), rb = lerp(r0, r1, (i + 1) / segs);
+      P.add(ra > 0.025 ? 'po_bark_wind' : 'po_twig_wind', limb(p, q, ra, rb, ra > 0.1 ? 10 : ra > 0.04 ? 7 : 4));
+      p = q;
     }
-    if (depth <= 0) { for (let k = 0; k < 3; k++) twig(p, new V3(rng(-1, 1), rng(-0.2, 1), rng(-1, 1)).normalize(), rng(0.15, 0.35)); return; }
-    if (kind === 'snag' && depth === cfg.depth) { // 斷頭:樹幹頂端的斷口 + 兩根短枝
-      P.add('wood_old', cyl(rr0 * 0.95, rr0, 0.06, 8), M(p.x, p.y, p.z, 0.3, 0, 0.2));
+    return { p, d, r: r1 };
+  };
+  const twigCard = (p, d, s) => { // 兩片交叉的細枝卡片
+    for (let k = 0; k < 2; k++) {
+      const g = new THREE.PlaneGeometry(s, s).translate(0, s / 2, 0);
+      const q = new THREE.Quaternion().setFromUnitVectors(up, tmp.copy(d).lerp(up, 0.35).normalize());
+      const m = new THREE.Matrix4().compose(p, q.multiply(new THREE.Quaternion().setFromAxisAngle(up, k * HALF + rnd())), new V3(1, 1, 1));
+      P.add('po_twigcard_wind', g, m);
     }
-    const n = Math.round(rng(cfg.n[0], cfg.n[1] + 0.99));
+  };
+  const branch = (a, dir, len, r, depth) => {
+    const e = grow(a, dir, len, r, r * 0.72, cfg.wob, cfg.up * 0.25);
+    if (depth <= 0) { twigCard(e.p, e.d, cfg.twig * rng(0.8, 1.2)); return; }
+    const n = Math.round(rng(2, 3.4)), base = rnd() * TAU;
     for (let k = 0; k < n; k++) {
-      const az = rng(0, TAU), tilt = rng(0.35, 0.95) * cfg.spread + (k === 0 ? -0.2 : 0);
-      const nd = new V3(Math.cos(az) * Math.sin(tilt), Math.cos(tilt), Math.sin(az) * Math.sin(tilt)).lerp(d, 0.35).normalize();
-      grow(p, nd, len * cfg.kLen * rng(0.75, 1.1), rr0 * rng(0.55, 0.75), depth - 1);
+      const az = base + (k / n) * TAU + rng(-0.4, 0.4), tilt = rng(0.35, 0.75);
+      const side = new V3(Math.cos(az), 0, Math.sin(az));
+      const nd = e.d.clone().multiplyScalar(Math.cos(tilt)).addScaledVector(side, Math.sin(tilt)).normalize();
+      branch(e.p, nd, len * cfg.kLen * rng(0.8, 1.1), e.r * cfg.kR * rng(0.85, 1.05), depth - 1);
     }
+    if (rnd() < 0.5) twigCard(e.p, e.d, cfg.twig * 0.7);
   };
   // 樹根隆起
   const r0 = cfg.r;
-  for (let k = 0; k < (kind === 'sapling' ? 0 : 5); k++) {
-    const a = (k / 5) * TAU + rng(-0.3, 0.3);
-    P.add('po_bark_wind', limb(new V3(0, 0.25, 0), new V3(Math.cos(a) * r0 * 3.2, -0.05, Math.sin(a) * r0 * 3.2), r0 * 0.55, r0 * 0.12, 6));
+  if (kind !== 'sapling') for (let k = 0; k < 5; k++) { const a = (k / 5) * TAU + rng(-0.3, 0.3); P.add('po_bark_wind', limb(new V3(0, 0.3, 0), new V3(Math.cos(a) * r0 * 2.6, -0.04, Math.sin(a) * r0 * 2.6), r0 * 0.5, r0 * 0.1, 6)); }
+  // 主幹
+  const t = grow(new V3(0, -0.05, 0), new V3(rng(-0.06, 0.06), 1, rng(-0.06, 0.06)).normalize(), cfg.h, r0, r0 * (cfg.excurrent ? 0.55 : 0.78), cfg.wob * 0.5, 0.02);
+  if (cfg.broken) { P.add('wood_old', cyl(t.r * 0.9, t.r, 0.08, 8), M(t.p.x, t.p.y, t.p.z, 0.35, 0, 0.25)); P.add('wood_old', new THREE.ConeGeometry(t.r * 0.8, 0.35, 6), M(t.p.x + 0.04, t.p.y + 0.1, t.p.z, 0.2, 0, 0.5)); }
+  if (cfg.excurrent) { // 白楊:主幹繼續往上,沿途長出短側枝
+    const top = grow(t.p, t.d, cfg.h * 0.45, t.r, 0.02, cfg.wob * 0.4, 0.02);
+    twigCard(top.p, top.d, cfg.twig);
+    for (let k = 0; k < 9; k++) {
+      const f = 0.25 + k * 0.085, p = new V3(0, cfg.h * f + cfg.h * 0.45 * f * 0.3, 0), az = k * 2.4;
+      branch(p, new V3(Math.cos(az) * 0.8, 1.1, Math.sin(az) * 0.8).normalize(), cfg.len0 * (1 - f * 0.5), cfg.r * 0.32 * (1 - f * 0.4), cfg.depth - 1);
+    }
   }
-  grow(new V3(0, -0.05, 0), new V3(rng(-0.08, 0.08), 1, rng(-0.08, 0.08)).normalize(), cfg.h, r0, cfg.depth);
+  const nL = Math.round(rng(cfg.limbs[0], cfg.limbs[1] + 0.99)), base = rnd() * TAU;
+  if (!cfg.excurrent) for (let k = 0; k < nL; k++) {
+    const az = base + (k / nL) * TAU + rng(-0.3, 0.3), tilt = rng(cfg.ang[0], cfg.ang[1]);
+    const nd = new V3(Math.cos(az) * Math.sin(tilt), Math.cos(tilt), Math.sin(az) * Math.sin(tilt));
+    branch(t.p, nd, cfg.len0 * rng(0.85, 1.15), t.r * rng(0.55, 0.75), cfg.depth - (cfg.broken ? 0 : 1));
+  }
   if (kind === 'sapling') { // 支柱 + 綁帶
     P.add('wood_old', cyl(0.025, 0.025, 1.7, 6), M(0.12, 0.85, 0, 0, 0, -0.05));
-    P.add('rubber', new THREE.TorusGeometry(0.08, 0.01, 4, 10).rotateX(HALF), M(0.06, 1.1, 0));
+    P.add('rubber', new THREE.TorusGeometry(0.06, 0.01, 4, 10).rotateX(HALF), M(0.06, 1.1, 0));
   }
   // 少數殘存的枯葉簇
-  if (kind === 'oak' || kind === 'gnarl') for (let k = 0; k < 5; k++) {
-    const y = cfg.h * rng(0.9, 1.6), a = rng(0, TAU), d = rng(0.6, 1.8);
-    P.add('po_leafcard_wind', new THREE.PlaneGeometry(0.7, 0.7), M(Math.cos(a) * d, y, Math.sin(a) * d, rng(-1, 1), rng(0, TAU), rng(-1, 1)));
+  if (kind === 'oak' || kind === 'gnarl') for (let k = 0; k < 4; k++) {
+    const y = cfg.h + rng(0.6, 1.8), a = rng(0, TAU), d = rng(0.6, 1.8);
+    P.add('po_leafcard_wind', new THREE.PlaneGeometry(0.6, 0.6), M(Math.cos(a) * d, y, Math.sin(a) * d, rng(-1, 1), rng(0, TAU), rng(-1, 1)));
   }
   return P;
 }
-const TREE_VAR = { oak: 2, poplar: 1, gnarl: 1, snag: 1, sapling: 1 };
+const TREE_VAR = { oak: 3, poplar: 1, gnarl: 2, snag: 1, sapling: 1 };
 export function tree(ctx, kind, x, y, z, s = 1, yaw = 0, collide = true) {
   const v = Math.floor(hash(x * 3.1 + z * 7.7) * TREE_VAR[kind]);
-  pool(ctx, `tree_${kind}_${v}`, () => treeParts(kind, v * 17 + kind.length), 16).add(M(x, y, z, 0, yaw, 0, s));
+  const p = pool(ctx, `tree_${kind}_${v}`, () => treeParts(kind, v * 17 + kind.length), 16);
+  for (const im of p.meshes) if (im.material.alphaTest > 0) im.castShadow = false; // 細枝/葉卡不投影(省陰影 program 與填充)
+  p.add(M(x, y, z, 0, yaw, 0, s));
   if (collide && kind !== 'sapling') { const r = { oak: 0.42, poplar: 0.32, gnarl: 0.6, snag: 0.4 }[kind] * s; solid(ctx, x, y, z, r, 3, r); }
 }
 

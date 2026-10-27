@@ -38,11 +38,9 @@ function swingFrame() {
 }
 function swingSeat(L = 1.85) {
   const P = new Parts();
-  for (const dx of [-0.22, 0.22]) {
-    for (let k = 0; k < 14; k++) { // 鍊條(交錯的小環)
-      const y = -0.08 - k * (L - 0.15) / 14;
-      P.add('po_chain', tor(0.018, 0.004, 3, 6), M(dx, y, 0, 0, k % 2 ? HALF : 0, 0));
-    }
+  for (const dx of [-0.22, 0.22]) { // 鍊條:細鋼索 + 每 10cm 一節的扁環(遠看是連續的鍊子)
+    P.add('po_chain', cyl(0.006, 0.006, L - 0.1, 4), M(dx, -0.05 - (L - 0.1) / 2, 0));
+    for (let k = 0; k < 17; k++) P.add('po_chain', box(0.016, 0.07, 0.006), M(dx, -0.1 - k * (L - 0.15) / 17, 0, 0, k % 2 ? HALF : 0, 0));
   }
   const g = new THREE.BoxGeometry(0.5, 0.03, 0.18, 6, 1, 1);
   const p = g.attributes.position;

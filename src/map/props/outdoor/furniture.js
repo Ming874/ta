@@ -8,6 +8,8 @@ import { flatDecal } from './industrial.js';
 import { streetLamp } from './street.js';
 import { bindModel } from './gltf.js';
 import { lightMod, glowMat, windify } from './env.js';
+import { rng as mkRng } from '../ctx.js';
+const posRng = (x, z) => mkRng((Math.round(x * 100) * 73856093) ^ (Math.round(z * 100) * 19349663));
 
 // 街道家具:長椅(CC0 模型)、路阻柱、消防栓、公車亭、電箱(CC0)、鍍鋅垃圾桶 / 油桶 / 木箱 / 瓦斯桶 / 濕地板警示牌(動態,CC0)、
 // 工業壁燈(CC0)、保全投射燈(CC0)、霓虹招牌(逐字閃爍/熄滅)、旗桿(破旗隨風飄)、花台、停車繳費機、購物推車、棧板、
@@ -143,6 +145,7 @@ export function tyre(ctx, x, y, z, flat = true, yaw = 0) {
 // ---------- 燈具 ----------
 // 路燈:state 'on' | 'flicker' | 'dead'
 let lampSerial = 0;
+export function resetFurniture() { lampSerial = 0; }
 export function lamp(ctx, x, y, z, yaw, state = 'on', { kind = 'tall', zone = null, lean = 0 } = {}) {
   if (state === 'flicker') {
     const key = `po_lampf_${lampSerial++}`;
@@ -284,7 +287,8 @@ function cartParts() {
 }
 export const cart = (ctx, x, y, z, yaw = 0, tipped = false) => dyn(ctx, 'cart', cartParts, { mass: 14, shape: 'box', size: [1.0, 0.95, 0.56], friction: 0.35, restitution: 0.1 }, x, y + (tipped ? 0.3 : 0.45), z, tipped ? [HALF * 0.95, yaw, 0] : [0, yaw, 0]);
 // ---------- 棧板(靜態;stack 層)----------
-export function pallet(P, x, y, z, yaw = 0, stack = 1, rng = Math.random) {
+export function pallet(P, x, y, z, yaw = 0, stack = 1, rng = null) {
+  rng = rng || posRng(x, z);
   for (let s = 0; s < stack; s++) {
     const T = new Parts(), yy = s * 0.145;
     for (let k = 0; k < 7; k++) T.add('wood_old', box(0.1, 0.022, 1.2), M(-0.39 + k * 0.13, yy + 0.133, 0));
