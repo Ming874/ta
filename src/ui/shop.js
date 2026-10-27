@@ -6,6 +6,7 @@ import { createDisplayGun } from '../weapons/models.js';
 import { pickupModel } from '../pickups.js';
 import { buildVest, statOf, moddedStats, MOD_DEFS, roman, weaponName, modTotal, MOD_MAX } from '../shop.js';
 import { sfx } from '../audio.js';
+import { SPECIAL, waveKind } from '../game/waves.js';
 
 // 商店介面:分頁(武器 / 彈藥 / 改裝 / 裝備)、左側清單、右側 3D 預覽 + 數值條(與手上武器比較)+ 購買。
 // 3D 預覽用獨立的小 WebGLRenderer,只在商店開啟時運作,關閉時釋放。
@@ -299,7 +300,9 @@ export class ShopUI {
     this.renderList();
     this.renderInfo();
     const g = this.game;
-    this.restEl.innerHTML = g.phase === 'shop' || g.phase === 'break' ? `休息剩餘<b>${Math.max(0, Math.ceil(g.restT))}</b>秒${g.net ? '' : ' · 購物時暫停'}` : '';
+    const sp = SPECIAL[waveKind((g.round || 0) + 1)];
+    this.restEl.innerHTML = g.phase === 'shop' || g.phase === 'break'
+      ? `休息剩餘<b>${Math.max(0, Math.ceil(g.restT))}</b>秒${g.net ? '' : ' · 購物時暫停'}<br />下一回合:第 ${(g.round || 0) + 1} 回合${sp ? ` · <i>${esc(sp.name)}</i>` : ''}` : '';
   }
 
   renderTabs() {

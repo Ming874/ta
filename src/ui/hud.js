@@ -216,11 +216,12 @@ export class Hud {
   setZombies(n) {
     this._set('rs', `z${n}`, () => { this.roundSub.className = 'hd-rs'; this.roundSub.innerHTML = `殭屍 <b>${n}</b>`; });
   }
-  setRest(sec, canSkip = true) {
+  // next = 下一回合是特殊/首領回合時的名稱
+  setRest(sec, canSkip = true, next = '') {
     const s = Math.max(0, Math.ceil(sec));
-    this._set('rs', `r${s}|${canSkip}`, () => {
+    this._set('rs', `r${s}|${canSkip}|${next}`, () => {
       this.roundSub.className = `hd-rs rest${s <= 5 ? ' urgent' : ''}`;
-      this.roundSub.innerHTML = `休息 <b>${s}</b> 秒${canSkip ? ` · ${withKeys('[N] 立即開始')}` : ''}`;
+      this.roundSub.innerHTML = `休息 <b>${s}</b> 秒${next ? ` · 下一回合 <i class="nx">${esc(next)}</i>` : ''}${canSkip ? ` · ${withKeys('[N] 立即開始')}` : ''}`;
     });
   }
   setRoundText(html) { this._set('rs', `t${html}`, () => { this.roundSub.className = 'hd-rs'; this.roundSub.innerHTML = html; }); }

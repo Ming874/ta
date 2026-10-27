@@ -49,7 +49,7 @@ export class UI {
   pickup(text, color, o) { this.hud.pickup(text, color, o); }
   setRound(n) { this.hud.setRound(n); }
   setZombies(n) { this.hud.setZombies(n); }
-  setRest(sec) { this.hud.setRest(sec); }
+  setRest(sec, canSkip = true, next = '') { this.hud.setRest(sec, canSkip, next); }
   setRoundText(html) { this.hud.setRoundText(html); }
   banner(text, sub = '', ms = 3500, cls = '') { this.hud.banner(text, sub, ms, cls); }
   prompt(text, dim = false) { this.hud.prompt(text, dim); }

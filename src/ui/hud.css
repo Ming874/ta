@@ -26,6 +26,7 @@
 .hd-rs b { font-family: var(--num); font-size: 1.2em; color: var(--hud-text); margin: 0 .15em; }
 .hd-rs.rest b { color: var(--hud-amber); }
 .hd-rs.urgent b { color: #ff6a5a; }
+.hd-rs .nx { font-style: normal; color: #ff7a5a; letter-spacing: .1em; }
 
 /* ---- 右上:金幣 ---- */
 .hd-coins { right: 1.8em; top: 1.2em; display: flex; align-items: center; gap: .45em; font: 700 1.6em/1 var(--num); color: var(--hud-gold); }

@@ -21,6 +21,7 @@
 .sh-title small { font-size: 11px; letter-spacing: 4px; color: var(--muted); margin-top: 4px; }
 .sh-rest { margin-left: auto; text-align: right; font-size: 13px; color: var(--muted); letter-spacing: 1px; }
 .sh-rest b { font: 700 20px var(--num); color: var(--text); margin: 0 3px; }
+.sh-rest i { font-style: normal; color: #ff7a5a; letter-spacing: 2px; }
 .sh-coins { display: flex; align-items: center; gap: 8px; padding: 6px 14px 6px 10px; border: 1px solid rgba(242, 200, 75, .35); background: rgba(242, 200, 75, .07);
   font: 700 24px/1 var(--num); color: var(--gold); min-width: 120px; justify-content: flex-end; }
 .sh-coins svg { width: 22px; height: 22px; }

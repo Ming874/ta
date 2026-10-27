@@ -565,7 +565,7 @@ export const flowMethods = {
     this.ui.prompt(prompt, dim);
     // 回合資訊
     if (this.phase === 'fighting') this.ui.setZombies(this.zombiesLeft());
-    else if (this.phase === 'shop' || this.phase === 'break') this.ui.setRest(this.restT);
+    else if (this.phase === 'shop' || this.phase === 'break') this.ui.setRest(this.restT, !this.net, SPECIAL[waveKind(this.round + 1)]?.name || '');
     else if (this.phase === 'collecting') this.ui.setRoundText('收集金幣中…');
     this.ui.update(this, dt);
   },
@@ -591,6 +591,7 @@ export const flowMethods = {
     if (document.pointerLockElement) document.exitPointerLock();
     this.input.fireHeld = false;
     this._idleT = 0;
+    this.ui.tips?.clearQueue();
     this.ui.showDeath(this.deathSummary());
   },
 

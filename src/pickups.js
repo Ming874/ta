@@ -843,7 +843,7 @@ export class Pickups {
       if (it.state !== 'idle') continue;
       const pos = it.root.position;
       if (Math.abs(pos.y - py) > 1.5 || Math.hypot(pos.x - p.pos.x, pos.z - p.pos.z) > 40) continue;
-      if (w?.hasLineOfSight && !w.hasLineOfSight(pos.x, pos.y + 0.4, pos.z, p.pos.x, py + 1.2, p.pos.z)) continue;
+      if (w?.hasLineOfSight && !w.hasLineOfSight(pos.x, pos.y + 1.5, pos.z, p.pos.x, py + 1.6, p.pos.z)) continue; // 視線高度:隔牆的不收,櫃台、矮牆後面的照收
       if (!this.wants(it, game) || !this.apply(it, game)) continue;
       it.state = 'take';
       it.take = -n * 0.12; // 一個接一個飛過來
