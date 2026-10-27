@@ -33,6 +33,7 @@ export class Game {
 
     // ---- 渲染器 ----
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+    renderer.debug.checkShaderErrors = !import.meta.env.PROD; // 正式版不查 shader 錯誤日誌(那些查詢會同步等編譯完成;建構期間的預編譯也適用)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap; // r18x 已棄用 PCFSoftShadowMap(會退回 PCF 並警告)
