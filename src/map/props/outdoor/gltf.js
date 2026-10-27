@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { assets } from '../../../sys/assets.js';
 
 // 下載的 CC0 寫實模型(Poly Haven,署名見 public/credits/props-out.md)。
 // 每個模型只載入一次;零件(幾何+材質)烘入相對矩陣並正規化原點後,交給實例池共用。
@@ -31,7 +32,7 @@ export function loadModel(key) {
   if (!p) {
     const spec = MODELS[key];
     loader ??= new GLTFLoader();
-    p = loader.loadAsync(BASE + spec.file).then((g) => { fix(g.scene, spec.tex); return g.scene; });
+    p = assets.task(() => loader.loadAsync(BASE + spec.file), { meta: { model: key, outdoor: true }, prio: 30 }).then((g) => { fix(g.scene, spec.tex); return g.scene; }); // 下載排隊(src/sys/assets.js)
     p.catch((e) => console.warn('[props-out] 模型載入失敗,改用程式模型', key, e?.message || e));
     cache.set(key, p);
   }
