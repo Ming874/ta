@@ -481,7 +481,7 @@ export class Weather {
     RL.uCam.value.copy(cam.position);
     RL.uTime.value = t % 2000;
     RL.uFogD.value = fogD;
-    if (raining) updateRainLights(g, this.occ, this.flash, this.moonBase);
+    if (raining) updateRainLights(g, this.occ, this.flash, this.moonBase, this.masks.gY);
     cam.getWorldDirection(_f);
     _f.y = 0;
     if (_f.lengthSq() < 1e-6) _f.set(0, 0, -1);

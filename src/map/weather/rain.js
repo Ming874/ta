@@ -52,7 +52,8 @@ vec3 rainLight( vec3 p, vec3 vd ) {
 }
 float rainFog( float d ) { float f = uFogD * d; return exp( - f * f ); }
 // 亮度軟壓縮:貼近光源的雨滴不會爆白,遠一點的仍看得到(1/d² 的動態範圍太大)
-vec3 rainSat( vec3 c ) { return c * 1.6 / ( 1.0 + max( c.r, max( c.g, c.b ) ) * 0.6 ); }
+// 先做感知壓縮(亮度^0.6,保留色相):逆光的雨滴是高對比的閃點,路燈周圍幾公尺都看得到雨,不只燈泡旁邊
+vec3 rainSat( vec3 c ) { float m = max( c.r, max( c.g, c.b ) ); c *= pow( max( m, 1e-6 ), - 0.4 ); m = pow( max( m, 1e-6 ), 0.6 ); return c / ( 1.0 + m * 0.7 ); }
 `;
 const seeds = (n, k = 4) => { const a = new Float32Array(n * k); for (let i = 0; i < a.length; i++) a[i] = Math.random(); return a; };
 const quadGeo = (n, pos) => {
@@ -76,7 +77,7 @@ export function streakMesh() {
       ...RL, ...OCC,
       uBoxN: { value: new THREE.Vector3(12, 10, 12) }, uBoxM: { value: new THREE.Vector3(30, 18, 30) }, uNearF: { value: 0.22 },
       uCtr: { value: new THREE.Vector3() }, uDrift: { value: new THREE.Vector2() }, uWindV: { value: new THREE.Vector3() }, uCamV: { value: new THREE.Vector3() },
-      uFall: { value: 8.5 }, uExpo: { value: 0.032 }, uInt: { value: 1 }, uPx: { value: 0.0015 }, uK: { value: 0.08 }, uTint: { value: new THREE.Color(0.86, 0.93, 1.0) },
+      uFall: { value: 8.5 }, uExpo: { value: 0.032 }, uInt: { value: 1 }, uPx: { value: 0.0015 }, uK: { value: 0.45 }, uTint: { value: new THREE.Color(0.86, 0.93, 1.0) },
     },
     vertexShader: /* glsl */`
       attribute vec4 aSeed;
@@ -117,7 +118,7 @@ export function streakMesh() {
         v.xy += nrm * position.x * w + dir * ( position.y - 0.5 ) * w; // 兩端各延伸半個寬度(點狀時是圓點)
         float occ = occH( p.xz );
         float edge = ( 1.0 - smoothstep( 0.4, 0.5, max( abs( rel.x - 0.5 ), abs( rel.z - 0.5 ) ) ) ) * smoothstep( 0.0, 0.06, rel.y ) * ( 1.0 - smoothstep( 0.92, 1.0, rel.y ) );
-        float cover = clamp( diam / w0, 0.04, 1.0 ) * ( w0 / w ); // 次像素:改用覆蓋率
+        float cover = sqrt( clamp( diam / w0, 0.01, 1.0 ) ) * ( w0 / w ); // 次像素:改用覆蓋率(開根號:受光雨滴是很亮的閃點,遠處仍看得到)
         vec3 vd = ( p - uCam ) / max( length( p - uCam ), 1e-3 );
         vec3 L = rainLight( p, vd );
         vA = step( occ, p.y ) * edge * smoothstep( 0.2, 0.6, dist ) * cover * rainFog( dist ) * step( fract( aSeed.w * 7.31 ), uInt );
@@ -172,16 +173,17 @@ export function curtainMesh() {
   g.setDrawRange(0, idx.length);
   g.userData.perLayer = rings * seg * 6;
   const m = new THREE.ShaderMaterial({
-    uniforms: { ...RL, ...OCC, uWindV: { value: new THREE.Vector3() }, uFall: { value: 8.5 }, uInt: { value: 1 }, uK: { value: 0.05 }, uHaze: { value: 0.02 }, uFlash: { value: 0 } },
+    uniforms: { ...RL, ...OCC, uWindV: { value: new THREE.Vector3() }, uFall: { value: 8.5 }, uInt: { value: 1 }, uK: { value: 0.45 }, uHaze: { value: 0.05 }, uFlash: { value: 0 } },
     vertexShader: /* glsl */`
       attribute float aLay;
       ${LIGHT_GLSL}
+      uniform float uK;
       varying vec3 vW; varying vec3 vL; varying float vLay; varying float vD;
       void main() {
         vec3 w = position + uCam;
         vW = w; vLay = aLay;
         vec3 vd = normalize( position );
-        vL = rainLight( w, vd );
+        vL = rainSat( rainLight( w, vd ) * uK );
         vec4 mv = viewMatrix * vec4( w, 1.0 );
         vD = length( position );
         gl_Position = projectionMatrix * mv;
@@ -216,8 +218,7 @@ export function curtainMesh() {
         float sheet = 0.45 + 0.55 * cn( vec2( u * 0.08 - uTime * uWindV.x * 0.05, y * 0.06 + uTime * 0.25 ) );
         float vfade = smoothstep( 0.0, 3.0, 15.0 - abs( y - uCam.y ) );
         float fogA = exp( - pow( uFogD * vD, 2.0 ) );
-        vec3 L = min( vL, vec3( 30.0 ) );
-        vec3 col = L * ( uK * s * sheet * fogA + uHaze * ( 1.0 - fogA * 0.5 ) * sheet * uInt );
+        vec3 col = vL * ( s * sheet * fogA + uHaze * ( 1.0 - fogA * 0.5 ) * sheet * uInt );
         col *= vfade;
         if ( max( col.r, max( col.g, col.b ) ) < 1e-4 ) discard;
         gl_FragColor = vec4( col, 1.0 );
@@ -235,7 +236,7 @@ export const SPLASH_MAX = 1200;
 export function splashMesh() {
   const g = quadGeo(SPLASH_MAX, [-0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0]);
   const m = new THREE.ShaderMaterial({
-    uniforms: { ...RL, ...OCC, uBox: { value: new THREE.Vector2(18, 18) }, uCtr: { value: new THREE.Vector3() }, uInt: { value: 1 }, uK: { value: 0.12 }, uTint: { value: new THREE.Color(0.86, 0.93, 1.0) } },
+    uniforms: { ...RL, ...OCC, uBox: { value: new THREE.Vector2(18, 18) }, uCtr: { value: new THREE.Vector3() }, uInt: { value: 1 }, uK: { value: 0.5 }, uTint: { value: new THREE.Color(0.86, 0.93, 1.0) } },
     vertexShader: /* glsl */`
       attribute vec4 aSeed;
       ${LIGHT_GLSL}
@@ -304,7 +305,7 @@ export function dripMesh() {
   g.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seeds(DRIP_MAX), 4));
   g.instanceCount = 0;
   const m = new THREE.ShaderMaterial({
-    uniforms: { ...RL, uRain: { value: 1 }, uPx: { value: 0.0015 }, uK: { value: 0.09 }, uRange: { value: 22 } },
+    uniforms: { ...RL, uRain: { value: 1 }, uPx: { value: 0.0015 }, uK: { value: 0.5 }, uRange: { value: 22 } },
     vertexShader: /* glsl */`
       attribute vec4 aDrip; attribute vec4 aSeed;
       ${LIGHT_GLSL}
@@ -362,14 +363,16 @@ export function setDrips(mesh, list) {
 // 每幀:把光源池/槍口/爆炸/手電筒寫進共用 uniform(只收戶外的光源:室內燈被牆擋住,不該照亮窗外的雨)
 // ======================================================================
 const _v = new THREE.Vector3(), _q = new THREE.Vector3();
-export function updateRainLights(game, occ, flash, moonI) {
+const lightOut = (occ, x, y, z) => { const h = occ.heightAt(x, z); return h <= y + 1.2 && h >= y - 4; };
+export function updateRainLights(game, occ, flash, moonI, gY = 0) {
   const pool = game.hospital?.lights?.pool || [];
   const P = RL.uRLPos.value, C = RL.uRLCol.value;
   let n = 0;
   const add = (l, k = 1) => {
     if (n >= RL_MAX || !l || !(l.intensity > 0.01) || !l.visible) return;
     const p = l.position;
-    if (occ && occ.heightAt(p.x, p.z) > p.y + 1.2) return; // 在屋頂/樓板下(室內)
+    // 在屋頂/樓板下(室內)的燈不算;牆上的壁燈(頭頂有簷口)看旁邊 1m 有沒有露天(而且露天處的高度與燈相近,不是牆腳的縫)
+    if (occ && !(lightOut(occ, p.x, p.y, p.z) || (p.y > gY - 1 && lightOut(occ, p.x + 1, p.y, p.z)) || (p.y > gY - 1 && (lightOut(occ, p.x - 1, p.y, p.z) || lightOut(occ, p.x, p.y, p.z + 1) || lightOut(occ, p.x, p.y, p.z - 1))))) return; // 地下室的燈只看正上方
     P[n].set(p.x, p.y, p.z, l.distance || 0);
     C[n].set(l.color.r * l.intensity * k, l.color.g * l.intensity * k, l.color.b * l.intensity * k, l.decay ?? 2);
     n++;
@@ -390,6 +393,6 @@ export function updateRainLights(game, occ, flash, moonI) {
     RL.uFlCone.value.set(outer, Math.max(inner, outer + 0.001), fl.distance || 30, fl.decay ?? 2);
   } else RL.uFlCol.value.set(0, 0, 0);
   // 環境:極弱的月光/天光 + 閃電
-  const a = 0.0025 + moonI * 0.004 + flash * 0.6;
+  const a = 0.0008 + moonI * 0.0015 + flash * 0.6;
   RL.uRAmb.value.set(a * 0.85, a * 0.92, a * 1.1);
 }
