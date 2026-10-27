@@ -187,7 +187,13 @@ async function compileSet(game, srcs, { shadows = true, target = game.scene, cam
     if (state) { sm.enabled = !!state.shadows; if (state.type != null) sm.type = state.type; }
     try {
       const mats = r.compile(subset(list), camera, target);
-      for (const m of mats) { const p = r.properties.get(m).currentProgram; if (p) progs.add(p); }
+      for (const m of mats) {
+        const mp = r.properties.get(m), p = mp.currentProgram;
+        if (p) progs.add(p);
+        // 暫存場景(新畫質設定)編的:compile 會把材質目前的 program 換成新設定的版本。不需要光源的材質(Basic/Sprite/Line…)
+        // 在實際繪製時不會發現要換回來,會拿還沒編完的新 program 去畫 → 同步等編譯。標記版本讓下一次繪製重新挑(找到現成的舊 program)
+        if (state) mp.__version = -1;
+      }
     } finally { r.setRenderTarget(prev); target.fog = fog; target.visible = vis; sm.enabled = en; sm.type = ty; }
   };
   const reps = [], prox = [];

@@ -284,9 +284,17 @@ export class Quality {
           }
         }
       });
-      // 改異向過濾要重新上傳貼圖:一次幾百張會頓好幾百 ms → 開機前一次做完,之後每幀 6 張
-      const step = () => { for (let i = 0; i < (first ? 1e9 : 6) && todo.length; i++) { const t = todo.shift(); t.anisotropy = a; if (t.image) t.needsUpdate = true; } if (todo.length) requestAnimationFrame(step); };
-      step();
+      // 異向過濾是取樣參數:已上傳的貼圖直接改 GL 參數(重新上傳上百張 1K 貼圖會頓好幾百 ms);還沒上傳的上傳時就會用新值
+      const ext = r.extensions.get('EXT_texture_filter_anisotropic'), gl = r.getContext();
+      for (const t of todo) {
+        t.anisotropy = a;
+        const tp = r.properties.get(t), wt = tp.__webglTexture;
+        if (!wt || !ext) continue;
+        const target = t.isCubeTexture ? gl.TEXTURE_CUBE_MAP : t.isData3DTexture ? gl.TEXTURE_3D : t.isDataArrayTexture || t.isCompressedArrayTexture ? gl.TEXTURE_2D_ARRAY : gl.TEXTURE_2D;
+        r.state.bindTexture(target, wt);
+        gl.texParameterf(target, ext.TEXTURE_MAX_ANISOTROPY_EXT, a);
+        tp.__currentAnisotropy = a;
+      }
     }
     if (first || has('pixelMin') || has('pixelMax') || has('dynamicRes')) this.setScale(this.get('dynamicRes') ? this.scale : this.startScale(), true);
   }
