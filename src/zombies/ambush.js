@@ -234,6 +234,11 @@ class Ambush {
     this.props.update(dt);
     this._tickFlick(dt);
     this._tickDecoys(dt);
+    if (this.decoys.length < (this.decoyWant || 0) && (this._dT -= dt) <= 0) {
+      this._dT = 0.35;
+      const s = this._decoySpot();
+      if (s) this._addDecoy(s); else if (++this._dFail > 8) this.decoyWant = this.decoys.length;
+    }
     this.hintAcc += dt;
     if (this.hintAcc >= 0.08) { this._hints(this.hintAcc); this.hintAcc = 0; }
     if (!this._host()) return;
@@ -561,8 +566,8 @@ class Ambush {
     this._huntAt = 0;
     if (!(g.round > 0) || g.net?.pvp) return;
     if (prev > g.round || prev <= 0) this._clearDecoys();
-    const want = Math.min(6, 1 + Math.ceil(g.round / 2));
-    for (let i = 0; i < 3 && this.decoys.length < want; i++) { const s = this._decoySpot(); if (s) this._addDecoy(s); }
+    this.decoyWant = Math.min(6, 1 + Math.ceil(g.round / 2)); // 一幀最多建一具(每具約 3~4ms),分散在回合開始的前幾秒
+    this._dT = 0; this._dFail = 0;
   }
   _decoySpot() {
     const S = this.spots, pl = this._players();
@@ -628,6 +633,7 @@ class Ambush {
     for (const s of this.ceil || []) { s.busy = null; s.usedT = -1e9; }
     for (const q of this.flick) q.f.ov = 1;
     this.flick.length = 0;
+    this.decoyWant = 0;
     this.round = -1; this.lastTrig = -1e9; this.blockT = -1e9; this._huntAt = 0; this.nPerch = 0;
   }
   dispose() {
