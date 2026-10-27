@@ -6,6 +6,7 @@ import { Zombie } from './zombie.js';
 import { forceVariant } from './model.js';
 import { LURK, PERCH, BURST, DROP, POSE, isPerch, makeAmb } from './ambush.pose.js';
 import { createAmbushProps } from './ambush.props.js';
+import { precompile } from '../sys/warmup.js';
 
 // 埋伏(殭屍躲在角落/門後/家具旁裝死,玩家經過時衝出來)與天花板掉落(趴在天花板夾層、通風格柵上方,玩家經過時破板掉下來)。
 // game.ambush(flow.js 第一次 updateRound 時建立):
@@ -156,6 +157,7 @@ class Ambush {
     this.mv = { x: 0, z: 0 };
     this.decoys = []; this.flick = []; this._tl = []; this._cand = []; this._pl = []; this.nPerch = 0;
     this._hookCombat();
+    try { this._build(); } catch (e) { console.warn('[ambush] 埋伏點建立失敗', e); }
   }
 
   // ---- 射線目標:藏在天花板上的不算(打不到、刀也砍不到),假屍體算(會流血、抽搐);開槍記下來(槍聲/彈道驚醒) ----
@@ -198,6 +200,9 @@ class Ambush {
     this.props = createAmbushProps(g, W.layout, r.grilles, W.layout.vents || []);
     this.props.onDrip = (key, p) => { this.props.splat(key, 0.014); const lp = g.player.pos; if (Math.abs(lp.x - p.x) + Math.abs(lp.z - p.z) < 9) ambushSfx('drip', p); };
     Object.assign(this.stats, { spots: r.spots.length, ceil: r.ceil.length, grilles: r.grilles.length });
+    // 第一次在建構時就加進場景(開機預編譯會一起編);之後換地圖重建時自己在背景預編譯
+    if (this._built) precompile(g, this.props.group).catch(() => {});
+    this._built = true;
     this.ready = true;
   }
 
@@ -222,7 +227,7 @@ class Ambush {
   // ======================= 每幀(flow.updateRound 開頭呼叫,遊戲中、各端都跑) =======================
   update(dt) {
     const g = this.g;
-    if (g.world !== this.world || !this.ready) { if (this.ready) this.dispose(); this._build(); }
+    if (g.world !== this.world || !this.ready) { if (this.ready) this.dispose(); try { this._build(); } catch (e) { console.warn('[ambush]', e); return; } }
     if (g.round !== this.round) this._newRound();
     const p = g.player, k = Math.min(1, dt * 0.9);
     this.mv.x += ((p.vx || 0) - this.mv.x) * k; this.mv.z += ((p.vz || 0) - this.mv.z) * k; // 玩家最近的前進方向(「可能經過」)
@@ -393,7 +398,7 @@ class Ambush {
     const cand = [];
     const pli = pl.map((p) => L.levelOfY(p.pos.y + 0.3));
     for (const s of list) {
-      if (s.busy || s.decoy || g.time - s.usedT < 75) continue;
+      if (s.busy || s.decoy || g.time - s.usedT < 75 || (opt.kind && s.kind !== opt.kind)) continue;
       let ed = Infinity, dl = 9;
       for (let i = 0; i < pl.length; i++) { const p = pl[i], d = Math.hypot(s.x - p.pos.x, s.z - p.pos.z); if (d < ed) ed = d; const q = Math.abs(s.li - pli[i]); if (q < dl) dl = q; }
       if (dl > 1 || ed < (opt.minE ?? 6) || ed > hi + 4) continue;
@@ -509,7 +514,7 @@ class Ambush {
     for (let i = this.flick.length - 1; i >= 0; i--) {
       const q = this.flick[i];
       if (t >= q.t1) { q.f.ov = 1; this.flick.splice(i, 1); continue; }
-      q.f.ov = Math.random() < 0.5 ? 0.06 : 0.5 + Math.random() * 0.8;
+      q.f.ov = Math.random() < 0.55 ? 0.05 : 0.35 + Math.random() * 0.6;
     }
   }
 
@@ -648,8 +653,8 @@ class Ambush {
     g.toSpawn = before;
     if (!z) return null;
     if (z.amb) return z;
-    const ok = kind === 'drop' ? this._armPerch(z, opt) : this._armLurk(z, opt);
-    return ok ? z : z;
+    if (kind === 'drop') this._armPerch(z, opt); else this._armLurk(z, opt);
+    return z;
   }
 }
 

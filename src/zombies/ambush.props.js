@@ -103,6 +103,9 @@ export function createAmbushProps(game, L, grilles, vents) {
     return s;
   };
 
+  // 預編譯用的原型(看不到):掉落中的格柵/碎板是一般網格 + 會投影,開機預編譯掃場景時一起編好
+  for (const m of [new THREE.Mesh(gLoose, mat), new THREE.Mesh(tileGeo, tileMat)]) { m.visible = false; m.castShadow = true; m.raycast = () => {}; group.add(m); }
+
   const api = {
     group, inst, open,
     // 格柵 i 換成「被頂開的黑洞」並掉一片格柵下來(天花板掉落)
