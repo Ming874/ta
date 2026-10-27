@@ -154,6 +154,7 @@ export class World {
     this.flowSliceMs = 0; // 最近一次 updateFlow 呼叫的耗時
     this.flowRuns = 0; // 已完成的輪數
     this.flowBudget = 16384; // 每次呼叫最多處理的節點數(整數;要一次算完可設 0x3fffffff)
+    this.flowMaxMs = 0.8; // 每次呼叫的時間上限(ms)
   }
 
   // ======================================================================
@@ -870,11 +871,34 @@ export class World {
     return E;
   }
 
-  // 碰撞盒 b 附近的導航節點與連線局部重建,並強制下一次 updateFlow 重算
+  // 碰撞盒 b 加入/移除:附近的導航節點要局部重建。先排隊(物理重物被推動時每 6 幀就會改一次、爆炸時一次很多個),
+  // 由 updateFlow 每幀在時間預算內處理,不會一幀全部擠在一起卡頓
   _navPatch(b) {
+    const q = this._patchQ || (this._patchQ = []);
+    q.push(b.minX, b.maxX, b.minZ, b.maxZ);
+  }
+
+  // 處理排隊的導航局部重建,最多 budgetMs 毫秒(至少一個);回傳剩餘數量
+  _navPatchRun(budgetMs) {
+    const q = this._patchQ;
+    if (!q || !q.length) return 0;
+    const t0 = performance.now();
+    let i = 0;
+    while (i < q.length) {
+      this._navPatchRect(q[i], q[i + 1], q[i + 2], q[i + 3]);
+      i += 4;
+      if (performance.now() - t0 > budgetMs) break;
+    }
+    q.splice(0, i);
+    this.patchMs = performance.now() - t0;
+    return q.length >> 2;
+  }
+
+  // 矩形 (minX..maxX, minZ..maxZ) 附近的導航節點與連線局部重建,並讓下一輪距離場重算
+  _navPatchRect(minX, maxX, minZ, maxZ) {
     const { W, WH, NL, fw, fh, FN } = this, gh = this.gh, m = NAV_R + FINE;
-    const i0 = Math.max(0, Math.floor((b.minX - m) / FINE)), i1 = Math.min(fw - 1, Math.floor((b.maxX + m) / FINE));
-    const j0 = Math.max(0, Math.floor((b.minZ - m) / FINE)), j1 = Math.min(fh - 1, Math.floor((b.maxZ + m) / FINE));
+    const i0 = Math.max(0, Math.floor((minX - m) / FINE)), i1 = Math.min(fw - 1, Math.floor((maxX + m) / FINE));
+    const j0 = Math.max(0, Math.floor((minZ - m) / FINE)), j1 = Math.min(fh - 1, Math.floor((maxZ + m) / FINE));
     for (let li = 0; li < NL; li++) for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
       const g = li * FN + j * fw + i, idx = (j >> 2) * W + (i >> 2), was = gh[g] === gh[g];
       let h = NaN;
@@ -931,6 +955,7 @@ export class World {
       for (let q = 0; q < ns; q++) if (seeds[q] === n) dup = true;
       if (!dup) seeds[ns++] = n;
     }
+    if (this._patchQ && this._patchQ.length) this._navPatchRun(0.6);
     if (!this._bfsOn) { // 沒有進行中的計算:目標節點有變(或導航圖被局部修改)才開始新的一輪
       if (ns === this._nRun && !this._navDirty) { let eq = true; for (let q = 0; q < ns; q++) if (this._runSeeds[q] !== seeds[q]) eq = false; if (eq) return; }
       if (!ns) return;
@@ -941,9 +966,16 @@ export class World {
       this._bfsOn = true;
       this._bfsMs = 0;
     }
-    // 每次呼叫最多處理 flowBudget 個節點(約 0.5ms),整輪算完才換成查詢用的距離場
-    const t0 = performance.now();
-    const done = dialStep(this.G, this._back, this._q, this._qh, this._qt, this.ninfo, this.DOFF, this.xEdges, this._bfs, this.flowBudget);
+    // 每次呼叫最多處理 flowBudget 個節點、最多約 flowMaxMs 毫秒(分 4096 個一段檢查時間;CPU 忙時也不會一幀卡太久),
+    // 整輪算完才換成查詢用的距離場
+    const t0 = performance.now(), tcap = this.flowBudget >= 0x3fffffff ? Infinity : this.flowMaxMs; // 要求一次算完時不限時
+    let done = false, left = this.flowBudget;
+    while (left > 0) {
+      const n = left < 4096 ? left : 4096;
+      done = dialStep(this.G, this._back, this._q, this._qh, this._qt, this.ninfo, this.DOFF, this.xEdges, this._bfs, n);
+      left -= n;
+      if (done || performance.now() - t0 > tcap) break;
+    }
     const ms = performance.now() - t0;
     this._bfsMs += ms;
     this.flowSliceMs = ms;

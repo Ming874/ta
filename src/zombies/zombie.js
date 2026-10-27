@@ -9,7 +9,18 @@ const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t 
 const env = (t, a, b, c, d) => sstep(a, b, t) * (1 - sstep(c, d, t)); // 進場 a→b、退場 c→d 的包絡
 const wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const TAU = Math.PI * 2;
-const say = (name, ...a) => sfx[name](...a);
+// 每幀預算(以 10ms 時間窗近似一幀,所有殭屍共用):語音是在主執行緒即時合成的(每次 2~5ms,第一次可到 20ms),
+// 人多時(爆炸波及整群、一起撲上來)同一幀全部叫會卡頓 → 語音每幀 1 個、其他音效 3 個、視線/直線更新 10 次;
+// 預警用的聲音(咆哮、尖嘯、撞牆、擊中玩家)不受限
+const BUD = { t: -1, voice: 0, fx: 0, sense: 0, bar: 0 };
+const budget = () => { const now = performance.now(); if (now - BUD.t > 10) { BUD.t = now; BUD.voice = 0; BUD.fx = 0; BUD.sense = 0; BUD.bar = 0; } return BUD; };
+const VOICE = new Set(['groan', 'zPain', 'zAttack', 'zDie', 'gurgle']);
+const ALWAYS = new Set(['roar', 'shriek', 'wallImpact', 'knock', 'bite', 'spit']);
+const VOICE_MAX = 1, FX_MAX = 2, SENSE_MAX = 10, BAR_MAX = 4;
+const say = (name, ...a) => {
+  if (!ALWAYS.has(name)) { const B = budget(); if (VOICE.has(name) ? ++B.voice > VOICE_MAX : ++B.fx > FX_MAX) return; }
+  sfx[name](...a);
+};
 const VAULT_H = 1.05; // 狂奔者可翻越的道具高度(相對腳底)
 const VAULT_T = 0.5; // 翻越動作時間
 const FUSE_R = 2.0; // 膿腫者貼近到這個距離開始膨脹自爆
@@ -113,7 +124,7 @@ export class Zombie {
     this._pt = Math.random() * 0.5; this._sx = this.pos.x; this._sy = this.pos.y; this._sz = this.pos.z;
     this._noProg = 0; this._lv = 0; this._nudgeT = 0; this._nudgeSide = 1; this._repathT = 0;
     this._lodAcc = 0; this.lodSkip = 0; this.stuckN = 0; this.warps = 0;
-    this.stepY = 0; this.vault = null; this._vaultNo = 0;
+    this.stepY = 0; this.vault = null; this._vaultNo = 0; this._warpT = 0; this._barDirty = false;
 
     // 模型
     const v = getVariant(type);
@@ -200,7 +211,8 @@ export class Zombie {
     this.flinchV += (part === 'head' ? 7 : 4.5) * k;
     this.rollV += (Math.random() - 0.5) * 9 * k;
     if (part === 'head') this.headKick = Math.min(1.2, this.headKick + 0.7 * heavy);
-    this.drawBar();
+    // 血條:畫布重畫 + 貼圖上傳;每幀最多重畫幾條(爆炸一次打到一整群時不會同一幀全部上傳),其餘在 update 補畫
+    if (++budget().bar <= BAR_MAX) { this.drawBar(); this._barDirty = false; } else this._barDirty = true;
     if (this.hp <= 0) { this.die(part, hit); return true; }
     if (this.t - (this.painT ?? -9) > 0.7) { this.painT = this.t; say('zPain', this.type, this.vp); }
     if (part === 'leg') {
@@ -291,12 +303,14 @@ export class Zombie {
     if (this._lodAcc < this._lodInterval(ctx)) { this.lodSkip++; return 0; }
     dt = this._lodAcc < 0.25 ? this._lodAcc : 0.25;
     this._lodAcc = 0;
+    if (this._barDirty && ++budget().bar <= BAR_MAX) { this.drawBar(); this._barDirty = false; }
     // 同一樓層(高度差 < 1.2m)才算得上近戰距離;隔樓層時行為判斷用的距離視為很遠
     const same = dy < 1.2 && dy > -1.2;
     const dist = same ? hd : hd + 40;
     // ---- 感知:視線(眼睛高度)+ 直線可走(地面連續、不穿牆/欄杆/窗/道具/挑空),每 0.15~0.25 秒 ----
     this.losT -= dt;
-    if (this.losT <= 0) {
+    if (this.losT <= 0 && ++budget().sense > SENSE_MAX) this.losT = 0.01; // 本幀額度用完:沿用上次的結果,下一幀再算
+    else if (this.losT <= 0) {
       this.losT = 0.15 + Math.random() * 0.1;
       const ey = this.type === 'crawler' ? 0.5 : 1.4;
       this.los = this.d3 < 24 && world.hasLineOfSight(pos.x, pos.y + ey, pos.z, player.pos.x, player.pos.y + 1.4, player.pos.z);
@@ -401,7 +415,11 @@ export class Zombie {
     // 腳步(巨屍用重踏,爬行者用拖行,另外處理)
     if (this.type !== 'brute' && this.type !== 'crawler') {
       const ns = Math.floor((this.ph + Math.PI / 2) / Math.PI);
-      if (ns !== this.stepN) { this.stepN = ns; if (sp > 0.3 && this.rootY < 0.05) say('zStep', this.type, pos); }
+      if (ns !== this.stepN) { // 腳步聲只在本機玩家 22m 內(更遠聽不到,省掉合成)
+        this.stepN = ns;
+        const lp = ctx.player.pos;
+        if (sp > 0.3 && this.rootY < 0.05 && Math.abs(lp.x - pos.x) + Math.abs(lp.z - pos.z) + Math.abs(lp.y - pos.y) * 2 < 26) say('zStep', this.type, pos);
+      }
     }
 
     // ---- 叫聲 ----
@@ -455,11 +473,16 @@ export class Zombie {
     if (same && (now < 1.6 || (hd < this.T.reach + 0.6 && this._canHit(world)))) { this._noProg = 0; this._lv = 0; return; } // 到了(路徑距離很近,或已經打得到)
     if (this.state !== 'chase' || this.want.speed < 0.25) return; // 攻擊/硬直/特殊動作中:暫停計時
     if (was - now > 0.2) { this._noProg = 0; return; }
-    this._noProg += now === Infinity ? 1 : 0.5;
+    // 玩家附近 6m 內多半是被前面的殭屍擋住(圍成一圈):累計慢很多,不會在人群裡亂擠
+    this._noProg += now === Infinity ? 1 : same && hd < 6 ? 0.125 : 0.5;
     const n = this._noProg;
     if (n >= 2 && this._lv < 1) { this._lv = 1; this._nudgeT = 1; this._nudgeSide = this._freeSide(world); this.stuckN++; }
     else if (n >= 4.5 && this._lv < 2) { this._lv = 2; this._repathT = 4; this._nudgeT = 0.6; this._nudgeSide = -this._nudgeSide; }
-    else if (n >= 10 && (n % 2 === 0 || now === Infinity)) { if (this._warp(ctx, false, now === Infinity ? Infinity : Math.max(35, now + 10))) return; this._repathT = 2; }
+    else if (n >= 10 && this.t >= this._warpT) { // 每 2 秒試一次(有人看得到就不瞬移,繼續重新找路)
+      this._warpT = this.t + 2;
+      if (this._warp(ctx, false, now === Infinity ? Infinity : Math.max(35, now + 10))) return;
+      this._repathT = 2;
+    }
     if (n < 2) this._lv = 0;
   }
 
