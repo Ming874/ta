@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { sfx } from '../audio.js';
 import { TYPES } from './types.js';
 import { getVariant, instantiate } from './model.js';
+import { installBehaviors, Z3 } from './behaviors/index.js'; // [zombies-w3] 新類型行為 + 共用動畫層
 
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -161,6 +162,7 @@ export class Zombie {
     }
     this.root.position.copy(this.pos);
     scene.add(this.root);
+    Z3.init(this); // [zombies-w3]
   }
 
   drawBar() {
@@ -209,6 +211,7 @@ export class Zombie {
     if (!this.alive) return false;
     let m = part === 'head' ? 2 : 1;
     if (part === 'armor') m = this.T.bodyArmor ?? 1;
+    m = Z3.dmgMul(this, m, part, hit); // [zombies-w3] 類型的弱點/護甲/爆炸加成
     if (this.state === 'stun') m *= 1.6;
     const dmg = amount * m;
     this.hp = Math.max(0, this.hp - dmg);
@@ -220,6 +223,7 @@ export class Zombie {
     // 血條:畫布重畫 + 貼圖上傳;每幀最多重畫幾條(爆炸一次打到一整群時不會同一幀全部上傳),其餘在 update 補畫
     if (SHOW_BARS) { if (++budget().bar <= BAR_MAX) { this.drawBar(); this._barDirty = false; } else this._barDirty = true; }
     if (this.hp <= 0) { this.die(part, hit); return true; }
+    Z3.hurt(this, dmg, part, hit); // [zombies-w3] 受擊部位反應、打斷動作
     if (this.t - (this.painT ?? -9) > 0.7) { this.painT = this.t; say('zPain', this.type, this.vp); }
     if (part === 'leg') {
       if (this.type === 'runner' && dmg >= 20 && (this.state === 'chase' || this.state === 'attack')) this.go('trip');
@@ -238,6 +242,7 @@ export class Zombie {
       : this.state === 'leap' || this.state === 'trip' ? 'front'
         : part === 'head' ? (r < 0.65 ? 'back' : 'kneel') : r < 0.4 ? 'front' : r < 0.72 ? 'back' : 'kneel';
     this.deathSide = Math.random() < 0.5 ? 1 : -1;
+    Z3.death(this, part, hit); // [zombies-w3]
     this.landed = false;
     this.exploded = false;
     this.rootY = Math.max(0, this.rootY);
@@ -351,7 +356,7 @@ export class Zombie {
     this.specialCd -= dt;
 
     const think = this.amb ? this._ambThink : this._thinkFn || (this._thinkFn = this['_think_' + this.type]); // 快取方法,避免每幀組字串;[ambush] 衝出/掉落中
-    const dealt = think.call(this, dt, ctx, dist, toX, toZ, w);
+    const dealt = !this.amb && Z3.pre(this, dt, ctx, dist, w) ? 0 : think.call(this, dt, ctx, dist, toX, toZ, w); // [zombies-w3] pre:面壁等閒置怪癖(埋伏中不跑)
     if (!this.alive) return dealt; // 膿腫者自爆
     // 樓梯上放慢(衝鋒/飛撲除外)
     this.onStair = world.stairAt ? world.stairAt(pos.x, pos.y, pos.z) : -1;
@@ -420,7 +425,7 @@ export class Zombie {
     this.stepY += (so - this.stepY) * Math.min(1, dt * 18);
     this._resetPose();
     (this.amb ? this._ambPose : this._poseFn || (this._poseFn = this['_pose_' + this.type])).call(this, dt, ctx, dist, toX, toZ);
-    this._reactions(dt);
+    this._reactions(dt, ctx);
     this._applyRoot();
     // 腳步(巨屍用重踏,爬行者用拖行,另外處理)
     if (this.type !== 'brute' && this.type !== 'crawler') {
@@ -438,7 +443,7 @@ export class Zombie {
     this.vp.z = pos.z;
     this.groanT -= dt;
     if (this.groanT <= 0) {
-      this.groanT = { walker: 4, runner: 2.5, crawler: 4, bloater: 3.5, brute: 5 }[this.type] + Math.random() * 5;
+      this.groanT = ({ walker: 4, runner: 2.5, crawler: 4, bloater: 3.5, brute: 5 }[this.type] ?? this.T.groan ?? 4) + Math.random() * 5; // [zombies-w3] 新類型讀 T.groan
       if (this.type === 'bloater' && Math.random() < 0.5) say('gurgle', this.vp);
       else say('groan', this.type, this.vp);
       this.jawT = 1.3;
@@ -1060,7 +1065,7 @@ export class Zombie {
   }
 
   // 受擊彈簧:往後仰、側傾、爆頭甩頭
-  _reactions(dt) {
+  _reactions(dt, ctx) {
     const b = this.b;
     this.flinchV += (-this.flinch * 70 - this.flinchV * 10) * dt;
     this.flinch += this.flinchV * dt;
@@ -1072,6 +1077,7 @@ export class Zombie {
     b.chest.rotation.z += this.roll * 0.3;
     b.head.rotation.x -= this.flinch * 0.5 + this.headKick * 0.9;
     b.head.rotation.z += this.roll * 0.5;
+    Z3.layer(this, dt, ctx); // [zombies-w3] 抽搐、歪頭、定格、受擊部位反應、倒退走、閒置搖晃
   }
 
   // 地面坡度(樓梯):amt = 套用比例(趴地/倒地 = 1);沿面向的坡度 → tiltF(上坡抬頭),左右坡度 → tiltS
@@ -1092,7 +1098,7 @@ export class Zombie {
 
   _applyRoot() {
     this.root.position.set(this.pos.x, this.pos.y + this.rootY + (this.alive ? this.stepY : 0), this.pos.z);
-    this.root.rotation.set(this.rootPitch + this.tiltF, this.heading, this.rootRoll + this.tiltS);
+    this.root.rotation.set(this.rootPitch + this.tiltF, this.heading + this.yawOff, this.rootRoll + this.tiltS); // [zombies-w3] yawOff:倒退走時身體轉向
   }
 
   // ======================= 死亡 =======================
@@ -1179,3 +1185,6 @@ export class Zombie {
     this.bar.sprite.material.dispose();
   }
 }
+
+// [zombies-w3] 新類型的 think/pose 掛到原型上;行為模組用同一個有額度的 say
+installBehaviors(Zombie, { say, budget });

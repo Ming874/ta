@@ -7,8 +7,8 @@ import { idle } from './sys/sched.js';
 import { precompile, precompilePasses, initPrograms, warmDraw, warmDrawScene, yieldNow } from './sys/warmup.js';
 import { backgroundTicker } from './sys/ticker.js';
 import { texStats, texturesReady } from './sys/texworker.js';
-import { prewarm, whenWarm, variantStats, getVariant, instantiate } from './zombies/model.js';
-import { materials as zombieMaterials } from './zombies/materials.js';
+import { prewarm, whenWarm, variantStats, getVariant, instantiate, VARIANT_TYPES } from './zombies/model.js';
+import { allMaterials as allZombieMaterials } from './zombies/materials.js';
 import * as audio from './audio.js';
 import { initNet } from './net/lobby.js';
 import { installHorror } from './horror/index.js';
@@ -171,8 +171,8 @@ boot();
 async function warmRuntime() {
   const g = new THREE.Group();
   const inst = instantiate(getVariant('walker', 0));
-  const M = zombieMaterials();
-  inst.mesh.material = [M.skin, M.cloth, M.gear, M.bone, M.hair, M.glow, ...Object.values(M.eye)]; // 只編譯、不渲染
+  const ZM = allZombieMaterials(), its = []; // [zombies-w3] 全部殭屍材質(含新類型的眼睛、刀刃、鏡片)
+  inst.mesh.material = ZM; // 只編譯、不渲染
   g.add(inst.mesh);
   // 執行期才會建立的常見材質型態(曳光、血池/貼花、光暈與血條 sprite、粒子):program 只看功能旗標(貼圖/霧…),不看顏色數值
   const tex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
@@ -193,7 +193,8 @@ async function warmRuntime() {
     const v = getVariant('walker', 0), draws = new THREE.Group();
     inst.mesh.material = v.materials;
     draws.add(inst.mesh);
-    for (const m of [M.skin, M.cloth, M.gear, M.bone, M.hair, M.glow, ...Object.values(M.eye)]) {
+    for (const t of VARIANT_TYPES) { const it = instantiate(getVariant(t, 0)); its.push(it.mesh.skeleton); draws.add(it.mesh); } // [zombies-w3] 每種類型各畫一次(頂點格式/材質組合),新類型第一次出現不會頓
+    for (const m of ZM) {
       const sm = new THREE.SkinnedMesh(v.geometry, m);
       sm.bind(inst.mesh.skeleton, inst.mesh.bindMatrix);
       draws.add(sm);
@@ -202,6 +203,7 @@ async function warmRuntime() {
     warmDraw(game, [draws]);
   }, 300);
   inst.mesh.skeleton.dispose();
+  for (const s of its) s.dispose();
   performance.mark('hz:warm');
   return res;
 }

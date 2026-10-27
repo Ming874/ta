@@ -24,6 +24,7 @@
 import { A, ensure, setListener, attach, setVolume, getVolume, muffle, hurtFilter, tick, poolInfo, liveCount, bakeStats, voiceCap, emit, stopPositional, setSpace } from './audio/core.js';
 import { foley, prebakeFoley } from './audio/foley.js';
 import { voices, prebakeVoices } from './audio/voices.js';
+import { zvoices2 } from './audio/zvoices2.js';
 import { startMusic, setMood, autoMood, setTension, setHealth, addPain, musicState } from './audio/music.js';
 import { step, remoteStep, zStep, jump, land, prebakeSteps } from './audio/steps.js';
 import { body, setBodyHealth, prebakeBody } from './audio/body.js';
@@ -201,6 +202,7 @@ export const sfx = {
   attachGame: always((game) => { A.game = game || null; const w = game && game.world; if (A.world && w && w !== A.world) resetMap(w); A.world = w || A.world; }),
   resetMap: always((world) => resetMap(world)),
   defineMood: always((name, bed) => defineMood(name, bed)),
+  ...zvoices2(safe), // [zombies-w3] 第三波新殭屍的語音與音效(src/audio/zvoices2.js;含潛行者的 zStep)
   // 除錯/效能面板用
   stats: () => (A.ctx ? { state: A.ctx.state, voices: liveCount(), cap: voiceCap(), pools: poolInfo(), bake: bakeStats(), samples: SM.stats(), stats: A.stats, music: musicState(), amb: ambState(), rain: rainState(), story: storyState() } : { state: 'none' }),
 };
