@@ -180,7 +180,6 @@ const TREE_VAR = { oak: 3, poplar: 1, gnarl: 2, snag: 1, sapling: 1 };
 export function tree(ctx, kind, x, y, z, s = 1, yaw = 0, collide = true) {
   const v = Math.floor(hash(x * 3.1 + z * 7.7) * TREE_VAR[kind]);
   const p = pool(ctx, `tree_${kind}_${v}`, () => treeParts(kind, v * 17 + kind.length), 16);
-  for (const im of p.meshes) if (im.material.alphaTest > 0) im.castShadow = false; // 細枝/葉卡不投影(省陰影 program 與填充)
   p.add(M(x, y, z, 0, yaw, 0, s));
   if (collide && kind !== 'sapling') { const r = { oak: 0.42, poplar: 0.32, gnarl: 0.6, snag: 0.4 }[kind] * s; solid(ctx, x, y, z, r, 3, r); }
 }
@@ -203,7 +202,6 @@ function tuftParts(dry, tall) {
 export function tuft(ctx, x, y, z, { dry = false, tall = false, s = 1 } = {}) {
   const key = `tuft_${dry ? 1 : 0}${tall ? 1 : 0}`;
   const p = pool(ctx, key, () => tuftParts(dry, tall), 256);
-  for (const im of p.meshes) im.castShadow = false;
   p.add(M(x, y, z, 0, hash(x * 13.1 + z * 3.7) * TAU, 0, s, s * (0.8 + hash(x + z * 9.1) * 0.5), s));
 }
 // 沿線段撒草(牆腳、圍籬下、裂縫)

@@ -38,7 +38,7 @@ export function bagFallback(key = 'po_bag_black', s = 1) {
   const p = g.attributes.position;
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
-    const n = 1 + 0.08 * Math.sin(x * 23 + y * 17) + 0.06 * Math.sin(z * 29 - y * 11);
+    const n = 1 + 0.08 * Math.sin(x * 23 + y * 17) + 0.06 * Math.sin(z * 29 - y * 11) + 0.035 * Math.sin(x * 61 + z * 47);
     p.setXYZ(i, x * n, (y < 0 ? y * 0.85 : y * 1.05) * n + 0.24, z * n);
   }
   g.computeVertexNormals();
@@ -48,9 +48,14 @@ export function bagFallback(key = 'po_bag_black', s = 1) {
   P.add(key, tor(0.03, 0.012, 5, 10), M(0, 0.62 * s, 0, 0.4, 0, 0, s));
   return P;
 }
+// 寫實模型一個 4.5k 三角形:只給前 12 個(子母車裡、主要垃圾堆),其餘用程式袋子(~300 三角形)
+const bagN = new WeakMap();
 export function trashBag(ctx, x, y, z, yaw = 0, s = 1, tilt = [0, 0]) {
-  const p = pool(ctx, 'trashbag', () => bagFallback(), 64);
-  bindModel(p, 'trashbag', [], { origin: 'base' });
+  const n = (bagN.get(ctx) || 0) + 1;
+  bagN.set(ctx, n);
+  const hi = n <= 12;
+  const p = pool(ctx, hi ? 'trashbag' : 'trashbag_lo', () => bagFallback(), 64);
+  if (hi) bindModel(p, 'trashbag', [], { origin: 'base' });
   p.add(M(x, y, z, tilt[0], yaw, tilt[1], s, s * (0.85 + hash(x * 7 + z) * 0.3), s));
 }
 

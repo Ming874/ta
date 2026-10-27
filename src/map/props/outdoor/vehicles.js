@@ -131,9 +131,9 @@ export function buildVehicle(kind, opt = {}) {
   // 站點
   const xs = new Set();
   const add = (v) => xs.add(+v.toFixed(4));
-  for (let x = -hl; x <= hl + 1e-6; x += 0.07) add(x);
-  for (let k = 0; k <= 10; k++) { const t = (k / 10) ** 1.7 * 0.32; add(hl - t); add(-hl + t); }
-  for (const ax of [S.axF, S.axR]) for (let d = -S.arch; d <= S.arch + 1e-6; d += 0.037) add(ax + d);
+  for (let x = -hl; x <= hl + 1e-6; x += 0.16) add(x); // 站點間距(細節交給貼花/法線;三角形數約為原本的 1/2.5)
+  for (let k = 0; k <= 5; k++) { const t = (k / 5) ** 1.7 * 0.32; add(hl - t); add(-hl + t); }
+  for (const ax of [S.axF, S.axR]) for (let d = -S.arch; d <= S.arch + 1e-6; d += 0.075) add(ax + d);
   const G = 0.004; // 門縫
   const doors = S.doors.map(([f, r], k) => ({ f, r, k }));
   for (const d of doors) for (const v of [d.f, d.f - G, d.r, d.r + G]) add(v);
@@ -652,9 +652,9 @@ function glassShards(poly, side, zSide, rng) {
 function tireGeo(R, w, flat) {
   const hw = w / 2, rim = R * 0.66;
   const prof = [[rim, -hw * 0.82], [rim + 0.03, -hw * 0.95], [R * 0.87, -hw], [R * 0.95, -hw * 0.95], [R * 0.985, -hw * 0.83], [R, -hw * 0.68]];
-  for (const g of [-0.42, 0, 0.42]) prof.push([R, (g - 0.09) * hw], [R - 0.008, (g - 0.05) * hw], [R - 0.008, (g + 0.05) * hw], [R, (g + 0.09) * hw]);
+  for (const g of [0]) prof.push([R, (g - 0.09) * hw], [R - 0.008, (g - 0.05) * hw], [R - 0.008, (g + 0.05) * hw], [R, (g + 0.09) * hw]);
   prof.push([R, hw * 0.68], [R * 0.985, hw * 0.83], [R * 0.95, hw * 0.95], [R * 0.87, hw], [rim + 0.03, hw * 0.95], [rim, hw * 0.82]);
-  const g = lathe(prof, 40);
+  const g = lathe(prof, 14);
   g.rotateX(HALF);
   const p = g.attributes.position;
   const floor = -(R - 0.012);
@@ -674,12 +674,12 @@ function tireGeo(R, w, flat) {
 }
 function rimGeo(R, w, style) {
   const P = new Parts(), rim = R * 0.66, hw = w / 2;
-  P.add(style === 'steel' ? 'cast_iron' : 'aluminum', lathe([[rim - 0.014, -hw * 0.8], [rim, -hw * 0.84], [rim + 0.006, -hw * 0.72], [rim - 0.012, -hw * 0.6], [rim - 0.016, hw * 0.5], [rim + 0.008, hw * 0.74], [rim + 0.004, hw * 0.86], [rim - 0.016, hw * 0.82]], 32).rotateX(HALF));
+  P.add(style === 'steel' ? 'cast_iron' : 'aluminum', lathe([[rim - 0.014, -hw * 0.8], [rim, -hw * 0.84], [rim + 0.006, -hw * 0.72], [rim - 0.012, -hw * 0.6], [rim - 0.016, hw * 0.5], [rim + 0.008, hw * 0.74], [rim + 0.004, hw * 0.86], [rim - 0.016, hw * 0.82]], 14).rotateX(HALF));
   if (style === 'steel') {
-    P.add('aluminum', lathe([[rim - 0.004, hw * 0.74], [rim * 0.92, hw * 0.78], [rim * 0.7, hw * 0.86], [0.05, hw * 0.92], [0.0, hw * 0.93]], 28).rotateX(HALF));
+    P.add('aluminum', lathe([[rim - 0.004, hw * 0.74], [rim * 0.92, hw * 0.78], [rim * 0.7, hw * 0.86], [0.05, hw * 0.92], [0.0, hw * 0.93]], 12).rotateX(HALF));
     for (let k = 0; k < 8; k++) { const a = (k / 8) * TAU; P.add('rubber', box(0.045, 0.012, 0.01), M(Math.cos(a) * rim * 0.72, Math.sin(a) * rim * 0.72, hw * 0.87, 0, 0, a)); }
   } else {
-    P.add('aluminum', lathe([[0.07, hw * 0.4], [0.06, hw * 0.7], [0.045, hw * 0.78], [0.0, hw * 0.79]], 20).rotateX(HALF));
+    P.add('aluminum', lathe([[0.07, hw * 0.4], [0.06, hw * 0.7], [0.045, hw * 0.78], [0.0, hw * 0.79]], 10).rotateX(HALF));
     for (let k = 0; k < 5; k++) {
       const a = (k / 5) * TAU;
       const sp = box(rim - 0.07, 0.044, 0.03);
@@ -688,7 +688,7 @@ function rimGeo(R, w, style) {
       P.add('chrome', cyl(0.009, 0.009, 0.02, 6).rotateX(HALF), M(Math.cos(a + 0.63) * 0.05, Math.sin(a + 0.63) * 0.05, hw * 0.8));
     }
   }
-  P.add('rust', cyl(R * 0.47, R * 0.47, 0.022, 24).rotateX(HALF), M(0, 0, -hw * 0.25));
+  P.add('rust', cyl(R * 0.47, R * 0.47, 0.022, 12).rotateX(HALF), M(0, 0, -hw * 0.25));
   P.add('cast_iron', rbox(0.1, 0.16, 0.06, 0.02), M(-R * 0.35, R * 0.22, -hw * 0.1, 0, 0, 0.6));
   return P;
 }
