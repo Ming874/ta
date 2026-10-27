@@ -114,7 +114,12 @@ function buildSpots(W, K, fixtures) {
     if (h < 0.4 || h > 2.4 || sx * sz < 0.25 || sx > 3.2 || sz > 3.2) continue;
     const li = L.levelOfY(b.minY + 0.2), fy = L.levels[li].y;
     if (b.minY - fy > 0.35 || b.minY < fy - 0.2) continue;
-    const side = (R() * 4) | 0, nx = side === 0 ? 1 : side === 1 ? -1 : 0, nz = side === 2 ? 1 : side === 3 ? -1 : 0;
+    let side = (R() * 4) | 0;
+    if (h > 1.45) { // 高櫃:要夠寬(那一面 ≥ 1.1m)才藏得住整個人;挑最寬的一面
+      if (Math.max(sx, sz) < 1.1) continue;
+      side = sz >= sx ? (R() < 0.5 ? 0 : 1) : (R() < 0.5 ? 2 : 3);
+    }
+    const nx = side === 0 ? 1 : side === 1 ? -1 : 0, nz = side === 2 ? 1 : side === 3 ? -1 : 0;
     const x = nx ? (nx > 0 ? b.maxX + 0.5 : b.minX - 0.5) : (b.minX + b.maxX) / 2, z = nz ? (nz > 0 ? b.maxZ + 0.5 : b.minZ - 0.5) : (b.minZ + b.maxZ) / 2;
     if (h < 1.15) add(corpse, li, x, z, Math.atan2(-nz, nx) + (R() < 0.5 ? Math.PI : 0), 'bed');
     else if (h > 1.45) add(cover, li, x, z, Math.atan2(nx, nz), 'tall');
