@@ -88,7 +88,7 @@ const M = {
     a.dormant = false;
     a.hit = false; a.landed = false;
     if (a.frozen) this._ambThaw();
-    if (a.spot && a.spot.busy === this) { a.spot.busy = null; a.spot.usedT = this.t; }
+    if (a.spot && a.spot.busy === this) { a.spot.busy = null; a.spot.usedT = a.g ? a.g.time : 0; }
     this.go(isPerch(a.code) ? DROP : BURST);
     this.alerted = true; this.spotted = true; // 牠自己會叫,不再補「發現玩家」的叫聲
     this.vel.set(0, 0, 0);
@@ -103,7 +103,7 @@ const M = {
     if (!a) return;
     if (a.frozen) this._ambThaw();
     this.root.visible = true;
-    if (a.spot && a.spot.busy === this) { a.spot.busy = null; a.spot.usedT = this.t; }
+    if (a.spot && a.spot.busy === this) { a.spot.busy = null; a.spot.usedT = a.g ? a.g.time : 0; }
     this.amb = null;
     this.rootY = 0; this.rootPitch = 0; this.rootRoll = 0;
     this._sx = this.pos.x; this._sy = this.pos.y; this._sz = this.pos.z; this._noProg = 0;
