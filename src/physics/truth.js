@@ -37,7 +37,7 @@ put('wood', 'bench pew tablelong lowtable kidtable bookcase wardrobe altar plint
 put('stone', 'mary bigplanter');
 
 // 盒子比實體高的模板:真正的實心頂(相對盒底,公尺)。床頭板/床尾板/側欄、輪椅推把、長椅椅背都是細管或薄板(子彈可穿、站上床墊後可跨過)
-const TRUE_H = { bed: 0.72, kidbed: 0.58, ironbed: 0.58, bunk: 0.52, bench: 0.47, wc: 0.55, mtrolley: 0.9, filecart: 0.8, tstairs: 0.62, steam: 0.9 };
+const TRUE_H = { bed: 0.72, kidbed: 0.58, ironbed: 0.58, bunk: 0.52, bench: 0.47, wc: 0.7, mtrolley: 0.9, filecart: 0.8, tstairs: 0.62, steam: 0.9 };
 
 // '=' 各造型的實心高度(與 hospital/openings.js buildRails 的造型一致:牆 + 7cm 壓頂)
 const RAIL_TOP = { parapet: 1.12, gallery: 1.12, counter: 1.07, stair_bal: 1.05, rail_metal: 0 };

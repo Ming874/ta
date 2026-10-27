@@ -45,6 +45,7 @@ export class Mantle {
     for (let k = 0; k < list.length; k++) {
       const b = list[k];
       if (b.maxY <= y + BOX_STEP || b.minY >= y + 1.15 || x < b.minX - 0.02 || x > b.maxX + 0.02 || z < b.minZ - 0.02 || z > b.maxZ + 0.02) continue;
+      if (!b.pm) return NO; // 沒有材質標記的是遊戲機制用的盒子(商店櫃台、補給站、門):不能翻
       if (!(b.maxY <= top)) top = b.maxY;
     }
     return top;
