@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { prng, hashStr } from './paint.js';
 import { surfSize, isRoomMapped } from './surfaces.js';
-import { wallRecipe, floorKey, ceilKey, zoneTint, FACADE, COURT, BOUNDARY, REVEAL } from './style.js';
+import { wallRecipe, floorKey, ceilKey, zoneTint, zoneWear, FACADE, COURT, BOUNDARY, REVEAL } from './style.js';
 
 // 建築外殼:地板、牆(上下段 + 收邊)、窗台/窗楣、天花板(含缺塊與夾層)、樓板邊、牆頂、屋頂與女兒牆、拱頂、管線。
 // 會把每面牆的資訊(位置、法線、區域、配方)記錄在 K.faces,給貼花/標示/燈具使用。
@@ -44,14 +44,14 @@ export function createShellContext(L, B) {
   };
   K.levelTop = nL - 1;
   // 某格(牆面朝向的那一側)應該用哪種牆面:外牆 / 中庭外牆 / 區域配方
-  K.sideStyle = (li, nc, nr) => {
+  K.sideStyle = (li, nc, nr, at = null) => {
     const lvId = L.levels[li].id;
     if (K.outdoorAt(li, nc, nr)) return { recipe: L.inBuilding(nc, nr) ? COURT : FACADE, zone: null, kind: 'facade' };
     const nch = L.charAt(li, nc, nr);
     const sz = K.spaceZone(li, nc, nr);
     const zone = sz ? sz.zone : null;
     const zl = sz ? L.levels[sz.li].id : lvId;
-    const recipe = wallRecipe(zone || (nch === '=' || nch === '+' ? L.zoneAt(li, nc, nr - 1) || L.zoneAt(li, nc, nr + 1) || L.zoneAt(li, nc - 1, nr) || L.zoneAt(li, nc + 1, nr) : null), zl);
+    const recipe = wallRecipe(zone || (nch === '=' || nch === '+' ? L.zoneAt(li, nc, nr - 1) || L.zoneAt(li, nc, nr + 1) || L.zoneAt(li, nc - 1, nr) || L.zoneAt(li, nc + 1, nr) : null), zl, at);
     return { recipe, zone, kind: 'room' };
   };
   // 門的資料:通行軸、高度、是否雙開
@@ -108,7 +108,14 @@ export function buildFloors(K) {
       const t = xf(zone, key);
       const x0 = c * L.CELL, z0 = r * L.CELL, x1 = x0 + L.CELL, z1 = z0 + L.CELL;
       const tint = zone ? zoneTint(zone, { up: key }) : [1, 1, 1];
-      const col = [[x0, z1], [x1, z1], [x1, z0], [x0, z0]].map(([px, pz]) => mulc(tint, vnoise(px, y, pz) * 0.97));
+      const edge = (px, pz) => { // 角點旁四格有牆 → 暗一點(灰塵積在牆邊,走道中央被踩亮)
+        const cc = Math.round(px / 2), rr = Math.round(pz / 2);
+        let n = 0;
+        for (const [dc, dr] of [[-1, -1], [0, -1], [-1, 0], [0, 0]]) if (WALLISH(L.charAt(li, cc + dc, rr + dr))) n++;
+        return n ? 0.78 : 1;
+      };
+      const col = [[x0, z1], [x1, z1], [x1, z0], [x0, z0]].map(([px, pz]) => mulc(tint, vnoise(px, y, pz) * 0.97 * edge(px, pz)));
+      B.wear = zone ? zoneWear(zone, lv.id) : lv.id === 'B1' ? 0.85 : 0.5;
       const yy = key === 'metal_grate' ? y - 0.02 : y;
       B.flat(li, key, x0, z0, x1, z1, yy, true, { rot: t.rot, uOff: t.uOff, vOff: t.vOff, col });
       if (key === 'metal_grate') B.flat(li, 'trim_dark', x0, z0, x1, z1, yy - 0.001, false, {}); // 由下往上看也看得到格柵
@@ -150,7 +157,7 @@ export function buildWalls(K) {
         } else {
           if (boundary) { recipe = BOUNDARY; kind = 'boundary'; }
           else {
-            const st = K.sideStyle(li, nc, nr);
+            const st = K.sideStyle(li, nc, nr, dir === 'N' || dir === 'S' ? c * 2 + 1 : r * 2 + 1);
             recipe = st.recipe; zone = st.zone; kind = st.kind;
             if (kind === 'room' && ch === 'E') kind = 'elevator';
           }
@@ -191,6 +198,10 @@ function emitRun(K, run, y) {
   const tint = zoneTint(run.zone, rc);
   const dirt = R.r(0.9, 1.07);
   const [nx, nz] = normalOf(run.dir);
+  // 破舊度:配方基準 ± 隨機(有的牆幾乎乾淨,有的整面剝落);外牆/窗洞側邊較平均
+  const wear = Math.min(1, Math.max(0, (rc.wear ?? 0.6) + (run.kind === 'room' ? R.r(-0.35, 0.4) : R.r(-0.15, 0.15))));
+  B.wear = wear;
+  run.wear = wear;
   // 每個 2m 段一組四邊形(頂點色依位置變化;貼圖連續)
   const colAt = (a, h) => {
     const px = run.dir === 'N' || run.dir === 'S' ? a : run.fixed, pz = run.dir === 'N' || run.dir === 'S' ? run.fixed : a;
@@ -246,7 +257,8 @@ function emitRun(K, run, y) {
       if (!WALLISH(L.charAt(li, cc, rr2))) trim(rc.guard, 0.12, 1.5, 0.03, end ? a - 0.04 : a, end ? a : a + 0.04);
     }
   }
-  K.faces.push({ li, y, dir: run.dir, nx, nz, fixed: run.fixed, a0: run.a0, a1: run.a1, spans, zone: run.zone, recipe: rc, kind: run.kind, c: run.c, r: run.r, nc: run.nc, nr: run.nr, top: spans[spans.length - 1][1], win: run.win });
+  if (full && rc.top && run.kind === 'room') { const ft = K.faceTop(li, run.nc, run.nr); if (ft > 3) trim(rc.top, ft - 0.16, ft - 0.08, 0.025); }
+  K.faces.push({ li, y, dir: run.dir, nx, nz, fixed: run.fixed, a0: run.a0, a1: run.a1, spans, zone: run.zone, recipe: rc, kind: run.kind, c: run.c, r: run.r, nc: run.nc, nr: run.nr, top: spans[spans.length - 1][1], win: run.win, wear: run.wear, segs: run.segs });
 }
 
 // 窗洞的窗台面與窗楣底面(窗格本身由 openings 畫)
@@ -274,9 +286,11 @@ export function buildCeilings(K) {
     const tint = zone ? zoneTint(zone, { up: key }) : [0.95, 0.95, 0.95];
     const col = [[x0, z0], [x0 + 2, z0], [x0 + 2, z0 + 2], [x0, z0 + 2]].map(([px, pz]) => mulc(tint, vnoise(px, yC, pz) * 0.95));
     const pipes = zone?.ceil === 'pipes';
-    const hole = (key === 'ceil_tile' || key === 'ceil_tile_b') && L.charAt(li, c, r) !== '+' && R() < (zone?.light === 'fluoro_dying' ? 0.14 : 0.05);
+    B.wear = zone ? zoneWear(zone, lvId) : 0.6;
+    const tiled = key === 'ceil_tile' || key === 'ceil_tile_b' || key === 'ceil_tile_c';
+    const hole = tiled && L.charAt(li, c, r) !== '+' && R() < (zone?.light === 'fluoro_dying' ? 0.14 : zone?.mood === 'psych' || zone?.theme === 'surgery' ? 0.02 : 0.05);
     if (!hole) B.flat(li, key, x0, z0, x0 + 2, z0 + 2, yC, false, { col });
-    else { // 缺了幾片天花板:露出夾層(黑)與吊線
+    else { // 缺了幾片天花板:露出夾層(黑)與吊線;有的沒掉下來,一邊還掛著(下垂)
       const t = 2 / 3, miss = new Set();
       const n = 1 + ((R() * 2.4) | 0);
       for (let k = 0; k < n; k++) miss.add(((R() * 9) | 0));
@@ -284,7 +298,22 @@ export function buildCeilings(K) {
         const sx = x0 + i * t, sz = z0 + j * t;
         if (!miss.has(j * 3 + i)) { B.flat(li, key, sx, sz, sx + t, sz + t, yC, false, { col: col[0] }); continue; }
         B.box(li, 'trim_plenum', sx, yC, sz, sx + t, yC + 0.55, sz + t, { skip: 'D' });
-        K.ceilings.push({ li, x: sx + t / 2, y: yC, z: sz + t / 2, kind: 'hole' });
+        if (R() < 0.4) { // 下垂的板:沿一邊鉸著,另一邊垂下 20~55°
+          const ang = R.r(0.35, 0.95), side = (R() * 4) | 0, d = t * Math.sin(ang), h = t * Math.cos(ang);
+          const P = [[sx, sz], [sx + t, sz], [sx + t, sz + t], [sx, sz + t]].map(([px, pz]) => [px, yC - 0.005, pz]);
+          // 鉸邊 = side 那一邊;對邊往下垂並往內收
+          const hinge = [[0, 1], [1, 2], [2, 3], [3, 0]][side], far = [[3, 2], [0, 3], [1, 0], [2, 1]][side];
+          const inward = [[0, -1], [1, 0], [0, 1], [-1, 0]][side]; // 鉸邊的法向(往外)
+          for (const k of far) { P[k][0] += inward[0] * (t - h); P[k][2] += inward[1] * (t - h); P[k][1] -= d; }
+          const c1 = col[0].map((v) => v * 0.8);
+          const [a, b, cc, dd] = [P[hinge[0]], P[hinge[1]], P[far[1]], P[far[0]]];
+          const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = dd[0] - a[0], vy = dd[1] - a[1], vz = dd[2] - a[2];
+          let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+          const nl = Math.hypot(nx, ny, nz) || 1; nx /= nl; ny /= nl; nz /= nl;
+          if (ny > 0) { nx = -nx; ny = -ny; nz = -nz; B.quad(li, key, a, dd, cc, b, [nx, ny, nz], [[a[0], -a[2]], [dd[0], -dd[2]], [cc[0], -cc[2]], [b[0], -b[2]]], c1); }
+          else B.quad(li, key, a, b, cc, dd, [nx, ny, nz], [[a[0], -a[2]], [b[0], -b[2]], [cc[0], -cc[2]], [dd[0], -dd[2]]], c1);
+          K.ceilings.push({ li, x: sx + t / 2, y: yC, z: sz + t / 2, kind: 'sag' });
+        } else K.ceilings.push({ li, x: sx + t / 2, y: yC, z: sz + t / 2, kind: 'hole' });
       }
     }
     if (pipes) K.ceilings.push({ li, x: x0 + 1, y: yC, z: z0 + 1, c, r, zone, kind: 'pipes' });

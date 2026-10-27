@@ -39,6 +39,22 @@ export const PBR_SETS = {
   bark: { tile: 2.15, ao: 1, avg: '#847668' },
   dirt: { tile: 1.3, ao: 1, avg: '#4d4537' },
   chainlink: { tile: 1.0, ao: 0, alpha: 1, avg: '#9b9ea0' },
+  // wave 2:更多牆/地/天花板(見 public/credits/indoor.md)
+  plaster_paint: { tile: 2.5, ao: 1, avg: '#aba3a0' },
+  wallpaper_old: { tile: 2.0, ao: 1, avg: '#776b5e' },
+  plaster_blue: { tile: 2.4, ao: 1, avg: '#87a5a0' },
+  plaster_damaged: { tile: 2.4, ao: 1, avg: '#948271' },
+  brick_white: { tile: 2.0, ao: 1, avg: '#8d806b' },
+  gloss_paint: { tile: 1.6, ao: 1, avg: '#547c58' },
+  tile_sq: { tile: 1.5, ao: 1, avg: '#bdc3c0' },
+  plaster_mould: { tile: 2.4, ao: 1, avg: '#75714c' },
+  lino_pattern: { tile: 1.5, ao: 1, avg: '#b0834f' },
+  checker_bw: { tile: 1.6, ao: 1, avg: '#868580' },
+  rubber_floor: { tile: 2.0, ao: 1, avg: '#1f2125' },
+  anti_skid: { tile: 1.2, ao: 1, avg: '#866b54' },
+  carpet_dirty: { tile: 1.5, ao: 1, avg: '#352f25' },
+  epoxy: { tile: 3.0, ao: 1, avg: '#4f493f' },
+  ceiling_tile2: { tile: 2.4, ao: 1, avg: '#f5f5f5' },
 };
 const BASE = ((typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) || '/') + 'textures/';
 const PH = { color: null, normal: '#8080ff', orm: '#ffd0ff', opacity: '#ffffff' };
