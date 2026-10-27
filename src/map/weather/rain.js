@@ -283,7 +283,7 @@ export function splashMesh() {
           vec2 dp = vec2( sin( a ) * 0.62 * t, 1.25 * t * cos( a ) - 1.5 * t * t );
           drops += smoothstep( 0.035, 0.0, length( q - dp ) );
         }
-        float a = ( crown * 0.8 + drops ) * vA * ( 1.0 - t * t );
+        float a = ( crown * 0.45 + drops * 0.8 ) * vA * ( 1.0 - t * t );
         if ( a < 0.002 ) discard;
         gl_FragColor = vec4( vCol * uTint * a, 1.0 );
       }`,

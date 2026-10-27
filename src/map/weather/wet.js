@@ -46,9 +46,9 @@ vec2 wRipple( vec2 p, float t ) {
     vec2 d = f - c;
     float r = length( d ) + 1e-4;
     float R = age * 0.34;
-    float x = ( r - R ) * 30.0;
-    float env = ( 1.0 - age ) * ( 1.0 - age ) * exp( - x * x * 0.35 ) * ( 1.0 - smoothstep( 0.3, 0.42, r ) );
-    g += d / r * sin( x * 2.2 ) * env;
+    float x = ( r - R ) * 24.0;
+    float env = ( 1.0 - age ) * ( 1.0 - age ) * exp( - x * x * 0.3 ) * ( 1.0 - smoothstep( 0.3, 0.42, r ) );
+    g += d / r * sin( x * 1.7 ) * env;
   }
   return g;
 }
@@ -69,7 +69,8 @@ const WET_ROUGH = /* glsl */`
 const WET_NORMAL = /* glsl */`
 	vec2 wg = vec2( 0.0 );
 	if ( wPud > 0.01 ) {
-		if ( uRipple > 0.5 && uRain > 0.02 ) wg = wRipple( vWetPos.xz, uRainT ) * 0.11 * ( 0.4 + 0.6 * uRain );
+		float wFar = 1.0 - smoothstep( 7.0, 18.0, length( vViewPosition ) ); // 遠處的細漣漪會閃爍(取樣不足)→ 淡出
+		if ( uRipple > 0.5 && uRain > 0.02 && wFar > 0.0 ) wg = wRipple( vWetPos.xz, uRainT ) * 0.16 * ( 0.4 + 0.6 * uRain ) * wFar;
 		vec3 wFlat = normalize( ( viewMatrix * vec4( - wg.x, 1.0, - wg.y, 0.0 ) ).xyz );
 		normal = normalize( mix( normal, wFlat, wPud ) );
 	}
@@ -155,7 +156,7 @@ vec3 gDrops( vec2 q, float t ) {
   vec3 o = vec3( 0.0 );
   // 靜止水珠(兩種大小)
   for ( int k = 0; k < 2; k ++ ) {
-    float sc = k == 0 ? 26.0 : 55.0;
+    float sc = k == 0 ? 19.0 : 42.0;
     vec2 g = q * sc + float( k ) * 3.7;
     vec2 i = floor( g ), f = fract( g ) - 0.5;
     float h = gHash( i + float( k ) * 9.1 );
@@ -183,7 +184,7 @@ vec3 gDrops( vec2 q, float t ) {
     float hr = 0.006 + 0.004 * gHash( vec2( ci, 1.9 ) );
     float hd = length( vec2( fx, dy * 0.75 ) );
     float bead = smoothstep( hr, hr * 0.7, hd );
-    float tw = 0.0016 * clamp( 1.0 - dy / 0.9, 0.0, 1.0 ) * step( 0.0, dy );
+    float tw = 0.0024 * clamp( 1.0 - dy / 0.9, 0.0, 1.0 ) * step( 0.0, dy );
     float trail = smoothstep( tw, tw * 0.4, abs( fx ) ) * step( 0.0, dy ) * 0.6;
     o.xy += vec2( fx / hr, dy * 0.75 / hr ) * bead + vec2( fx / max( tw, 1e-4 ), 0.0 ) * trail * 0.5;
     o.z = max( o.z, max( bead, trail ) );
@@ -201,14 +202,39 @@ const GLASS_MAP = /* glsl */`
 	}
 	vec3 gD = vec3( 0.0 );
 	if ( gExp > 0.5 ) gD = gDrops( vec2( dot( vWetPos.xz, gT.xz ), vWetPos.y ), uRainT ) * min( 1.0, uWet * 1.4 );
-	diffuseColor.a = max( diffuseColor.a, gD.z * 0.32 );
-	diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.42, 0.47, 0.5 ), gD.z * 0.35 );
+	diffuseColor.a = max( diffuseColor.a, gD.z * 0.4 );
+	diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.5, 0.55, 0.58 ), gD.z * 0.4 );
 `;
 const GLASS_NORMAL = /* glsl */`
 	if ( gD.z > 0.01 ) {
 		vec3 gPert = ( gT * gD.x + vec3( 0.0, 1.0, 0.0 ) * gD.y ) * 0.55;
 		normal = normalize( normal + ( viewMatrix * vec4( gPert, 0.0 ) ).xyz );
 	}
+`;
+// 窗外的燈透過水珠折射進眼睛:燈在玻璃另一側、而且接近視線方向時水珠最亮(水珠是小透鏡)
+const GLASS_EMIT = /* glsl */`
+	#if NUM_POINT_LIGHTS > 0
+	if ( gD.z > 0.01 ) {
+		vec3 gP = - vViewPosition;
+		vec3 gNv = normalize( vNormal );
+		float gSc = dot( - gP, gNv );
+		vec3 gAcc = vec3( 0.0 );
+		vec3 gV = normalize( gP );
+		#pragma unroll_loop_start
+		for ( int i = 0; i < NUM_POINT_LIGHTS; i ++ ) {
+			{
+				vec3 dl = pointLights[ i ].position - gP;
+				float dd = length( dl );
+				if ( dot( dl, gNv ) * gSc < 0.0 && dd < 14.0 ) {
+					float al = max( dot( dl / dd, gV ), 0.0 );
+					gAcc += pointLights[ i ].color * ( ( 0.25 + 5.0 * pow( al, 10.0 ) ) / ( 1.0 + dd * dd ) );
+				}
+			}
+		}
+		#pragma unroll_loop_end
+		totalEmissiveRadiance += min( gAcc * gD.z * 0.5, vec3( 4.0 ) );
+	}
+	#endif
 `;
 const GLASS_ROUGH = /* glsl */`
 	roughnessFactor = mix( roughnessFactor, 0.04, gD.z );
@@ -227,7 +253,8 @@ export function makeGlassWet(m) {
       .replace('void main() {', GLASS_PARS + 'void main() {')
       .replace('#include <map_fragment>', '#include <map_fragment>\n' + GLASS_MAP)
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n' + GLASS_ROUGH)
-      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + GLASS_NORMAL);
+      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + GLASS_NORMAL)
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n' + GLASS_EMIT);
     if (hasPrev) prev.call(this, s, r);
   };
   const key = hasPrev ? (m.customProgramCacheKey !== THREE.Material.prototype.customProgramCacheKey ? m.customProgramCacheKey() : prev.toString()) : '';

@@ -509,7 +509,7 @@ export class Weather {
       const exposedCam = raining && this.occ.exposed(cam.position.x, cam.position.y, cam.position.z);
       const pitch = player?.pitch ?? 0;
       const hit = exposedCam && this.lensOn ? rk * Math.pow(clamp((pitch + 0.1) / 0.9, 0, 1), 1.5) : 0;
-      this.lensAmt = clamp(this.lensAmt + hit * dt * 0.35 - dt * (hit > 0 ? 0.02 : 0.06), 0, 0.55);
+      this.lensAmt = clamp(this.lensAmt + hit * dt * 0.2 - dt * (hit > 0 ? 0.015 : 0.05), 0, 0.32);
       if (!this.lensOn) this.lensAmt = 0;
       this.lens.enabled = this.lensAmt > 0.01;
       const lu = this.lens.uniforms;

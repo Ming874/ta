@@ -26,7 +26,7 @@ export const LensShader = {
       vec2 d = f - c;
       d.y *= 1.0 - 0.35 * life; // 滑動時拉長
       float dl = length( d );
-      float m = on * smoothstep( r, r * 0.82, dl );
+      float m = on * smoothstep( r, r * 0.55, dl ); // 鏡頭上的水滴是失焦的:邊緣柔和
       return vec4( d / max( r, 1e-3 ), m, r / sc );
     }
     void main() {
@@ -42,10 +42,10 @@ export const LensShader = {
         vec3 rc = ( texture2D( tDiffuse, ruv ).rgb * 2.0 + texture2D( tDiffuse, ruv + vec2( bl, 0.0 ) ).rgb + texture2D( tDiffuse, ruv - vec2( bl, 0.0 ) ).rgb
           + texture2D( tDiffuse, ruv + vec2( 0.0, bl ) ).rgb + texture2D( tDiffuse, ruv - vec2( 0.0, bl ) ).rgb ) / 6.0;
         float e = length( n );
-        rc *= 1.0 - 0.55 * smoothstep( 0.55, 1.0, e ); // 暗邊
+        rc *= 1.0 - 0.3 * smoothstep( 0.6, 1.0, e ); // 淡淡的暗邊
         float lum = dot( rc, vec3( 0.3, 0.6, 0.1 ) );
-        rc += vec3( 0.9, 0.95, 1.0 ) * pow( max( dot( normalize( vec3( n, 1.2 ) ), normalize( vec3( - 0.35, 0.55, 1.0 ) ) ), 0.0 ), 60.0 ) * ( 0.04 + lum * 1.5 );
-        c.rgb = mix( c.rgb, rc, d.z * 0.92 );
+        rc += vec3( 0.9, 0.95, 1.0 ) * pow( max( dot( normalize( vec3( n, 1.2 ) ), normalize( vec3( - 0.35, 0.55, 1.0 ) ) ), 0.0 ), 60.0 ) * ( 0.015 + lum * 0.8 );
+        c.rgb = mix( c.rgb, rc, d.z * 0.85 );
       }
       gl_FragColor = c;
     }`,
