@@ -164,6 +164,7 @@
   background: rgba(10, 12, 10, .95); border: 1px solid var(--line); border-left: 3px solid var(--ok); color: var(--text); pointer-events: none; opacity: 0; white-space: nowrap; z-index: 5; }
 .sh-toast.bad { border-left-color: var(--bad); color: #ffc8c0; }
 .sh-toast.max { border-left-color: #c9b27a; }
+.sh-toast.info { border-left-color: var(--amber); color: #ffe2b8; font-weight: 400; letter-spacing: 1px; }
 .sh-float { position: absolute; font: 700 22px var(--num); color: var(--bad); pointer-events: none; z-index: 6; }
 
 @media (max-width: 760px) {

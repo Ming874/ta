@@ -134,6 +134,19 @@
 .hd-pk small { display: block; font-size: .58em; letter-spacing: .06em; margin-top: .1em; opacity: .82; }
 .hd-pk svg { width: 1em; height: 1em; margin-right: .45em; filter: drop-shadow(0 0 5px currentColor); }
 
+/* ---- 左側中:新手提示 ---- */
+.hd-tip { left: 1.6em; top: 34%; width: 21em; padding: .6em .9em .7em; background: linear-gradient(90deg, rgba(10, 12, 11, .82), rgba(10, 12, 11, .55));
+  border-left: 3px solid var(--hud-amber); text-shadow: 0 1px 2px #000; }
+.hd-tip .tt { display: flex; align-items: center; gap: .45em; font-size: .9em; letter-spacing: .2em; color: var(--hud-amber); }
+.hd-tip .tt .ic svg { width: 1.05em; height: 1.05em; }
+.hd-tip .tt .sp { flex: 1; }
+.hd-tip .tt small { font-size: .78em; letter-spacing: .1em; color: var(--hud-dim); }
+.hd-tip .tt kbd.kc { font-size: .72em; }
+.hd-tip .tx { margin-top: .35em; font-size: .98em; line-height: 1.7; letter-spacing: .04em; color: var(--hud-text); }
+.hd-tip .tx kbd.kc { font-size: .78em; }
+.hd-tip .tl { height: 2px; margin-top: .5em; background: rgba(255, 255, 255, .1); }
+.hd-tip .tl i { display: block; height: 100%; background: var(--hud-amber); transform-origin: 0 50%; opacity: .7; }
+
 /* ---- 標題橫幅 ---- */
 .hd-banner { left: 0; right: 0; top: 22%; text-align: center; font-size: 3.5em; letter-spacing: .32em; padding-left: .32em; font-weight: 700; color: #d6d9cf; opacity: 0;
   text-shadow: 0 2px 14px #000, 0 0 40px rgba(0,0,0,.7); }
@@ -141,7 +154,5 @@
 .hd-banner.red { color: #d8483c; }
 .hd-banner.gold { color: #f0c860; }
 
-/* 舊版 index.html 的 HUD 元件由 hud.js 取代 */
-#health, #ammo, #coins, #roundinfo, #banner, #prompt, #pickfeed { display: none !important; }
 
 @keyframes hd-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }

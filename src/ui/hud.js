@@ -44,6 +44,7 @@ export class Hud {
     this.zoneEl = this.loc.children[1];
     this.zoneBig = add(mk('hd hd-zonebig'));
     this.round = add(mk('hd hd-round', '<div class="hd-rn">第 <b>1</b> 回合</div><div class="hd-rs">殭屍 <b>0</b></div>'));
+    this.round.id = 'roundinfo'; // 對戰模式(src/net/pvp.js)會用這個 id 隱藏回合資訊
     this.roundNum = this.round.querySelector('b');
     this.roundSub = this.round.children[1];
     this.coins = add(mk('hd hd-coins', `<span class="hd-cgain"></span>${ICON.coin}<b>0</b>`));

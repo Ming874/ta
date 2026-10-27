@@ -269,6 +269,13 @@ export class ShopUI {
     this.refresh();
     this.preview.start();
     this.preview.show(this.item?.preview);
+    // 第一次開商店:操作說明(新手提示,只出現一次)
+    const T = this.ui.tips;
+    if (T?.enabled && !T.has('shopui')) {
+      T.seen.add('shopui');
+      T._save();
+      setTimeout(() => { if (this.isOpen) this.toast('[1]–[4] 切換分頁 · ↑↓ 選擇 · Enter 購買 · 雙擊也能購買 · E 離開', 'info', 5200); }, 450);
+    }
   }
 
   close() {
@@ -526,12 +533,12 @@ export class ShopUI {
     f.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(26px)' }], { duration: 900, easing: 'ease-in' }).onfinish = () => f.remove();
   }
 
-  toast(text, kind = 'ok') {
+  toast(text, kind = 'ok', ms = 1800) {
     const t = this.toastEl;
     t.textContent = text;
     t.className = `sh-toast ${kind}`;
     t.getAnimations().forEach((a) => a.cancel());
-    t.animate([{ opacity: 0, transform: 'translate(-50%, -6px)' }, { opacity: 1, transform: 'translate(-50%, 0)', offset: 0.12 }, { opacity: 1, offset: 0.8 }, { opacity: 0 }], { duration: 1800, easing: 'ease-out' });
+    t.animate([{ opacity: 0, transform: 'translate(-50%, -6px)' }, { opacity: 1, transform: 'translate(-50%, 0)', offset: Math.min(0.12, 220 / ms) }, { opacity: 1, offset: 0.85 }, { opacity: 0 }], { duration: ms, easing: 'ease-out' });
   }
 
   // 由遊戲的按鍵處理轉來(商店開啟時所有按鍵都到這裡)

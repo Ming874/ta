@@ -2,6 +2,7 @@ import { Hud } from './ui/hud.js';
 import { ShopUI } from './ui/shop.js';
 import { MapUI } from './ui/map.js';
 import { Menu } from './ui/menu.js';
+import { Tips } from './ui/tips.js';
 import { settings } from './ui/settings.js';
 
 const $ = (id) => document.getElementById(id);
@@ -12,6 +13,7 @@ export class UI {
   constructor() {
     this.hudEl = $('hud');
     this.hud = new Hud(this.hudEl);
+    this.tips = new Tips(this.hudEl); // 新手提示(src/ui/tips.js)
     this.shop = new ShopUI(this);
     this.map = new MapUI(this);
     this.menu = new Menu(this);
@@ -55,7 +57,7 @@ export class UI {
   killPop(n, tag, kind) { this.hud.killPop(n, tag, kind); }
   healing(k) { this.hud.healing(k); }
   showDeath(summary) { this.menu.showDeath(summary); }
-  resetRun() { this.hud.reset(); this._lastHurt = null; this._lastHp = null; }
+  resetRun() { this.hud.reset(); this.tips.clearQueue(); this._lastHurt = null; this._lastHp = null; }
 
   hitMarker(head) {
     const el = $('hit');
@@ -96,6 +98,7 @@ export class UI {
     }
     this._lastHp = p.hp;
     this.hud.update(game, dt);
+    this.tips.update(dt);
     if (this.map.isOpen) this.map.update(game);
   }
 }

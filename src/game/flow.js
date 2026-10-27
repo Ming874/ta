@@ -511,10 +511,42 @@ export const flowMethods = {
     }
   },
 
+  // ---------- 新手提示(src/ui/tips.js;每張只出現一次) ----------
+  tutorial(id, n) {
+    const T = this.ui.tips;
+    if (!T || this.state !== 'playing') return;
+    if (id === 'round') {
+      if (n === 1) { T.show('move', 1.5); T.show('shoot', 4); }
+      else if (n === 2) T.show('map', 5);
+    } else T.show(id, id === 'shop' ? 2.5 : 0);
+  },
+  // 每 0.5 秒檢查一次情境(都是便宜的判斷)
+  updateTutorial(dt) {
+    const T = this.ui.tips;
+    if (!T?.enabled || (this._tutT = (this._tutT || 0) - dt) > 0) return;
+    this._tutT = 0.5;
+    const p = this.player, w = this.weapons;
+    const cap = w.magSize || 1;
+    if (w.ammo && w.ammo.mag <= Math.max(1, Math.floor(cap * 0.25)) && !(w.reloading > 0)) T.show('reload');
+    if (this.pickups?.items.some((it) => it.state === 'idle')) T.show('drop', 1);
+    if ((p.grenades || 0) > 0) T.show('grenade');
+    if ((p.medkits || 0) > 0) T.show('medkit');
+    if (p.hp > 0 && p.hp < p.maxHp * 0.4) T.show('lowhp');
+    if (p.exhausted) T.show('stamina');
+    if (this.supplies?.nearest(p)) T.show('supply');
+    for (const z of this.zombies) {
+      if (!z.alive || !(z.dist < 18)) continue;
+      if (z.type === 'brute') T.show('brute');
+      else if (z.type === 'bloater') T.show('bloater');
+      else if (z.los && z.dist < 14 && this.round >= 1) T.show('head', 0.5);
+    }
+  },
+
   // ---------- 每幀(game.update 在暫停檢查之後呼叫) ----------
   updateGameplay(dt) {
     const p = this.player;
     this.stats.time += dt;
+    this.updateTutorial(dt);
     this._updateHeal(dt);
     this.pickups?.update(dt, this);
     this.supplies?.update(dt, this);
