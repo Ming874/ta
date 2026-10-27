@@ -215,7 +215,8 @@ export function paranormalKinds(h) {
     } },
     child: { ok: (c) => indoor(c) && free() && models.ready('child') && !!childPath(c), run(c) { // 孩子笑著跑過門口
       const P = childPath(c);
-      const a = A.spawn({ tag: 'child', fig: 'child', pose: 'runA', anim: ['runA', 'runB'], animDt: 0.14, look: 'pale', x: P.x0, y: lv(c), z: P.z0, yaw: Math.atan2(P.x1 - P.x0, P.z1 - P.z0), path: [{ x: P.x1, z: P.z1 }], speed: 3.4, endOnArrive: true, dur: 3, alpha: 0.9, bob: true, vanish: { flash: false, look: 0, near: 1.5 } });
+      // 只是一閃而過的小影子(STORY.md §11.5:沒有兒童死亡,孩子只以聲音/影子出現)
+      const a = A.spawn({ tag: 'child', fig: 'child', pose: 'runA', anim: ['runA', 'runB'], animDt: 0.14, look: 'shade', x: P.x0, y: lv(c), z: P.z0, yaw: Math.atan2(P.x1 - P.x0, P.z1 - P.z0), path: [{ x: P.x1, z: P.z1 }], speed: 3.6, endOnArrive: true, dur: 3, alpha: 0.5, bob: true, vanish: { flash: false, look: 0, near: 1.5 } });
       if (a) { ghost.giggle({ x: P.dx, y: lv(c) + 1, z: P.dz }); cue('child', 0.35); }
       return a;
     } },

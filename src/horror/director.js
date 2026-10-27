@@ -23,8 +23,8 @@ export const KINDS = {
   ceilingDrop: { tier: 'medium', cd: 40, jump: true, ext: true },
   // 本模組
   whisper: { tier: 'small', cd: 14 },
-  ambient: { tier: 'small', cd: 22 },
-  flicker: { tier: 'small', cd: 30 },
+  ambient: { tier: 'small', cd: 35 },
+  flicker: { tier: 'small', cd: 60 },
   signal: { tier: 'small', cd: 40 }, // 殭屍靠近時附近的燈閃一下
   crawl: { tier: 'small', cd: 70 },
   silence: { tier: 'small', cd: 90 },
@@ -51,14 +51,15 @@ export const KINDS = {
   nurse: { tier: 'medium', cd: 120 },
   curtain: { tier: 'medium', cd: 90 },
   mirror: { tier: 'medium', cd: 90 },
+  apparition: { tier: 'medium', cd: 80 }, // 劇情組用的通稱(STORY.md §12)
   behind: { tier: 'big', cd: 150, jump: true },
   lightsDie: { tier: 'big', cd: 170 },
   blackout: { tier: 'big', cd: 200 },
 };
 const TIER = {
-  small: { dread: 12, cost: 10, gap: 8 },
-  medium: { dread: 34, cost: 32, gap: 22 },
-  big: { dread: 70, cost: 100, gap: 120 },
+  small: { dread: 16, cost: 12, gap: 22 },
+  medium: { dread: 40, cost: 34, gap: 45 },
+  big: { dread: 75, cost: 100, gap: 150 },
 };
 // 驚嚇強度:rate 恐懼累積倍率、cd 冷卻倍率、big 允許大場面、medium 允許看得見的事件
 export const INTENSITY = {
@@ -70,6 +71,9 @@ export const INTENSITY = {
 export const LEVELS = ['off', 'low', 'normal', 'high'];
 const CALM_START = 60; // 開局多少秒內不放 medium/big 與閃燈
 const LIGHT_KINDS = new Set(['flicker', 'signal', 'lightsDie', 'blackout']);
+// 誘集期間(回合進行中)也可以有的:不是鬼的東西(宿主、伏擊、殭屍靠近的閃燈、天花板裡的爬行)。
+// 其他全部是「鬼」:只在靜默期(回合之間的休息)出現(STORY.md §1.9、§4.2、§12)
+export const FIGHT_OK = new Set(['ambient', 'signal', 'crawl', 'ambush', 'ceilingDrop']);
 
 export class Director {
   constructor(horror) {
@@ -95,6 +99,8 @@ export class Director {
   }
   get I() { return INTENSITY[this.level]; }
   get bigActive() { return this.t < this.bigUntil; }
+  // 靜默期:回合之間的休息(誘集器關閉);多人時連線層的 'wait' 也算
+  get silent() { const ph = this.h.game?.phase; return ph === 'shop' || ph === 'break' || ph === 'wait'; }
   // 新的一局
   reset() {
     this.t = 0; this.dread = 0; this.tension = 0; this.calm = 0; this.bigUntil = 0; this.roundT = 0;
@@ -119,7 +125,7 @@ export class Director {
     this.dread = Math.min(100, this.dread + dt * quiet * phaseK * esc * this.I.rate * 1.15);
   }
   // 現在能不能放某層級的驚嚇(不看種類冷卻)
-  allowTier(tier, game) {
+  allowTier(tier, game, skipGap = false) {
     const I = this.I;
     if (I.rate <= 0) return false;
     if (this.h.game?.net?.pvp && tier !== 'small') return false; // 對戰:只留背景
@@ -128,11 +134,11 @@ export class Director {
     if (tier === 'big' && !I.big) return false;
     if (tier !== 'small' && this.t < CALM_START) return false;
     const T = TIER[tier];
-    if (this.t - this.lastTier[tier] < T.gap * I.cd) return false;
+    if (!skipGap && this.t - this.lastTier[tier] < T.gap * I.cd) return false;
     if (tier === 'big') { // 大場面:不在打鬥中;休息時間或長時間沒有殭屍靠近
       if (this.tension > 0.2) return false;
       const ph = game?.phase;
-      if (!(ph === 'shop' || ph === 'break' || this.calm > 25)) return false;
+      if (!(ph === 'shop' || ph === 'break' || ph === 'wait')) return false;
       if (ph === 'shop' && this.roundT < 6) return false; // 「商店開放」橫幅期間不搶戲
     }
     if (tier === 'medium' && this.tension > 0.55) return false;
@@ -145,11 +151,12 @@ export class Director {
     const w = Math.max(0.2, o.weight ?? 1);
     const deny = () => { this.denied++; return false; };
     if (!game || game.state !== 'playing') return deny();
-    if (!this.allowTier(K.tier, game)) return deny();
+    if (!this.allowTier(K.tier, game, kind === 'whisper')) return deny(); // 耳語只看自己的冷卻(進新區域的那句不要被別的小事件擋掉)
     if (this.t - (this.last[kind] ?? -1e9) < K.cd * I.cd * w) return deny();
     if (K.jump && this.t - this.lastJump < (K.tier === 'big' ? 60 : 18) * I.cd * w) return deny(); // 跳嚇不連發
     if (K.jump && this.t - this.lastTier.big < 40 * I.cd) return deny(); // 大場面之後的喘息
     if (this.phase === 'fighting' && this.roundT < 6) return deny(); // 回合剛開始
+    if (!this.silent && !FIGHT_OK.has(kind)) return deny(); // 鬼只在靜默期
     if (this.t < CALM_START && LIGHT_KINDS.has(kind)) return deny(); // 開局 60 秒內燈不閃
     // 恐懼值不夠:外部(伏擊)看得見的驚嚇只要求一半門檻(牠們本身就是戰鬥的一部分)
     const need = TIER[K.tier].dread * (K.ext ? 0.5 : 1) * Math.min(1.6, w);

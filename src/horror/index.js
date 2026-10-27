@@ -28,7 +28,7 @@ import { precompile as warmCompile, initPrograms } from '../sys/warmup.js';
 
 // 導演挑事件用的清單:[種類, 權重];區域偏好另外乘
 const CATALOG = {
-  small: [['ambient', 1], ['flicker', 0.7], ['crawl', 0.6], ['silence', 0.45], ['lullaby', 0.5], ['radioOn', 0.45], ['phoneRing', 0.55], ['whisper', 1.2]],
+  small: [['ambient', 1], ['flicker', 0.35], ['crawl', 0.6], ['silence', 0.45], ['lullaby', 0.5], ['radioOn', 0.45], ['phoneRing', 0.55], ['whisper', 1.2]],
   medium: [['doorCreep', 0.9], ['door', 0.5], ['cart', 0.5], ['rollToward', 0.6], ['moveBehind', 0.7], ['footprints', 0.85], ['handprints', 0.8], ['writing', 0.8], ['coldBreath', 0.6], ['tvFace', 0.6], ['elevator', 0.55], ['anchor', 0.7], ['fall', 0.4],
     ['figure', 1.1], ['window', 0.8], ['child', 0.7], ['nurse', 0.8], ['curtain', 0.9], ['mirror', 1.2]],
   big: [['behind', 1], ['lightsDie', 1.1], ['blackout', 0.5]],
@@ -50,7 +50,9 @@ export function installHorror(game) {
   const H = {
     game, settings,
     director: null, whispers: null, subs: new GhostSubs(), app: null, marks: null, fx: null,
-    ringing: null, usedWrit: new Set(), coldK: 0, coldT: 0, coldUntil: 0,
+    ringing: null, usedWrit: new Set(), coldK: 0, coldT: 0, coldUntil: 0, known: new Set(),
+    // 玩家認出某個鬼之後(讀到能認出他的文件),字幕改顯示名字(劇情代理呼叫;GHOSTS 的 id)
+    reveal(id) { H.known.add(id); },
     on(ev, fn) { (subs[ev] ||= new Set()).add(fn); return () => subs[ev].delete(fn); },
     emit(ev, d) { const s = subs[ev]; if (s) for (const fn of s) { try { fn(d); } catch (e) { console.warn('[horror]', ev, e); } } },
     after(sec, fn) { later.push([game.time + sec, fn]); },
@@ -170,16 +172,19 @@ export function installHorror(game) {
     const p = game.player, zone = zoneOf(), round = game.round, phase = game.phase;
     const c = { zone, round, phase };
     // 第一次進入某區:那一區的低語(戰鬥中延後,最多等 25 秒)
-    if (zone && !T.zones.has(zone.id)) { T.zones.add(zone.id); const l = H.whispers.pick('zone', c); if (l) T.zonePend = { l, at: game.time + 1.2 + Math.random() * 1.8, until: game.time + 25 }; }
+    if (zone && !T.zones.has(zone.id)) { T.zones.add(zone.id); const l = H.whispers.pick('zone', c); if (l) T.zonePend = { l, at: game.time + 1.2 + Math.random() * 1.8, until: game.time + 90, zone: zone.id }; }
+    if (T.zonePend && zone && zone.id !== T.zonePend.zone && game.time > T.zonePend.at + 20) T.zonePend = null; // 走遠了就算了
     if (T.zonePend && game.time >= T.zonePend.at) {
       if (game.time > T.zonePend.until) T.zonePend = null;
-      else if (D.tension < 0.45 && !H.whispers.busy && D.request('whisper', { force: true })) { say(T.zonePend.l, { priority: 5 }); T.zonePend = null; }
+      else if (D.silent && D.tension < 0.45 && !H.whispers.busy && D.request('whisper', { force: true })) { say(T.zonePend.l, { priority: 5 }); T.zonePend = null; }
     }
     // 低血量
-    if (p.hp / (p.maxHp || 100) < 0.3 && p.alive !== false && game.time - T.low > 80 && !H.whispers.busy && D.request('whisper', { force: true })) { const l = H.whispers.pick('lowhp', c); if (l) { say(l, { priority: 6 }); T.low = game.time; } }
+    // 用急救包(正典 §5.8#7;只在靜默期)
+    if (game.healT > 0 && !T.heal) { T.heal = true; if (D.silent && !H.whispers.busy && D.request('whisper', { force: true })) { const l = H.whispers.pick('medkit', c); if (l) say(l, { priority: 6 }); } } else if (!(game.healT > 0)) T.heal = false;
+    if (D.silent && p.hp / (p.maxHp || 100) < 0.3 && p.alive !== false && game.time - T.low > 80 && !H.whispers.busy && D.request('whisper', { force: true })) { const l = H.whispers.pick('lowhp', c); if (l) { say(l, { priority: 6 }); T.low = game.time; } }
     // 暗處站著不動
     T.still = p.speedNorm < 0.05 ? T.still + step : 0;
-    if (T.still > 6 && game.time - T.dark > 70 && D.tension < 0.2 && isDark(p) && !H.whispers.busy && D.request('whisper', { force: true })) {
+    if (D.silent && T.still > 6 && game.time - T.dark > 70 && D.tension < 0.2 && isDark(p) && !H.whispers.busy && D.request('whisper', { force: true })) {
       const l = H.whispers.pick('dark', c);
       if (l) { say(l, { priority: 5 }); T.dark = game.time; T.still = 0; if (!p.flashOn && Math.random() < 0.4) H.after(3, () => H.event('coldBreath')); }
     }
@@ -188,11 +193,11 @@ export function installHorror(game) {
     if (S) {
       if (S.streak >= 5 && S.lastKill > T.lastKill) T.streak = Math.max(T.streak, S.streak);
       T.lastKill = S.lastKill;
-      if (T.streak >= 5 && game.time - S.lastKill > 5 && D.tension < 0.35 && game.time - T.strk > 100 && !H.whispers.busy && D.request('whisper', { force: true })) { const l = H.whispers.pick('streak', c); if (l) say(l, { priority: 4 }); T.strk = game.time; T.streak = 0; }
+      if (T.streak >= 5 && D.silent && game.time - S.lastKill > 5 && D.tension < 0.35 && game.time - T.strk > 100 && !H.whispers.busy && D.request('whisper', { force: true })) { const l = H.whispers.pick('streak', c); if (l) say(l, { priority: 4 }); T.strk = game.time; T.streak = 0; }
     }
     const E = H.events;
     // 靠近道具(每個錨點每局一次)
-    if (E && D.tension < 0.35 && game.time - T.prop > 35 && !H.whispers.busy) {
+    if (E && D.silent && D.tension < 0.35 && game.time - T.prop > 35 && !H.whispers.busy) {
       const li = game.hospital.level;
       for (const a of E.anchors) {
         if (a.li !== li || T.props.has(a)) continue;
@@ -205,7 +210,7 @@ export function installHorror(game) {
       }
     }
     // 殭屍從看不到的方向接近:那一側的耳朵(提示)
-    if (round >= 2 && D.tension < 0.6 && game.time - T.warn > 45 && !H.whispers.busy) {
+    if (D.silent && D.tension < 0.6 && game.time - T.warn > 45 && !H.whispers.busy) { // 靜默期裡的伏擊者
       const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw);
       for (const z of game.zombies) {
         if (!z.alive || z._ghw || !(z.dist > 6 && z.dist < 14) || Math.abs(z.pos.y - p.pos.y) > 2) continue;
@@ -234,9 +239,9 @@ export function installHorror(game) {
     if (game.time < T.next) return;
     T.next = game.time + 1.5;
     let tier = null;
-    if (D.dread >= 70 && D.allowTier('big', game) && Math.random() < 0.6) tier = 'big';
-    else if (D.dread >= 34 && D.allowTier('medium', game)) tier = 'medium';
-    else if (D.dread >= 12 && D.allowTier('small', game)) tier = 'small';
+    if (D.dread >= 75 && D.allowTier('big', game) && Math.random() < 0.6) tier = 'big';
+    else if (D.dread >= 40 && D.allowTier('medium', game)) tier = 'medium';
+    else if (D.dread >= 16 && D.allowTier('small', game) && Math.random() < 0.3) tier = 'small'; // 小事件不要一直放:留給恐懼累積到看得見的事件
     if (!tier) return;
     const th = zone?.theme, mood = zone?.mood, out = /^outdoor|^roof/.test(mood || '');
     const esc = Math.min(1, Math.max(0, (D.t - 60) / 600)) * 0.7 + Math.min(1, (round || 1) / 8) * 0.3;

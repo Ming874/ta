@@ -1,4 +1,4 @@
-import { LINES, LINE_BY_ID } from './lines.js';
+import { LINES, LINE_BY_ID, GHOSTS } from './lines.js';
 import { ghost, _internal } from '../audio.js';
 import { syllabify } from '../audio/ghost.js';
 
@@ -6,6 +6,8 @@ import { syllabify } from '../audio/ghost.js';
 // say(lineId | text, { ear, subtitle, filter, priority, pos, mode, g }) → handle | null
 const A = _internal.A;
 const TAG = { phone: '電話', radio: '收音機' };
+// 玩家暱稱(大廳設定的;沒有就用「接單員」)
+const nick = () => { try { const n = localStorage.getItem('hz.nick'); return n && n.trim() ? n.trim().slice(0, 12) : '接單員'; } catch { return '接單員'; } };
 export class Whispers {
   constructor(h) {
     this.h = h;
@@ -42,8 +44,9 @@ export class Whispers {
   }
   // 播放。line:LINES 的 id、line 物件,或直接的文字
   say(line, o = {}) {
-    const L = typeof line === 'string' ? LINE_BY_ID[line] || { id: null, text: line } : line;
-    if (!L || !L.text) return null;
+    const L0 = typeof line === 'string' ? LINE_BY_ID[line] || { id: null, text: line } : line;
+    if (!L0 || !L0.text) return null;
+    const L = L0.text.includes('{暱稱}') ? { ...L0, text: L0.text.replace(/\{暱稱\}/g, nick()) } : L0;
     const prio = o.priority ?? 5, t = performance.now() / 1000;
     if (this.busy && this.cur.prio >= prio && !o.force) return null;
     if (this.busy) { this.cur.kill?.(); this.h.subs.clear(); }
@@ -62,14 +65,16 @@ export class Whispers {
     const dur = hnd ? hnd.dur : 0.55 + sy.dur + 0.9;
     this.cur = { prio, end: t + dur, kill: hnd?.kill, id: L.id };
     if (L.id) this.used.add(L.id);
+    // 字幕標籤:電話/收音機 → 來源;鬼 → 「？？？」,認出之後才顯示名字(STORY.md §11.1)
+    const tag = filter ? TAG[filter] : o.tag ?? (L.ghost && this.h.known.has(L.ghost) && GHOSTS[L.ghost]?.name ? GHOSTS[L.ghost].name : '？？？');
     this.count++;
     this.log.push(`${L.id || 'text'}@${ear}${filter ? '/' + filter : ''}`);
     if (this.log.length > 30) this.log.shift();
     if (o.subtitle !== false) {
       const clock = hnd && A.ctx ? () => A.ctx.currentTime : undefined;
-      this.h.subs.show({ text: L.text, ear: ear === 'world' ? 'both' : ear, filter, times: hnd ? hnd.times : timesByIndex(sy, 0.55), t0: hnd ? hnd.t0 : undefined, clock, hold: 1.8, tag: TAG[filter] });
+      this.h.subs.show({ text: L.text, ear: ear === 'world' ? 'both' : ear, filter, times: hnd ? hnd.times : timesByIndex(sy, 0.55), t0: hnd ? hnd.t0 : undefined, clock, hold: 1.8, tag });
     }
-    this.h.emit('whisper', { id: L.id, text: L.text, ear, filter, hint: L.hint || null });
+    this.h.emit('whisper', { id: L.id, text: L.text, ear, filter, ghost: L.ghost || null, hint: L.hint || null });
     return { id: L.id, ear, end: t + dur, line: L };
   }
 }
