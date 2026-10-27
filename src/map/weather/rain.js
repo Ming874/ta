@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { OCC, OCC_GLSL } from './wet.js';
+import { OCC, OCC_GLSL, WL, WL_MAX } from './wet.js';
 
 // 雨(全部在 GPU:實例化四邊形在頂點著色器裡循環、受光、遮蔽;CPU 每幀只更新 uniform):
 //  - 雨絲:近層(鏡頭周圍 12m 盒)+ 中層(30m 盒,往視線方向偏移);每滴依「相對鏡頭的速度 × 曝光時間」拉成動態模糊的細線,
@@ -363,6 +363,7 @@ export function setDrips(mesh, list) {
 // 每幀:把光源池/槍口/爆炸/手電筒寫進共用 uniform(只收戶外的光源:室內燈被牆擋住,不該照亮窗外的雨)
 // ======================================================================
 const _v = new THREE.Vector3(), _q = new THREE.Vector3();
+const _sc = new Float32Array(RL_MAX);
 const lightOut = (occ, x, y, z) => { const h = occ.heightAt(x, z); return h <= y + 1.2 && h >= y - 4; };
 export function updateRainLights(game, occ, flash, moonI, gY = 0) {
   const pool = game.hospital?.lights?.pool || [];
@@ -381,6 +382,18 @@ export function updateRainLights(game, occ, flash, moonI, gY = 0) {
   add(game.muzzleLight);
   add(game.boomLight);
   RL.uRLN.value = n;
+  // 濕地倒影:挑對鏡頭最亮的 WL_MAX 盞(強度 / 距離²)
+  const cam = game.camera.position, WP = WL.uWLPos.value, WC = WL.uWLCol.value;
+  let m = 0;
+  for (let k = 0; k < n; k++) _sc[k] = (C[k].x + C[k].y + C[k].z) / (1 + (P[k].x - cam.x) ** 2 + (P[k].y - cam.y) ** 2 + (P[k].z - cam.z) ** 2);
+  for (; m < Math.min(WL_MAX, n); m++) {
+    let bi = -1, bs = 0;
+    for (let k = 0; k < n; k++) if (_sc[k] > bs) { bs = _sc[k]; bi = k; }
+    if (bi < 0) break;
+    _sc[bi] = -1;
+    WP[m].copy(P[bi]); WC[m].set(C[bi].x, C[bi].y, C[bi].z);
+  }
+  WL.uWLN.value = m;
   // 手電筒
   const fl = game.player?.flashlight;
   if (fl && fl.visible && game.player.flashOn !== false && fl.intensity > 0) {

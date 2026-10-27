@@ -10,8 +10,15 @@ import * as THREE from 'three';
 // 遮雨高度圖(occlusion.js 烘焙完成後換成 12.5cm 的打包深度 RGBA8,uOccPk = 1;之前用 2m 格子遮罩的直接高度)
 export const OCC = { uOcc: { value: null }, uOccXf: { value: new THREE.Vector4(0, 0, 0, 0) }, uOccOn: { value: 0 }, uOccPk: { value: 0 }, uOccY: { value: new THREE.Vector2(0, 1) } };
 // uWet 濕度、uRainT 時間、uRain 雨量、uRipple 漣漪層數(0 = 關)、uPudLv 水窪水位、uWRefl 燈光倒影強度(0 = 關)
+// 濕地倒影用的戶外光源(最多 6 盞,世界座標;rain.js updateRainLights 每幀從光源池挑:只收戶外的燈,室內燈不會穿牆倒映在水窪裡)
+export const WL_MAX = 6;
+export const WL = {
+  uWLPos: { value: Array.from({ length: WL_MAX }, () => new THREE.Vector4()) }, // xyz 位置, w 範圍
+  uWLCol: { value: Array.from({ length: WL_MAX }, () => new THREE.Vector3()) }, // 顏色 × 強度
+  uWLN: { value: 0 },
+};
 // uExpT 淋雨判定取樣數(1 = 低畫質單點,4 = 柔和邊緣)
-export const WET = { uWet: { value: 0.85 }, uRainT: { value: 0 }, uRain: { value: 0.8 }, uRipple: { value: 2 }, uPudLv: { value: 0.85 }, uWRefl: { value: 1 }, uExpT: { value: 4 }, ...OCC };
+export const WET = { ...WL, uWet: { value: 0.85 }, uRainT: { value: 0 }, uRain: { value: 0.8 }, uRipple: { value: 2 }, uPudLv: { value: 0.85 }, uWRefl: { value: 1 }, uExpT: { value: 4 }, ...OCC };
 
 export const OCC_GLSL = /* glsl */`
 uniform sampler2D uOcc; uniform vec4 uOccXf; uniform float uOccOn; uniform float uOccPk; uniform vec2 uOccY;
@@ -23,6 +30,7 @@ float occH( vec2 xz ) {
 `;
 const WET_PARS = /* glsl */`
 uniform float uWet; uniform float uRainT; uniform float uRain; uniform float uRipple; uniform float uPudLv; uniform float uWRefl; uniform float uExpT;
+uniform vec4 uWLPos[ ${WL_MAX} ]; uniform vec3 uWLCol[ ${WL_MAX} ]; uniform int uWLN;
 uniform float uPuddle; uniform float uPudMin; uniform float uDarken; uniform float uGloss;
 ${OCC_GLSL}
 varying vec3 vWetPos;
@@ -81,38 +89,30 @@ const WET_NORMAL = /* glsl */`
 		normal = normalize( mix( normal, wFlat, wPud ) );
 	}
 `;
-// 燈光倒影:光源對地面鏡射,在螢幕切線空間比較「這個像素的視線」與「鏡像光源的方向」;
+// 燈光倒影:戶外光源對地面鏡射,在螢幕切線空間比較「這個像素的視線」與「鏡像光源的方向」;
 // 水面的漣漪與粗糙讓倒影沿垂直方向拉長(濕馬路上的路燈光柱)
 const WET_REFL = /* glsl */`
-	#if NUM_POINT_LIGHTS > 0
-	if ( uWRefl > 0.0 && wW * wUp > 0.03 ) {
+	if ( uWRefl > 0.0 && uWLN > 0 && wW * wUp > 0.03 ) {
 		vec3 wP = - vViewPosition;
-		vec3 wNu = normalize( ( viewMatrix * vec4( 0.0, 1.0, 0.0, 0.0 ) ).xyz );
 		vec2 wsP = wP.xy / max( - wP.z, 1e-3 ) + wg * 0.6;
 		float wSx = mix( 0.03, 0.006, wPud ), wSy = mix( 0.22, 0.07, wPud );
 		float wK = mix( 0.12, 1.0, wPud ) * wW * wUp * uWRefl;
 		vec3 wAcc = vec3( 0.0 );
-		#pragma unroll_loop_start
-		for ( int i = 0; i < NUM_POINT_LIGHTS; i ++ ) {
-			{
-				vec3 lp = pointLights[ i ].position;
-				float hL = dot( lp - wP, wNu );
-				vec3 lm = lp - 2.0 * hL * wNu;
-				float dl = length( lp - wP );
-				float rng = pointLights[ i ].distance;
-				float win = rng > 0.0 ? clamp( 1.0 - pow( dl / ( rng * 1.6 ), 4.0 ), 0.0, 1.0 ) : 1.0;
-				if ( hL > 0.05 && lm.z < - 0.2 && win > 0.0 ) {
-					vec2 dd = wsP - lm.xy / - lm.z;
-					float e = exp( - ( dd.x * dd.x / ( wSx * wSx ) + dd.y * dd.y / ( wSy * wSy ) ) );
-					float pl = dot( lm, lm );
-					wAcc += pointLights[ i ].color * ( e * win * win / max( pl, 1.0 ) );
-				}
-			}
+		for ( int i = 0; i < ${WL_MAX}; i ++ ) {
+			if ( i >= uWLN ) break;
+			vec3 lw = uWLPos[ i ].xyz;
+			float hL = lw.y - vWetPos.y;
+			if ( hL < 0.05 ) continue;
+			vec3 lm = ( viewMatrix * vec4( lw.x, vWetPos.y - hL, lw.z, 1.0 ) ).xyz; // 鏡像光源(視空間)
+			if ( lm.z > - 0.2 ) continue;
+			float rng = uWLPos[ i ].w;
+			float win = rng > 0.0 ? clamp( 1.0 - pow( length( lw - vWetPos ) / ( rng * 1.6 ), 4.0 ), 0.0, 1.0 ) : 1.0;
+			vec2 dd = wsP - lm.xy / - lm.z;
+			float e = exp( - ( dd.x * dd.x / ( wSx * wSx ) + dd.y * dd.y / ( wSy * wSy ) ) );
+			wAcc += uWLCol[ i ] * ( e * win * win / max( dot( lm, lm ), 1.0 ) );
 		}
-		#pragma unroll_loop_end
 		reflectedLight.indirectSpecular += min( wAcc * wK * ( 0.012 / ( wSx * wSy * 40.0 ) ), vec3( 6.0 ) );
 	}
-	#endif
 `;
 const WET_VERT = /* glsl */`
 	{
