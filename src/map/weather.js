@@ -7,6 +7,7 @@ import { WET, OCC, makeWet, makeGlassWet } from './weather/wet.js';
 import { RainOcclusion } from './weather/occlusion.js';
 import { RL, streakMesh, curtainMesh, splashMesh, dripMesh, setDrips, updateRainLights } from './weather/rain.js';
 import { lensPass } from './weather/lens.js';
+import { materials as zombieMaterials } from '../zombies/materials.js';
 
 export { WET, OCC, makeWet, makeGlassWet }; // 戶外道具從這裡 import makeWet
 
@@ -325,6 +326,8 @@ export class Weather {
     const WETS = { asphalt: [0.85, 0.42, 0.6], paving: [0.6, 0.36, 0.55], gravel: [0.25, 0.3, 0.45], grass: [0.0, 0.18, 0.3], roof_gravel: [0.55, 0.3, 0.5], metal_grate: [0, 0.15, 0.5], soil: [0.8, 0.35, 0.45] };
     for (const [k, [pd, d, gl]] of Object.entries(WETS)) { try { makeWet(surf(k), { puddle: pd, darken: d, gloss: gl }); } catch { /* 沒有這個材質 */ } }
     try { makeGlassWet(surf('glass')); } catch { /* 沒有玻璃 */ }
+    // 殭屍淋到雨時皮膚/衣服/頭髮變濕亮(同一套逐像素淋雨判定:室內、屋簷下的不會濕;開機預編譯前就注入,不會遊戲中途重編)
+    try { const ZM = zombieMaterials(); makeWet(ZM.skin, { darken: 0.08, gloss: 0.6 }); makeWet(ZM.cloth, { darken: 0.3, gloss: 0.42 }); makeWet(ZM.hair, { darken: 0.25, gloss: 0.5 }); } catch (e) { console.warn('[weather] 殭屍濕潤材質失敗', e); }
     // 燈具調整(閃爍路燈、跟著亮度的燈罩)
     this.mods = [];
     const fx = game.hospital?.lights?.fixtures || [];

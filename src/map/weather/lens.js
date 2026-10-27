@@ -42,9 +42,9 @@ export const LensShader = {
         vec3 rc = ( texture2D( tDiffuse, ruv ).rgb * 2.0 + texture2D( tDiffuse, ruv + vec2( bl, 0.0 ) ).rgb + texture2D( tDiffuse, ruv - vec2( bl, 0.0 ) ).rgb
           + texture2D( tDiffuse, ruv + vec2( 0.0, bl ) ).rgb + texture2D( tDiffuse, ruv - vec2( 0.0, bl ) ).rgb ) / 6.0;
         float e = length( n );
-        rc *= 1.0 - 0.3 * smoothstep( 0.6, 1.0, e ); // 淡淡的暗邊
+        rc *= 1.0 - 0.45 * smoothstep( 0.55, 1.0, e ); // 暗邊(水滴邊緣把光折走)
         float lum = dot( rc, vec3( 0.3, 0.6, 0.1 ) );
-        rc += vec3( 0.9, 0.95, 1.0 ) * pow( max( dot( normalize( vec3( n, 1.2 ) ), normalize( vec3( - 0.35, 0.55, 1.0 ) ) ), 0.0 ), 60.0 ) * ( 0.015 + lum * 0.8 );
+        rc += vec3( 0.9, 0.95, 1.0 ) * pow( max( dot( normalize( vec3( n, 1.2 ) ), normalize( vec3( - 0.35, 0.55, 1.0 ) ) ), 0.0 ), 60.0 ) * ( 0.035 + lum * 1.2 );
         c.rgb = mix( c.rgb, rc, d.z * 0.85 );
       }
       gl_FragColor = c;
