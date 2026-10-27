@@ -121,6 +121,7 @@ export class Director {
   allowTier(tier, game) {
     const I = this.I;
     if (I.rate <= 0) return false;
+    if (this.h.game?.net?.pvp && tier !== 'small') return false; // 對戰:只留背景
     if (this.bigActive) return false;
     if (tier !== 'small' && !I.medium) return false;
     if (tier === 'big' && !I.big) return false;

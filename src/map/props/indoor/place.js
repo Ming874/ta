@@ -339,9 +339,17 @@ export class Room {
     const p = this.wallPos(run, tPos, gap - t.bbox.min.z);
     const cs = Math.cos(run.yaw), sn = Math.sin(run.yaw);
     const x = p.x - lx * cs, z = p.z + lx * sn;
-    if (o.mount) return this.put(t, x, z, run.yaw, { ...o, y: this.y + o.mount });
+    if (o.mount) return this._mirror(t, run, this.put(t, x, z, run.yaw, { ...o, y: this.y + o.mount }));
     const r = o.collide === false ? this.putChecked(t, x, z, run.yaw, o) : this.tryPut(t, x, z, run.yaw, o);
     if (r) { r.run = run; r.tw = tPos; }
+    return this._mirror(t, run, r);
+  }
+  // [ghost] 鏡子(獨立鏡子、洗手台上的鏡子)登記成事件錨點:鏡面中心 + 朝房間的法線 + 尺寸(src/horror 的「鏡子裡的臉」)
+  _mirror(t, run, r) {
+    if (!r || !r.M || !/^(mirror|sinkwall):/.test(t.name)) return r;
+    const mw = t.name.startsWith('mirror'), dims = mw ? t.name.split(':').slice(1, 3).map(Number) : [0.47, 0.59];
+    const c = this.local(r, 0, mw ? dims[1] / 2 + 0.03 : 1.55, mw ? 0.032 : 0.02);
+    this.event({ kind: 'mirror', x: c.x, y: c.y, z: c.z, nx: run.nx ?? 0, nz: run.nz ?? 0, w: dims[0], h: dims[1] });
     return r;
   }
   // 某一側最長的牆段
