@@ -48,7 +48,7 @@ export const WEAPONS = {
   m4a1: {
     name: 'M4A1', desc: '5.56×45mm · 全自動 · 3× ACOG 光學鏡', price: 450, damage: 30, rpm: 780, auto: true,
     mag: 30, reserveStart: 90, reserveCap: 180, reload: 2.1, spread: 0.01, kick: 0.036, pitch: 0.011,
-    hold: [0.17, -0.17, -0.62], slot: 5, ads: { zoom: 3, spread: 0.0007, time: 0.24, optic: 'acog' }, penetrate: 1, penMul: 0.6,
+    hold: [0.17, -0.17, -0.62], slot: 5, ads: { zoom: 3, spread: 0.0007, time: 0.28, optic: 'acog' }, penetrate: 1, penMul: 0.6,
     falloff: [35, 80], minDmg: 0.65, bloom: 0.0025, moveSpread: 1.5,
     recoil: { yaw: [0, 0.1, 0.18, 0.12, -0.05, -0.15, -0.1, 0.05, 0.15, 0.12], rand: 0.18 },
     flash: 'carbine', casing: 'rifle', casingSize: [0.0096, 0.045], move: 0.98,
@@ -57,7 +57,7 @@ export const WEAPONS = {
   barrett: {
     name: '巴雷特', desc: 'Barrett M82A1 · .50 BMG 半自動狙擊', price: 650, damage: 260, rpm: 70, auto: false,
     mag: 10, reserveStart: 20, reserveCap: 50, reload: 3.6, spread: 0.06, kick: 0.15, pitch: 0.075,
-    hold: [0.22, -0.225, -0.74], slot: 6, ads: { zoom: 6, spread: 0.0005, time: 0.36, scope: true, optic: 'sniper' }, penetrate: 3, penMul: 0.7,
+    hold: [0.22, -0.225, -0.74], slot: 6, ads: { zoom: 6, spread: 0.0005, time: 0.42, scope: true, optic: 'sniper' }, penetrate: 3, penMul: 0.7,
     falloff: null, minDmg: 1, bloom: 0, moveSpread: 1.0, recoil: { yaw: [0], rand: 0.35 },
     flash: 'brake', casing: 'rifle', casingSize: [0.0204, 0.099], move: 0.88,
     stats: { damage: 1, rate: 0.12, accuracy: 0.97, range: 1, mobility: 0.28 },
@@ -343,14 +343,14 @@ export class WeaponSystem {
     const optic = d.ads ? d.ads.optic || (d.ads.scope ? 'sniper' : 'iron') : null;
     const overlay = optic === 'acog' || optic === 'sniper';
     this.optic = optic;
-    // 放大光學鏡/狙擊鏡:槍身貼近眼睛的最後 22% 行程裡,鏡內畫面(HUD)淡入;過半就換掉手持模型(HUD 用一次短暫黑幕遮住切換)
-    this.scopeAmt = overlay ? ease(clamp01((this.ads - 0.78) / 0.22)) : 0;
+    // 放大光學鏡/狙擊鏡:開鏡行程的後 45%(槍身貼近眼睛)鏡內畫面(HUD)逐漸淡入,與 3D 槍身交叉溶接;過 0.6 換掉手持模型(HUD 用短暫黑幕遮住切換)
+    this.scopeAmt = overlay ? ease(clamp01((this.ads - 0.55) / 0.45)) : 0;
     this.scoped = this.scopeAmt >= 0.6;
     // 紅點反射鏡:準直光點,鏡窗來到眼前才看得到
     this.dotAmt = optic === 'reddot' ? ease(clamp01((this.ads - 0.6) / 0.35)) : 0;
-    // 視野倍率隨開鏡行程平滑變化(放大光學鏡在後段放大較多,鏡內畫面出現時已接近目標倍率);離開時同一條曲線反向
+    // 視野倍率在對數空間內插(視覺上等速放大,6× 也不會在最後幾幀暴衝);離開時同一條曲線反向
     const Z = d.ads ? d.ads.zoom : 1;
-    this.zoom = 1 + (Z - 1) * (overlay ? Math.pow(e, 1.6) : e);
+    this.zoom = Math.pow(Z, e);
 
     // ---- 開火 ----
     const canShoot = this.reloading <= 0 && this.raise < 0.4 && !sprinting && !this.action && (!d.pump || this.pumped);
@@ -401,7 +401,8 @@ export class WeaponSystem {
       } else if (!this.shell) this.pump = 0;
     }
 
-    this._animate(dt, d, a, m, speedNorm, sprinting, look, e);
+    // 放大光學鏡:槍身在開鏡行程 80% 時就貼到眼前,鏡內畫面淡入時目鏡已在正中央(交叉溶接時兩個圓重合)
+    this._animate(dt, d, a, m, speedNorm, sprinting, look, overlay ? ease(clamp01(this.ads / 0.8)) : e);
   }
 
   // 霰彈逐發裝填:open → shell × n → close(空膛時含泵動)
