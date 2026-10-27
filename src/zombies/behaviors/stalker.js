@@ -6,6 +6,7 @@ import { sfx } from '../../audio.js';
 import { K, lerp, env, rand, sstep, clamp, TAU, litBy, trackState, entered } from './kit.js';
 
 const CEIL = { wander: 1, hit: 1 };
+const THIGH = ['thighL', 'thighR'], SHIN = ['shinL', 'shinR'], FOOT = ['footL', 'footR'];
 const FALL_T = 0.42, LEAP_T = 0.5;
 // 四足姿勢參數(可在測試時調整)
 export const Q = {
@@ -15,7 +16,7 @@ export const Q = {
 };
 (globalThis.__Z3Q ||= {}).stalker = Q; // 除錯:測試頁可直接調整姿勢參數
 
-export function init(z) { z._ceil = 0; z._ceilH = 3.3; z._ceilT = 0; z._litT = 0; z._flee = 0; z.specialCd = rand(0.5, 2); }
+export function init(z) { z._ceil = 0; z._ceilH = 3.3; z._ceilT = 0; z._litT = 0; z._litQ = 0; z._isLit = false; z._flee = 0; z.specialCd = rand(0.5, 2); }
 
 function ceilingHere(z, world) {
   if ((z._ceilT -= 0.016) > 0) return z._ceilH;
@@ -37,7 +38,9 @@ export function think(dt, ctx, dist, toX, toZ, w) {
   const hd = this.dist || 1e-3;
   const ch = ceilingHere(this, world);
   // 手電筒:持續照到 0.2 秒就退開
-  const isLit = (this.state === 'chase' || this.state === 'wander') && hd < T.lit.range && lit(this, p, world);
+  // 手電筒(視線射線較貴:每 0.1 秒判斷一次)
+  if ((this._litQ -= dt) <= 0) { this._litQ = 0.1; this._isLit = (this.state === 'chase' || this.state === 'wander') && hd < T.lit.range && lit(this, p, world); }
+  const isLit = this._isLit && (this.state === 'chase' || this.state === 'wander');
   this._litT = isLit ? this._litT + dt : Math.max(0, this._litT - dt * 2);
   switch (this.state) {
     case 'chase':
@@ -143,9 +146,9 @@ export function pose(dt, ctx, dist, toX, toZ) {
     lx = lerp(lx, -1.55, 1 - f); kn = lerp(kn, Q.knee, 1 - f);
     lx = lerp(lx, -0.6, leapK); kn = lerp(kn, 0.2, leapK);
     lx = lerp(lx, -2.2, crouchK); kn = lerp(kn, 2.2, crouchK);
-    b['thigh' + L].rotation.set(lx, s * 0.2, s * Q.legZ);
-    b['shin' + L].rotation.x = kn;
-    b['foot' + L].rotation.x = 0.9;
+    b[THIGH[k]].rotation.set(lx, s * 0.2, s * Q.legZ);
+    b[SHIN[k]].rotation.x = kn;
+    b[FOOT[k]].rotation.x = 0.9;
   }
   b.jaw.rotation.x = 0.35 + Math.sin(this.t * 6) * 0.08 + recoil * 0.6 + leapK * 0.5 + (S === 'attack' ? 0.4 : 0);
   this._jaw(0.35);

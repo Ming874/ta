@@ -9,6 +9,7 @@ import { daze } from './daze.js';
 
 const R = { dx: 0, dz: 0, dy: 0, d: 0 };
 const ARM_L = 'L', ARM_R = 'R';
+const LEG_O = { toe: 0.04, wide: 0.03 }; // 步態參數(共用,不每幀配置)
 
 export function init(z) {
   z.specialCd = rand(1.5, 3);
@@ -97,7 +98,7 @@ export function pose(dt, ctx, dist, toX, toZ) {
   const wind = sc ? env(st, 0, T.scream.wind * 0.85, T.scream.wind, T.scream.wind + 0.12) : 0; // 蓄力:往後仰、吸氣
   const yell = sc ? env(st, T.scream.wind, T.scream.wind + 0.1, T.scream.dur - 0.35, T.scream.dur) : 0; // 尖叫:往前伸頸
   const stag = S === 'stagger' ? env(st, 0, 0.08, 0.35, 0.7) : 0;
-  const ext = this._legs(ph, amp, 0.6 * f + 0.06, 0.1 + wind * 0.12 + stag * 0.2, { toe: 0.04, wide: 0.03 });
+  const ext = this._legs(ph, amp, 0.6 * f + 0.06, 0.1 + wind * 0.12 + stag * 0.2, LEG_O);
   this._hipsTo(ext);
   b.hips.rotation.z = Math.sin(ph) * 0.06 * f;
   b.hips.rotation.y = Math.sin(ph) * 0.14 * f;
@@ -147,5 +148,4 @@ function shriek(z, ctx) {
   const seen = !ctx.world.hasLineOfSight || ctx.world.hasLineOfSight(_e.x, _e.y, _e.z, p.pos.x, p.pos.y + 1.5, p.pos.z);
   const k = clamp(1.15 - d / S.daze, 0, 1) * (seen ? 1 : 0.45);
   daze(g, k);
-  void R; void sstep;
 }

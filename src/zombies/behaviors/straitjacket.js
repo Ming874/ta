@@ -10,6 +10,8 @@ const ZR = 0.4;
 export const Q = { ax: -0.3, az: -0.05, ay: -0.3, el: 1.75, fz: -1.15 };
 (globalThis.__Z3Q ||= {}).straitjacket = Q; // 除錯:測試頁可直接調整姿勢參數
 const _imp = new THREE.Vector3();
+const LEG_O = { toe: 0.06, wide: 0.05 }; // 步態參數(共用,不每幀配置)
+const FOREARM = ['forearmL', 'forearmR'];
 
 export function init(z) { z.specialCd = rand(1, 3); z._lurch = rand(0, 6); }
 
@@ -94,7 +96,7 @@ export function pose(dt, ctx, dist, toX, toZ) {
   const crouch = S === 'crouch' ? sstep(0, 0.35, st) : 0;
   const stun = S === 'stun' ? env(st, 0, 0.2, 1.6, 1.9) : 0;
   const butt = S === 'attack' ? env(st, 0.2, 0.42, 0.5, 0.85) : 0;
-  const ext = this._legs(ph, amp, run ? 1.5 : 0.7 * f + 0.06, 0.08 + crouch * 0.45 + stun * 0.15, { toe: 0.06, wide: 0.05 });
+  const ext = this._legs(ph, amp, run ? 1.5 : 0.7 * f + 0.06, 0.08 + crouch * 0.45 + stun * 0.15, LEG_O);
   this._hipsTo(ext);
   b.hips.rotation.y = Math.sin(ph) * (run ? 0.15 : 0.22) * f;
   b.hips.rotation.z = Math.sin(ph) * 0.1 * f + Math.sin(this.t * 2.3) * 0.04;
@@ -111,13 +113,12 @@ export function pose(dt, ctx, dist, toX, toZ) {
   for (let k = 0; k < 2; k++) {
     const s = k ? -1 : 1, L = k ? 'R' : 'L';
     this._arm(L, s, Q.ax - 0.06 * Math.sin(ph + k * Math.PI) * f - crouch * 0.3, Q.az, Q.el - k * 0.12, 0.2, Q.ay + k * 0.08);
-    b['forearm' + L].rotation.z = s * Q.fz;
+    b[FOREARM[k]].rotation.z = s * Q.fz;
   }
   b.jaw.rotation.x = this.V.P.muzzle ? 0.02 : 0.2 + crouch * 0.6 + (run ? 0.5 : 0) + Math.sin(this.t * 5) * 0.06;
   if (!this.V.P.muzzle) this._jaw(0.2);
   if (entered(this, 'charge')) sfx.zCharge?.(this.vp);
-  if (S === 'stun' && st < 0.1 && this.st0 < 0 && !this._stunFx) { this._stunFx = 1; stunFx(this, ctx); }
-  if (S !== 'stun') this._stunFx = 0;
+  else if (entered(this, 'stun')) stunFx(this, ctx);
   trackState(this);
   this.rootY = 0;
   this.rootPitch = run ? 0.12 * f : 0;

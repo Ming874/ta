@@ -6,6 +6,7 @@ import { K, lerp, env, rand, dot, localRel, trackState } from './kit.js';
 
 const R = { dx: 0, dz: 0, dy: 0, d: 0 };
 const _v = new THREE.Vector3();
+const LEG_O = { toe: 0.12, wide: 0.07 }; // 步態參數(共用,不每幀配置)
 const EMIT = ['chest', 'upperArmL', 'upperArmR', 'head', 'forearmL', 'forearmR', 'thighL', 'spine'];
 
 export function init(z) { z._emT = Math.random() * 0.2; z._smT = Math.random() * 0.4; z._crT = rand(0.3, 1); }
@@ -52,7 +53,7 @@ export function pose(dt, ctx, dist, toX, toZ) {
   const amp = 0.2 * f + 0.02; // 步子小、僵硬
   this._advance(dt, amp, sp);
   const ph = this.ph;
-  const ext = this._legs(ph, amp, 0.35 * f + 0.12, 0.16, { toe: 0.12, wide: 0.07 });
+  const ext = this._legs(ph, amp, 0.35 * f + 0.12, 0.16, LEG_O);
   this._hipsTo(ext);
   b.hips.rotation.z = Math.sin(ph) * 0.09 * f;
   b.hips.rotation.y = Math.sin(ph) * 0.06 * f;

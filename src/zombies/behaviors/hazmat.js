@@ -7,6 +7,8 @@ import { K, lerp, env, rand, trackState, entered } from './kit.js';
 // 掉落:大彈藥箱 + 高機率醫療包/手榴彈(pickups.roll 依類型查表)
 DROP_TABLE.hazmat ||= { ammo: 0, med: 0.6, grenade: 0.45, big: true };
 
+const LEG_O = { toe: 0.12, wide: 0.09 }; // 步態參數(共用,不每幀配置)
+
 export function init(z) { z._breathT = rand(0.5, 2.5); }
 
 export function think(dt, ctx, dist, toX, toZ, w) {
@@ -51,7 +53,7 @@ export function pose(dt, ctx, dist, toX, toZ) {
   const ph = this.ph;
   const atk = S === 'attack';
   const wind = atk ? env(st, 0.05, 0.5, 0.6, 0.7) : 0, punch = atk ? env(st, 0.6, 0.7, 0.85, 1.3) : 0;
-  const ext = this._legs(ph, amp, 0.5 * f + 0.06, 0.1 + punch * 0.1, { toe: 0.12, wide: 0.09 });
+  const ext = this._legs(ph, amp, 0.5 * f + 0.06, 0.1 + punch * 0.1, LEG_O);
   this._hipsTo(ext);
   // 重步:每步震動地面(遠處省略)
   const n = Math.floor((ph + Math.PI / 2) / Math.PI);

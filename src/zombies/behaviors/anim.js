@@ -30,7 +30,7 @@ const HEAVY = { brute: 0.25, hazmat: 0.5, bloater: 0.6 };
 const TW_BONES = [6, 6, 5, 9, 13, 10, 14, 11, 15, 7, 4, 8, 12];
 const BW_O = { toe: 0.1, wide: 0.05 }; // 倒退走的步態參數
 const NB = 22; // 骨骼數
-const ARMS = ['upperArmL', 'upperArmR'];
+const ARMS = ['upperArmL', 'upperArmR'], SHIN = ['shinL', 'shinR'], FOOT = ['footL', 'footR'];
 
 export function animInit(z) {
   const P = PROF[z.type] || PROF.walker;
@@ -132,13 +132,13 @@ export function animLayer(z, dt, ctx) {
 
   // ---- 跛腳變化:膝蓋不時打軟 ----
   if (z.limp && (S === 'chase' || S === 'idle') && z.speedNow > 0.3) {
-    const s = z.limpSide, L = s > 0 ? 'L' : 'R';
+    const s = z.limpSide, j = s > 0 ? 0 : 1;
     const ph = z.ph + (s > 0 ? 0 : Math.PI);
     const buckle = Math.pow(Math.max(0, Math.sin(ph * 0.5 + z.seed)), 12) * z.limp; // 每兩步一次
-    b['shin' + L].rotation.x += buckle * 0.7;
+    b[SHIN[j]].rotation.x += buckle * 0.7;
     b.hips.position.y -= buckle * 0.06;
     b.hips.rotation.z -= s * buckle * 0.1;
-    b['foot' + L].rotation.x += 0.35 * z.limp; // 拖著腳尖
+    b[FOOT[j]].rotation.x += 0.35 * z.limp; // 拖著腳尖
   }
 
   // ---- 攻擊:蓄勢往後縮,再撲出去 ----

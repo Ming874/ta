@@ -5,6 +5,7 @@ import { K, lerp, env, rand, dot, entered, trackState, localRel } from './kit.js
 
 const COMBO_T0 = 0.32; // 第一刀命中時間
 const R = { dx: 0, dz: 0, dy: 0, d: 0 };
+const LEG_O = { toe: 0.08, wide: 0.06 }; // 步態參數(共用,不每幀配置)
 
 export function init(z) { z._scrapeT = rand(2, 5); }
 
@@ -62,7 +63,7 @@ export function pose(dt, ctx, dist, toX, toZ) {
   const ph = this.ph;
   const atk = S === 'attack', rec = S === 'recover' ? env(st, 0, 0.15, 0.6, 0.9) : 0;
   const stag = S === 'stagger' ? env(st, 0, 0.08, 0.25, 0.5) : 0;
-  const ext = this._legs(ph, amp, 0.9 * f + 0.1, 0.18 + rec * 0.1, { toe: 0.08, wide: 0.06 });
+  const ext = this._legs(ph, amp, 0.9 * f + 0.1, 0.18 + rec * 0.1, LEG_O);
   this._hipsTo(ext);
   b.hips.rotation.y = Math.sin(ph) * 0.16 * f;
   b.hips.rotation.z = Math.sin(ph) * 0.05 * f;

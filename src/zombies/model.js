@@ -506,7 +506,7 @@ export function buildShape(type, seed, opt = {}) {
       const er = 0.0125 * Math.min(1, P.head * 1.05), ec = V(HC.x + s * 0.031 * H.w, HC.y + 0.012, HC.z + eyeZ);
       const lidUp = s > 0 ? L.lidUp : L.lidUp + r.range(-0.15, 0.25), lidLo = L.lidLo + r.range(-0.08, 0.08);
       for (const [t0, t1, up] of [[0, lidUp, 1], [lidLo, Math.PI, 0]]) {
-        const lid = prim(new THREE.SphereGeometry(er * 1.13, 18, 7, 0, Math.PI * 2, t0, t1 - t0), mat4(ec, [up ? 0.1 : -0.06, s * 0.15, 0]));
+        const lid = prim(new THREE.SphereGeometry(er * 1.13, 14, 5, 0, Math.PI * 2, t0, t1 - t0), mat4(ec, [up ? 0.1 : -0.06, s * 0.15, 0]));
         add(lid, 'skin', 'head', skinPainter('head', (x, y, z, nx, ny, nz, i, c, wet) => {
           if (z < ec.z) return wet;
           const ly = y - ec.y, rim = up ? sstep(er * 0.55, er * 0.15, ly) * sstep(-er * 0.4, er * 0.1, ly) : sstep(-er * 0.6, -er * 0.2, ly) * sstep(-er * 0.05, -er * 0.35, ly);
