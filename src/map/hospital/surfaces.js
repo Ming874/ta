@@ -141,6 +141,13 @@ export const SURFACES = {
   board: S('wood_old', 1.8, { tint: 0xb4a490, wear: [0.3, 0.2, 0.2, 0] }),
   runner: S('carpet', 0.8, { tint: 0x9a3a32, sat: 0.7, wear: [0.8, 0, 0, 0] }),
   chainlink: S('chainlink', 1.0, { metal: 0.8, alphaTest: 0.45, side: 2, wear: [0, 0, 0, 0] }),
+  // ---- 標示、告示、貼花、地板色帶 ----
+  atlas_signs: { atlas: 'signs', rough: 0.42 },
+  atlas_boards: { atlas: 'boards', rough: 0.85 },
+  decal_leak: { decal: 'grime_leak', rough: 0.95 },
+  decal_crack: { decal: 'cracks', rough: 0.95 },
+  floor_line: { solid: 0xffffff, rough: 0.5, wear: [1, 0, 0, 0] },
+  drain: S('metal_grate', 0.3, { metal: 0.8, rough: 0.6, alphaTest: 0.5, side: 2, wear: [0, 0, 0, 0] }),
   glass: { gen: 'glass' },
   blinds: { gen: 'blinds' },
   curtain: { gen: 'curtain' },
@@ -290,6 +297,17 @@ export function surf(key) {
       if (m.defines) delete m.defines.LAYER;
       m.needsUpdate = true;
     });
+  } else if (def?.atlas) { // 程式繪製的標示圖集(Worker 畫好前是透明的)
+    const p = procTextures(def.atlas, { kind: 'atlas', placeholder: 'rgba(0,0,0,0)' });
+    m = new THREE.MeshStandardMaterial({ map: p.tex, roughness: def.rough ?? 0.6, alphaTest: 0.5, vertexColors: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
+    m.userData.noShadow = true;
+  } else if (def?.decal) { // 半透明貼花(漏水流痕、裂縫)
+    m = new THREE.MeshStandardMaterial({ map: decalTex(def.decal), roughness: def.rough ?? 0.9, transparent: true, depthWrite: false, vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
+    m.userData.noShadow = true;
+  } else if (def?.solid !== undefined) { // 純色(頂點色)+ 歲月層,例如地板色帶
+    m = new THREE.MeshStandardMaterial({ color: def.solid, roughness: def.rough ?? 0.6, vertexColors: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
+    wearUniforms(m, def, true);
+    m.userData.noShadow = true;
   } else if (def?.gen || PROC[key]) {
     const gk = def?.gen || key, pd = PROC[gk];
     const p = procTextures(gk, { placeholder: pd.ph || '#77736a' });
@@ -312,6 +330,18 @@ export function surf(key) {
   return m;
 }
 export const surfKeys = () => [...cache.keys()];
+// 貼花貼圖(public/textures/decals/*.webp)
+const DECAL_BASE = ((typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) || '/') + 'textures/decals/';
+const decals = new Map();
+function decalTex(name) {
+  let t = decals.get(name);
+  if (t) return t;
+  t = new THREE.TextureLoader().load(DECAL_BASE + name + '.webp', undefined, undefined, () => console.warn('[surfaces] 貼花載入失敗', name));
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  decals.set(name, t);
+  return t;
+}
 // 貼圖的公尺尺寸(UV 位移用)
 export function surfSize(key) {
   const d = SURFACES[key];

@@ -7,6 +7,7 @@ import { Buckets } from './hospital/builder.js';
 import { createShellContext, buildFloors, buildWalls, buildWindowCells, buildCeilings, buildVaults, buildPipes } from './hospital/shell.js';
 import { buildDoors, buildWindows, buildRails, buildFences, buildElevators, buildEdgeRails } from './hospital/openings.js';
 import { buildStairs } from './hospital/stairs.js';
+import { buildSigns } from './hospital/signs.js';
 import { NO_FLASH_SHADOW_LAYER } from './hospital/builder.js';
 import { buildLights, setGlowFog } from './hospital/lights.js';
 import { buildAtmosphere, makeEnvironment, onGlowFog } from './hospital/atmosphere.js';
@@ -48,6 +49,7 @@ export function buildHospital(world, layout, scene, opts = {}) {
   buildElevators(K);
   buildStairs(K);
   buildEdgeRails(K);
+  try { buildSigns(K); } catch (e) { console.error('[hospital] 標示建構失敗', e); }
   const tShell = performance.now();
 
   // ---- 道具(依樓層合併靜態網格) ----

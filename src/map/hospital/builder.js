@@ -28,7 +28,7 @@ for (const [k, [hex, rough, metal = 0]] of Object.entries(TRIM)) {
 export const HORIZONTAL = new Set(['tile_ward', 'tile_ward_b', 'tile_lobby', 'terrazzo', 'linoleum', 'linoleum_b', 'linoleum_c', 'linoleum_d', 'tile_white_floor',
   'concrete', 'concrete_paint', 'concrete_wet', 'wood_floor', 'wood_gym', 'wood_parquet', 'wood_old', 'carpet', 'carpet_kids', 'padded_floor', 'stone', 'asphalt',
   'paving', 'gravel', 'grass', 'soil', 'roof_gravel', 'metal_grate', 'ceil_tile', 'ceil_tile_b', 'ceil_plaster', 'ceil_concrete', 'ceil_wood', 'vault_stone', 'runner',
-  'checker', 'lino_sheet', 'lino_sheet_b', 'lino_sheet_c', 'lino_sheet_d', 'lino_pattern', 'vct', 'rubber', 'anti_skid', 'epoxy', 'carpet_blue', 'ceil_tile_c', 'floor_line']);
+  'checker', 'lino_sheet', 'lino_sheet_b', 'lino_sheet_c', 'lino_sheet_d', 'lino_pattern', 'vct', 'rubber', 'anti_skid', 'epoxy', 'carpet_blue', 'ceil_tile_c', 'floor_line', 'drain']);
 export const NO_FLASH_SHADOW_LAYER = 1;
 export class Buckets {
   constructor() { this.map = new Map(); this.tris = 0; this.wear = 0.5; } // wear:之後加入的面的破舊度(aWear 頂點屬性)
@@ -121,7 +121,7 @@ export class Buckets {
       const material = matFor(B.key);
       const m = new THREE.Mesh(g, material);
       m.name = `L${B.li}:${B.key}`;
-      m.castShadow = shadow && !material.transparent;
+      m.castShadow = shadow && !material.transparent && !material.userData.noShadow;
       m.receiveShadow = true;
       m.matrixAutoUpdate = false;
       if (HORIZONTAL.has(B.key)) m.layers.set(NO_FLASH_SHADOW_LAYER);
