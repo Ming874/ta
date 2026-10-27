@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { prng, hashStr } from './paint.js';
 import { surfSize, isRoomMapped } from './surfaces.js';
-import { wallRecipe, floorKey, ceilKey, zoneTint, zoneWear, FACADE, COURT, BOUNDARY, REVEAL } from './style.js';
+import { wallRecipe, floorKey, ceilKey, zoneTint, zoneWear, FACADE, COURT, BOUNDARY, revealFor } from './style.js';
 
 // 建築外殼:地板、牆(上下段 + 收邊)、窗台/窗楣、天花板(含缺塊與夾層)、樓板邊、牆頂、屋頂與女兒牆、拱頂、管線。
 // 會把每面牆的資訊(位置、法線、區域、配方)記錄在 K.faces,給貼花/標示/燈具使用。
@@ -149,10 +149,10 @@ export function buildWalls(K) {
         let spans, recipe, zone = null, kind;
         if (nch === 'W') { // 窗洞側邊(窗框內側)
           if (ch === 'E') continue;
-          spans = [[L.WINDOW_SILL, L.WINDOW_TOP]]; recipe = REVEAL; kind = 'jamb';
+          spans = [[L.WINDOW_SILL, L.WINDOW_TOP]]; recipe = revealFor(lv.id); kind = 'jamb';
         } else if (nch === '+') {
           const d = K.door(li, nc, nr);
-          spans = [[0, d.axis ? d.h : top]]; recipe = REVEAL; kind = 'reveal';
+          spans = [[0, d.axis ? d.h : top]]; recipe = revealFor(lv.id); kind = 'reveal';
           if (ch === 'W') spans = [[0, Math.min(L.WINDOW_SILL, d.h)], [L.WINDOW_TOP, d.axis ? Math.max(L.WINDOW_TOP, d.h) : top]].filter(([a, b]) => b > a + 0.01);
         } else {
           if (boundary) { recipe = BOUNDARY; kind = 'boundary'; }

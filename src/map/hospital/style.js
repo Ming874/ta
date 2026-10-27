@@ -62,6 +62,8 @@ const THEME_WALL = {
 };
 export const FACADE = W('facade', { wear: 0.6 }), COURT = W('facade_dark', { tint: [0.92, 0.95, 0.92], wear: 0.6 }), BOUNDARY = W('brick_old', { wear: 0.7 });
 export const REVEAL = W('paint_white', { tint: [0.92, 0.92, 0.9], wear: 0.5 });
+export const REVEAL_B1 = W('concrete_wall', { tint: [0.95, 0.95, 0.92], wear: 0.8 }); // 地下室的門洞/窗洞側邊是清水模,不是白漆
+export const revealFor = (lvId) => (lvId === 'B1' ? REVEAL_B1 : REVEAL);
 
 const FLOOR_BY_THEME = {
   corridor: { '1F': 'tile_ward', '2F': 'lino_sheet_b', '3F': 'lino_sheet_c', B1: 'epoxy' },

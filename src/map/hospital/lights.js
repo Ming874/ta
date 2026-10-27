@@ -9,7 +9,7 @@ const KINDS = {
   fluoro_dying: { color: 0xd4e6d2, cd: 8, dist: 8, glow: 1.1, shape: 'tube', gain: 2.0 },
   fluoro_cold: { color: 0xe2eeff, cd: 10, dist: 9, glow: 1.2, shape: 'tube', gain: 2.4 },
   warm: { color: 0xffd6a0, cd: 14, dist: 10, glow: 1.3, shape: 'tube', gain: 2.2 },
-  surgical: { color: 0xfff4e6, cd: 28, dist: 8, glow: 1.4, shape: 'disc', gain: 3.2 },
+  surgical: { color: 0xfff4e6, cd: 16, dist: 8, glow: 1.2, shape: 'disc', gain: 2.6 },
   emergency: { color: 0xff2a18, cd: 7, dist: 8.5, glow: 0.9, shape: 'lens', gain: 3.0 },
   beacon: { color: 0xff3020, cd: 9, dist: 10, glow: 1.4, shape: 'lens', gain: 3.5 },
   bare_bulb: { color: 0xffc27a, cd: 6.5, dist: 8.5, glow: 0.8, shape: 'bulb', gain: 4.0 },
