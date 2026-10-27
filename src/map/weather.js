@@ -386,11 +386,8 @@ export class Weather {
       this.lens.enabled = true; // 開著讓 boot 的 precompilePasses 編好;第一次 update 再依狀態關掉
     } catch (e) { console.warn('[weather] 鏡頭雨滴 pass 失敗', e); this.lens = null; }
   }
-  placeDrips() {
-    const list = this.occ.edges(800, 7);
-    setDrips(this.drips, list);
-    this.applyQuality();
-  }
+  // 遮雨圖讀回後重新找屋簷滴水點(分幀掃描,見 update)
+  placeDrips() { this.occ.edgesStart(800, 7); }
 
   // 執行期改設定(換地圖、劇情雨變大…):只覆蓋給的欄位
   setConfig(cfg) { Object.assign(this.cfg, cfg || {}); if (this.ok) this.applyConfig(); }
@@ -423,6 +420,7 @@ export class Weather {
     this.sheets.forEach((s, i) => { s.userData.on = i < nG ? i < Math.min(nG, ns) : this.cfg.roofFog && ns >= 2 && this.masks.roofCells > 8; });
     WET.uRipple.value = Q.ripple[lv];
     WET.uWRefl.value = Q.refl[lv];
+    WET.uExpT.value = lv >= 1 ? 4 : 1;
   }
 
   update(time, dt, player) {
@@ -458,8 +456,9 @@ export class Weather {
     WET.uRainT.value = t % 1000;
     const out = this.atmo ? this.atmo.current.out : 1;
     ENV.out = out;
-    // ---- 遮雨高度圖:下載的模型進場景後重烘 ----
+    // ---- 遮雨高度圖:下載的模型進場景後重烘;屋簷滴水點分幀掃描 ----
     this.occ.maybeRebake(t, assets, [this.root]);
+    if (this.occ.edgeJob) { const list = this.occ.edgesStep(1.5); if (list) { setDrips(this.drips, list); this.applyQuality(); } }
     // ---- 玩家附近有沒有露天 ----
     const L = this.L;
     const li = Math.max(0, L.levelOfY(p.y + 0.3));

@@ -7,17 +7,22 @@ import * as THREE from 'three';
 //  - 燈光倒影:路燈/點光源在濕地面拉成直向光柱(把光源對地面鏡射後在視線方向比角度;水窪銳利、濕地面較散)
 //  - 玻璃:室外窗的水珠與往下流的水痕(只在淋得到雨的那面窗)
 
-// 遮雨高度圖(occlusion.js 烘焙完成後換成 12.5cm 的 R32F;之前用 2m 格子遮罩)
-export const OCC = { uOcc: { value: null }, uOccXf: { value: new THREE.Vector4(0, 0, 0, 0) }, uOccOn: { value: 0 } };
+// 遮雨高度圖(occlusion.js 烘焙完成後換成 12.5cm 的打包深度 RGBA8,uOccPk = 1;之前用 2m 格子遮罩的直接高度)
+export const OCC = { uOcc: { value: null }, uOccXf: { value: new THREE.Vector4(0, 0, 0, 0) }, uOccOn: { value: 0 }, uOccPk: { value: 0 }, uOccY: { value: new THREE.Vector2(0, 1) } };
 // uWet 濕度、uRainT 時間、uRain 雨量、uRipple 漣漪層數(0 = 關)、uPudLv 水窪水位、uWRefl 燈光倒影強度(0 = 關)
-export const WET = { uWet: { value: 0.85 }, uRainT: { value: 0 }, uRain: { value: 0.8 }, uRipple: { value: 2 }, uPudLv: { value: 0.85 }, uWRefl: { value: 1 }, ...OCC };
+// uExpT 淋雨判定取樣數(1 = 低畫質單點,4 = 柔和邊緣)
+export const WET = { uWet: { value: 0.85 }, uRainT: { value: 0 }, uRain: { value: 0.8 }, uRipple: { value: 2 }, uPudLv: { value: 0.85 }, uWRefl: { value: 1 }, uExpT: { value: 4 }, ...OCC };
 
 export const OCC_GLSL = /* glsl */`
-uniform sampler2D uOcc; uniform vec4 uOccXf; uniform float uOccOn;
-float occH( vec2 xz ) { return texture2D( uOcc, xz * uOccXf.xy + uOccXf.zw ).r; }
+uniform sampler2D uOcc; uniform vec4 uOccXf; uniform float uOccOn; uniform float uOccPk; uniform vec2 uOccY;
+float occH( vec2 xz ) {
+  vec4 t = texture2D( uOcc, xz * uOccXf.xy + uOccXf.zw );
+  // 打包深度(three packDepthToRGBA)→ 高度
+  return uOccPk > 0.5 ? uOccY.x - dot( t, vec4( 255.0 / 256.0, 255.0 / 65536.0, 255.0 / 16777216.0, 1.0 / 16777216.0 ) ) * uOccY.y : t.r;
+}
 `;
 const WET_PARS = /* glsl */`
-uniform float uWet; uniform float uRainT; uniform float uRain; uniform float uRipple; uniform float uPudLv; uniform float uWRefl;
+uniform float uWet; uniform float uRainT; uniform float uRain; uniform float uRipple; uniform float uPudLv; uniform float uWRefl; uniform float uExpT;
 uniform float uPuddle; uniform float uPudMin; uniform float uDarken; uniform float uGloss;
 ${OCC_GLSL}
 varying vec3 vWetPos;
@@ -28,6 +33,7 @@ float wNoise( vec2 p ) { vec2 i = floor( p ), f = fract( p ); f = f * f * ( 3.0 
 float wExposure( vec3 p ) {
   if ( uOccOn < 0.5 ) return 1.0;
   float y = p.y + 0.06;
+  if ( uExpT < 2.0 ) return step( occH( p.xz ), y );
   return 0.25 * ( step( occH( p.xz + vec2( 0.09, 0.04 ) ), y ) + step( occH( p.xz + vec2( - 0.04, 0.09 ) ), y )
     + step( occH( p.xz + vec2( - 0.09, - 0.04 ) ), y ) + step( occH( p.xz + vec2( 0.04, - 0.09 ) ), y ) );
 }
