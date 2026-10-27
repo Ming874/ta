@@ -125,7 +125,7 @@ export class Zombie {
     this._pt = Math.random() * 0.5; this._sx = this.pos.x; this._sy = this.pos.y; this._sz = this.pos.z;
     this._noProg = 0; this._lv = 0; this._nudgeT = 0; this._nudgeSide = 1; this._repathT = 0;
     this._lodAcc = 0; this.lodSkip = 0; this.stuckN = 0; this.warps = 0;
-    this.stepY = 0; this.vault = null; this._vaultNo = 0; this._warpT = 0; this._barDirty = false;
+    this.stepY = 0; this.vault = null; this._vaultNo = 0; this._warpT = 0; this._barDirty = false; this._crowdT = -9;
 
     // 模型
     const v = getVariant(type);
@@ -372,6 +372,7 @@ export class Zombie {
         const share = o.T.mass / (o.T.mass + m0);
         if (d2 < 1e-6) { sx += Math.sin(this.seed) * rr * share; sz += Math.cos(this.seed) * rr * share; continue; }
         const d = Math.sqrt(d2), push = (rr - d) * share;
+        this._crowdT = this.t; // 被其他殭屍擠到(卡住偵測用)
         sx += (ax / d) * push; sz += (az / d) * push;
       }
       const sl = Math.hypot(sx, sz);
@@ -474,8 +475,8 @@ export class Zombie {
     if (same && (now < 1.6 || (hd < this.T.reach + 0.6 && this._canHit(world)))) { this._noProg = 0; this._lv = 0; return; } // 到了(路徑距離很近,或已經打得到)
     if (this.state !== 'chase' || this.want.speed < 0.25) return; // 攻擊/硬直/特殊動作中:暫停計時
     if (was - now > 0.2) { this._noProg = 0; return; }
-    // 玩家附近 6m 內多半是被前面的殭屍擋住(圍成一圈):累計慢很多,不會在人群裡亂擠
-    this._noProg += now === Infinity ? 1 : same && hd < 6 ? 0.125 : 0.5;
+    // 玩家附近 6m 內又正被其他殭屍擠著(圍成一圈):累計慢很多,不會在人群裡亂擠
+    this._noProg += now === Infinity ? 1 : same && hd < 6 && this.t - this._crowdT < 1 ? 0.125 : 0.5;
     const n = this._noProg;
     if (n >= 2 && this._lv < 1) { this._lv = 1; this._nudgeT = 1; this._nudgeSide = this._freeSide(world); this.stuckN++; }
     else if (n >= 4.5 && this._lv < 2) { this._lv = 2; this._repathT = 4; this._nudgeT = 0.6; this._nudgeSide = -this._nudgeSide; }
