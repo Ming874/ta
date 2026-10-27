@@ -510,7 +510,7 @@ export class Zombie {
         this.stumbleT -= dt;
         if (this.stumbleT <= 0 && this.speedNow > 0.4) { this.go('stumble'); this.stumbleT = 7 + Math.random() * 10; }
         else if (dist < T.reach + 0.1 && this.attackCd <= 0 && this._canHit(ctx.world)) { this.go('attack'); say('zAttack', this.type, this.vp); }
-        if (dist < T.reach - 0.1) w.speed = 0;
+        if (dist < T.reach - 0.1 && this._canHit(ctx.world)) w.speed = 0; // 打得到才停下(隔著東西時繼續繞)
         break;
       case 'stumble':
         w.speed *= this.st < 0.45 ? 1.4 : 0.15;
@@ -565,7 +565,7 @@ export class Zombie {
             this.go('climb');
           } else if (this.line === 2) this._vaultNo = this.t + 2.5; // 翻不過去:先改走導航路徑
         }
-        if (dist < T.reach - 0.15) w.speed = 0;
+        if (dist < T.reach - 0.15 && this._canHit(ctx.world)) w.speed = 0; // 打得到才停下(隔著東西時繼續繞)
         break;
       case 'climb': // 翻越矮障礙(病床、長椅、桌子):手撐上去、腿收起來翻過
         w.speed = 0;
@@ -642,7 +642,7 @@ export class Zombie {
           if (this._cw) { w.x = this._cwd.x; w.z = this._cwd.z; }
         }
         if (dist < T.reach && this.attackCd <= 0 && this._canHit(ctx.world)) { this.go('attack'); say('zAttack', this.type, this.vp); }
-        if (dist < T.reach - 0.2) w.speed = 0;
+        if (dist < T.reach - 0.2 && this._canHit(ctx.world)) w.speed = 0; // 打得到才停下(隔著東西時繼續繞)
         break;
       case 'attack':
         w.speed = 0;
@@ -706,7 +706,7 @@ export class Zombie {
         // 衝鋒:看得到、而且到玩家之間的地面直線可走(不會一開始就撞上欄杆/窗/桌子)
         if (this.los && this.line === 1 && dist > C.min && dist < C.max && this.specialCd <= 0) { this.go('roar'); say('roar', this.vp); this.jawT = 0; }
         else if (dist < T.reach + 0.1 && this.attackCd <= 0 && this._canHit(world)) { this.go('slam'); say('zAttack', this.type, this.vp); }
-        if (dist < T.reach - 0.35) w.speed = 0;
+        if (dist < T.reach - 0.35 && this._canHit(ctx.world)) w.speed = 0; // 打得到才停下(隔著東西時繼續繞)
         break;
       case 'roar':
         w.speed = 0;
