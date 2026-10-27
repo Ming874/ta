@@ -1,0 +1,22 @@
+/* 全螢幕地圖(M) */
+#mapui { position: fixed; inset: 0; z-index: 25; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  background: radial-gradient(ellipse at center, rgba(8, 12, 12, .86), rgba(0, 0, 0, .94)); color: #e6e0d2; pointer-events: none;
+  font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", system-ui, sans-serif; user-select: none; }
+#mapui.on { display: flex; animation: mp-in .22s ease-out; }
+@keyframes mp-in { from { opacity: 0; } }
+#mapui svg { width: 1em; height: 1em; vertical-align: -0.14em; }
+.mp-head { display: flex; align-items: center; gap: 16px; width: min(1180px, 94vw); }
+.mp-title { font-size: 22px; letter-spacing: 6px; font-weight: 700; }
+.mp-title small { font-size: 13px; letter-spacing: 3px; opacity: .6; margin-left: 10px; font-weight: 400; }
+.mp-floors { display: flex; gap: 4px; margin-left: auto; }
+.mp-floors span { font: 700 15px "Bahnschrift", "Arial Narrow", sans-serif; padding: 5px 12px; border: 1px solid rgba(255, 255, 255, .2); color: rgba(255, 255, 255, .5); }
+.mp-floors span.on { color: #1a1208; background: #ffb347; border-color: #ffb347; }
+.mp-floors span.me::after { content: "●"; color: #7fe08f; margin-left: 6px; font-size: 10px; vertical-align: 2px; }
+.mp-floors span.on.me::after { color: #1b6a2a; }
+.mp-stage { position: relative; flex: none; border: 1px solid rgba(255, 255, 255, .12);
+  background: #090b0b; box-shadow: 0 20px 60px rgba(0, 0, 0, .6); }
+.mp-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: auto; }
+.mp-foot { display: flex; gap: 16px; white-space: nowrap; flex-wrap: wrap; justify-content: center; width: min(1180px, 94vw); font-size: 13px; color: rgba(230, 224, 210, .7); letter-spacing: 1px; align-items: center; }
+.mp-foot i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; }
+.mp-foot .sp { flex: 1; min-width: 10px; }
+.mp-foot kbd { font: 700 11px "Bahnschrift", sans-serif; border: 1px solid rgba(255, 255, 255, .3); border-bottom-width: 2px; border-radius: 3px; padding: 0 5px; margin: 0 3px; color: #fff; }
