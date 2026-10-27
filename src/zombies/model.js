@@ -141,6 +141,7 @@ function bloodAmt(list, x, y, z) {
 // buildShape:純幾何 + 骨架 + 命中盒(不碰材質與 DOM,可在 Worker 執行,見 model.worker.js);buildVariant = buildShape + 綁材質
 export function buildVariant(type, seed, opt = {}) { return bindMaterials(buildShape(type, seed, opt)); }
 export function bindMaterials(v) {
+  if (v.ownMaterials) { v.materials = v.ownMaterials; return v; } // 外部模型自帶材質(與 slots 一一對應)
   const healthy = v.type === 'survivor'; // 倖存者:乾淨皮膚與清澈的眼睛(衣物/裝備/頭髮與殭屍共用)
   const M = healthy ? survivorMats(v.eyeKey || 'brown') : materials();
   v.materials = v.slots.map((s) => (s === 'eye' ? (healthy ? M.eye.survivor : M.eye[v.type] || M.eye.walker) : M[s]));
@@ -148,7 +149,7 @@ export function bindMaterials(v) {
 }
 export function buildShape(type, seed, opt = {}) {
   // 外觀提供者:有自訂建模器的類型(registerProvider,例如日後的外部骨架模型轉接)直接交給它
-  if (PROVIDERS[type]) return PROVIDERS[type](type, seed, opt);
+  if (PROVIDERS[type]) { const pv = PROVIDERS[type].fn(type, seed, opt); if (pv) return pv; } // 回傳 null = 這個種子照舊程式生成
   const r = rng(seed);
   const LK = LOOKS[type] || null; // 新類型的外觀描述(looks.js);舊類型沿用本檔的表
   const P = (LK ? LK.body : BODY[type])(r);
@@ -1225,16 +1226,23 @@ const SEEDS = { walker: 1000, runner: 2000, crawler: 3000, bloater: 4000, brute:
 //   geometry:合併後的 BufferGeometry(position/normal/uv/color(RGBA, a = 濕潤度)/skinIndex/skinWeight + 依 slots 分組)
 //   rig.bones:BONES 順序的 { name, i, parent, head, tail }(模型空間、公尺);rig.index、rig.HC(頭部中心)
 //   P:{ s 縮放, legless?, … }、hitboxes:見 hitboxes();可用 makeRig/hitboxes 依骨架自動產生
-// 外部的帶骨架模型(glTF)要轉接時:把它的骨骼對應到 BONES 名稱、蒙皮權重重新映射到這組索引、頂點色可全白(a = 0)。
-// 提供者必須是純計算(不碰 DOM)才能在 Worker 執行;需要非同步載入的模型請在主執行緒先載好再註冊。
+//   ownMaterials(可選):自帶材質陣列(與 slots 對應);沒有就用殭屍共用材質(skin/cloth/gear…)
+// 外部的帶骨架模型(glTF,例如 conform 轉接器):把它的骨骼對應到 BONES 名稱、蒙皮權重重新映射到這組索引、頂點色可全白(a = 0)。
+// 提供者在主執行緒註冊,Worker 看不到 → 有提供者的類型一律在主執行緒建(request 跳過 Worker;提供者應只做複製/組裝,很快)。
+// registerProvider(type, fn, count?):fn(type, seed, opt) 回傳變體或 null(null = 該種子照舊程式生成,可混用);
+// count = 該類型的變體數(連線同步的變體編號 0..count-1;各端必須註冊相同的提供者與數量)。註冊後清掉該類型已建好的快取。
 const PROVIDERS = {};
-export function registerProvider(type, fn) { PROVIDERS[type] = fn; }
+export function registerProvider(type, fn, count) {
+  PROVIDERS[type] = { fn };
+  if (count > 0) PER_TYPE[type] = count | 0;
+  if (cache[type]) cache[type].length = 0;
+}
 export { makeRig, hitboxes as autoHitboxes };
 const cache = {};
 // 變體 k 用固定種子 → 每台機器、每個執行緒建出來都一樣(連線時可用 getVariant(type, k) 同步外觀)
 // 有 Worker:prewarm() 一次把全部變體平行丟給 Worker 池,主執行緒只組 BufferGeometry + 綁材質;
 // getVariant 取已建好的,一個都還沒好才同步建(備援)。沒有 Worker:完全照舊在主執行緒同步建。
-const seedOf = (type, k) => SEEDS[type] + k * 7919;
+const seedOf = (type, k) => (SEEDS[type] ?? 20000 + type.length * 1013) + k * 7919; // 未列出的類型(外部提供者新增)也有固定種子
 const vstat = { worker: 0, sync: 0, syncMs: 0, pending: 0, t0: 0, tDone: 0 };
 const inflight = {};
 let pool;
@@ -1245,7 +1253,7 @@ function modelPool() {
 function store(type, k, v) {
   v.k = k;
   (cache[type] || (cache[type] = []))[k] = v;
-  if (!vstat.tDone && readyCount() >= TOTAL) vstat.tDone = performance.now();
+  if (!vstat.tDone && readyCount() >= TOTAL()) vstat.tDone = performance.now();
   return v;
 }
 function buildSync(type, k) {
@@ -1257,6 +1265,7 @@ function buildSync(type, k) {
   return v;
 }
 function request(type, k) {
+  if (PROVIDERS[type]) return null; // 提供者只在主執行緒註冊:改走同步建模
   const key = type + ':' + k;
   if (cache[type]?.[k] || inflight[key]) return inflight[key];
   const p = modelPool();
@@ -1293,7 +1302,7 @@ const ORDER = ['walker', 'walker', 'walker', 'runner', 'crawler', 'bloater', 'br
   'walker', 'walker', 'walker', 'runner', 'runner', 'runner', 'crawler', 'crawler', 'crawler', 'bloater', 'bloater', 'brute', 'brute',
   'screamer', 'screamer', 'surgeon', 'surgeon', 'straitjacket', 'straitjacket', 'burned', 'burned', 'stalker', 'stalker', 'hazmat'];
 export const VARIANT_TYPES = Object.keys(PER_TYPE);
-const TOTAL = Object.values(PER_TYPE).reduce((a, b) => a + b, 0);
+const TOTAL = () => Object.values(PER_TYPE).reduce((a, b) => a + b, 0); // 提供者可改變數,所以每次重算
 const readyCount = () => { let n = 0; for (const t in cache) for (const v of cache[t]) if (v) n++; return n; };
 function nextMissing() {
   const seen = {};
@@ -1305,6 +1314,8 @@ function nextMissing() {
 }
 let dispatched = false, idleQueued = false;
 export function prewarm() {
+  // 有外部提供者的類型:主執行緒一次建一個(提供者只做組裝,很快;Worker 看不到主執行緒註冊的提供者)
+  for (const t in PROVIDERS) { const n = PER_TYPE[t] || 1; for (let k = 0; k < n; k++) if (!cache[t]?.[k]) { buildSync(t, k); return true; } }
   if (modelPool()) {
     if (!dispatched) {
       dispatched = true;
@@ -1324,12 +1335,12 @@ export function prewarm() {
 // 全部變體建好時 resolve(測試/啟動流程用)
 export function whenWarm() {
   return new Promise((res) => {
-    const tick = () => { prewarm(); if (readyCount() >= TOTAL) res(variantStats()); else setTimeout(tick, 16); };
+    const tick = () => { prewarm(); if (readyCount() >= TOTAL()) res(variantStats()); else setTimeout(tick, 16); };
     tick();
   });
 }
 export function variantStats() {
-  return { ready: readyCount(), total: TOTAL, pending: vstat.pending, worker: vstat.worker, sync: vstat.sync, syncMs: Math.round(vstat.syncMs), warmMs: vstat.tDone && vstat.t0 ? Math.round(vstat.tDone - vstat.t0) : null, pool: pool ? pool.info() : null };
+  return { ready: readyCount(), total: TOTAL(), pending: vstat.pending, worker: vstat.worker, sync: vstat.sync, syncMs: Math.round(vstat.syncMs), warmMs: vstat.tDone && vstat.t0 ? Math.round(vstat.tDone - vstat.t0) : null, pool: pool ? pool.info() : null };
 }
 
 // ---------- 倖存者(多人連線的玩家角色) ----------
