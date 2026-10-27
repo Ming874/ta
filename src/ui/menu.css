@@ -55,9 +55,21 @@
 .mn-stats b { display: block; font: 700 26px var(--mn-num); color: #f0e9d8; }
 .mn-stats small { font-size: 12px; letter-spacing: 3px; color: var(--mn-muted); }
 .mn-stats b em { font-style: normal; font-size: 14px; color: var(--mn-muted); margin-left: 4px; }
-.mn-types { font-size: 12.5px; color: var(--mn-muted); letter-spacing: 1px; margin: 10px 0 0; }
-.mn-types span { margin: 0 7px; }
-.mn-types b { color: var(--mn-text); font-family: var(--mn-num); margin-left: 3px; }
+.mn-stats small em { font: 400 11px var(--mn-num); font-style: normal; letter-spacing: 0; margin-left: 5px; opacity: .7; }
+.mn-dead .mn-score { font-size: 14px; letter-spacing: 4px; color: var(--mn-muted); margin: -12px 0 16px; }
+.mn-dead .mn-score b { font: 700 30px var(--mn-num); color: var(--mn-amber); letter-spacing: 1px; margin-left: 10px; vertical-align: -3px; }
+.mn-new { display: inline-block; font: 700 11px "Microsoft JhengHei", sans-serif; font-style: normal; letter-spacing: 2px; color: #1a1208; background: var(--mn-amber);
+  padding: 1px 6px; margin-left: 8px; vertical-align: 2px; box-shadow: 0 0 12px rgba(255, 179, 71, .55); animation: mn-new 1.2s ease-in-out infinite; }
+@keyframes mn-new { 50% { box-shadow: 0 0 2px rgba(255, 179, 71, .2); } }
+.mn-types { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 22px; font-size: 12.5px; color: var(--mn-muted); letter-spacing: 1px; margin: 12px 0 0; text-align: left; }
+.mn-types div { display: grid; grid-template-columns: 4.2em 1fr 2.4em; align-items: center; gap: 8px; }
+.mn-types i { height: 5px; background: rgba(255, 255, 255, .07); position: relative; }
+.mn-types i::after { content: ""; position: absolute; inset: 0; transform-origin: 0 50%; transform: scaleX(var(--w)); background: linear-gradient(90deg, #8a1f17, #d8483c); }
+.mn-types b { color: var(--mn-text); font-family: var(--mn-num); text-align: right; }
+.mn-best { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--mn-line); font-size: 12px; letter-spacing: 1px; color: var(--mn-muted); }
+.mn-best span { color: var(--mn-amber); letter-spacing: 3px; margin-right: 10px; }
+.mn-best b { font: 700 13px var(--mn-num); color: var(--mn-text); margin: 0 10px 0 4px; }
+.mn-best em { font-style: normal; opacity: .7; }
 
 /* ---------- 面板(設定/說明/授權) ---------- */
 #mnpanel { position: fixed; inset: 0; z-index: 40; display: none; align-items: center; justify-content: center; background: rgba(0, 0, 0, .72); color: var(--mn-text);

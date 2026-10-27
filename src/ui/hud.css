@@ -32,6 +32,16 @@
 .hd-coins svg { width: 1.05em; height: 1.05em; filter: drop-shadow(0 0 5px rgba(240,190,60,.45)); }
 .hd-cgain { font-size: .7em; color: #ffe7a0; opacity: 0; }
 
+/* ---- 右上:分數 / 連殺 ---- */
+.hd-score { right: 1.8em; top: 3.3em; font-size: .9em; letter-spacing: .2em; color: var(--hud-dim); text-align: right; }
+.hd-score b { font: 700 1.25em/1 var(--num); letter-spacing: .04em; color: var(--hud-text); margin-left: .3em; }
+.hd-streak { right: 1.8em; top: 5.2em; width: 8.5em; text-align: right; font-weight: 700; color: #ffd27a; }
+.hd-streak b { display: inline-block; font-size: 1.15em; letter-spacing: .12em; transform-origin: 100% 50%; }
+.hd-streak span { font: 700 1em var(--num); margin-left: .45em; color: var(--hud-text); }
+.hd-streak .hd-bar { height: .22em; margin-top: .3em; border: 0; background: rgba(0,0,0,.45); }
+.hd-streak .fill { background: #ffb347; transform-origin: 100% 50%; transition: none; }
+.hd-streak.hot b { color: #ff8a4a; text-shadow: 0 0 10px rgba(255, 110, 40, .7), 0 1px 2px #000; }
+
 /* ---- 左下:生命 / 護甲 / 耐力 ---- */
 .hd-vitals { left: 1.8em; bottom: 1.6em; width: 19em; }
 .hd-row { display: flex; align-items: center; gap: .55em; }

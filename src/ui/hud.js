@@ -49,6 +49,16 @@ export class Hud {
     this.coins = add(mk('hd hd-coins', `<span class="hd-cgain"></span>${ICON.coin}<b>0</b>`));
     this.coinGainEl = this.coins.children[0];
     this.coinNum = this.coins.querySelector('b');
+    this.scoreEl = add(mk('hd hd-score', '分數 <b>0</b>'));
+    this.scoreNum = this.scoreEl.querySelector('b');
+    this.scoreShown = 0;
+    this.scoreTarget = 0;
+    this.streakEl = add(mk('hd hd-streak hd-hide', '<b></b><span></span><div class="hd-bar"><div class="fill"></div></div>'));
+    this.streakNum = this.streakEl.children[0];
+    this.streakMul = this.streakEl.children[1];
+    this.streakFill = this.streakEl.querySelector('.fill');
+    this.streakEnd = 0;
+    this.streakLen = 1;
 
     this.vitals = add(mk('hd hd-vitals', `
       <div class="hd-row hd-hp">${ICON.cross}<b class="num">100</b><div class="hd-bar"><div class="trail"></div><div class="fill"></div><div class="seg"></div></div></div>
@@ -178,6 +188,25 @@ export class Hud {
     this.coinGainEl.animate([{ opacity: 1, color: '#ff8a70' }, { opacity: 0, transform: 'translateY(.6em)', color: '#ff8a70' }], { duration: 900, easing: 'ease-in' });
   }
 
+  // ---------- 分數 / 連殺 ----------
+  setScore(n, instant = false) {
+    this.scoreTarget = n;
+    if (instant || n < this.scoreShown) { this.scoreShown = n; this.scoreNum.textContent = n.toLocaleString('en-US'); }
+  }
+  // 連殺:數字 + 分數倍率 + 剩餘時間條(gap 秒內再殺一隻才延續)
+  streak(n, mul, gap) {
+    if (n < 2) { this._set('stk', 0, () => this.streakEl.classList.add('hd-hide')); this.streakEnd = 0; return; }
+    this.streakEnd = performance.now() + gap * 1000;
+    this.streakLen = gap * 1000;
+    this.v.stk = n;
+    this.streakEl.classList.remove('hd-hide');
+    this.streakNum.textContent = `${n} 連殺`;
+    this.streakMul.textContent = `×${mul.toFixed(1)}`;
+    this.streakEl.classList.toggle('hot', n >= 5);
+    this.streakNum.getAnimations().forEach((a) => a.cancel());
+    this.streakNum.animate([{ transform: 'scale(1.35)' }, { transform: 'scale(1)' }], { duration: 260, easing: 'ease-out' });
+  }
+
   // ---------- 回合 ----------
   setRound(n) { this._set('round', n, (v) => { this.roundNum.textContent = v; }); }
   setZombies(n) {
@@ -283,6 +312,19 @@ export class Hud {
       if ((d > 0 && this.coinShown > this.coinTarget) || (d < 0 && this.coinShown < this.coinTarget)) this.coinShown = this.coinTarget;
       this._set('coins', this.coinShown, (v) => { this.coinNum.textContent = v; });
     }
+    // 分數滾動
+    if (this.scoreShown !== this.scoreTarget) {
+      const d = this.scoreTarget - this.scoreShown;
+      this.scoreShown += Math.max(1, Math.round(d * Math.min(1, dt * 8)));
+      if (this.scoreShown > this.scoreTarget) this.scoreShown = this.scoreTarget;
+      this.scoreNum.textContent = this.scoreShown.toLocaleString('en-US');
+    }
+    // 連殺剩餘時間
+    if (this.streakEnd) {
+      const k = (this.streakEnd - now) / this.streakLen;
+      if (k <= 0) { this.streakEnd = 0; this.v.stk = 0; this.streakEl.classList.add('hd-hide'); }
+      else this.streakFill.style.transform = `scaleX(${k.toFixed(3)})`;
+    }
     // 受傷方向弧
     for (const a of this.arcs) {
       const age = (now - a.t) / 1000;
@@ -336,6 +378,10 @@ export class Hud {
 
   reset() {
     for (const k of ['feedEl', 'pops', 'pickEl']) this[k].replaceChildren();
+    this.streakEnd = 0;
+    this.v.stk = 0;
+    this.streakEl.classList.add('hd-hide');
+    this.setScore(0, true);
     for (const a of this.arcs) { a.t = -9; a.op = -1; a.el.style.opacity = 0; }
     this.zoneSeen.clear();
     this._lastLvl = null;

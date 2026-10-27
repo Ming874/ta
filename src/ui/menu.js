@@ -9,6 +9,8 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const HEART = '<svg viewBox="0 0 32 32" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" d="M16 27.5S4.5 20 4.5 12.3C4.5 8.6 7.3 6 10.6 6c2.3 0 4.3 1.3 5.4 3.2C17.1 7.3 19.1 6 21.4 6c3.3 0 6.1 2.6 6.1 6.3C27.5 20 16 27.5 16 27.5z"/><path fill="currentColor" d="M15 1.5h2v4h3v2h-3v5h-2v-5h-3v-2h3z"/><path fill="none" stroke="currentColor" stroke-width="1.2" opacity=".7" d="M11 13.5c1.5 2.5 3 3.5 5 3.5s3.5-1 5-3.5"/></svg>';
 const pct = (v) => `${Math.round(v * 100)}%`;
+const TYPE_ORDER = ['walker', 'runner', 'crawler', 'bloater', 'brute'];
+const TYPE_NAMES = { walker: '行屍', runner: '狂奔者', crawler: '爬行者', bloater: '膿腫者', brute: '巨屍' };
 const SETTINGS = [
   ['sec', '操作'],
   ['range', 'sens', '滑鼠靈敏度', 0.2, 3, 0.05, (v) => `${v.toFixed(2)}×`],
@@ -123,21 +125,25 @@ export class Menu {
   }
 
   showDeath(s) {
-    const mmss = `${Math.floor(s.time / 60)}:${String(Math.floor(s.time % 60)).padStart(2, '0')}`;
+    const mmss = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
     const hp = s.kills ? Math.round((s.headshots / s.kills) * 100) : 0;
-    const names = { walker: '行屍', runner: '狂奔者', crawler: '爬行者', bloater: '膿腫者', brute: '巨屍' };
-    const types = Object.entries(s.byType || {}).map(([k, n]) => `<span>${names[k] || k}<b>${n}</b></span>`).join('');
+    const by = s.byType || {}, top = Math.max(1, ...Object.values(by));
+    const types = TYPE_ORDER.filter((k) => by[k]).map((k) => `<div><span>${TYPE_NAMES[k]}</span><i style="--w:${(by[k] / top).toFixed(3)}"></i><b>${by[k]}</b></div>`).join('');
+    const nw = s.isNew || {}, best = s.best, NEW = '<i class="mn-new">新紀錄</i>';
+    const rec = best ? `<div class="mn-best"><span>本機最佳</span>分數<b>${(best.score || 0).toLocaleString('en-US')}</b>回合<b>${best.round || 0}</b>擊殺<b>${best.kills || 0}</b>連殺<b>${best.streak || 0}</b>${best.runs ? `<em>共 ${best.runs} 場</em>` : ''}</div>` : '';
     $('deadinfo').innerHTML = `
-      <div class="mn-round">你撐到了第<b>${s.round}</b>回合</div>
+      <div class="mn-round">你撐到了第<b>${s.round}</b>回合${nw.round ? NEW : ''}</div>
+      <div class="mn-score">分數<b>${(s.score || 0).toLocaleString('en-US')}</b>${nw.score ? NEW : ''}</div>
       <div class="mn-stats">
-        <div><b>${s.kills}</b><small>擊殺</small></div>
+        <div><b>${s.kills}</b><small>擊殺${nw.kills ? NEW : ''}</small></div>
         <div><b>${s.headshots}<em>${hp}%</em></b><small>爆頭</small></div>
-        <div><b>${Math.round(s.accuracy * 100)}%</b><small>命中率</small></div>
-        <div><b>${mmss}</b><small>存活時間</small></div>
-        <div><b>${s.bestStreak}</b><small>最高連殺</small></div>
+        <div><b>${Math.round((s.accuracy || 0) * 100)}%</b><small>命中率<em>${s.hits || 0}/${s.shots || 0}</em></small></div>
+        <div><b>${mmss(s.time || 0)}</b><small>存活時間</small></div>
+        <div><b>${s.bestStreak}</b><small>最高連殺${nw.streak ? NEW : ''}</small></div>
         <div><b>${s.earned}</b><small>累積金幣</small></div>
       </div>
-      ${types ? `<div class="mn-types">${types}</div>` : ''}`;
+      ${types ? `<div class="mn-types">${types}</div>` : ''}
+      ${rec}`;
     this.ui.overlay('dead', true);
   }
 

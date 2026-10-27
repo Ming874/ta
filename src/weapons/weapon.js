@@ -4,6 +4,8 @@ import { MuzzleFlash } from './flash.js';
 import { sfx } from '../audio.js';
 
 // 武器數值表(價格、傷害、射速…都集中在這裡調整)
+// 價格依實測經濟(bot 量測每回合收入約 84/126/165/233/338/435,累計 84/210/375/608/946/1381):
+// 不花錢存下來時,第 2 回合後買得起左輪/霰彈槍、第 3 回合 AK、第 4 回合 M4A1、第 5 回合巴雷特;實際還要買彈藥/護甲/改裝,約每 1.5 回合升一級
 // ads:{ zoom 視野倍率, spread 開鏡散布, time 開鏡秒數, scope 全螢幕狙擊鏡 } | null;pellets 霰彈彈丸數;penetrate 可穿透隻數(每穿一隻 ×penMul)
 // falloff:[近, 遠] 公尺(近距離以內全傷害,遠距離以外為 minDmg 倍);recoil:連發時的水平後座圖樣(×pitch)與隨機量;bloom 每發增加的散布
 // stats:商店顯示用 0..1;flash/casing:槍口火光與拋殼樣式;move:持槍移速倍率(重武器較慢)
@@ -17,7 +19,7 @@ export const WEAPONS = {
     stats: { damage: 0.2, rate: 0.55, accuracy: 0.62, range: 0.38, mobility: 0.95 },
   },
   revolver: {
-    name: '左輪', desc: 'Colt Python · .357 Magnum', price: 100, damage: 70, rpm: 130, auto: false,
+    name: '左輪', desc: 'Colt Python · .357 Magnum', price: 120, damage: 70, rpm: 130, auto: false,
     mag: 6, reserveStart: 30, reserveCap: 48, reload: 2.6, spread: 0.006, kick: 0.075, pitch: 0.03,
     hold: [0.1, -0.105, -0.38], slot: 2, ads: null, penetrate: 1, penMul: 0.6,
     falloff: [25, 60], minDmg: 0.6, bloom: 0.008, moveSpread: 1.4, recoil: { yaw: [0], rand: 0.6 },
@@ -34,7 +36,7 @@ export const WEAPONS = {
     stats: { damage: 0.82, rate: 0.16, accuracy: 0.22, range: 0.2, mobility: 0.72 },
   },
   ak47: {
-    name: 'AK-47', desc: '7.62×39mm · 全自動', price: 250, damage: 35, rpm: 600, auto: true,
+    name: 'AK-47', desc: '7.62×39mm · 全自動', price: 300, damage: 35, rpm: 600, auto: true,
     mag: 30, reserveStart: 90, reserveCap: 180, reload: 2.5, spread: 0.014, kick: 0.05, pitch: 0.016,
     hold: [0.17, -0.17, -0.66], slot: 4, ads: { zoom: 1.4, spread: 0.0034, time: 0.22 }, penetrate: 1, penMul: 0.65,
     falloff: [30, 70], minDmg: 0.65, bloom: 0.0035, moveSpread: 1.6,
@@ -43,7 +45,7 @@ export const WEAPONS = {
     stats: { damage: 0.5, rate: 0.75, accuracy: 0.5, range: 0.7, mobility: 0.6 },
   },
   m4a1: {
-    name: 'M4A1', desc: '5.56×45mm · 全自動', price: 400, damage: 30, rpm: 780, auto: true,
+    name: 'M4A1', desc: '5.56×45mm · 全自動', price: 450, damage: 30, rpm: 780, auto: true,
     mag: 30, reserveStart: 90, reserveCap: 180, reload: 2.1, spread: 0.01, kick: 0.036, pitch: 0.011,
     hold: [0.17, -0.17, -0.62], slot: 5, ads: { zoom: 1.6, spread: 0.0022, time: 0.2 }, penetrate: 1, penMul: 0.6,
     falloff: [35, 80], minDmg: 0.65, bloom: 0.0025, moveSpread: 1.5,

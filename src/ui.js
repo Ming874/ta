@@ -40,6 +40,8 @@ export class UI {
   setArmor(a, max) { this.hud.setArmor(a, max); }
   setAmmo(name, mag, reserve, reloading, cap) { this.hud.setAmmo(name, mag, reserve, reloading, cap); }
   setCoins(n, instant = false) { this.hud.setCoins(n, instant); }
+  setScore(n, instant = false) { this.hud.setScore(n, instant); }
+  streak(n, mul, gap) { this.hud.streak(n, mul, gap); }
   coinGain(n) { this.hud.coinGain(n); }
   spend(n) { this.hud.spend(n); }
   pickup(text, color, o) { this.hud.pickup(text, color, o); }
