@@ -404,7 +404,8 @@ export const combatMethods = {
   },
 
   // killer:擊殺者(多人時金幣歸屬用)
-  onKill(z, killer = this.player) {
+  // hit:擊殺的那一下 { point, dir, force } 或 { blast, radius, strength }(布娃娃衝量);省略時用 z.lastImpulse
+  onKill(z, killer = this.player, hit = null) {
     if (z._killed) return;
     z._killed = true;
     this.coins.drop(z.pos.x, z.pos.y, z.pos.z, z.T.coins);
@@ -412,6 +413,7 @@ export const combatMethods = {
     z.corpse = z.type === 'brute' ? 9 : 6;
     z.killer = killer;
     this.kills = (this.kills || 0) + 1;
+    this.physics?.ragdoll(z, hit || z.lastImpulse || null); // 物理布娃娃(src/physics);不可用時沿用 zombie.js 的死亡動畫
     if (!this.wfx) return;
     const g = z.gore;
     if (g) { // 斷頭/斷肢:從斷口噴出血柱
@@ -450,7 +452,9 @@ export const combatMethods = {
       for (let i = 0; i < 14; i++) this.wfx.smoke.spawn(at.x + rand(-0.4, 0.4), at.y + rand(-0.3, 0.4), at.z + rand(-0.4, 0.4), rand(-1.4, 1.4), rand(0, 1.2), rand(-1.4, 1.4), 0.3, rand(1.2, 2.2), 0.32, 0.36, 0.08, 0.55, rand(1.5, 3), 0.1, 1.5, 0.05);
       this.wfx.decals.add(_p.set(c.x, c.y, c.z), _up, 2.2, DECAL.blood, 90);
     }
-    if (this.physics && this.physics.impulseAt) this.physics.impulseAt(at, E.radius, 6);
+    // 物理:膿腫者爆開後倒下,周圍的道具、屍體被炸開(src/physics)
+    this.physics?.ragdoll(z, { blast: at, radius: E.radius, strength: 9 });
+    if (this.physics && this.physics.impulseAt) this.physics.impulseAt(at, E.radius * 1.6, 9);
     const dist = (q) => Math.hypot(q.x - c.x, q.z - c.z) + Math.abs(q.y - c.y) * 1.5;
     for (const pl of this.players) {
       const d = dist(pl.pos);
@@ -459,13 +463,14 @@ export const combatMethods = {
         if (pl === p) p.addShake(0.7);
       }
     }
+    const blast = { blast: at, radius: E.radius, strength: 9 };
     for (const o of this.zombies) {
       if (o === z || !o.alive) continue;
       const od = dist(o.pos);
       if (od >= E.radius) continue;
       _d.set(o.pos.x - c.x, 0.4, o.pos.z - c.z).normalize();
       this._impulse(o, o.pos, _d, 200 * (1 - od / E.radius));
-      if (o.damage(E.zombie * (1 - od / E.radius) + 10, 'body')) this.onKill(o, z.killer);
+      if (o.damage(E.zombie * (1 - od / E.radius) + 10, 'body')) this.onKill(o, z.killer, blast);
     }
   },
 

@@ -851,6 +851,7 @@ export class Zombie {
   // ======================= 死亡 =======================
   _dead(dt, ctx) {
     this.dying += dt;
+    if (this.rag) { if (this.corpse < 1.5) { this.rootY -= (1.5 - this.corpse) * 0.3; this._applyRoot(); } return; } // 物理布娃娃(src/physics)接手骨骼姿勢,這裡只做屍體下沉
     const t = this.dying, b = this.b, kind = this.deathKind, side = this.deathSide;
     this.vel.multiplyScalar(Math.pow(0.03, dt));
     this.pos.addScaledVector(this.vel, dt);

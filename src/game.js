@@ -15,6 +15,7 @@ import { fxMethods } from './game/fx.js';
 import { combatMethods } from './game/combat.js';
 import { flowMethods } from './game/flow.js';
 import { inputMethods } from './game/input.js';
+import { createPhysics } from './physics/index.js';
 
 // 遊戲主體:建立渲染器/場景/各系統,並跑主迴圈。
 // 細節分在 src/game/*:fx(粒子/血池)、combat(射擊/傷害/爆炸)、flow(回合/出怪/商店/死亡)、input(輸入)、post(後處理)
@@ -95,6 +96,8 @@ export class Game {
 
     this.ray = new THREE.Raycaster();
     this.makeParticles();
+    // 物理(src/physics:Rapier WASM,預設在 Web Worker 非同步載入;載入前或失敗時 ready=false,遊戲照舊運作)
+    this.physics = createPhysics(this);
     setupPost(this);
 
     window.addEventListener('resize', () => this.resize());
@@ -147,6 +150,7 @@ export class Game {
 
     const p = this.player;
     p.update(dt, true);
+    this.physics.begin(dt); // 物理:送出上一幀的命令,Worker 與下面的遊戲邏輯平行步進
     const targets = this.flowTargets();
     if (targets.length) this.world.updateFlow(targets);
     sfx.listener(p.pos.x, p.pos.y + (p.eyeH || 1.65), p.pos.z, p.yaw);
@@ -173,6 +177,8 @@ export class Game {
         if (z.corpse <= 0) { z.dispose(); this.zombies.splice(i, 1); }
       }
     }
+
+    this.physics.update(dt); // 物理:套用剛體姿態(布娃娃、道具、碎片)
 
     const hz = this.hazards.update(dt, p, this.world);
     if (hz > 0) {

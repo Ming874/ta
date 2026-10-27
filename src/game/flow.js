@@ -69,6 +69,7 @@ export const flowMethods = {
     this.supplies?.reset();
     this.shop?.setOpen(false, true);
     if (this.shopUIOpen) this.closeShop(false);
+    this.physics?.reset(); // 物理:道具回原位、清掉布娃娃與碎片
     const p = this.player, st = this.world.start;
     p.hp = p.maxHp;
     p.alive = true;
