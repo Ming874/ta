@@ -27,7 +27,7 @@ export const OUTDOOR_THEMES = new Set([
 
 function initAll() { initMats(); initGround(); initNature(); initPlay(); initCamp(); initFurniture(); }
 // 每個新的擺設 ctx(= 每次建世界/換地圖)只做一次:歸零模組計數器(同地圖、同種子 → 每個客戶端結果相同)、外圍景
-const begun = new WeakSet();
+const begun = new WeakSet(), spent = new WeakMap(); // 每個 ctx 的戶外擺設耗時(ms)
 function begin(ctx) {
   if (begun.has(ctx)) return;
   begun.add(ctx);
@@ -35,7 +35,7 @@ function begin(ctx) {
   resetEnv(); resetCars(); resetVehicles(); resetFurniture();
   const t0 = performance.now();
   try { dressEdges(ctx); } catch (e) { console.error('[props-out] 外圍景失敗', e); }
-  console.log('[props-out] edges', Math.round(performance.now() - t0), 'ms');
+  spent.set(ctx, performance.now() - t0);
 }
 export function dressOutdoor(ctx, zone) {
   begin(ctx);
@@ -43,13 +43,17 @@ export function dressOutdoor(ctx, zone) {
   if (!fn) return;
   const t0 = performance.now();
   try { fn(ctx, zone); } catch (e) { console.error('[props-out] 擺設失敗', zone.id, e); }
-  const dt = performance.now() - t0; if (dt > 60) console.log('[props-out]', zone.id, Math.round(dt), 'ms');
+  spent.set(ctx, (spent.get(ctx) || 0) + performance.now() - t0);
 }
 
 // 大型障礙物:佔滿 rect 的格子並登記碰撞
 export function dressObstacle(ctx, o) {
   begin(ctx);
-  if (buildObstacle(ctx, o)) return;
+  const t0 = performance.now();
+  const ok = buildObstacle(ctx, o);
+  spent.set(ctx, (spent.get(ctx) || 0) + performance.now() - t0);
+  if (o === ctx.L.obstacles[ctx.L.obstacles.length - 1]) console.log('[props-out] 戶外擺設', Math.round(spent.get(ctx)), 'ms');
+  if (ok) return;
   // 未知種類:有碰撞的方塊(確保碰撞/導航/視線正確)
   const h = 1.5;
   const m = new THREE.Mesh(new THREE.BoxGeometry(o.sx * 0.9, h, o.sz * 0.9), ctx.mat('metal_gray'));
