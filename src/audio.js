@@ -16,10 +16,12 @@
 //        crawl(pos) bite(pos) zStep(type, pos, surface) stomp(pos) wallImpact(pos) thud(pos, heavy) spit(pos) splash(pos) sizzle(pos) burst(pos)
 //  氣氛  scare(kind, pos)(kind 見 audio/scares.js 開頭)setZone(zoneId, mood) loopStart(key, kind, pos) loopStop(key)
 //        thunder(dist, delay?) setRain(level, outdoorFactor?)(說明見 audio/weather.js 開頭)
+//  劇情  radio(on, level?) pa(kind)('up'|'down'|'alert')tape(kind)('insert'|'play'|'stop'|'eject')(說明見 audio/story.js)
+//  地圖  resetMap(world)(換地圖時呼叫;attachWorld/attachGame 傳入不同的 World 也會自動重設)defineMood(name, bed)(新地圖註冊自己的環境音床)
 //  多人  playerJoin() playerLeave() chat() revive(pos?) downed(pos?) killConfirm() remoteShot(id, pos) remoteStep(pos, surface, sprint)
 //  其他  listener(x, y, z, yaw) setMood(m) setTension(x) setHealth(r) ambient() attachGame(game) attachWorld(world)
 //        setVolume(bus, v) getVolume(bus)(bus:'master' | 'music' | 'sfx' | 'voice',v 0..1,記在 localStorage)stats()
-import { A, ensure, setListener, attach, setVolume, getVolume, muffle, hurtFilter, tick, poolInfo, liveCount, bakeStats, voiceCap, emit } from './audio/core.js';
+import { A, ensure, setListener, attach, setVolume, getVolume, muffle, hurtFilter, tick, poolInfo, liveCount, bakeStats, voiceCap, emit, stopPositional, setSpace } from './audio/core.js';
 import { foley, prebakeFoley } from './audio/foley.js';
 import { voices, prebakeVoices } from './audio/voices.js';
 import { startMusic, setMood, autoMood, setTension, setHealth, addPain, musicState } from './audio/music.js';
@@ -27,11 +29,12 @@ import { step, remoteStep, zStep, jump, land, prebakeSteps } from './audio/steps
 import { body, setBodyHealth, prebakeBody } from './audio/body.js';
 import { ui } from './audio/ui.js';
 import { scare, SCARE_KINDS } from './audio/scares.js';
-import { setZone, loopStart, loopStop, startAmbience, ambState, LOOP_KINDS } from './audio/ambience.js';
+import { setZone, loopStart, loopStop, startAmbience, ambState, LOOP_KINDS, resetAmbience, defineMood } from './audio/ambience.js';
+import { radio, pa, tape, storyState } from './audio/story.js';
 import * as AMB from './audio/ambience.js';
 import { thunder, setRain, rainState } from './audio/weather.js';
 import { trackState, resumeTracks, preloadStings } from './audio/tracks.js';
-import { roomInfo } from './audio/rooms.js';
+import { roomInfo, resetRooms } from './audio/rooms.js';
 import * as SM from './audio/samples.js';
 
 // AudioContext 只能在使用者互動後建立/恢復;第一次互動(點擊、按鍵)就自動啟動,選單也聽得到配樂與環境音
@@ -66,6 +69,14 @@ const safe = (fn) => (...args) => {
 const always = (fn) => (...args) => { try { return fn(...args); } catch (e) { if (import.meta.env?.DEV) console.warn('[audio]', e); } };
 
 let lastMood = null;
+// 換地圖:區域殘響快取、環境音區域狀態、定位循環音、舊地圖上的定位聲音全部重設
+function resetMap(world) {
+  if (world) A.world = world;
+  resetRooms();
+  stopPositional();
+  resetAmbience();
+  if (A.ctx) setSpace('corridor');
+}
 export const sfx = {
   // ---- 武器 ----
   shot: safe((id) => foley.shot(id)),
@@ -153,6 +164,11 @@ export const sfx = {
   thunder: safe((dist, delay) => thunder(dist, delay)),
   setRain: always((level, outdoorFactor) => setRain(level, outdoorFactor)),
 
+  // ---- 劇情 ----
+  radio: safe((on = true, level) => radio(on, level)),
+  pa: safe((kind = 'up') => pa(kind)),
+  tape: safe((kind = 'play') => tape(kind)),
+
   // ---- 多人 ----
   playerJoin: safe(() => ui.playerJoin()),
   playerLeave: safe(() => ui.playerLeave()),
@@ -180,11 +196,13 @@ export const sfx = {
   setVolume: always((bus, v) => setVolume(bus, v)), // bus:'master' | 'music' | 'sfx' | 'voice',v 0..1(記在 localStorage)
   getVolume: (bus) => getVolume(bus),
   // 建好 World 後呼叫一次:啟用視線遮蔽、樓層悶音、地面材質(彈殼/彈著/殭屍腳步)、自動區域判斷與依房間尺寸的殘響
-  attachWorld: always((world) => { A.world = world || null; }),
+  attachWorld: always((world) => { if (A.world && world && world !== A.world) resetMap(world); A.world = world || null; }),
   // 建好 Game 後呼叫一次(含 attachWorld):另外讀畫質預設(發聲上限/HRTF)、玩家狀態(蹲下、體力喘息)
-  attachGame: always((game) => { A.game = game || null; A.world = (game && game.world) || A.world; }),
+  attachGame: always((game) => { A.game = game || null; const w = game && game.world; if (A.world && w && w !== A.world) resetMap(w); A.world = w || A.world; }),
+  resetMap: always((world) => resetMap(world)),
+  defineMood: always((name, bed) => defineMood(name, bed)),
   // 除錯/效能面板用
-  stats: () => (A.ctx ? { state: A.ctx.state, voices: liveCount(), cap: voiceCap(), pools: poolInfo(), bake: bakeStats(), samples: SM.stats(), stats: A.stats, music: musicState(), amb: ambState(), rain: rainState() } : { state: 'none' }),
+  stats: () => (A.ctx ? { state: A.ctx.state, voices: liveCount(), cap: voiceCap(), pools: poolInfo(), bake: bakeStats(), samples: SM.stats(), stats: A.stats, music: musicState(), amb: ambState(), rain: rainState(), story: storyState() } : { state: 'none' }),
 };
 
 // 除錯/測試用(OfflineAudioContext 量測)

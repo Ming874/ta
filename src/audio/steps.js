@@ -154,7 +154,7 @@ export function step(sprint = false, surface) {
 export function jump(surface) {
   const surf = STEP[surface] ? surface : surfaceHere();
   const lane = foot(), t = A.ctx.currentTime + 0.004;
-  oneStep(lane, lane.p, t, surf, 0.85, true, 1.05);
+  oneStep(lane, lane.p, t, surf, 1.5, true, 1.05);
   burst(lane.p, t + 0.02, { buf: 'pink', type: 'bandpass', f: rand(1200, 1900), f1: rand(2000, 2600), q: 0.9, dur: 0.12, a: 0.05, g: 0.05 }); // 衣物
   if (Math.random() < 0.6) metal(lane.p, t + rand(0.03, 0.08), rand(2800, 4200), 0.012, 0.06, [1, 2.4]); // 裝備晃
   burst(lane.p, t, { buf: 'pink', type: 'bandpass', f: 1400, f1: 900, q: 1.2, dur: 0.1, a: 0.02, g: 0.025 }); // 用力吐氣
@@ -165,8 +165,8 @@ export function land(v = 3, surface) {
   const surf = STEP[surface] ? surface : surfaceHere();
   const lane = foot(), other = feet.n[side ^ 1], t = A.ctx.currentTime + 0.004;
   const k = Math.min(1, Math.max(0, (v - 1.5) / 5));
-  oneStep(lane, lane.p, t, surf, 0.9 + k * 0.9, k > 0.4);
-  oneStep(other, other.p, t + rand(0.03, 0.06), surf, 0.6 + k * 0.7, k > 0.4);
+  oneStep(lane, lane.p, t, surf, 1.2 + k * 1.5, k > 0.4);
+  oneStep(other, other.p, t + rand(0.03, 0.06), surf, 0.8 + k * 1.1, k > 0.4);
   if (k > 0.25) {
     tone(lane.p, t, { f: 85, f1: 38, dur: 0.18, g: 0.25 * k });
     burst(lane.p, t, { type: 'lowpass', f: 380, f1: 90, dur: 0.12, g: 0.25 * k });
@@ -219,7 +219,7 @@ export function zStep(type, pos, surface) {
     const pk = S.get(zr[0]);
     if (pk) {
       playBuf(h.in, h.t, pk.b, { rate: Math.pow(2, rand(-1.2, 1.2) / 12), g: pk.g * zr[1] * 0.3 });
-      if (surf === 'water' || surf === 'metal' || surf === 'gravel' || surf === 'grass') { const sp = S.get(REC[surf][0]); if (sp) playBuf(h.in, h.t + 0.01, sp.b, { rate: Math.pow(2, rand(-3, -1) / 12), g: sp.g * 0.12 }); } // 地面材質層
+      if (surf === 'water' || surf === 'metal' || surf === 'gravel' || surf === 'grass') { const sp = S.get(REC[surf][0]); if (sp) playBuf(h.in, h.t + 0.01, sp.b, { rate: Math.pow(2, rand(-3, -1) / 12), g: sp.g * 0.6 }); } // 地面材質層
       return;
     }
   }

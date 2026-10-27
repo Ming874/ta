@@ -107,6 +107,7 @@ export function get(key) {
 export const buf = (key) => { const p = get(key); return p ? p.b : null; };
 export const has = (key) => !!BANK[key] && BANK[key].f.some((f) => SB.buf.has(f));
 export const known = (key) => !!BANK[key];
+export const _bufOf = (f) => SB.buf.get(f); // 測試用:依檔名取緩衝
 
 // 播放:o.h 傳入既有的發聲 handle 就疊在同一個聲道條上(錄音 + 合成分層);否則自己 emit(o 同 emit 參數)。
 // o.g 增益、o.p 音高隨機(半音)、o.semi 固定移調、o.at 延遲、o.off/len 截取片段、o.fi/fo 淡入淡出、o.rate 額外速度倍率

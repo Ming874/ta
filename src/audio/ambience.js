@@ -964,5 +964,18 @@ onTick((now) => {
 });
 
 export const _LAYERS = LAYERS, _BEDS = BEDS;
+
+// 換地圖:停掉所有定位循環音、清掉區域/佈局快取,下一次 tick 依新 World 的區域重新判斷(新地圖的區域資料由新的 World 提供)
+export function resetAmbience() {
+  for (const k of [...LOOPS.keys()]) loopStop(k);
+  Object.assign(AM, { zone: null, zoneObj: null, explicit: false, pending: null, pendAuto: null, layout: null, layoutReq: false, power: 1, autoT: -9 });
+  if (A.ctx && AM.out && AM.outCtx === A.ctx) applyBed(1);
+}
+// 資料驅動的擴充點:新地圖可以註冊自己的 mood 音床(格式同 BEDS:L 常駐層音量、ev 隨機事件權重、gap 事件間隔、sp 預設殘響空間)
+export function defineMood(name, bed) {
+  if (!name || !bed) return;
+  BEDS[name] = { L: {}, ev: {}, gap: [4, 10], sp: 'room', ...bed };
+}
+export const MOODS_LIST = () => Object.keys(BEDS);
 export const ambState = () => ({ mood: AM.mood, zone: AM.zone, space: A.space, rt: A.spaceInfo && (A.spaceInfo.rt ?? A.spaceInfo.ir?.dur), layers: Object.keys(AM.layers).map((k) => k + (AM.layers[k].rec && !AM.layers[k].started ? '(載入中)' : '')), loops: [...LOOPS.values()].filter((l) => l.live).length + '/' + LOOPS.size, power: AM.power, explicit: AM.explicit });
 export const LOOP_KINDS = Object.keys(LOOPK);

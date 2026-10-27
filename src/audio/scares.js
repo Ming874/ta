@@ -75,7 +75,7 @@ const K = {
     const h = out(p, { room: 0.5, hall: 0.2, ref: 1.6, dur: dur + 1, gain: 1.2 });
     if (!h) return;
     const t = h.t;
-    if (!loopSeg('tv', h, 0, dur, 0.5)) {
+    if (!loopSeg('tv', h, 0, dur, 1)) {
       const st = burst(h.in, t, { type: 'bandpass', f: 3200, q: 0.4, dur: 0.05, hold: dur, a: 0.01, g: 0.12 });
       st.g.gain.cancelScheduledValues(t);
       st.g.gain.setValueCurveAtTime(curve(Math.ceil(dur * 40), (u) => 0.12 * (u < 0.03 ? u / 0.03 : 1) * (0.6 + 0.4 * Math.random()) * (Math.random() < 0.04 ? 0.2 : 1)), t, dur);
@@ -309,7 +309,7 @@ K.eating = (pos) => { // 轉角後面有殭屍在進食(濕黏的咀嚼)
   const p = pos || side(4, 9);
   const h = out(p, { cat: 'scare', room: 0.6, ref: 1.4, dur: 7, gain: 1.8 });
   if (!h) return;
-  if (!loopSeg('eating', h, 0, rand(4.5, 6.5), 0.8)) for (let i = 0; i < 10; i++) { burst(h.in, h.t + i * rand(0.3, 0.6), { type: 'bandpass', f: rand(600, 1400), q: 2, dur: 0.12, a: 0.02, g: 0.15 }); }
+  if (!loopSeg('eating', h, 0, rand(4.5, 6.5), 1.2)) for (let i = 0; i < 10; i++) { burst(h.in, h.t + i * rand(0.3, 0.6), { type: 'bandpass', f: rand(600, 1400), q: 2, dur: 0.12, a: 0.02, g: 0.15 }); }
   if (Math.random() < 0.6) SM.play('flesh.tear', { h, g: 0.3, at: rand(1, 3) });
 };
 K.horde = (pos) => { // 很遠的地方傳來一大群殭屍的呻吟

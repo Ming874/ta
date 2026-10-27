@@ -548,6 +548,13 @@ function admit(prio, d, now) {
   A.stats.stolen++;
   return 0.03;
 }
+// 換地圖:舊地圖上所有定位中的聲音快速淡出、聲道條全部釋放
+export function stopPositional() {
+  if (!A.ctx) return;
+  const n = A.ctx.currentTime;
+  for (const k in POOLS) for (const s of POOLS[k].strips) if (s.vg) { fadeKill(s.vg, n, 0.08); const g = s.vg; setTimeout(() => { try { g.disconnect(); } catch { /* 已斷 */ } }, 150); if (s.h) s.h.dead = true; s.vg = null; s.h = null; s.src = null; s.end = 0; }
+  purge(n);
+}
 export const liveCount = () => { if (A.ctx) purge(A.ctx.currentTime); return A.live.length; };
 
 // 發聲:回傳 h = { in(接到這裡), t(開始時間), d, end, kill() };被距離剔除、超過上限或搶不到聲道條時回傳 null

@@ -99,4 +99,6 @@ export function spaceForZone(zone, mood, fallbackSpace) {
   return out;
 }
 
+// 換地圖:區域 id 可能重複,清掉快取
+export function resetRooms() { cache.clear(); }
 export const roomInfo = () => [...cache.entries()].map(([k, v]) => `${k}:${v.rt ?? (v.ir && v.ir.dur)}s/${v.vol ?? '-'}m3${v.ir && v.ir.flutter ? '/flutter' : ''}${v.out ? '/out' : ''}`);

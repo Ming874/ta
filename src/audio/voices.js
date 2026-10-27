@@ -202,6 +202,11 @@ const VOX = {
 };
 // 用錄音的機率(其餘用合成)
 const MIX = { groan: 0.7, alert: 0.85, attack: 0.75, pain: 0.7, die: 0.8 };
+// 各情境的音量(量測後:3 公尺處 低吼 ≈ -27、發現 ≈ -22、攻擊 ≈ -21、痛叫 ≈ -27、死亡 ≈ -24 LUFS),錄音與合成分開校正
+const REC_G = { groan: 1.7, alert: 2.2, attack: 2.5, pain: 2.5, die: 1.8 };
+// 各類型錄音的音量(巨屍的咆哮錄音本身很猛,要壓;走屍稍微提)
+const TYPE_G = { walker: 1.1, runner: 0.75, crawler: 1, bloater: 0.7, brute: 0.45 };
+const SYN_G = { groan: 0.5, alert: 0.56, attack: 0.7, pain: 1.1, die: 0.7 };
 const busy = new WeakMap(); // 聲源物件 → 目前的語音 handle
 function claim(pos, h, mode) {
   if (!pos || typeof pos !== 'object') return;
@@ -221,7 +226,7 @@ function say(type, pos, mode, prio, over) {
   const list = VOX[mode] && (VOX[mode][type] || VOX[mode].walker);
   if (!over && list && Math.random() < (MIX[mode] ?? 0.6)) {
     const [key, g, semi] = pick(list);
-    const h = SM.play(key, { ...o, semi: (SEMI[type] ?? 0) * (key.startsWith(`z${type[0]}.`) ? 0.3 : 1) + semi + rand(-0.7, 0.7), p: 0.4, g: g * (type === 'brute' ? 1.2 : 1) });
+    const h = SM.play(key, { ...o, semi: (SEMI[type] ?? 0) * (key.startsWith(`z${type[0]}.`) ? 0.3 : 1) + semi + rand(-0.7, 0.7), p: 0.4, g: g * (REC_G[mode] ?? 1) * (TYPE_G[type] ?? 1) });
     if (h) { claim(pos, h, mode); return h; }
   }
   const sm = mode === 'alert' ? 'attack' : mode;
@@ -231,12 +236,13 @@ function say(type, pos, mode, prio, over) {
     if (set) {
       const b = pick(set), r = rand(0.95, 1.05);
       const h = emit({ ...o, dur: b.duration / r });
-      if (h) { playBuf(h.in, h.t, b, { rate: r }); claim(pos, h, mode); }
+      if (h) { playBuf(h.in, h.t, b, { rate: r, g: SYN_G[mode] ?? 1 }); claim(pos, h, mode); }
       return h;
     }
   }
   const S = spec(type, sm, over);
-  if (mode === 'alert') { S.dur *= 1.6; S.gain *= 1.1; }
+  if (mode === 'alert') S.dur *= 1.6;
+  S.gain *= SYN_G[mode] ?? 1;
   const h = emit({ ...o, dur: S.dur + 0.2 });
   if (!h) return null;
   vocal(h.in, h.t, S);
@@ -290,11 +296,11 @@ export const voices = {
   shriek(pos) {
     if (blocked(pos, 6)) return;
     if (Math.random() < 0.7) {
-      const h = SM.play('zr.scream', { pos, bus: 'voice', cat: 'voice', prio: 6, room: 0.45, hall: 0.25, ref: 2, p: 0.8, g: 1.1 });
+      const h = SM.play('zr.scream', { pos, bus: 'voice', cat: 'voice', prio: 6, room: 0.45, hall: 0.25, ref: 2, p: 0.8, g: 3 });
       if (h) { claim(pos, h, 'shriek'); return; }
     }
     const S = spec('runner', 'groan', {
-      contour: 'shriek', f0: rand(470, 640), dur: rand(0.85, 1.15), vows: ['i', 'ae', 'a'], fs: 1.15, q: 3.5, drive: 6, breath: 1.1, fryRate: rand(60, 90), fryD: 0.3, gain: 0.55, lp: 7500, att: 0.06, rel: 0.35, jit: 0.12, wob: 0.05, makeup: 2.4,
+      contour: 'shriek', f0: rand(470, 640), dur: rand(0.85, 1.15), vows: ['i', 'ae', 'a'], fs: 1.15, q: 3.5, drive: 6, breath: 1.1, fryRate: rand(60, 90), fryD: 0.3, gain: 0.33, lp: 7500, att: 0.06, rel: 0.35, jit: 0.12, wob: 0.05, makeup: 2.4,
     });
     const h = emit({ pos, bus: 'voice', cat: 'voice', prio: 6, dur: S.dur + 0.4, room: 0.45, hall: 0.25, ref: 2 });
     if (!h) return;
@@ -303,18 +309,18 @@ export const voices = {
     burst(h.in, h.t, { buf: 'pink', type: 'bandpass', f: 1800, f1: 3800, q: 1.2, dur: 0.22, a: 0.18, g: 0.18 });
     vocal(h.in, h.t + 0.18, S);
     // 上方再疊一層高八度的破音
-    vocal(h.in, h.t + 0.2, { ...S, f0: S.f0 * 2.02, gain: 0.18, drive: 8, vows: ['i', 'e', 'ae'] });
+    vocal(h.in, h.t + 0.2, { ...S, f0: S.f0 * 2.02, gain: 0.11, drive: 8, vows: ['i', 'e', 'ae'] });
   },
   roar(pos) {
     if (blocked(pos, 7)) return;
     if (Math.random() < 0.8) { // 錄音咆哮 + 合成胸腔共鳴
-      const h = SM.play(Math.random() < 0.75 ? 'zx.roar' : 'z.roar', { pos, bus: 'voice', cat: 'voice', prio: 7, room: 0.55, hall: 0.45, ref: 4, roll: 0.8, gain: 0.8, semi: -1, p: 1 });
+      const h = SM.play(Math.random() < 0.75 ? 'zx.roar' : 'z.roar', { pos, bus: 'voice', cat: 'voice', prio: 7, room: 0.55, hall: 0.45, ref: 4, roll: 0.8, gain: 0.8, g: 1.45, semi: -1, p: 1 });
       if (h) { claim(pos, h, 'roar'); tone(h.in, h.t + 0.1, { f: 38, f1: 30, dur: 1.6, a: 0.4, g: 0.5 }); duck(0.6, 0.8); return; }
     }
     const S = spec('brute', 'groan', {
       contour: 'roar', f0: rand(46, 56), dur: rand(1.7, 2.1), vows: ['o', 'a', 'a'], q: 4, drive: 7, sub: 1.1, breath: 0.9, fryRate: rand(28, 34), fryD: 0.55, gain: 0.85, lp: 3200, att: 0.25, rel: 0.5, makeup: 3.6,
     });
-    const h = emit({ pos, bus: 'voice', cat: 'voice', prio: 7, dur: S.dur + 0.6, room: 0.55, hall: 0.45, ref: 4, roll: 0.8, gain: 0.55 });
+    const h = emit({ pos, bus: 'voice', cat: 'voice', prio: 7, dur: S.dur + 0.6, room: 0.55, hall: 0.45, ref: 4, roll: 0.8, gain: 0.41 });
     if (!h) return;
     claim(pos, h, 'roar');
     vocal(h.in, h.t, S);
@@ -325,7 +331,7 @@ export const voices = {
   },
   gurgle(pos) {
     if (blocked(pos, 2)) return;
-    if (Math.random() < 0.6) { const h = SM.play(pick(['zb.gurgle', 'acid.bubble', 'zb.belch']), { pos, bus: 'voice', cat: 'voice', prio: 2, room: 0.3, ref: 1.6, g: 0.9, len: rand(1, 1.8), fo: 0.4 }); if (h) { claim(pos, h, 'groan'); return; } }
+    if (Math.random() < 0.6) { const h = SM.play(pick(['zb.gurgle', 'acid.bubble', 'zb.belch']), { pos, bus: 'voice', cat: 'voice', prio: 2, room: 0.3, ref: 1.6, g: 0.7, len: rand(1, 1.8), fo: 0.4 }); if (h) { claim(pos, h, 'groan'); return; } }
     const dur = rand(0.8, 1.4);
     const h = emit({ pos, bus: 'voice', cat: 'voice', prio: 2, dur: dur + 0.2, room: 0.3, ref: 1.6 });
     if (!h) return;

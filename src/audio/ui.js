@@ -255,7 +255,7 @@ export const ui = {
     const h = F({ dur: 1.4, gain: 0.9 });
     if (!h) return;
     const t = h.t;
-    if (SM.play('med.velcro', { h, g: 0.55 })) { clack(h.in, t + 0.72, 900, 0.3); tone(h.in, t + 0.72, { f: 120, f1: 60, dur: 0.1, g: 0.22 }); cloth(h.in, t + 0.8, 0.2, 0.08); return; }
+    if (SM.play('med.velcro', { h, g: 0.75 })) { clack(h.in, t + 0.72, 900, 0.3); tone(h.in, t + 0.72, { f: 120, f1: 60, dur: 0.1, g: 0.22 }); cloth(h.in, t + 0.8, 0.2, 0.08); return; }
     velcro(h.in, t, 0.22, 0.25);
     slide(h.in, t + 0.3, 1200, 1800, 0.15, 0.12);
     velcro(h.in, t + 0.5, 0.16, 0.2);
