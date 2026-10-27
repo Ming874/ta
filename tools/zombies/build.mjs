@@ -44,7 +44,8 @@ async function build(ch, healthy) {
   const name = path.basename(ch.src);
   const dir = path.join(srcDir, ch.src);
   const fbx = fs.readFileSync(path.join(dir, 'Export', name + '.fbx'));
-  const C = conform(loadFBX(fbx), { curl: healthy ? [0.15, 0.25, 0.2] : ch.look?.curl });
+  // 倖存者:右手握槍把、左手托護木;殭屍:微彎的爪
+  const C = conform(loadFBX(fbx), healthy ? { curlR: [0.95, 1.2, 0.8], thumbR: [0.3, 0.45, 0.35], curlL: [0.35, 0.55, 0.45], thumbL: [0.15, 0.25, 0.2] } : { curl: ch.look?.curl });
 
   // ---- 材質分類:body / head / extra(頭髮睫毛等半透明 → hair;安全帽/裝備 → gear)----
   const kinds = C.materials.map((m) => (/_body$/i.test(m) ? 'body' : /_head$/i.test(m) ? 'head' : 'extra'));
@@ -130,13 +131,13 @@ async function build(ch, healthy) {
     const cw = Math.min(cs, raw.width), chh = Math.round(cw * aspect);
     const col = await resize(raw, cw, chh);
     let color = col.data, skin = null;
-    if (!healthy) {
+    {
       const M = raster(P.index, P, cw, chh);
       dilate(M);
       if (P.name === 'head') ref = skinRef(M, col.data, [C.joints3.cheekL, C.joints3.cheekR]);
       const ref2 = P.name === 'body' ? handRef(M, col.data, ref) : null;
       const bn = (n) => C.bones.find((b) => b.name === n);
-      const z = zombify(col.data, M, ch.look, { ref: ref || [0.42, 0.26, 0.2], ref2, eyes: C.eyes, mouth: C.mouth, HC: C.HC, kind, collarY: bn('neck').head.y - 0.04, tips: [bn('handL').tail, bn('handR').tail], ...pl });
+      const z = zombify(col.data, M, ch.look || { seed: 1 }, { ref: ref || [0.42, 0.26, 0.2], ref2, eyes: C.eyes, mouth: C.mouth, HC: C.HC, kind, collarY: bn('neck').head.y - 0.04, tips: [bn('handL').tail, bn('handR').tail], healthy, wounds: [], drips: [], chin: null, ...pl });
       color = z.color; skin = z.skin;
     }
     // A 通道反著存(255 = 0,128 = 1):不讓 A 接近 0 —— WebP 會改寫全透明像素的 RGB,有些瀏覽器解碼時預乘 alpha 也會吃掉低 alpha 的顏色精度

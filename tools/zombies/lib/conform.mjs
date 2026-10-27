@@ -68,7 +68,7 @@ function setWorldQuat(b, wq) {
   b.updateMatrixWorld(true);
 }
 
-// opt:{ curl: [根, 中, 末](手指彎曲弧度)、thumb: [..] }
+// opt:{ curl: [根, 中, 末](手指彎曲弧度)、thumb: [..];curlR/curlL、thumbR/thumbL 分左右(倖存者右手握槍) }
 export function conform({ root, sm }, opt = {}) {
   const sk = sm.skeleton, by = {};
   for (const b of sk.bones) by[short(b)] = b;
@@ -92,7 +92,7 @@ export function conform({ root, sm }, opt = {}) {
     const lateral = wpos(b('Finger1')).sub(wpos(b('Finger4'))).normalize();
     const palm = new THREE.Vector3().crossVectors(handDir, lateral).normalize().multiplyScalar(s);
     const chains = [['Finger1', 'Finger11', 'Finger12'], ['Finger2', 'Finger21', 'Finger22'], ['Finger3', 'Finger31', 'Finger32'], ['Finger4', 'Finger41', 'Finger42']];
-    const curl = opt.curl || [0.3, 0.5, 0.4];
+    const curl = (S === 'R' ? opt.curlR : opt.curlL) || opt.curl || [0.3, 0.5, 0.4];
     chains.forEach((ch, f) => {
       for (let j = 0; j < ch.length; j++) {
         const bone = b(ch[j]);
@@ -104,7 +104,7 @@ export function conform({ root, sm }, opt = {}) {
         rotateWorld(bone, new THREE.Quaternion().setFromAxisAngle(axis, curl[j] * (1 + f * 0.12)));
       }
     });
-    const th = opt.thumb || [0.1, 0.2, 0.2];
+    const th = (S === 'R' ? opt.thumbR : opt.thumbL) || opt.thumb || [0.1, 0.2, 0.2];
     ['Finger0', 'Finger01', 'Finger02'].forEach((n, j) => {
       const bone = b(n), next = j < 2 ? b(['Finger0', 'Finger01', 'Finger02'][j + 1]) : null;
       if (!bone) return;

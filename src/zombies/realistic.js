@@ -6,6 +6,7 @@ import { registerProvider, autoHitboxes, BONES } from './model.js';
 import { ZU } from './materials.js';
 import { assets } from '../sys/assets.js';
 import { idle } from '../sys/sched.js';
+import { caps } from '../sys/caps.js';
 
 // 寫實殭屍:Microsoft Rocketbox 的真人角色(MIT,署名見 public/credits/zombie-models.md),
 // 由 tools/zombies/build.mjs 離線轉成遊戲骨架(22 根 BONES、靜止姿勢、權重重新對應)並把貼圖殭屍化,
@@ -162,7 +163,7 @@ let started = false;
 export function loadRealistic(game) {
   if (started) return;
   started = true;
-  if (game?.quality?.preset === 'low') return; // 低畫質:只用程式生成(省下載與顯示記憶體)
+  if (game?.quality?.preset === 'low' || caps.flags.has('noreal')) return; // 低畫質(或除錯旗標 ?noreal):只用程式生成(省下載與顯示記憶體)
   const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   const typesOf = {};
   for (const [t, ids] of Object.entries(BODIES)) for (const id of ids) (typesOf[id] ||= []).push(t);

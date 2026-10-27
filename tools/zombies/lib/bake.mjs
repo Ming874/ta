@@ -127,6 +127,12 @@ export function zombify(img, M, look, ctx) {
     if (ctx.kind === 'gear' || alphaTex) skin *= 0.25;
     if (eye > 0.4 || inner > 0.4) skin = 0;
     let wet = 0;
+    if (ctx.healthy) { // 倖存者:顏色不動,只算皮膚遮罩(次表面散射)與眼睛/嘴唇的光澤
+      out[o] = img[o]; out[o + 1] = img[o + 1]; out[o + 2] = img[o + 2];
+      if (!alphaTex) out[o + 3] = Math.round(Math.max(eye > 0.4 ? 0.85 : 0, inner > 0.4 ? 0.6 : 0) * 255);
+      skinOut[i] = Math.round(clamp(skin, 0, 1) * 255);
+      continue;
+    }
 
     // ---- 衣物:泛黃發灰、體液汙漬 ----
     const cloth = 1 - skin;
