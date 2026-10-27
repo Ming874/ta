@@ -11,10 +11,16 @@ const SLOT_COLORS = ['#e0b24a', '#5ab0ff', '#4cd964', '#ff7a5a', '#c07aff', '#ff
 const MODE_NAME = { coop: '合作生存', pvp: '對戰死鬥' };
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+// 對外介面(主選單用):window.__net = lobby
+//   lobby.open(mode)      開啟大廳;mode = 'coop' | 'pvp' 時預先選好建立房間的模式(已在房間裡就回到房間畫面)
+//   lobby.openJoin(code)  開啟大廳並加入指定房間(網址 ?room=XXXXXX 也會自動呼叫)
+//   lobby.close()         關閉大廳(不離開房間)
+//   lobby.inMatch         是否在連線對局中
+// 主選單沒有自己的「合作 / 對戰」入口時,才會在 #menuModes 放一個「多人連線」按鈕(#mp-entry)
 export function initNet(game) {
   const lobby = new Lobby(game);
   lobby.mountEntry();
-  window.__net = lobby; // 除錯/測試用
+  window.__net = lobby;
   return lobby;
 }
 
@@ -41,14 +47,16 @@ class Lobby {
   saveNick(n) { try { localStorage.setItem(NICK, n); } catch { /* 忽略 */ } }
 
   mountEntry() {
-    const btn = document.createElement('button');
-    const modes = document.getElementById('menuModes');
-    btn.className = modes ? 'mn-btn' : 'btn';
-    btn.id = 'mp-entry';
-    btn.innerHTML = '多人連線<small>合作生存 · 對戰死鬥 · 和朋友一起玩</small>';
-    btn.onclick = () => { sfx.uiClick?.(); this.open(); };
-    if (modes) modes.appendChild(btn);
-    else document.getElementById('startBtn')?.insertAdjacentElement('afterend', btn);
+    if (!document.querySelector('#menu [data-mode]')) {
+      const btn = document.createElement('button');
+      const modes = document.getElementById('menuModes');
+      btn.className = modes ? 'mn-btn' : 'btn';
+      btn.id = 'mp-entry';
+      btn.innerHTML = '多人連線<small>合作生存 · 對戰死鬥 · 和朋友一起玩</small>';
+      btn.onclick = () => { sfx.uiClick?.(); this.open(); };
+      if (modes) modes.appendChild(btn);
+      else document.getElementById('startBtn')?.insertAdjacentElement('afterend', btn);
+    }
     const el = (this.el = document.createElement('div'));
     el.id = 'mp-lobby';
     el.innerHTML = '<div class="box"></div>';
@@ -57,10 +65,19 @@ class Lobby {
     el.addEventListener('keydown', (e) => e.stopPropagation()); // 打字時不觸發遊戲按鍵
     el.addEventListener('keyup', (e) => e.stopPropagation());
     const code = new URLSearchParams(location.search).get('room');
-    if (code) setTimeout(() => this.open(code), 300);
+    if (code) setTimeout(() => this.openJoin(code), 300);
   }
 
-  open(code) {
+  get inMatch() { return !!this.session; }
+
+  // 開啟大廳;mode = 'coop' | 'pvp':預先選好建立房間的模式
+  open(mode) {
+    if (mode === 'coop' || mode === 'pvp') { if (!this.room) this.mode = mode; }
+    else if (typeof mode === 'string' && /^[A-Za-z0-9]{6}$/.test(mode)) { this.openJoin(mode); return; } // 舊的呼叫方式:open(房間代碼)
+    this.show(null);
+  }
+  openJoin(code) { this.show(String(code || '')); }
+  show(code) {
     resumeAudio();
     this.el.classList.add('on');
     if (!this.room) this.view = 'home';

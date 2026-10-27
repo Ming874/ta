@@ -121,7 +121,7 @@
 #mp-results .wait { margin-top: 10px; font-size: 13px; opacity: 0.6; }
 
 /* 對戰:沒有回合,隱藏回合資訊 */
-body.mp-pvp .hd-round, body.mp-pvp .hd-coins { display: none !important; }
+body.mp-pvp .hd-round, body.mp-pvp .hd-coins, body.mp-pvp .hd-score, body.mp-pvp .hd-streak { display: none !important; }
 /* 計分板開著時,下面的大字(重生倒數、擊殺訊息)先藏起來 */
 #mp-hud.board #mp-respawn, #mp-hud.board #mp-center, #mp-hud.board #mp-downed { opacity: 0 !important; }
 

@@ -59,27 +59,40 @@ export class CoopMode {
     // 下一回合:只有房主的倒數能真的開始;玩家按 N / 商店的按鈕 = 切換準備
     s.hook(g, 'nextRound', (orig) => function () {
       if (s.isHost && m.allowNext) return orig.call(this);
-      if (g.state === 'playing' && isRest(g.phase)) m.vote(!m.voted);
+      m.toggleVote();
     });
-    // 補給站開放的橫幅:多人版的說明(休息時間、準備)
-    s.hook(g, 'openRest', (orig) => function () {
-      const r = orig.call(this);
-      if (g.phase === 'shop') {
-        const where = g.shop?.levelId ? `${g.shop.levelId} 便利商店` : '補給站';
-        g.ui.banner('補給站開放', `休息 ${REST_MP} 秒 · 前往 ${where} 購買武器與裝備 · [N] 準備(全員準備就開始)`, 4800, 'gold');
-      }
-      return r;
+    // 商店開放的橫幅:沿用遊戲的文字(地點、店名),只改休息秒數與 N 的說明
+    s.hook(g, 'openRest', (orig) => function (...a) {
+      const ui = g.ui, banner = ui.banner;
+      ui.banner = function (title, sub = '', ...b) {
+        if (typeof sub === 'string') sub = sub.replace(/休息 \d+ 秒/, `休息 ${REST_MP} 秒`).replace(/\[N\] ?立即開始(下一回合)?/, '[N] 準備(全員準備就開始)');
+        return banner.call(this, title, sub, ...b);
+      };
+      try { return orig.apply(this, a); } finally { ui.banner = banner; }
     });
-    // 商店介面:多人時世界不暫停,休息列改顯示準備人數;「開始下一回合」按鈕改成準備
+    // 商店介面:多人時世界不暫停;「開始下一回合」按鈕改成準備(含人數),休息秒數即時更新
     if (g.ui.shop && typeof g.ui.shop.refresh === 'function') {
       s.hook(g.ui.shop, 'refresh', (orig) => function (...a) { const r = orig.apply(this, a); m.shopText(); return r; });
     }
-    // E 鍵按住救援:遊戲的互動鍵處理會攔下 E(不會進 player.keys),這裡另外記
-    this.onKey = (e) => { if (e.code === 'KeyE') this.holdE = e.type === 'keydown'; };
+    // 按鍵:N = 準備/取消(遊戲本身的 N 在多人時不一定會呼叫 nextRound,這裡統一處理;與 nextRound 包裝之間有防重複);
+    // E 按住 = 救援(遊戲的互動鍵處理可能攔下 E,不進 player.keys,這裡另外記)
+    this.onKey = (e) => {
+      if (e.code === 'KeyE') this.holdE = e.type === 'keydown';
+      if (e.code !== 'KeyN' || e.type !== 'keydown' || e.repeat || s.hud.chatOpen || g.state !== 'playing' || !isRest(g.phase)) return;
+      e.stopImmediatePropagation();
+      this.toggleVote();
+    };
     this.onBlur = () => { this.holdE = false; };
     window.addEventListener('keydown', this.onKey, true);
     window.addEventListener('keyup', this.onKey, true);
     window.addEventListener('blur', this.onBlur);
+  }
+  // 切換準備:同一次按鍵可能同時經過遊戲的 N 處理與這裡,200ms 內只算一次
+  toggleVote() {
+    const g = this.g, t = performance.now();
+    if (g.state !== 'playing' || !isRest(g.phase) || t - (this._voteT || 0) < 200) return;
+    this._voteT = t;
+    this.vote(!this.voted);
   }
   stop() {
     window.removeEventListener('keydown', this.onKey, true);
@@ -87,15 +100,14 @@ export class CoopMode {
     window.removeEventListener('blur', this.onBlur);
   }
 
-  // 商店介面上的多人資訊(開啟/購買時重畫,每 0.15 秒由 hud.update 更新)
+  // 商店介面上的多人資訊(開啟/購買時重畫,每 0.15 秒由 hud.update 更新):休息秒數(商店文字的第一個 <b>)與準備按鈕
   shopText() {
     const g = this.g, ui = g.ui.shop;
     if (!g.shopUIOpen || !ui) return;
-    const t = Math.max(0, Math.ceil(g.restT || 0));
-    const txt = `休息剩餘<b>${t}</b>秒 · 準備 <b>${this.readyCount()}/${this.needed()}</b> · 多人連線不暫停`;
-    if (ui.restEl && ui.restEl.innerHTML !== txt) ui.restEl.innerHTML = txt;
+    const sec = ui.restEl?.querySelector('b'), t = String(Math.max(0, Math.ceil(g.restT || 0)));
+    if (sec && sec.textContent !== t) sec.textContent = t;
     const btn = document.getElementById('shopNext');
-    const label = `${this.voted ? '取消準備' : '準備下一回合'}<kbd>N</kbd>`;
+    const label = `${this.voted ? '取消準備' : '準備下一回合'} ${this.readyCount()}/${this.needed()}<kbd>N</kbd>`;
     if (btn && btn.innerHTML !== label) btn.innerHTML = label;
   }
 
@@ -350,7 +362,7 @@ export class CoopMode {
       if (isRest(g.phase)) {
         this.timer -= dt;
         if (this.allReady() && this.timer > READY_LEFT) this.timer = READY_LEFT;
-        g.restT = Math.max(0.2, this.timer);
+        this.setRest(this.timer);
         if (this.timer <= 0) { this.allowNext = true; g.nextRound(); this.allowNext = false; }
       }
       // 全員倒地 → 結束
@@ -368,9 +380,17 @@ export class CoopMode {
       } else this.overT = 0;
     } else if (isRest(g.phase)) {
       const H = s.zs.host;
-      g.restT = H.timer >= 0 ? Math.max(0.2, H.timer - (performance.now() - H.t) / 1000) : 99;
+      this.setRest(H.timer >= 0 ? H.timer - (performance.now() - H.t) / 1000 : 99);
     }
     this.lastPhase = g.phase;
+  }
+  // 商店階段的倒數交給遊戲顯示:restT 取整數秒再減一點點(流程本身每幀扣 dt 不會跨過整數 → 不會自己倒數或開始下一回合),
+  // 最後 5 秒的倒數音效在這裡播;gameplay 版 flow.js 在多人時改用 breakTimer 推算 restT(= breakTimer − 0.5)
+  setRest(t) {
+    const g = this.g, n = Math.max(1, Math.ceil(t));
+    g.restT = n - 0.001;
+    g.breakTimer = g.restT + 0.5;
+    if (n !== this._beep) { if (n <= 5 && this._beep !== undefined) sfx.countdown?.(n); this._beep = n; }
   }
   tally(slot) { const t = this.team.get(slot) || { kills: 0, downs: 0, revives: 0 }; return [t.kills, t.downs, t.revives]; }
 
