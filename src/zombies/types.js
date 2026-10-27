@@ -23,7 +23,7 @@ export const TYPES = {
   // groan:閒置低吼間隔基準(秒);counter:首次出現時的對策提示
   screamer: { // 尖叫者:骨瘦如柴、下顎脫臼;保持距離尖叫 → 召來附近殭屍(加速直奔玩家)+ 玩家暈眩。脆弱,命中可打斷尖叫
     name: '尖叫者', hp: 70, speed: [1.7, 2.1], coins: 14, radius: 0.3, mass: 0.7, reach: 1.0, dmg: 7, cd: 1.2, turn: 7, groan: 5,
-    scream: { min: 4.5, max: 20, cd: [9, 13], wind: 0.7, dur: 2.0, call: 30, frenzy: 6, daze: 11 },
+    scream: { min: 3.5, max: 20, cd: [9, 13], wind: 0.7, dur: 2.0, call: 30, frenzy: 6, daze: 11 },
     counter: '尖叫會召來屍群並讓你暈眩 · 優先射殺,命中可打斷尖叫',
   },
   stalker: { // 潛行者:四肢細長,在天花板上倒爬;被手電筒照到會尖嘶退開,繞到背後才撲下來

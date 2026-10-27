@@ -22,7 +22,11 @@ export function think(dt, ctx, dist, toX, toZ, w) {
   switch (this.state) {
     case 'chase': {
       const hd = this.dist || 1e-3;
-      if (this.los && this.d3 > S.min && this.d3 < S.max && this.specialCd <= 0 && paced(this, ctx, 'ambush', dt)) { this.go('scream'); this.jawT = 0; break; }
+      if (this.los && this.d3 > S.min && this.d3 < S.max && this.specialCd <= 0) {
+        if (paced(this, ctx, 'ambush', dt, 3)) { this.go('scream'); this.jawT = 0; break; }
+        w.speed = 0; w.face = Math.atan2(toX, toZ); // 等靈異導演點頭(最多 3 秒):站著直勾勾地盯著你
+        break;
+      }
       if (dist < T.reach + 0.1 && this.attackCd <= 0 && this._canHit(world)) { this.go('attack'); K.say('zAttack', this.type, this.vp); break; }
       // 被逼近又還在冷卻:往後退(保持距離),退一陣子就停
       if (this.los && dist < 6.5 && dist > 2.2 && this.specialCd > 1.2 && this._retreat < 2.2) {
