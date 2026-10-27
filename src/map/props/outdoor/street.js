@@ -7,8 +7,9 @@ import { groundDecal, labelQuad } from './cars.js';
 
 // ---------- 路燈 ----------
 // 高桿(停車場/車道):錐形鋼桿 + 彎臂 + 眼鏡蛇燈頭;矮桿(廣場):燈籠頭
-function lampParts(kind, on) {
+function lampParts(kind, on, glass = null) {
   const P = new Parts();
+  const lit = glass || 'po_lamp_glass';
   if (kind === 'tall') {
     P.add('po_pole', cyl(0.055, 0.095, 7.2, 14), M(0, 3.6, 0));
     P.add('po_pole', box(0.36, 0.03, 0.36), M(0, 0.015, 0));
@@ -17,23 +18,23 @@ function lampParts(kind, on) {
     P.add('rust', box(0.1, 0.22, 0.012), M(0, 0.4, 0.108));
     P.add('po_pole', tube([new V3(0, 7.0, 0), new V3(0.05, 7.5, 0), new V3(0.5, 7.75, 0), new V3(1.4, 7.8, 0)], 0.045, { radial: 8, seg: 16 }));
     P.add('metal_gray', rbox(0.78, 0.14, 0.32, 0.06), M(1.62, 7.78, 0, 0, 0, -0.06));
-    P.add(on ? 'po_lamp_glass' : 'po_lamp_off', rbox(0.5, 0.04, 0.24, 0.03), M(1.66, 7.7, 0, 0, 0, -0.06));
+    P.add(on ? lit : 'po_lamp_off', rbox(0.5, 0.04, 0.24, 0.03), M(1.66, 7.7, 0, 0, 0, -0.06));
   } else {
     P.add('po_green_paint', cyl(0.05, 0.07, 3.4, 12), M(0, 1.7, 0));
     P.add('po_green_paint', lathe([[0.16, 0], [0.16, 0.12], [0.1, 0.2], [0.075, 0.5], [0.06, 0.55]], 16), M(0, 0, 0));
     P.add('po_green_paint', cyl(0.07, 0.05, 0.08, 12), M(0, 3.42, 0));
-    P.add(on ? 'po_lamp_glass' : 'po_lamp_off', lathe([[0.0, 0], [0.12, 0.02], [0.17, 0.25], [0.15, 0.42], [0.0, 0.44]], 12), M(0, 3.46, 0));
+    P.add(on ? lit : 'po_lamp_off', lathe([[0.0, 0], [0.12, 0.02], [0.17, 0.25], [0.15, 0.42], [0.0, 0.44]], 12), M(0, 3.46, 0));
     P.add('po_green_paint', lathe([[0.2, 0], [0.18, 0.05], [0.06, 0.16], [0.0, 0.2]], 12), M(0, 3.9, 0));
     for (let k = 0; k < 4; k++) { const a = (k / 4) * TAU; P.add('po_green_paint', box(0.015, 0.42, 0.015), M(Math.cos(a) * 0.16, 3.67, Math.sin(a) * 0.16)); }
   }
   return P;
 }
 // 路燈:回傳燈頭世界座標;on 時登記鈉燈光源
-export function streetLamp(ctx, x, y, z, yaw = 0, { kind = 'tall', on = true, flicker = 0, zone = null } = {}) {
-  pool(ctx, `lamp_${kind}_${on ? 1 : 0}`, () => lampParts(kind, on), 24).add(M(x, y, z, 0, yaw, 0));
+export function streetLamp(ctx, x, y, z, yaw = 0, { kind = 'tall', on = true, flicker = 0, zone = null, glass = null, lean = 0 } = {}) {
+  pool(ctx, `lamp_${kind}_${on ? 1 : 0}${glass ? '_' + glass : ''}`, () => lampParts(kind, on, glass), 24).add(M(x, y, z, 0, yaw, lean));
   const hx = kind === 'tall' ? 1.62 : 0, hy = kind === 'tall' ? 7.62 : 3.65;
-  const p = new V3(hx, hy, 0).applyAxisAngle(new V3(0, 1, 0), yaw).add(new V3(x, y, z));
-  if (on) ctx.light({ x: p.x, y: p.y - 0.15, z: p.z, color: 0xffa048, intensity: kind === 'tall' ? 22 : 9, distance: kind === 'tall' ? 24 : 12, kind: 'sodium', flicker, zone: zone?.id });
+  const p = new V3(hx, hy, 0).applyAxisAngle(new V3(0, 0, 1), lean).applyAxisAngle(new V3(0, 1, 0), yaw).add(new V3(x, y, z));
+  if (on) ctx.light({ x: p.x, y: p.y - 0.15, z: p.z, color: 0xffa048, intensity: kind === 'tall' ? 22 : 9, distance: kind === 'tall' ? 24 : 12, kind: 'sodium', flicker, zone: zone?.id, glow: kind === 'tall' ? 1.7 : 1.0 });
   solid(ctx, x, y, z, 0.24, kind === 'tall' ? 7.2 : 3.4, 0.24);
   return p;
 }

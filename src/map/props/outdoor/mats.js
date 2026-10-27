@@ -6,10 +6,10 @@ import { registerMat, mat } from '../../materials.js';
 
 // ---------- 程式貼圖工具 ----------
 let seed = 90210;
-const R = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
-const rr = (a, b) => a + R() * (b - a);
-const cl = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
-const ss = (a, b, v) => { const t = cl((v - a) / (b - a)); return t * t * (3 - 2 * t); };
+export const R = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+export const rr = (a, b) => a + R() * (b - a);
+export const cl = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+export const ss = (a, b, v) => { const t = cl((v - a) / (b - a)); return t * t * (3 - 2 * t); };
 export function canvas(w, h) {
   const c = document.createElement('canvas');
   c.width = w;
@@ -37,7 +37,7 @@ export function fbm(W, H, cx, cy, oct) {
   return out;
 }
 // 逐像素繪製 RGBA(0..1)
-function pixels(W, H, fn) {
+export function pixels(W, H, fn) {
   const [c, ctx] = canvas(W, H);
   const img = ctx.createImageData(W, H), d = img.data, o = [0, 0, 0, 1];
   for (let y = 0, i = 0; y < H; y++) for (let x = 0; x < W; x++, i++) {
@@ -55,7 +55,7 @@ export function tex(c, { srgb = true, repeat = true, aniso = 8 } = {}) {
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
-const lazy = (fn) => { let v; return () => (v ??= fn()); };
+export const lazy = (fn) => { let v; return () => (v ??= fn()); };
 export const FONT_TC = '"Microsoft JhengHei","PingFang TC","Noto Sans TC","Heiti TC",sans-serif';
 export const FONT_KAI = '"DFKai-SB","BiauKai","KaiTi","STKaiti","PMingLiU",serif';
 export const FONT_PLATE = '"Arial Narrow","Roboto Condensed","Helvetica Neue",Arial,sans-serif';
@@ -205,7 +205,7 @@ cell('road_no', 0, 7, 3, 1); cell('g_still', 3, 7, 3, 1); cell('cross_paint', 6,
 cell('shards', 0, 8); cell('chalk', 1, 8, 2, 1); cell('steps', 3, 8, 2, 1); cell('skid', 5, 8, 3, 1);
 cell('bullets', 0, 9); cell('burn', 1, 9); cell('vomit', 2, 9); cell('wax', 3, 9); cell('ashes', 4, 9); cell('paw', 5, 9); cell('water2', 6, 9); cell('stain2', 7, 9);
 
-function splat(ctx, x, y, r, col, n = 18) {
+export function splat(ctx, x, y, r, col, n = 18) {
   ctx.fillStyle = col;
   ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
   for (let k = 0; k < n; k++) { // 濺點
@@ -218,13 +218,13 @@ function splat(ctx, x, y, r, col, n = 18) {
     ctx.beginPath(); ctx.arc(x + Math.cos(a) * r * 0.7, y + Math.sin(a) * r * 0.7, r * rr(0.3, 0.55), 0, Math.PI * 2); ctx.fill();
   }
 }
-const BLOOD = (a = 0.92) => `rgba(${rr(70, 95) | 0},${rr(6, 14) | 0},${rr(6, 12) | 0},${a})`;
-function softBlob(ctx, x, y, r, rgb, a) {
+export const BLOOD = (a = 0.92) => `rgba(${rr(70, 95) | 0},${rr(6, 14) | 0},${rr(6, 12) | 0},${a})`;
+export function softBlob(ctx, x, y, r, rgb, a) {
   const g = ctx.createRadialGradient(x, y, 0, x, y, r);
   g.addColorStop(0, `rgba(${rgb},${a})`); g.addColorStop(0.6, `rgba(${rgb},${a * 0.6})`); g.addColorStop(1, `rgba(${rgb},0)`);
   ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2);
 }
-function text(ctx, s, x, y, size, { font = FONT_TC, color = '#000', weight = 'bold', align = 'center', base = 'middle', stretch = 1, stroke = null } = {}) {
+export function text(ctx, s, x, y, size, { font = FONT_TC, color = '#000', weight = 'bold', align = 'center', base = 'middle', stretch = 1, stroke = null } = {}) {
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(stretch, 1);
@@ -235,7 +235,7 @@ function text(ctx, s, x, y, size, { font = FONT_TC, color = '#000', weight = 'bo
   ctx.restore();
 }
 // 用雜訊挖掉部分像素(磨損、剝落)
-function wear(ctx, x, y, w, h, amt, scale = 6) {
+export function wear(ctx, x, y, w, h, amt, scale = 6) {
   const img = ctx.getImageData(x, y, w, h), d = img.data, n = fbm(w, h, scale, Math.max(1, Math.round(scale * h / w)), 3);
   for (let i = 0; i < w * h; i++) { const k = ss(1 - amt - 0.08, 1 - amt + 0.08, n[i]); d[i * 4 + 3] *= 1 - k; }
   ctx.putImageData(img, x, y);
@@ -466,6 +466,7 @@ export function initMats() {
     beige: [0xb4a486], gray: [0x585c60, { metal: 0.5 }], taxi: [0xd8a41c], maroon: [0x4a1418], skyblue: [0x6e8eaa], police: [0xe2e2de, { rough: 0.38 }], amb: [0xe8e8e4, { rough: 0.4 }], hearse: [0x0a0a0c, { rough: 0.22, metal: 0.45, dust: 0.7 }],
   };
   for (const [k, [c, o]] of Object.entries(P)) registerMat(`po_paint_${k}`, paintMat(c, o));
+  registerMat('po_paint_burnt', paintMat(0x1a1715, { rough: 0.9, metal: 0.2, dust: 0.35 }));
   const env = NIGHT_ENV();
   registerMat('po_glass', std({ map: GLASS_DIRT(), transparent: true, depthWrite: false, roughness: 0.12, metalness: 0.4, envMap: env, envMapIntensity: 1.2 }));
   registerMat('po_glass_crack', std({ map: GLASS_CRACK(), transparent: true, depthWrite: false, roughness: 0.15, metalness: 0.35, envMap: env, envMapIntensity: 1.1 }));

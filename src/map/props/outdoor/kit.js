@@ -26,7 +26,7 @@ export const mul = (...ms) => ms.reduce((a, b) => a.multiply(b), new THREE.Matri
 
 // ---------- 基本形 ----------
 export const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
-export const rbox = (w, h, d, r = 0.02, s = 2) => new RoundedBoxGeometry(w, h, d, s, Math.max(1e-4, Math.min(r, w / 2, h / 2, d / 2) * 0.999));
+export const rbox = (w, h, d, r = 0.02, s = 1) => new RoundedBoxGeometry(w, h, d, s, Math.max(1e-4, Math.min(r, w / 2, h / 2, d / 2) * 0.999));
 export const cyl = (rt, rb, h, seg = 16, open = false) => new THREE.CylinderGeometry(rt, rb, h, seg, 1, open);
 export const sph = (r, ws = 14, hs = 10) => new THREE.SphereGeometry(r, ws, hs);
 export const tor = (R, r, rs = 8, ts = 24, arc = TAU) => new THREE.TorusGeometry(R, r, rs, ts, arc);
@@ -221,12 +221,15 @@ class Pool {
     this.build(parts);
   }
   build(parts) {
-    for (const im of this.meshes) this.ctx.group.remove(im);
+    // 舊的實例網格要從「實際的父節點」移除(場景建構器會把道具搬到各樓層群組,只從 ctx.group 移除會留下舊網格一直被畫)
+    for (const im of this.meshes) { im.parent?.remove(im); im.dispose?.(); }
     this.meshes = parts.map(({ geo, mat: m, shadow = true }) => {
       const im = new THREE.InstancedMesh(geo, resolve(m), this.cap);
       im.name = `po_${this.name}`;
       im.count = this.n;
-      im.castShadow = shadow && !im.material.transparent;
+      if (!geo.boundingSphere) geo.computeBoundingSphere();
+      // 只有大件投影:小雜物、鏤空卡片、輪胎等不進陰影 pass
+      im.castShadow = shadow && !im.material.transparent && !(im.material.alphaTest > 0) && (this.dyn || geo.boundingSphere.radius > 0.45);
       im.receiveShadow = true;
       for (let i = 0; i < this.n; i++) im.setMatrixAt(i, this.mats[i]);
       if (this.dyn) { im.frustumCulled = false; im.onBeforeRender = () => this.sync(im); }
@@ -266,6 +269,22 @@ class Pool {
 }
 const _inv = new THREE.Matrix4(), _tmp = new THREE.Matrix4();
 
+// 靜態實例池依 24m 區塊切開:每塊一組 InstancedMesh,包圍球只涵蓋該區塊 → 視錐剔除有效
+// (整張地圖一個 InstancedMesh 的話,包圍球涵蓋全圖,永遠不會被剔除)。零件(幾何/材質)各區塊共用。
+const REGION = 24;
+class RegionPool {
+  constructor(ctx, name, parts, cap) { this.ctx = ctx; this.name = name; this.parts = parts; this.cap = cap; this.subs = new Map(); }
+  sub(x, z) {
+    const k = `${Math.floor(x / REGION)},${Math.floor(z / REGION)}`;
+    let p = this.subs.get(k);
+    if (!p) { p = new Pool(this.ctx, `${this.name}@${k}`, this.parts, Math.max(4, Math.min(this.cap, 16)), false); this.subs.set(k, p); }
+    return p;
+  }
+  add(m) { const e = m.elements; return this.sub(e[12], e[14]).add(m); }
+  setParts(parts) { this.parts = parts; for (const p of this.subs.values()) p.setParts(parts); }
+  get meshes() { const out = []; for (const p of this.subs.values()) out.push(...p.meshes); return out; }
+  get n() { let n = 0; for (const p of this.subs.values()) n += p.n; return n; }
+}
 // 取得(或建立)命名的靜態實例池;build() 回傳 Parts 或 [{geo, mat}]
 export function pool(ctx, name, build, cap = 32) {
   let ps = POOLS.get(ctx);
@@ -273,7 +292,7 @@ export function pool(ctx, name, build, cap = 32) {
   let p = ps.get(name);
   if (!p) {
     const parts = build();
-    p = new Pool(ctx, name, parts instanceof Parts ? parts.list() : parts, cap, false);
+    p = new RegionPool(ctx, name, parts instanceof Parts ? parts.list() : parts, cap);
     ps.set(name, p);
   }
   return p;
