@@ -31,7 +31,7 @@ export class Ballistics {
   constructor(game) {
     this.game = game;
     this.world = game.world;
-    const W = this.world;
+    const W = this.world, t0 = performance.now();
     this.W = W.W; this.H = W.H;
     // 面板(SoA)
     const list = [];
@@ -67,7 +67,7 @@ export class Ballistics {
     this.segT = new Float32Array(MAX_SEG); this.segMul = new Float32Array(MAX_SEG); this.segX = new Float32Array(MAX_SEG); this.nSeg = 0;
     this.evT = new Float32Array(MAX_EV); this.evT2 = new Float32Array(MAX_EV); this.evK = new Uint8Array(MAX_EV); this.evI = new Int32Array(MAX_EV); this.evB = new Array(MAX_EV).fill(null); this.nEv = 0;
     this.end = 0; this.stop = false; this.endBox = null; this.pens = 0;
-    this.stats = { panes: n, glass: list.filter((e) => e.kind === P_GLASS && e.st >= 0 && e.st < 2).length, shattered: 0, pen: 0 };
+    this.stats = { ms: Math.round(performance.now() - t0), panes: n, glass: list.filter((e) => e.kind === P_GLASS && e.st >= 0 && e.st < 2).length, shattered: 0, pen: 0 };
   }
 
   // ---------- 建立面板 ----------
