@@ -16,7 +16,7 @@ const DEF = {
   // ---- 天花板 ----
   ceiling_tile: [0x9c9a90, 0.95], ceiling_concrete: [0x5c5b57, 1],
   // ---- 道具 ----
-  metal_white: [0xc8c8c0, 0.45, 0.4], metal_green: [0x5f7a6c, 0.5, 0.4], metal_gray: [0x77797a, 0.5, 0.5], steel: [0x9a9c9e, 0.35, 0.9],
+  metal_white: [0xc8c8c0, 0.45, 0.4], metal_green: [0x5f7a6c, 0.5, 0.4], metal_gray: [0x77797a, 0.5, 0.5], steel: [0x9a9c9e, 0.52, 0.85],
   chrome: [0xd0d4d8, 0.15, 1], rust: [0x6a3e24, 0.85, 0.4], cast_iron: [0x2e2e2e, 0.7, 0.7], aluminum: [0xb0b4b8, 0.4, 0.85],
   plastic_white: [0xd8d6cc, 0.4], plastic_beige: [0xc4b896, 0.45], plastic_blue: [0x3e6e9a, 0.4], plastic_black: [0x1e1e1e, 0.5],
   plastic_red: [0x9a2a22, 0.45], plastic_green: [0x3e7a52, 0.45], plastic_yellow: [0xc8a83a, 0.45], rubber: [0x161616, 0.9],
@@ -60,6 +60,8 @@ export function registerMat(key, def) {
   if (!DEF[key]) DEF[key] = def;
   return mat(key);
 }
+// 走訪所有已建立的共用材質(場景建構器用來把道具材質升級成三平面 PBR)
+export function forEachMat(fn) { for (const [k, m] of cache) fn(m, k); }
 // 由場景代理在載入 PBR 貼圖後覆寫特定鍵的材質(保留同一個實例,已建好的網格自動更新)
 export function upgradeMat(key, props) {
   const m = mat(key);

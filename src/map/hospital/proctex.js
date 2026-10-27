@@ -52,7 +52,7 @@ function pumpMain() {
     const p = mainQueue.shift();
     if (!p) { pumping = false; return; }
     const t0 = performance.now();
-    const s = p.kind === 'atlas' ? paintAtlas(p.key) : paintSurface(p.key);
+    const s = p.kind === 'atlas' ? paintAtlas(p.key, p.data) : paintSurface(p.key);
     procStats.ms += performance.now() - t0;
     apply(p, s.c, s.hc, false, s.meta);
     setTimeout(step, 0);
@@ -68,7 +68,8 @@ function ph(color = '#808080', size = 4) {
 }
 const cache = new Map();
 // 取得程式貼圖(Texture 立即可用,內容稍後填入)。kind = 'surface' | 'atlas'
-export function procTextures(key, { kind = 'surface', srgb = true, placeholder = '#7a7a76', bump = true, cb = null } = {}) {
+// data:圖集的內容(可序列化,會傳給 Worker)
+export function procTextures(key, { kind = 'surface', srgb = true, placeholder = '#7a7a76', bump = true, cb = null, data = null } = {}) {
   const ck = kind + ':' + key;
   let p = cache.get(ck);
   if (p) { if (cb) { if (p.ready) cb(p.meta); else p.cbs.push(cb); } return p; }
@@ -88,14 +89,14 @@ export function procTextures(key, { kind = 'surface', srgb = true, placeholder =
     b.repeat.copy(tex.repeat);
     b.needsUpdate = true;
   }
-  p = { key, kind, tex, bump: b, clones: [], bumpClones: [], cbs: cb ? [cb] : [], ready: false, meta: null };
+  p = { key, kind, data, tex, bump: b, clones: [], bumpClones: [], cbs: cb ? [cb] : [], ready: false, meta: null };
   p.cb = (meta) => { p.ready = true; p.meta = meta; for (const f of p.cbs) f(meta); p.cbs.length = 0; };
   cache.set(ck, p);
   procStats.requested++;
   if (useWorker && workers) {
     const id = nextId++;
     pending.set(id, p);
-    workers[rr++ % workers.length].postMessage({ id, key, kind });
+    workers[rr++ % workers.length].postMessage({ id, key, kind, data });
   } else { mainQueue.push(p); pumpMain(); }
   return p;
 }

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { prng, hashStr } from './paint.js';
 import { DIRS, ARROW } from './shell.js';
-import { REVEAL } from './style.js';
+import { revealFor } from './style.js';
 import { Buckets } from './builder.js';
 
 // 門(門框、門楣、門扇的各種狀態)、窗(窗框、玻璃狀態、木板封窗、百葉、窗簾、鐵條)、
@@ -126,7 +126,7 @@ export function buildDoors(K) {
       if (topA > h) B.wall(li, sa.recipe.up, dirA, w0, u0, u1, y + h, y + topA, { col4: null, cBot: [0.85, 0.85, 0.83], cTop: [0.9, 0.9, 0.88] });
       if (topB > h) B.wall(li, sb.recipe.up, dirB, w1, u0, u1, y + h, y + topB, { cBot: [0.85, 0.85, 0.83], cTop: [0.9, 0.9, 0.88] });
       const soff = F.X(u0, w0), soff2 = F.X(u1, w1), sz0 = F.Z(u0, w0), sz1 = F.Z(u1, w1);
-      B.flat(li, REVEAL.up, Math.min(soff, soff2), Math.min(sz0, sz1), Math.max(soff, soff2), Math.max(sz0, sz1), y + h, false, { col: [0.7, 0.7, 0.68] });
+      B.flat(li, revealFor(lv.id).up, Math.min(soff, soff2), Math.min(sz0, sz1), Math.max(soff, soff2), Math.max(sz0, sz1), y + h, false, { col: [0.7, 0.7, 0.68] });
       // 門框飾條(兩面;多格門洞只在兩端)
       const style = doorStyle(d);
       const fm = FRAME_MAT[style] || 'trim_white';

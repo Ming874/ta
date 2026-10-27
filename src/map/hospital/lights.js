@@ -9,24 +9,28 @@ const KINDS = {
   fluoro_dying: { color: 0xd4e6d2, cd: 8, dist: 8, glow: 1.1, shape: 'tube', gain: 2.0 },
   fluoro_cold: { color: 0xe2eeff, cd: 10, dist: 9, glow: 1.2, shape: 'tube', gain: 2.4 },
   warm: { color: 0xffd6a0, cd: 14, dist: 10, glow: 1.3, shape: 'tube', gain: 2.2 },
-  surgical: { color: 0xfff4e6, cd: 28, dist: 8, glow: 1.4, shape: 'disc', gain: 3.2 },
-  emergency: { color: 0xff2a18, cd: 4, dist: 6.5, glow: 0.8, shape: 'lens', gain: 3.0 },
+  surgical: { color: 0xfff4e6, cd: 16, dist: 8, glow: 1.2, shape: 'disc', gain: 2.6 },
+  emergency: { color: 0xff2a18, cd: 7, dist: 8.5, glow: 0.9, shape: 'lens', gain: 3.0 },
   beacon: { color: 0xff3020, cd: 9, dist: 10, glow: 1.4, shape: 'lens', gain: 3.5 },
-  bare_bulb: { color: 0xffc27a, cd: 5, dist: 7, glow: 0.8, shape: 'bulb', gain: 4.0 },
+  bare_bulb: { color: 0xffc27a, cd: 6.5, dist: 8.5, glow: 0.8, shape: 'bulb', gain: 4.0 },
   sodium: { color: 0xff9440, cd: 12, dist: 11, glow: 1.4, shape: 'pack', gain: 2.6 },
-  nightlight: { color: 0xff9ab4, cd: 1.1, dist: 4, glow: 0.4, shape: 'small', gain: 2.0 },
-  monitor: { color: 0x86c2e0, cd: 2, dist: 5, glow: 0.0, shape: null, gain: 1 },
-  candle: { color: 0xffa040, cd: 1.8, dist: 5.5, glow: 0.3, shape: null, gain: 1 },
-  lamp: { color: 0xffc888, cd: 4, dist: 6.5, glow: 0.5, shape: null, gain: 1 },
-  fire: { color: 0xff6a20, cd: 14, dist: 10, glow: 0.0, shape: null, gain: 1 },
+  nightlight: { color: 0xff9ab4, cd: 1.6, dist: 5, glow: 0.4, shape: 'small', gain: 2.0 },
+  monitor: { color: 0x86c2e0, cd: 3, dist: 6, glow: 0.0, shape: null, gain: 1 },
+  candle: { color: 0xffa040, cd: 2.8, dist: 7, glow: 0.3, shape: null, gain: 1 },
+  lamp: { color: 0xffc888, cd: 5.5, dist: 7.5, glow: 0.5, shape: null, gain: 1 },
+  fire: { color: 0xff6a20, cd: 20, dist: 13, glow: 0.0, shape: null, gain: 1 },
+  sconce: { color: 0xffb468, cd: 3.2, dist: 7, glow: 0.55, shape: 'sconce', gain: 2.6 }, // 壁燈(燭台造型)
+  exit: { color: 0x2cff6a, cd: 0.8, dist: 3.5, glow: 0.5, shape: 'exit', gain: 1.6 }, // 緊急出口標示燈
   street: { color: 0xff9a48, cd: 30, dist: 22, glow: 2.0, shape: null, gain: 1 },
 };
 // 每種燈的狀態機率:[常亮, 閃爍, 熄滅]
 const STATES = {
   fluoro: [0.82, 0.12, 0.06], fluoro_dying: [0.32, 0.4, 0.28], fluoro_cold: [0.88, 0.1, 0.02], warm: [1, 0, 0], surgical: [0.7, 0.3, 0],
-  emergency: [0.85, 0.15, 0], bare_bulb: [0.62, 0.22, 0.16], sodium: [0.85, 0.15, 0], nightlight: [0.9, 0.1, 0],
+  emergency: [0.85, 0.15, 0], bare_bulb: [0.62, 0.22, 0.16], sodium: [0.85, 0.15, 0], nightlight: [0.9, 0.1, 0], sconce: [0.65, 0.2, 0.15], exit: [0.82, 0.14, 0.04],
 };
-const MODE = { fluoro: 'tube', fluoro_dying: 'tube', fluoro_cold: 'tube', warm: 'steady', surgical: 'tube', emergency: 'pulse', beacon: 'beacon', bare_bulb: 'sway', sodium: 'buzz', nightlight: 'steady', monitor: 'screen', candle: 'candle', lamp: 'steady', fire: 'fire', street: 'buzz' };
+// 只有螢幕光/夜燈/檯燈的房間:補幾盞大多壞掉的天花燈(偶爾閃一下,大部分時間是暗的)
+const SPARSE = { monitor: [0.35, 0.45, 0.2], nightlight: [0.15, 0.5, 0.35], lamp: [0.35, 0.4, 0.25] };
+const MODE = { fluoro: 'tube', fluoro_dying: 'tube', fluoro_cold: 'tube', warm: 'steady', surgical: 'tube', emergency: 'pulse', beacon: 'beacon', bare_bulb: 'sway', sodium: 'buzz', nightlight: 'steady', monitor: 'screen', candle: 'candle', lamp: 'steady', fire: 'fire', street: 'buzz', sconce: 'tube', exit: 'tube' };
 
 // 閃爍函數(確定性;JS 與發光件共用)
 const hash = (n) => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
@@ -57,7 +61,30 @@ const bulbGeo = new THREE.SphereGeometry(0.055, 10, 8);
 const lensGeo = new THREE.BoxGeometry(0.26, 0.09, 0.03);
 const packGeo = new THREE.BoxGeometry(0.2, 0.14, 0.03);
 const smallGeo = new THREE.BoxGeometry(0.07, 0.05, 0.015);
-const SHAPES = { tube: tubeGeo, disc: discGeo, bulb: bulbGeo, lens: lensGeo, pack: packGeo, small: smallGeo };
+const sconceGeo = new THREE.CylinderGeometry(0.05, 0.075, 0.13, 10, 1);
+const exitGeo = new THREE.PlaneGeometry(0.36, 0.16);
+const SHAPES = { tube: tubeGeo, disc: discGeo, bulb: bulbGeo, lens: lensGeo, pack: packGeo, small: smallGeo, sconce: sconceGeo, exit: exitGeo };
+// 緊急出口標示燈的面板(綠底白色奔跑人形 + 出口 EXIT),發光件用這張貼圖,亮度仍由每個實例的顏色控制
+let exitTex = null;
+function exitTexture() {
+  if (exitTex) return exitTex;
+  const c = document.createElement('canvas'); c.width = 256; c.height = 112;
+  const x = c.getContext('2d');
+  x.fillStyle = '#0f8a3c'; x.fillRect(0, 0, 256, 112);
+  x.strokeStyle = '#dff8e6'; x.lineWidth = 4; x.strokeRect(5, 5, 246, 102);
+  // 門框 + 奔跑的人
+  x.fillStyle = '#f2fff4'; x.fillRect(16, 18, 52, 78); x.fillStyle = '#0f8a3c'; x.fillRect(22, 24, 40, 72);
+  x.fillStyle = '#f2fff4'; x.strokeStyle = '#f2fff4'; x.lineCap = 'round'; x.lineWidth = 7;
+  x.beginPath(); x.arc(92, 30, 8, 0, 6.28); x.fill();
+  x.beginPath(); x.moveTo(90, 40); x.lineTo(82, 64); x.lineTo(96, 76); x.lineTo(94, 94); x.moveTo(82, 64); x.lineTo(68, 72); x.lineTo(60, 90);
+  x.moveTo(88, 46); x.lineTo(104, 56); x.moveTo(88, 46); x.lineTo(72, 50); x.stroke();
+  x.font = 'bold 34px "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", sans-serif'; x.textBaseline = 'middle'; x.fillText('出口', 124, 38);
+  x.font = 'bold 30px Arial, sans-serif'; x.fillText('EXIT', 126, 80);
+  exitTex = new THREE.CanvasTexture(c);
+  exitTex.colorSpace = THREE.SRGBColorSpace;
+  exitTex.anisotropy = 4;
+  return exitTex;
+}
 
 // 光暈 billboard(加法混合、自己算霧)
 const glowMat = new THREE.ShaderMaterial({
@@ -95,13 +122,13 @@ export function buildLights(K, { root, propLights = [], poolSize = 8 }) {
   const add = (spec) => {
     const k = KINDS[spec.kind] || KINDS.fluoro;
     const R = spec.R;
-    const st = STATES[spec.kind] || [1, 0, 0];
+    const st = spec.states || STATES[spec.kind] || [1, 0, 0];
     const roll = R ? R() : 0;
     const state = spec.state ?? (roll < st[0] ? 0 : roll < st[0] + st[1] ? 1 : 2);
     const f = {
       x: spec.x, y: spec.y, z: spec.z, li: spec.li, zone: spec.zone || null, kind: spec.kind, mode: spec.mode || MODE[spec.kind] || 'steady',
       color: new THREE.Color(spec.color ?? k.color), cd: spec.cd ?? k.cd, dist: spec.dist ?? k.dist, glow: spec.glow ?? k.glow, shape: spec.shape === undefined ? k.shape : spec.shape,
-      gain: k.gain, state, phase: R ? R() * 100 : Math.random() * 100, ov: 1, cur: 1, inst: -1, glowIdx: -1, axis: spec.axis || 'x', hang: spec.hang || 0,
+      gain: k.gain, state, phase: R ? R() * 100 : Math.abs(spec.x * 7.31 + spec.z * 3.17) % 100, ov: 1, cur: 1, inst: -1, glowIdx: -1, axis: spec.axis || 'x', hang: spec.hang || 0,
       sway: spec.kind === 'bare_bulb' ? (R ? R.r(0.03, 0.09) : 0.05) : 0, ox: 0, oz: 0, prop: !!spec.prop,
     };
     fixtures.push(f);
@@ -112,14 +139,14 @@ export function buildLights(K, { root, propLights = [], poolSize = 8 }) {
   // ---- 依區域擺天花燈 ----
   for (const zone of L.zones) {
     const li = zone.levelIndex, lt = zone.light;
-    if (!lt || lt === 'moon' || lt === 'none' || lt === 'candle' || lt === 'lamp' || lt === 'fire' || lt === 'monitor') continue;
+    if (!lt || lt === 'moon' || lt === 'none') continue; // 燭光/檯燈/爐火/螢幕光不放天花燈,但下面會補壁燈或稀疏的壞燈
     const R = prng(hashStr('light' + zone.id));
     const outdoorZone = ['alley', 'plaza', 'parking', 'ambulance_bay', 'playground', 'cemetery', 'yard', 'courtyard', 'rooftop', 'fire_escape'].includes(zone.theme);
     if (outdoorZone) continue; // 戶外燈另外處理(外牆壁燈/路燈由道具)
     const ceilKinds = ['fluoro', 'fluoro_dying', 'fluoro_cold', 'warm', 'surgical', 'bare_bulb'];
     if (ceilKinds.includes(lt)) {
       const corridor = zone.theme === 'corridor';
-      const sp = corridor ? 6.2 : lt === 'bare_bulb' ? 5.5 : 4.4;
+      const sp = corridor ? 6.2 : lt === 'bare_bulb' ? 4.6 : 4.4;
       for (const [c0, r0, c1, r1] of zone.rects) {
         const w = (c1 - c0 + 1) * 2, h = (r1 - r0 + 1) * 2, alongX = w >= h;
         const len = Math.max(w, h), wid = Math.min(w, h);
@@ -139,10 +166,30 @@ export function buildLights(K, { root, propLights = [], poolSize = 8 }) {
         }
       }
     }
-    // 牆燈:紅色緊急燈(樓梯間/急診)、鈉燈(地下工業區)、夜燈(兒童區)
-    if (lt === 'emergency' || lt === 'sodium' || lt === 'nightlight') {
+    // 稀疏的壞天花燈(螢幕光/夜燈/檯燈的房間)
+    const sparse = SPARSE[lt] || (lt === 'emergency' ? (zone.theme === 'stairwell' ? [0.3, 0.45, 0.25] : [0.2, 0.45, 0.35]) : null);
+    if (sparse) {
+      for (const [c0, r0, c1, r1] of zone.rects) {
+        const w = (c1 - c0 + 1) * 2, h = (r1 - r0 + 1) * 2;
+        const nA = Math.max(1, Math.round(Math.max(w, h) / 7)), alongX = w >= h;
+        for (let i = 0; i < nA; i++) {
+          const along = ((i + 0.5) * Math.max(w, h)) / nA, x = alongX ? c0 * 2 + along : c0 * 2 + w / 2, z = alongX ? r0 * 2 + h / 2 : r0 * 2 + along;
+          const c = Math.min(c1, Math.floor(x / 2)), r = Math.min(r1, Math.floor(z / 2));
+          if (!isOpen(li, c, r)) continue;
+          const yC = L.ceilY(li, c, r);
+          if (!Number.isFinite(yC) || yC - L.levels[li].y > 5 || near(li, x, z, 3)) continue;
+          add({ x, y: yC - 0.05, z, li, zone, kind: 'fluoro_dying', R, axis: alongX ? 'x' : 'z', states: sparse, yC });
+        }
+      }
+      // 至少一盞還會閃(整間全黑的話,玩家只看得到手電筒照到的地方)
+      const mine = fixtures.filter((f) => f.zone === zone && f.kind === 'fluoro_dying');
+      if (mine.length && mine.every((f) => f.state === 2)) mine[0].state = 1;
+    }
+    // 牆燈:紅色緊急燈(樓梯間/急診)、鈉燈(地下工業區)、夜燈(兒童區)、燭台壁燈(燭光區)、焚化爐旁的鈉燈
+    const wl = lt === 'candle' ? 'sconce' : lt === 'fire' ? 'sodium' : lt;
+    if (wl === 'emergency' || wl === 'sodium' || wl === 'nightlight' || wl === 'sconce') {
       const faces = K.faces.filter((f) => f.zone === zone && f.kind === 'room' && f.li === li && f.a1 - f.a0 >= 1.9);
-      const step = lt === 'nightlight' ? 7 : lt === 'emergency' ? 7.5 : 8.5;
+      const step = wl === 'nightlight' ? 7 : wl === 'emergency' ? (zone.theme === 'stairwell' ? 5 : 7.5) : wl === 'sconce' ? (zone.theme === 'ossuary' ? 3.5 : 6.5) : 8.5;
       let acc = R() * step;
       for (const f of faces) {
         for (let a = f.a0 + 0.8; a < f.a1 - 0.6; a += 0.5) {
@@ -151,12 +198,54 @@ export function buildLights(K, { root, propLights = [], poolSize = 8 }) {
           acc = 0;
           const isH = f.dir === 'N' || f.dir === 'S', off = 0.07;
           const x = isH ? a : f.fixed + f.nx * off, z = isH ? f.fixed + f.nz * off : a;
-          const yy = f.y + (lt === 'nightlight' ? 0.32 : lt === 'emergency' ? 2.45 : 2.75);
+          const yy = f.y + (wl === 'nightlight' ? 0.32 : wl === 'emergency' ? 2.45 : wl === 'sconce' ? 1.95 : 2.75);
           if (yy > f.y + f.top - 0.15) continue;
-          add({ x, y: yy, z, li, zone, kind: lt, R, axis: isH ? 'x' : 'z', wall: f, color: lt === 'nightlight' && R() < 0.4 ? 0x9ab4ff : undefined });
+          add({ x, y: yy, z, li, zone, kind: wl, R, axis: isH ? 'x' : 'z', wall: f, color: wl === 'nightlight' && R() < 0.4 ? 0x9ab4ff : undefined });
         }
       }
     }
+  }
+  // ---- 走廊的明暗節奏:一段亮、一段暗(只剩一盞在閃),長直段的盡頭留一盞亮燈把人吸過去 ----
+  for (const zone of L.zones) {
+    if (zone.theme !== 'corridor') continue;
+    const list = fixtures.filter((f) => f.zone === zone && f.shape === 'tube');
+    const blocks = new Map();
+    for (const f of list) {
+      const along = f.axis === 'x' ? f.x : f.z, across = f.axis === 'x' ? f.z : f.x;
+      const key = f.axis + Math.round(across) + ':' + Math.floor(along / 13);
+      if (!blocks.has(key)) blocks.set(key, []);
+      blocks.get(key).push(f);
+    }
+    for (const [key, fs] of blocks) {
+      const R2 = prng(hashStr(zone.id + key));
+      const dark = R2() < (zone.light === 'fluoro_cold' ? 0.12 : 0.34);
+      if (dark) { const keep = (R2() * fs.length) | 0; fs.forEach((f, i) => { f.state = i === keep ? 1 : 2; }); }
+    }
+    for (const [c0, r0, c1, r1] of zone.rects) {
+      const w = c1 - c0 + 1, h = r1 - r0 + 1;
+      if (Math.max(w, h) < 10) continue;
+      const inR = list.filter((f) => f.x >= c0 * 2 && f.x <= (c1 + 1) * 2 && f.z >= r0 * 2 && f.z <= (r1 + 1) * 2);
+      if (!inR.length) continue;
+      const key = (f) => (w >= h ? f.x : f.z);
+      inR.sort((a, b) => key(a) - key(b));
+      for (const f of [inR[0], inR[inR.length - 1]]) { f.state = 0; f.lure = true; }
+    }
+  }
+  // ---- 緊急出口標示燈:樓梯間門(走廊側)與一樓通往戶外的門(室內側)上方 ----
+  for (const d of K.doorList || []) {
+    if (!d.axis) continue;
+    const runStart = d.run[0] === (d.axis === 'z' ? d.c : d.r);
+    if (!runStart) continue;
+    const sa = d.za?.theme === 'stairwell', sb = d.zb?.theme === 'stairwell';
+    let side = 0;
+    if (sa !== sb) side = sa ? 1 : -1; // 標示貼在非樓梯間那一側
+    else if (L.levels[d.li].id === '1F' && d.outA !== d.outB) side = d.outA ? 1 : -1;
+    if (!side) continue;
+    const mid = ((d.run[0] + d.run[1] + 1) / 2) * 2, y = L.levels[d.li].y + d.h + 0.24;
+    const off = 0.07, wall = d.axis === 'z' ? { nx: 0, nz: side } : { nx: side, nz: 0 };
+    const fixed = d.axis === 'z' ? (side > 0 ? (d.r + 1) * 2 : d.r * 2) : (side > 0 ? (d.c + 1) * 2 : d.c * 2);
+    const x = d.axis === 'z' ? mid : fixed + side * off, z = d.axis === 'z' ? fixed + side * off : mid;
+    add({ x, y, z, li: d.li, zone: side > 0 ? d.zb : d.za, kind: 'exit', R: prng(hashStr(`exit${d.li},${d.c},${d.r}`)), wall, axis: d.axis === 'z' ? 'x' : 'z' });
   }
   // ---- 戶外:外牆鈉燈(出入口上方)與急診旋轉警示燈 ----
   for (const d of K.doorList || []) {
@@ -223,18 +312,25 @@ export function buildLights(K, { root, propLights = [], poolSize = 8 }) {
       const top = f.yC ?? f.y + 0.7;
       B.box(li, 'trim_black', f.x - 0.005, f.y + 0.05, f.z - 0.005, f.x + 0.005, top, f.z + 0.005, {});
       B.box(li, 'trim_dark', f.x - 0.025, f.y + 0.04, f.z - 0.025, f.x + 0.025, f.y + 0.1, f.z + 0.025, {});
-    } else if (f.shape === 'lens' || f.shape === 'pack' || f.shape === 'small') {
-      const ax = f.axis === 'x', w = f.shape === 'small' ? 0.1 : f.shape === 'lens' ? 0.34 : 0.3, hh = f.shape === 'small' ? 0.08 : 0.2;
+    } else if (f.shape === 'lens' || f.shape === 'pack' || f.shape === 'small' || f.shape === 'sconce' || f.shape === 'exit') {
+      const ax = f.axis === 'x', w = f.shape === 'small' ? 0.1 : f.shape === 'lens' ? 0.34 : f.shape === 'sconce' ? 0.11 : f.shape === 'exit' ? 0.42 : 0.3;
+      const hh = f.shape === 'small' ? 0.08 : f.shape === 'sconce' ? 0.2 : f.shape === 'exit' ? 0.22 : 0.2;
+      if (f.shape === 'sconce') { // 黃銅托架
+        const nx = f.wall ? f.wall.nx : 0, nz = f.wall ? f.wall.nz : 0;
+        B.box(li, 'trim_brass', Math.min(f.x, f.x - nx * 0.07) - 0.012, f.y - 0.12, Math.min(f.z, f.z - nz * 0.07) - 0.012, Math.max(f.x, f.x - nx * 0.07) + 0.012, f.y - 0.08, Math.max(f.z, f.z - nz * 0.07) + 0.012, {});
+      }
       const back = f.wall ? -0.07 : -0.06;
       const nx = f.wall ? f.wall.nx : 0, nz = f.wall ? f.wall.nz : 0;
       const bx0 = f.x + nx * back, bz0 = f.z + nz * back;
-      B.box(li, f.shape === 'pack' ? 'trim_dark' : 'trim_white', Math.min(bx0, f.x) - (ax ? w / 2 : 0.0), f.y - hh / 2, Math.min(bz0, f.z) - (ax ? 0 : w / 2), Math.max(bx0, f.x) + (ax ? w / 2 : 0), f.y + hh / 2, Math.max(bz0, f.z) + (ax ? 0 : w / 2), {});
+      const front = f.shape === 'exit' ? -0.006 : f.shape === 'sconce' ? -0.05 : 0; // 發光面不能和外殼前面重疊(z-fighting)
+      const fx = f.x + nx * front, fz = f.z + nz * front;
+      B.box(li, f.shape === 'pack' ? 'trim_dark' : f.shape === 'sconce' ? 'trim_brass' : 'trim_white', Math.min(bx0, fx) - (ax ? w / 2 : 0.0), f.y - hh / 2, Math.min(bz0, fz) - (ax ? 0 : w / 2), Math.max(bx0, fx) + (ax ? w / 2 : 0), f.y + hh / 2, Math.max(bz0, fz) + (ax ? 0 : w / 2), {});
     }
   }
   const emissive = [];
   for (const [shape, list] of Object.entries(byShape)) {
     const n = list.length * (shape === 'disc' ? 3 : 1);
-    const im = new THREE.InstancedMesh(SHAPES[shape], new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: true }), n);
+    const im = new THREE.InstancedMesh(SHAPES[shape], new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: true, map: shape === 'exit' ? exitTexture() : null }), n);
     im.name = 'fixtures-' + shape;
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3();
     let i = 0;
@@ -244,7 +340,7 @@ export function buildLights(K, { root, propLights = [], poolSize = 8 }) {
       f.inst = { mesh: im, i0: i, n: parts.length };
       for (const dx of parts) {
         e.set(f.tilt ? (f.axis === 'z' ? f.tilt : 0) : 0, rotY, f.tilt && f.axis === 'x' ? f.tilt : 0);
-        if (f.shape === 'lens' || f.shape === 'pack' || f.shape === 'small') e.set(0, f.wall ? Math.atan2(f.wall.nx, f.wall.nz) : rotY, 0);
+        if (f.shape === 'lens' || f.shape === 'pack' || f.shape === 'small' || f.shape === 'sconce' || f.shape === 'exit') e.set(0, f.wall ? Math.atan2(f.wall.nx, f.wall.nz) : rotY, 0);
         q.setFromEuler(e);
         m4.compose(p.set(f.x + dx, f.y, f.z), q, s);
         im.setMatrixAt(i, m4);
@@ -384,7 +480,8 @@ export function buildLights(K, { root, propLights = [], poolSize = 8 }) {
         L2.color.copy(f.color);
         L2.distance = f.dist;
         L2.decay = 2;
-        L2.position.set(f.x + f.ox, f.y - (f.shape === 'tube' ? 0.25 : f.shape === 'disc' ? 0.2 : 0), f.z + f.oz);
+        const wo = f.wall ? 0.32 : 0; // 壁燈的點光源離牆一點,牆上不會有刺眼的光斑
+        L2.position.set(f.x + f.ox + (f.wall ? f.wall.nx * wo : 0), f.y - (f.shape === 'tube' ? 0.25 : f.shape === 'disc' ? 0.2 : 0), f.z + f.oz + (f.wall ? f.wall.nz * wo : 0));
         L2.intensity = f.cd * f.cur * pl.fade;
       }
       lastPick = picked;
@@ -392,6 +489,12 @@ export function buildLights(K, { root, propLights = [], poolSize = 8 }) {
     get picked() { return lastPick; },
     // 事件用:找某區域/範圍內的燈具
     find(pred) { return fixtures.filter(pred); },
+    // 換地圖時:拿掉光源池的燈、釋放發光件材質
+    dispose() {
+      makePool(0);
+      for (const im of emissive) { im.material.dispose(); im.dispose?.(); }
+      glow.dispose?.();
+    },
   };
   return api;
 }
