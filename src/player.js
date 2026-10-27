@@ -116,9 +116,15 @@ export class Player {
     this._jumpBuf = 0;
   }
 
+  // 開關手電筒只改亮度、不改 visible:光源數量一變,所有材質都要重新編譯 shader(實測首次關燈卡 30 秒以上)。
+  // 關燈時順便停掉聚光燈陰影圖的更新(亮度 0 時陰影沒有作用)。
   toggleFlashlight() {
     this.flashOn = !this.flashOn;
-    this.flashlight.visible = this.flashOn;
+    const L = this.flashlight;
+    if (!this.flashOn) this._flashI = L.intensity || this._flashI || 75;
+    L.intensity = this.flashOn ? this._flashI || 75 : 0;
+    L.shadow.autoUpdate = this.flashOn;
+    if (this.flashOn) L.shadow.needsUpdate = true;
     sfx.flashlight(this.flashOn);
   }
 
