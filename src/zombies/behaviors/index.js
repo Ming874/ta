@@ -35,6 +35,8 @@ const seen = new WeakMap(); // stats 物件 → 已介紹過的類型(每一局�
 export const Z3 = {
   init(z) {
     animInit(z);
+    const amp = z.V.P.amp, ab = amp && z.b[amp];
+    if (ab && ab.parent && ab.scale.x !== 0) { ab.scale.setScalar(0); z._stump(ab.parent.name, amp, amp.startsWith('hand') ? 0.032 : 0.042); } // 斷肢個體
     BEH[z.type]?.init?.(z);
   },
   dmgMul(z, m, part, hit) {

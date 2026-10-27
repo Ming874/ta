@@ -73,6 +73,8 @@ function varyBody(P, r, type) {
   if (k < 0.16) { P.old = 1; P.thin = Math.max(P.thin, 0.55); P.musc *= 0.3; P.s *= 0.95; P.sw *= 0.95; P.neck *= 0.92; } // 老人
   else if (k < 0.3) { P.s *= 1.05; P.thin = Math.min(1, P.thin + 0.3); P.g *= 0.92; P.arm *= 1.03; } // 瘦高
   else if (k < 0.42 && type === 'walker') { P.fat *= 1.14; P.belly += 0.45; P.g *= 1.1; P.s *= 0.96; } // 矮胖
+  // 斷肢的個體(行屍/爬行者):生成時就少一截前臂或手掌(Z3.init 依此把骨骼縮成 0 並接上斷口;同種子各端一致)
+  if ((type === 'walker' || type === 'crawler') && r.chance(0.12)) P.amp = r.pick(['forearmL', 'forearmR', 'handL', 'handR']);
 }
 
 const SKINS = {
