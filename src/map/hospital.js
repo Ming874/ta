@@ -134,7 +134,6 @@ export function buildHospital(world, layout, scene, opts = {}) {
     // post.js 會呼叫:提供 renderer(環境貼圖、各向異性)與品質設定
     attachRenderer(r, game) {
       H.game = game || null;
-      upgradePropMaterials(); // 之後才建的共用材質(商店、補給點…)也升級
       try { setAnisotropy(Math.min(8, r.capabilities.getMaxAnisotropy())); } catch { /* 忽略 */ }
       try { scene.environment = makeEnvironment(r); } catch (e) { console.warn('[hospital] 環境貼圖失敗', e); }
       H.setQuality(game?.quality);

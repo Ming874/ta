@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { pbrTex, PBR_SETS } from './pbr.js';
 import { forEachMat } from '../materials.js';
 
+// 注意(效能):每個加了 onBeforeCompile 的材質都會被 overhaul 的靜態合併排除(不能併成共用頂點色材質)→ draw call 變多。
+// 所以預設只升級「共用」材質(可動道具的金屬/亮面/霧面三種);合併後的共用頂點色材質也可以用 applyTriplanar() 加上同樣的細節。
 // 道具材質的 PBR 細節:道具網格的 UV 各式各樣(而且靜態道具會合併到世界座標),所以用「物件空間三平面投影」——
 // 依模型座標(合併後就是世界座標;實例化/可動道具是模板座標 → 會跟著物體走)從三個方向取樣同一組貼圖,依法線混合。
 // 原本的顏色保留(貼圖只提供明暗/色差細節、粗糙度變化與凹凸),所以綠色烤漆櫃子還是綠的,只是多了刮痕與鏽點。
@@ -60,26 +62,30 @@ function hook(shader) {
 }
 const _c = new THREE.Color();
 const done = new WeakSet();
-// 把目前所有道具材質依規則升級(可重複呼叫;已升級的跳過)
-export function upgradePropMaterials() {
+// 對單一(最好是共用的)材質加上三平面細節:set 貼圖組、tile 公尺、mode 'rgb' | 'lum'、k 強度、bump 凹凸
+export function applyTriplanar(m, set, { tile = 1, mode = 'lum', k = 0.5, bump = 0.8 } = {}) {
+  if (!m || done.has(m) || !PBR_SETS[set]) return false;
+  _c.set(PBR_SETS[set].avg);
+  m.userData.tri = {
+    tTriC: { value: pbrTex(set, 'color', { tile: 1 }) }, tTriO: { value: pbrTex(set, 'orm', { tile: 1 }) },
+    uTri: { value: new THREE.Vector4(1 / tile, k, bump, mode === 'rgb' ? 1 : 0) }, uTriAvg: { value: new THREE.Vector3(_c.r, _c.g, _c.b) },
+  };
+  m.onBeforeCompile = hook;
+  m.customProgramCacheKey = () => 'tri';
+  m.needsUpdate = true;
+  done.add(m);
+  return true;
+}
+// 依規則升級材質庫裡的材質。only:材質鍵 regex(預設只升級共用的可動道具材質,避免破壞靜態合併)
+export function upgradePropMaterials(only = /^pi_dyn_/) {
   let n = 0;
   forEachMat((m, key) => {
-    if (!m || !m.isMeshStandardMaterial || done.has(m) || m.map || m.transparent || m.onBeforeCompile !== THREE.Material.prototype.onBeforeCompile || SKIP.test(key)) return;
+    if (!only.test(key) || !m || !m.isMeshStandardMaterial || done.has(m) || m.map || m.transparent || m.onBeforeCompile !== THREE.Material.prototype.onBeforeCompile || SKIP.test(key)) return;
     if (m.emissive && m.emissive.getHex() && m.emissiveIntensity > 0) return;
     const rule = RULES.find(([re]) => re.test(key));
     if (!rule) return;
     const [, set, tile, mode, k, bump] = rule;
-    if (!PBR_SETS[set]) return;
-    _c.set(PBR_SETS[set].avg);
-    m.userData.tri = {
-      tTriC: { value: pbrTex(set, 'color', { tile: 1 }) }, tTriO: { value: pbrTex(set, 'orm', { tile: 1 }) },
-      uTri: { value: new THREE.Vector4(1 / tile, k, bump, mode === 'rgb' ? 1 : 0) }, uTriAvg: { value: new THREE.Vector3(_c.r, _c.g, _c.b) },
-    };
-    m.onBeforeCompile = hook;
-    m.customProgramCacheKey = () => 'tri';
-    m.needsUpdate = true;
-    done.add(m);
-    n++;
+    if (applyTriplanar(m, set, { tile, mode, k, bump })) n++;
   });
   return n;
 }
