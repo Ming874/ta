@@ -17,6 +17,8 @@ const budget = () => { const now = performance.now(); if (now - BUD.t > 10) { BU
 const VOICE = new Set(['groan', 'zPain', 'zAttack', 'zDie', 'gurgle']);
 const ALWAYS = new Set(['roar', 'shriek', 'wallImpact', 'knock', 'bite', 'spit']);
 const VOICE_MAX = 1, FX_MAX = 2, SENSE_MAX = 10, BAR_MAX = 4;
+// 頭頂血條:預設不顯示(破壞沉浸感;受傷回饋改由命中標記、噴血、踉蹌與斷肢表現)。除錯時可設 window.__zombieBars = true
+const SHOW_BARS = typeof window !== 'undefined' && window.__zombieBars === true;
 const say = (name, ...a) => {
   if (!ALWAYS.has(name)) { const B = budget(); if (VOICE.has(name) ? ++B.voice > VOICE_MAX : ++B.fx > FX_MAX) return; }
   sfx[name](...a);
@@ -153,13 +155,16 @@ export class Zombie {
     this.root.add(this.mesh);
     this.bar = makeBar(type === 'brute');
     this.bar.sprite.position.set(0, type === 'crawler' ? 0.95 : this.headH + 0.32, 0);
-    this.root.add(this.bar.sprite);
-    this.drawBar();
+    if (SHOW_BARS) {
+      this.root.add(this.bar.sprite);
+      this.drawBar();
+    }
     this.root.position.copy(this.pos);
     scene.add(this.root);
   }
 
   drawBar() {
+    if (!SHOW_BARS) return; // 血條沒顯示就不必重畫(連線層也會呼叫)
     const { c, tex } = this.bar;
     const ctx = c.getContext('2d');
     const f = Math.max(0, this.hp / this.maxHp);
@@ -213,7 +218,7 @@ export class Zombie {
     this.rollV += (Math.random() - 0.5) * 9 * k;
     if (part === 'head') this.headKick = Math.min(1.2, this.headKick + 0.7 * heavy);
     // 血條:畫布重畫 + 貼圖上傳;每幀最多重畫幾條(爆炸一次打到一整群時不會同一幀全部上傳),其餘在 update 補畫
-    if (++budget().bar <= BAR_MAX) { this.drawBar(); this._barDirty = false; } else this._barDirty = true;
+    if (SHOW_BARS) { if (++budget().bar <= BAR_MAX) { this.drawBar(); this._barDirty = false; } else this._barDirty = true; }
     if (this.hp <= 0) { this.die(part, hit); return true; }
     if (this.t - (this.painT ?? -9) > 0.7) { this.painT = this.t; say('zPain', this.type, this.vp); }
     if (part === 'leg') {
