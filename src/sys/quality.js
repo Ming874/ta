@@ -163,6 +163,11 @@ export class Quality {
   }
 
   // 套用到渲染器/後處理/場景;first = 第一次(在第一幀前,不用重編 shader)
+  /** 所有投影光源下一幀重畫陰影圖(含 autoUpdate=false 的靜態陰影) */
+  refreshShadows() {
+    this.game.scene?.traverse((o) => { if (o.isLight && o.shadow && o.castShadow) o.shadow.needsUpdate = true; });
+  }
+
   apply(first = false, keys = null) {
     const g = this.game, r = g.renderer, has = (k) => first || !keys || keys.has(k);
     if (has('shadows') || has('shadowType')) {
@@ -172,6 +177,7 @@ export class Quality {
         r.shadowMap.type = type;
         r.shadowMap.needsUpdate = true;
         if (!first) this.recompile();
+        this.refreshShadows(); // 靜態陰影(月光 autoUpdate=false)也要用新類型重畫,否則陰影圖格式和 shader 的 sampler 對不上
       }
     }
     if (has('shadowScale')) {
@@ -180,7 +186,13 @@ export class Quality {
         if (!o.isLight || !o.shadow || !o.castShadow) return;
         const base = o.userData.baseShadowSize ?? (o.userData.baseShadowSize = o.shadow.mapSize.x);
         const s = clamp(Math.round(base * k), 128, 4096);
-        if (o.shadow.mapSize.x !== s) { o.shadow.mapSize.set(s, s); if (o.shadow.map) { o.shadow.map.dispose(); o.shadow.map = null; } }
+        if (o.shadow.mapSize.x !== s) {
+          o.shadow.mapSize.set(s, s);
+          if (o.shadow.map) { o.shadow.map.dispose(); o.shadow.map = null; }
+          // 陰影圖丟掉後要標記重畫:autoUpdate=false 的靜態陰影(月光)不會自己重建,shader 會綁到格式不符的空貼圖,
+          // 所有受光物體繪製失敗(GL_INVALID_OPERATION,畫面只剩自發光的燈具)
+          o.shadow.needsUpdate = true;
+        }
       });
     }
     if (has('bloom') && g.bloom) g.bloom.enabled = !!this.get('bloom');
