@@ -12,10 +12,10 @@ import * as THREE from 'three';
 //   fog('low'|'medium'|'high' 霧/體積光品質)、decals(貼花密度 0..1)、drawDistance(公尺)。
 
 export const PRESETS = {
-  low: { label: '低', shadows: false, shadowType: 'basic', shadowScale: 0.5, shadowLights: 0, bloom: false, msaa: 0, pixelMin: 0.6, pixelMax: 0.85, lights: 4, particles: 100, fog: 'low', decals: 0.4, anisotropy: 2, drawDistance: 70 },
-  medium: { label: '中', shadows: true, shadowType: 'pcf', shadowScale: 0.5, shadowLights: 1, bloom: true, msaa: 2, pixelMin: 0.6, pixelMax: 1.0, lights: 6, particles: 160, fog: 'medium', decals: 0.7, anisotropy: 4, drawDistance: 90 },
-  high: { label: '高', shadows: true, shadowType: 'pcf', shadowScale: 1, shadowLights: 2, bloom: true, msaa: 4, pixelMin: 0.7, pixelMax: 1.25, lights: 8, particles: 240, fog: 'high', decals: 1, anisotropy: 8, drawDistance: 120 },
-  ultra: { label: '極致', shadows: true, shadowType: 'pcf', shadowScale: 2, shadowLights: 4, bloom: true, msaa: 4, pixelMin: 0.85, pixelMax: 1.5, lights: 12, particles: 400, fog: 'high', decals: 1, anisotropy: 16, drawDistance: 150 },
+  low: { label: '低', shadows: false, shadowType: 'basic', shadowScale: 0.5, shadowLights: 0, bloom: false, msaa: 0, pixelMin: 0.6, pixelMax: 0.85, lights: 4, particles: 100, fog: 'low', decals: 0.4, anisotropy: 2, drawDistance: 70, flashFar: 12 },
+  medium: { label: '中', shadows: true, shadowType: 'pcf', shadowScale: 0.5, shadowLights: 1, bloom: true, msaa: 2, pixelMin: 0.6, pixelMax: 1.0, lights: 6, particles: 160, fog: 'medium', decals: 0.7, anisotropy: 4, drawDistance: 90, flashFar: 14 },
+  high: { label: '高', shadows: true, shadowType: 'pcf', shadowScale: 1, shadowLights: 2, bloom: true, msaa: 4, pixelMin: 0.7, pixelMax: 1.25, lights: 8, particles: 240, fog: 'high', decals: 1, anisotropy: 8, drawDistance: 120, flashFar: 18 },
+  ultra: { label: '極致', shadows: true, shadowType: 'pcf', shadowScale: 2, shadowLights: 4, bloom: true, msaa: 4, pixelMin: 0.85, pixelMax: 1.5, lights: 12, particles: 400, fog: 'high', decals: 1, anisotropy: 16, drawDistance: 150, flashFar: 28 },
 };
 const COMMON = { dynamicRes: true, targetFps: 60 };
 const KEY = 'hz.quality.v1';
@@ -163,6 +163,11 @@ export class Quality {
   }
 
   // 套用到渲染器/後處理/場景;first = 第一次(在第一幀前,不用重編 shader)
+  /** 所有投影光源下一幀重畫陰影圖(含 autoUpdate=false 的靜態陰影) */
+  refreshShadows() {
+    this.game.scene?.traverse((o) => { if (o.isLight && o.shadow && o.castShadow) o.shadow.needsUpdate = true; });
+  }
+
   apply(first = false, keys = null) {
     const g = this.game, r = g.renderer, has = (k) => first || !keys || keys.has(k);
     if (has('shadows') || has('shadowType')) {
@@ -172,6 +177,7 @@ export class Quality {
         r.shadowMap.type = type;
         r.shadowMap.needsUpdate = true;
         if (!first) this.recompile();
+        this.refreshShadows(); // 靜態陰影(月光 autoUpdate=false)也要用新類型重畫,否則陰影圖格式和 shader 的 sampler 對不上
       }
     }
     if (has('shadowScale')) {
@@ -180,8 +186,28 @@ export class Quality {
         if (!o.isLight || !o.shadow || !o.castShadow) return;
         const base = o.userData.baseShadowSize ?? (o.userData.baseShadowSize = o.shadow.mapSize.x);
         const s = clamp(Math.round(base * k), 128, 4096);
-        if (o.shadow.mapSize.x !== s) { o.shadow.mapSize.set(s, s); if (o.shadow.map) { o.shadow.map.dispose(); o.shadow.map = null; } }
+        if (o.shadow.mapSize.x !== s) {
+          o.shadow.mapSize.set(s, s);
+          if (o.shadow.map) { o.shadow.map.dispose(); o.shadow.map = null; }
+          // 陰影圖丟掉後要標記重畫:autoUpdate=false 的靜態陰影(月光)不會自己重建,shader 會綁到格式不符的空貼圖,
+          // 所有受光物體繪製失敗(GL_INVALID_OPERATION,畫面只剩自發光的燈具)
+          o.shadow.needsUpdate = true;
+        }
       });
+    }
+    // 手電筒陰影範圍(three 每幀把 spot 陰影相機 far 設成 light.distance=30m → 30m 內所有投影物件每幀重畫)。
+    // 只在更新陰影矩陣時暫時換成較短的距離,光照範圍不變
+    if (has('flashFar')) {
+      const sh = g.player?.flashlight?.shadow;
+      if (sh) {
+        sh.userData = sh.userData || {};
+        sh.userData.far = this.get('flashFar');
+        if (!sh.userData.wrapped) {
+          sh.userData.wrapped = true;
+          const orig = sh.updateMatrices.bind(sh);
+          sh.updateMatrices = (light) => { const d = light.distance; light.distance = Math.min(d || Infinity, sh.userData.far || d); try { orig(light); } finally { light.distance = d; } };
+        }
+      }
     }
     if (has('bloom') && g.bloom) g.bloom.enabled = !!this.get('bloom');
     if (has('msaa') && g.composer) {

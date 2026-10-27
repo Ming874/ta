@@ -125,17 +125,19 @@ const subset = (list) => ({ traverse: (fn) => { for (const o of list) fn(o); }, 
 
 // target / camera:用哪個場景的光源與霧、哪台相機(手持武器層請傳 game.weaponScene / game.weaponCamera)
 // 編譯分批進行、每批之間讓出主執行緒(建立 program 的 CPU 工作不會變成一個好幾百 ms 的長任務)
-export async function precompile(game, root, { shadows = true, target = game.scene, camera = game.camera, budget = 12 } = {}) {
+// instanced:一般網格另外也編「InstancedMesh 版」(下載的模型零件之後常被做成實例池)
+export async function precompile(game, root, { shadows = true, target = game.scene, camera = game.camera, budget = 12, instanced = false } = {}) {
   const r = game.renderer, t0 = performance.now();
   const rt = game.composer ? game.composer.readBuffer : null;
   const parallel = !!r.extensions.get('KHR_parallel_shader_compile');
   const before = r.info.programs ? r.info.programs.length : 0;
   // 陰影 pass 是以「沒有霧的空場景」渲染(fog 也是 program 參數),所以代理材質編譯時暫時拿掉霧
   const run = (obj, noFog) => {
-    const prev = r.getRenderTarget(), fog = target.fog;
+    const prev = r.getRenderTarget(), fog = target.fog, vis = target.visible;
     r.setRenderTarget(rt); // 與 RenderPass 一樣畫進 HDR target(決定 outputColorSpace / toneMapping 參數)
     if (noFog) target.fog = null;
-    try { return r.compileAsync(obj, camera, target); } finally { r.setRenderTarget(prev); target.fog = fog; }
+    target.visible = true; // 光源用 traverseVisible 收集:選單時隱藏的手持武器場景要當作可見,光源數才會對(否則第一槍重編)
+    try { return r.compileAsync(obj, camera, target); } finally { r.setRenderTarget(prev); target.fog = fog; target.visible = vis; }
   };
   const jobs = [];
   const chunked = async (list, noFog) => {
@@ -153,11 +155,17 @@ export async function precompile(game, root, { shadows = true, target = game.sce
     }
   };
   root.updateMatrixWorld(true);
-  const reps = representatives(root);
+  let src = root;
+  if (instanced) {
+    const extra = [];
+    root.traverse((o) => { if (o.isMesh && !o.isInstancedMesh && !o.isSkinnedMesh && o.geometry) { const im = new THREE.InstancedMesh(o.geometry, o.material, 1); im.castShadow = o.castShadow; extra.push(im); } });
+    src = { traverse: (fn) => { root.traverse(fn); for (const o of extra) fn(o); }, updateMatrixWorld() {} };
+  }
+  const reps = representatives(src);
   await chunked(reps, false);
   let px = null;
   if (shadows && r.shadowMap.enabled) {
-    px = shadowProxies(root, r, target);
+    px = shadowProxies(src, r, target);
     await chunked(px.children, true);
   }
   await Promise.all(jobs);

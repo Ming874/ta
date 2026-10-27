@@ -19,6 +19,7 @@ const listeners = new Set();
 export const assets = {
   concurrency: 4,
   hiRes: true, // 基本貼圖都載完後是否換上 1K 顏色圖(低畫質關閉)
+  prepare: null, // async (root, meta) → 模型交付前的準備(main.js 設為背景預編譯 shader)
   image(url, opts = {}) { return enqueue({ kind: 'image', url, ...opts }); },
   task(fn, opts = {}) { return enqueue({ kind: 'task', fn, ...opts }); },
   open(reason = '') {
@@ -67,7 +68,13 @@ function finish(it, v, err) {
   pump();
 }
 async function run(it) {
-  if (it.kind === 'task') return it.fn();
+  if (it.kind === 'task') {
+    const v = await it.fn();
+    // 下載的模型:交給呼叫端(加進場景)之前先在背景把材質的 shader 編好,第一次畫到時才不會同步編譯卡住
+    const root = v && (v.scene?.isObject3D ? v.scene : v.isObject3D ? v : null);
+    if (root && assets.prepare) { try { await assets.prepare(root, it.meta); } catch { /* 編譯失敗就照舊在第一次繪製時編 */ } }
+    return v;
+  }
   const res = await fetch(it.url, { priority: 'low', credentials: 'same-origin' });
   if (!res.ok) throw new Error(`${res.status} ${it.url}`);
   const blob = await res.blob();
