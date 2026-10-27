@@ -24,13 +24,19 @@ const KINDS = {
   street: { color: 0xff9a48, cd: 30, dist: 22, glow: 2.0, shape: null, gain: 1 },
 };
 // 每種燈的狀態機率:[常亮, 閃爍, 熄滅]
+// [ghost] 基調改成「穩定、偏暗、偏冷」:一般燈不再隨機閃爍(閃爍變成驚嚇導演的事件,見 src/horror);
+// 老化燈管(fluoro_dying)是穩定但暗的(dim),壞掉的就熄滅;只有少數刻意挑選的燈(走廊盡頭的一支燈管等)會偶爾輕微閃一下(mode 'broken')。
 const STATES = {
-  fluoro: [0.82, 0.12, 0.06], fluoro_dying: [0.32, 0.4, 0.28], fluoro_cold: [0.88, 0.1, 0.02], warm: [1, 0, 0], surgical: [0.7, 0.3, 0],
-  emergency: [0.85, 0.15, 0], bare_bulb: [0.62, 0.22, 0.16], sodium: [0.85, 0.15, 0], nightlight: [0.9, 0.1, 0], sconce: [0.65, 0.2, 0.15], exit: [0.82, 0.14, 0.04],
+  fluoro: [0.93, 0, 0.07], fluoro_dying: [0.64, 0, 0.36], fluoro_cold: [0.97, 0, 0.03], warm: [1, 0, 0], surgical: [1, 0, 0],
+  emergency: [1, 0, 0], bare_bulb: [0.8, 0, 0.2], sodium: [1, 0, 0], nightlight: [1, 0, 0], sconce: [0.86, 0, 0.14], exit: [0.94, 0, 0.06],
 };
-// 只有螢幕光/夜燈/檯燈的房間:補幾盞大多壞掉的天花燈(偶爾閃一下,大部分時間是暗的)
-const SPARSE = { monitor: [0.35, 0.45, 0.2], nightlight: [0.15, 0.5, 0.35], lamp: [0.35, 0.4, 0.25] };
+// 只有螢幕光/夜燈/檯燈的房間:補幾盞大多壞掉的天花燈(還亮的那幾盞很暗)
+const SPARSE = { monitor: [0.4, 0, 0.6], nightlight: [0.2, 0, 0.8], lamp: [0.4, 0, 0.6] };
 const MODE = { fluoro: 'tube', fluoro_dying: 'tube', fluoro_cold: 'tube', warm: 'steady', surgical: 'tube', emergency: 'pulse', beacon: 'beacon', bare_bulb: 'sway', sodium: 'buzz', nightlight: 'steady', monitor: 'screen', candle: 'candle', lamp: 'steady', fire: 'fire', street: 'buzz', sconce: 'tube', exit: 'tube' };
+// 刻意擺的壞燈(偶爾輕微閃):每區最多一盞
+const BROKEN_ZONES = new Set(['f1_corridor', 'f2_corridor', 'f3_corridor', 'b1_tunnel', 'b1_morgue', 'b1_archive']);
+// 開局安靜期:這個時間(遊戲時間)之前連壞燈也不閃(hospital.update 在每局開始時設定 = 開局 + 60 秒)
+const CALM = { until: 0 };
 
 // 閃爍函數(確定性;JS 與發光件共用)
 const hash = (n) => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
@@ -38,19 +44,20 @@ export function flickerValue(f, t) {
   if (f.state === 2) return 0;
   const p = f.phase;
   switch (f.mode) {
-    case 'tube': {
-      if (f.state === 0) return 1;
-      const burst = hash(Math.floor(t * 0.35 + p)) < 0.35; // 一陣一陣的故障
-      if (burst) { const k = hash(Math.floor(t * 18 + p * 7)); return k < 0.45 ? 0.04 : k < 0.6 ? 0.45 : 1; }
-      return hash(Math.floor(t * 9 + p * 3)) < 0.05 ? 0.1 : 1;
+    // 刻意擺的壞燈(以及戶外標成閃爍的路燈,weather.js 設成 tube/1):大部分時間穩定(微弱起伏),每 9~13 秒一次短促的兩三下
+    case 'broken': case 'tube': {
+      if (f.state !== 1 || t < CALM.until) return 1;
+      const per = 9 + (p % 4.5), k = (t + p * 3.7) % per;
+      if (k < 0.45) { const q = hash(Math.floor(t * 18 + p * 7)); return q < 0.35 ? 0.12 : q < 0.55 ? 0.6 : 1; }
+      return 0.96 + 0.03 * Math.sin(t * 2.3 + p);
     }
-    case 'pulse': return 0.35 + 0.65 * Math.pow(Math.abs(Math.sin(t * 1.9 + p)), 2);
+    case 'pulse': return 0.55 + 0.45 * Math.pow(Math.abs(Math.sin(t * 1.4 + p)), 2); // 緊急燈:慢慢「呼吸」,不閃
     case 'beacon': { const a = (t * 3.4 + p) % (Math.PI * 2); return 0.15 + 0.85 * Math.pow(Math.max(0, Math.cos(a)), 6); }
-    case 'buzz': return f.state === 1 ? (hash(Math.floor(t * 6 + p)) < 0.15 ? 0.3 : 0.92 + 0.08 * Math.sin(t * 47)) : 0.93 + 0.07 * Math.sin(t * 5.1 + p) * Math.sin(t * 1.7);
+    case 'buzz': return f.state === 1 && t >= CALM.until ? (hash(Math.floor(t * 6 + p)) < 0.15 ? 0.3 : 0.92 + 0.08 * Math.sin(t * 47)) : 0.95 + 0.05 * Math.sin(t * 1.3 + p) * Math.sin(t * 0.7);
     case 'candle': return 0.78 + 0.14 * Math.sin(t * 9.1 + p) * Math.sin(t * 5.3 + p * 2) + 0.08 * Math.sin(t * 23 + p);
     case 'fire': return 0.7 + 0.2 * Math.sin(t * 7.3 + p) * Math.sin(t * 3.1) + 0.1 * Math.sin(t * 17 + p * 3);
-    case 'screen': return 0.75 + 0.25 * hash(Math.floor(t * 4 + p));
-    case 'sway': return f.state === 1 ? (hash(Math.floor(t * 11 + p)) < 0.25 ? 0.15 : 1) : 1;
+    case 'screen': return 0.88 + 0.07 * Math.sin(t * 0.9 + p) + 0.04 * Math.sin(t * 3.1 + p * 2); // 螢幕光:緩慢起伏(不再逐格跳動)
+    case 'sway': return f.state === 1 && t >= CALM.until ? (hash(Math.floor(t * 11 + p)) < 0.25 ? 0.15 : 1) : 1;
     default: return 1;
   }
 }
@@ -130,6 +137,7 @@ export function buildLights(K, { root, propLights = [], poolSize = 8 }) {
       color: new THREE.Color(spec.color ?? k.color), cd: spec.cd ?? k.cd, dist: spec.dist ?? k.dist, glow: spec.glow ?? k.glow, shape: spec.shape === undefined ? k.shape : spec.shape,
       gain: k.gain, state, phase: R ? R() * 100 : Math.abs(spec.x * 7.31 + spec.z * 3.17) % 100, ov: 1, cur: 1, inst: -1, glowIdx: -1, axis: spec.axis || 'x', hang: spec.hang || 0,
       sway: spec.kind === 'bare_bulb' ? (R ? R.r(0.03, 0.09) : 0.05) : 0, ox: 0, oz: 0, prop: !!spec.prop,
+      dim: spec.dim ?? (spec.kind === 'fluoro_dying' ? 0.55 + 0.33 * hash(spec.x * 3.17 + spec.z * 7.71) : 1), // 老化燈管:穩定但偏暗
     };
     fixtures.push(f);
     return f;
@@ -167,7 +175,7 @@ export function buildLights(K, { root, propLights = [], poolSize = 8 }) {
       }
     }
     // 稀疏的壞天花燈(螢幕光/夜燈/檯燈的房間)
-    const sparse = SPARSE[lt] || (lt === 'emergency' ? (zone.theme === 'stairwell' ? [0.3, 0.45, 0.25] : [0.2, 0.45, 0.35]) : null);
+    const sparse = SPARSE[lt] || (lt === 'emergency' ? (zone.theme === 'stairwell' ? [0.5, 0, 0.5] : [0.4, 0, 0.6]) : null);
     if (sparse) {
       for (const [c0, r0, c1, r1] of zone.rects) {
         const w = (c1 - c0 + 1) * 2, h = (r1 - r0 + 1) * 2;
@@ -181,9 +189,9 @@ export function buildLights(K, { root, propLights = [], poolSize = 8 }) {
           add({ x, y: yC - 0.05, z, li, zone, kind: 'fluoro_dying', R, axis: alongX ? 'x' : 'z', states: sparse, yC });
         }
       }
-      // 至少一盞還會閃(整間全黑的話,玩家只看得到手電筒照到的地方)
+      // 至少一盞還微弱地亮著(整間全黑的話,玩家只看得到手電筒照到的地方)
       const mine = fixtures.filter((f) => f.zone === zone && f.kind === 'fluoro_dying');
-      if (mine.length && mine.every((f) => f.state === 2)) mine[0].state = 1;
+      if (mine.length && mine.every((f) => f.state === 2)) { mine[0].state = 0; mine[0].dim = 0.32; }
     }
     // 牆燈:紅色緊急燈(樓梯間/急診)、鈉燈(地下工業區)、夜燈(兒童區)、燭台壁燈(燭光區)、焚化爐旁的鈉燈
     const wl = lt === 'candle' ? 'sconce' : lt === 'fire' ? 'sodium' : lt;
@@ -205,7 +213,7 @@ export function buildLights(K, { root, propLights = [], poolSize = 8 }) {
       }
     }
   }
-  // ---- 走廊的明暗節奏:一段亮、一段暗(只剩一盞在閃),長直段的盡頭留一盞亮燈把人吸過去 ----
+  // ---- 走廊的明暗節奏:一段亮、一段暗(只剩一盞很暗的),長直段的盡頭留一盞亮燈把人吸過去 ----
   for (const zone of L.zones) {
     if (zone.theme !== 'corridor') continue;
     const list = fixtures.filter((f) => f.zone === zone && f.shape === 'tube');
@@ -219,7 +227,7 @@ export function buildLights(K, { root, propLights = [], poolSize = 8 }) {
     for (const [key, fs] of blocks) {
       const R2 = prng(hashStr(zone.id + key));
       const dark = R2() < (zone.light === 'fluoro_cold' ? 0.12 : 0.34);
-      if (dark) { const keep = (R2() * fs.length) | 0; fs.forEach((f, i) => { f.state = i === keep ? 1 : 2; }); }
+      if (dark) { const keep = (R2() * fs.length) | 0; fs.forEach((f, i) => { f.state = i === keep ? 0 : 2; if (i === keep) f.dim = 0.3; }); }
     }
     for (const [c0, r0, c1, r1] of zone.rects) {
       const w = c1 - c0 + 1, h = r1 - r0 + 1;
@@ -228,9 +236,22 @@ export function buildLights(K, { root, propLights = [], poolSize = 8 }) {
       if (!inR.length) continue;
       const key = (f) => (w >= h ? f.x : f.z);
       inR.sort((a, b) => key(a) - key(b));
-      for (const f of [inR[0], inR[inR.length - 1]]) { f.state = 0; f.lure = true; }
+      for (const f of [inR[0], inR[inR.length - 1]]) { f.state = 0; f.lure = true; f.dim = 1; }
     }
   }
+  // ---- [ghost] 刻意擺的壞燈:每個指定區域一盞(走廊最長直段的盡頭那支;其他區域離中心最遠的那支) ----
+  for (const zone of L.zones) {
+    if (!BROKEN_ZONES.has(zone.id)) continue;
+    const list = fixtures.filter((f) => f.zone === zone && (f.shape === 'tube' || f.shape === 'bulb'));
+    if (!list.length) continue;
+    const [c0, r0, c1, r1] = zone.rects.reduce((a, b) => ((b[2] - b[0]) * (b[3] - b[1]) > (a[2] - a[0]) * (a[3] - a[1]) ? b : a));
+    const cx = (c0 + c1 + 1), cz = (r0 + r1 + 1), alongX = c1 - c0 >= r1 - r0;
+    let best = null, bd = -1;
+    for (const f of list) { const d = alongX ? Math.abs(f.x - cx) - Math.abs(f.z - cz) * 2 : Math.abs(f.z - cz) - Math.abs(f.x - cx) * 2; if (d > bd) { bd = d; best = f; } }
+    if (best) { best.state = 1; best.mode = 'broken'; best.dim = 0.85; best.lure = false; }
+  }
+  // 其他任何「閃爍」狀態一律改回穩定(閃爍只剩壞燈與事件)
+  for (const f of fixtures) if (f.state === 1 && f.mode !== 'broken') f.state = 0;
   // ---- 緊急出口標示燈:樓梯間門(走廊側)與一樓通往戶外的門(室內側)上方 ----
   for (const d of K.doorList || []) {
     if (!d.axis) continue;
@@ -405,11 +426,14 @@ export function buildLights(K, { root, propLights = [], poolSize = 8 }) {
   const api = {
     fixtures, pool, emissive, glow,
     setPoolSize(n) { makePool(Math.max(0, Math.min(16, n | 0))); },
+    // [ghost] 開局安靜期:t 之前連壞燈也不閃(驚嚇導演的閃燈事件也會等這段時間過去)
+    calmUntil(t) { CALM.until = t; },
+    get calm() { return CALM.until; },
     update(t, dt, px, py, pz, fx, fz, playerLi, visibleLevels) {
       // 1) 每個燈具目前的亮度(閃爍 × 事件覆寫)
       for (let i = 0; i < nF; i++) {
         const f = fixtures[i];
-        let v = flickerValue(f, t) * f.ov;
+        let v = flickerValue(f, t) * f.ov * f.dim;
         f.cur = v;
         if (f.sway) { f.ox = Math.sin(t * 1.3 + f.phase) * f.sway; f.oz = Math.cos(t * 1.1 + f.phase * 0.7) * f.sway * 0.7; }
       }

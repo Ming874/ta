@@ -137,7 +137,7 @@ export function tent(ctx, x, y, z, yaw = 0, { key = 'po_tent_white', L = 4, W = 
   put(ctx, P, x, y, z, yaw);
   // 碰撞:三面牆(門口可進入)
   const c = Math.cos(yaw), s = Math.sin(yaw);
-  const wall = (lx, lz, sx2, sz2) => { const wx = x + lx * c + lz * s, wz = z - lx * s + lz * c; const ex = Math.abs(sx2 * c) + Math.abs(sz2 * s), ez = Math.abs(sx2 * s) + Math.abs(sz2 * c); solid(ctx, wx, y, wz, ex, H, ez); };
+  const wall = (lx, lz, sx2, sz2) => { const wx = x + lx * c + lz * s, wz = z - lx * s + lz * c; const ex = Math.abs(sx2 * c) + Math.abs(sz2 * s), ez = Math.abs(sx2 * s) + Math.abs(sz2 * c); solid(ctx, wx, y, wz, ex, H, ez, 'fabric'); };
   wall(0, -hz, L, 0.15);
   wall(-hx, 0, 0.15, W); wall(hx, 0, 0.15, W);
   if (!open) wall(0, hz, L, 0.15);
@@ -149,7 +149,7 @@ export function canopy(ctx, x, y, z, yaw = 0, { key = 'po_canvas_olive', L = 3.6
   cloth(P, key, new V3(-hx - 0.15, H + 0.3, -hz - 0.15), new V3(hx + 0.15, H + 0.3, -hz - 0.15), new V3(hx + 0.15, H, hz + 0.15), new V3(-hx - 0.15, H, hz + 0.15), 0.12, 8, 6);
   for (let k = 0; k < 9; k++) P.add(key, box(L / 9 - 0.02, 0.18, 0.005), M(-hx + (k + 0.5) * (L / 9), H - 0.09, hz + 0.16, 0.05 * Math.sin(k), 0, 0)); // 垂邊
   put(ctx, P, x, y, z, yaw);
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) { const c = Math.cos(yaw), s = Math.sin(yaw); solid(ctx, x + sx * hx * c + sz * hz * s, y, z - sx * hx * s + sz * hz * c, 0.12, H, 0.12); }
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) { const c = Math.cos(yaw), s = Math.sin(yaw); solid(ctx, x + sx * hx * c + sz * hz * s, y, z - sx * hx * s + sz * hz * c, 0.12, H, 0.12, 'metal'); }
 }
 
 // ======================================================================
@@ -182,7 +182,7 @@ export function sandbagWall(ctx, x0, y, z0, x1, z1, rows = 3, rng = null) {
     p.add(M(lerp(x0, x1, t) + jitter, y + r * 0.145, lerp(z0, z1, t) + jitter, (rng() - 0.5) * 0.06, yaw + (rng() - 0.5) * 0.12, (rng() - 0.5) * 0.06));
   }
   const ax = Math.abs(Math.cos(yaw)) > 0.7;
-  solid(ctx, (x0 + x1) / 2, y, (z0 + z1) / 2, ax ? L : 0.45, rows * 0.145 + 0.03, ax ? 0.45 : L);
+  solid(ctx, (x0 + x1) / 2, y, (z0 + z1) / 2, ax ? L : 0.45, rows * 0.145 + 0.03, ax ? 0.45 : L, 'sand');
 }
 function jerseyParts() {
   const P = new Parts();
@@ -194,7 +194,7 @@ function jerseyParts() {
 export function jersey(ctx, x, y, z, yaw = 0) {
   pool(ctx, 'jersey', jerseyParts, 48).add(M(x, y, z, 0, yaw, 0));
   const ax = Math.abs(Math.cos(yaw)) > 0.7;
-  solid(ctx, x, y, z, ax ? 2.0 : 0.6, 0.8, ax ? 0.6 : 2.0);
+  solid(ctx, x, y, z, ax ? 2.0 : 0.6, 0.8, ax ? 0.6 : 2.0, 'concrete');
 }
 // 臨時圍籬板(3.4m 寬,2m 高,混凝土腳座)
 function heraParts() {
@@ -211,7 +211,7 @@ function heraParts() {
 export function heras(ctx, x, y, z, yaw = 0, tilt = 0) {
   pool(ctx, 'heras', heraParts, 32).add(M(x, y, z, 0, yaw, tilt));
   const ax = Math.abs(Math.cos(yaw)) > 0.7;
-  solid(ctx, x, y, z, ax ? 3.4 : 0.3, 2.1, ax ? 0.3 : 3.4);
+  solid(ctx, x, y, z, ax ? 3.4 : 0.3, 2.1, ax ? 0.3 : 3.4, 'mesh');
 }
 
 // ======================================================================
@@ -370,7 +370,7 @@ export function postSign(ctx, P, x, y, z, yaw, name, w, h, top = 2.2, label = fa
   const c = Math.cos(yaw), s = Math.sin(yaw);
   P.add('metal_gray', box(w + 0.04, h + 0.04, 0.02), M(x + s * 0.05, y + top - h / 2, z + c * 0.05, 0, yaw, 0));
   if (g) P.add('po_sign', g, M(x + s * 0.062, y + top - h / 2, z + c * 0.062, 0, yaw, 0));
-  if (ctx) solid(ctx, x, y, z, 0.12, top, 0.12);
+  if (ctx) solid(ctx, x, y, z, 0.12, top, 0.12, 'metal');
 }
 // 道路信號彈(燃燒中:紅光 + 煙)
 export function flare(ctx, x, y, z, yaw = 0, zone = null) {
@@ -418,5 +418,5 @@ export function floodlight(ctx, P, x, y, z, yaw, on = true, zone = null, color =
     P.add(on ? 'glow_white' : 'po_lamp_off', box(0.25, 0.17, 0.01), M(hx, y + 2.7, hz, -0.45, yaw, 0).multiply(M(0, 0, 0.05)));
   }
   if (on) ctx.light({ x: x + s * 0.6, y: y + 2.5, z: z + c * 0.6, color, intensity: 16, distance: 18, kind: 'street', flicker: 0, zone: zone?.id, glow: 1.4 });
-  solid(ctx, x, y, z, 0.5, 2.6, 0.5);
+  solid(ctx, x, y, z, 0.5, 2.6, 0.5, 'metal');
 }

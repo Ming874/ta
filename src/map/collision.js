@@ -174,7 +174,7 @@ export class World {
         if (L.hasFloor(li, c, r)) iv.push([li === 0 ? -1e4 : y - L.SLAB, y]);
         if (ch === '#' || ch === 'E') iv.push([y, y + L.CEIL_H]);
         else if (ch === 'W') { iv.push([y, y + L.WINDOW_SILL]); iv.push([y + L.WINDOW_TOP, y + L.CEIL_H]); }
-        else if (ch === '=') iv.push([y, y + L.RAIL_H]);
+        else if (ch === '=') { const rh = this.railH ? this.railH[li * W * H + r * W + c] : L.RAIL_H; if (rh > 0) iv.push([y, y + rh]); } // 欄杆/矮牆:各格真實高度(setRailHeights;鐵欄杆 0 = 子彈/視線穿過欄杆間隙)
         else if (ch === '+') iv.push([y + DOOR_H, y + L.CEIL_H]);
       }
       if (L.roofed(c, r)) iv.push([top + L.CEIL_H, top + L.LEVEL_H]);
@@ -189,6 +189,15 @@ export class World {
     }
     off[W * H] = ys.length;
     this.cY = Float32Array.from(ys);
+  }
+
+  // '=' 格的實心高度(相對樓層地面):heightOf(li, c, r) → 公尺;0 = 不擋子彈/視線(鏤空鐵欄杆)。場景建好後由 physics/truth.js 呼叫
+  setRailHeights(heightOf) {
+    const L = this.layout, { W, H, NL } = this;
+    const a = (this.railH = new Float32Array(NL * W * H));
+    for (let li = 0; li < NL; li++) for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) if (L.charAt(li, c, r) === '=') a[li * W * H + r * W + c] = heightOf(li, c, r);
+    this._buildColumns();
+    this._static = null;
   }
 
   // 第 li 層、格 idx 在 (x,z) 的可站面高度;不可站回傳 NaN
@@ -511,6 +520,22 @@ export class World {
     return L.zoneAt(li, c, r) || null;
   }
 
+  // 半徑 r 的身體在 (x,z)、腳底 y 時頭頂上方第一個實心物的高度:格子結構 + 與身體重疊的道具盒底部(蹲下後能否站起來、翻越淨空)
+  headroom(x, z, y, r = 0.35) {
+    let ce = this.ceilAt(x, z, y);
+    const W = this.W, c0 = Math.max(0, Math.floor((x - r) / 2)), c1 = Math.min(W - 1, Math.floor((x + r) / 2));
+    const r0 = Math.max(0, Math.floor((z - r) / 2)), r1 = Math.min(this.H - 1, Math.floor((z + r) / 2));
+    for (let rr = r0; rr <= r1; rr++) for (let cc = c0; cc <= c1; cc++) {
+      const list = this.boxGrid[rr * W + cc];
+      for (let k = 0; k < list.length; k++) {
+        const b = list[k];
+        if (b.minY <= y + 0.3 || b.minY >= ce || x + r <= b.minX || x - r >= b.maxX || z + r <= b.minZ || z - r >= b.maxZ) continue;
+        ce = b.minY;
+      }
+    }
+    return ce;
+  }
+
   // 腳底 y 處頭頂上方第一個實心物的高度(Infinity = 露天)
   ceilAt(x, z, y) {
     const idx = this._idx(x, z);
@@ -531,26 +556,27 @@ export class World {
     const tdc = adx > 1e-9 ? 2 / adx : Infinity, tdr = adz > 1e-9 ? 2 / adz : Infinity;
     let tmc = adx > 1e-9 ? ((dx > 0 ? (c + 1) * 2 : c * 2) - ox) / dx : Infinity;
     let tmr = adz > 1e-9 ? ((dz > 0 ? (r + 1) * 2 : r * 2) - oz) / dz : Infinity;
-    let t = 0, best = maxDist;
+    let t = 0, best = maxDist, hb = null;
     const st = ++this._stamp;
     while (t < best) {
       if (c < 0 || r < 0 || c >= W || r >= H) break;
       const tn = tmc < tmr ? (tmc < best ? tmc : best) : tmr < best ? tmr : best;
       const idx = r * W + c;
       const h = this._colRay(idx, ox, oy, oz, dx, dy, dz, t, tn);
-      if (h < best) best = h;
+      if (h < best) { best = h; hb = null; }
       const list = this.boxGrid[idx];
       for (let k = 0; k < list.length; k++) {
         const b = list[k];
         if (b._s === st) continue;
         b._s = st;
         const bt = boxRay(b, ox, oy, oz, dx, dy, dz, best);
-        if (bt < best) best = bt;
+        if (bt < best) { best = bt; hb = b; }
       }
       if (best <= tn) break;
       t = tn;
       if (tmc < tmr) { c += sc; tmc += tdc; } else { r += sr; tmr += tdr; }
     }
+    this.rayBox = hb; // 命中的道具碰撞盒(null = 牆/樓板/樓梯或沒打到;子彈穿透用)
     return best;
   }
 

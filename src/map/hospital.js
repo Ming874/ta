@@ -179,7 +179,7 @@ export function buildHospital(world, layout, scene, opts = {}) {
       atmo.update(time, dt, cam, mood, outdoor);
       // 新的一局(狀態從非遊戲中變成遊戲中):驚嚇事件、被甩上的門、掉下的天花板都歸零
       const st = H.game?.state;
-      if (st === 'playing' && H._state !== 'playing') events.reset();
+      if (st === 'playing' && H._state !== 'playing') { events.reset(); lights.calmUntil?.(time + 60); } // [ghost] 開局 60 秒內燈不閃
       H._state = st;
       try { events.update(time, dt, player, H.game, { li, zone, mood: style.mood, outdoor, fx: camFwd.x / fl, fz: camFwd.z / fl }); } catch (e) { console.warn('[events]', e); }
       K.leaves?.update(); // 角度有變的門扇才重寫實例矩陣

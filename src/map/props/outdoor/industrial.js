@@ -113,7 +113,7 @@ export function dumpster(ctx, o, zone) {
   const local = (lx, lz) => new V3(lx, 0, lz).applyAxisAngle(new V3(0, 1, 0), yaw).add(new V3(o.x, o.y, o.z));
   for (let k = 0; k < 5; k++) { const p = local(rng.range(0.2, 1.4), rng.range(-0.5, 0.4)); trashBag(ctx, p.x, o.y + 0.9 + rng.range(0, 0.25), p.z, rng.range(0, 6), rng.range(0.9, 1.2), [rng.range(-0.4, 0.4), rng.range(-0.4, 0.4)]); }
   void g; void zone;
-  solid(ctx, o.x, o.y, o.z, yaw ? 1.8 : 3.6, 1.4, yaw ? 3.6 : 1.8);
+  solid(ctx, o.x, o.y, o.z, yaw ? 1.8 : 3.6, 1.4, yaw ? 3.6 : 1.8, 'metal');
 }
 
 // ---------- 運轉中的發電機組 ----------
@@ -248,8 +248,8 @@ export function generator(ctx, o, zone) {
   const gp = { x: o.x, y: o.y + 1, z: o.z };
   startLoop('gen', 'generator', gp);
   ctx.event({ kind: 'generator', x: o.x, y: o.y, z: o.z, zone: zone?.id });
-  solid(ctx, o.x, o.y, o.z, yaw ? 1.3 : 3.4, 2.0, yaw ? 3.4 : 1.3);
-  solid(ctx, bx.x, o.y, bx.z, 0.7, 1.5, 0.4);
+  solid(ctx, o.x, o.y, o.z, yaw ? 1.3 : 3.4, 2.0, yaw ? 3.4 : 1.3, 'heavy');
+  solid(ctx, bx.x, o.y, bx.z, 0.7, 1.5, 0.4, 'metal');
 }
 
 // ---------- 磚造焚化爐(高煙囪、鐵門、灰燼)----------
@@ -287,9 +287,9 @@ export function incinerator(ctx, o, zone) {
   for (let k = 0; k < 3; k++) P.merge(bagFallback(k % 2 ? 'po_bag_red' : 'po_bag_yellow', 0.85), M(-1.3 + k * 0.3, 0.15 + (k === 2 ? 0.32 : 0), fz + 0.5 + k * 0.05, 0.1 * k, k, 0.2 * k));
   const yaw = o.yaw ?? HALF;
   put(ctx, P, o.x, o.y, o.z, yaw);
-  solid(ctx, o.x, o.y, o.z, S + 0.2, H + 0.8, S + 0.2);
+  solid(ctx, o.x, o.y, o.z, S + 0.2, H + 0.8, S + 0.2, 'stone');
   const cp = new V3(-0.6, 0, -0.6).applyAxisAngle(new V3(0, 1, 0), yaw);
-  solid(ctx, o.x + cp.x, o.y, o.z + cp.z, 0.9, 12.8, 0.9);
+  solid(ctx, o.x + cp.x, o.y, o.z + cp.z, 0.9, 12.8, 0.9, 'stone');
   ctx.event({ kind: 'incinerator', x: o.x, y: o.y, z: o.z, zone: zone?.id });
 }
 
@@ -358,7 +358,7 @@ export function waterTower(ctx, o, zone) {
   flatDecal(P, 'water', 1.3, 0.004, 1.4, 1.4, 1.2, 'y+');
   flatDecal(P, 'rust', 0, 0.004, 0, 2.6, 2.6, 'y+');
   put(ctx, P, o.x, o.y, o.z, o.yaw ?? 0);
-  solid(ctx, o.x, o.y, o.z, 2.6, ty + TH + 0.4, 2.6);
+  solid(ctx, o.x, o.y, o.z, 2.6, ty + TH + 0.4, 2.6, 'metal');
   ctx.event({ kind: 'water_tower', x: o.x, y: o.y, z: o.z, zone: zone?.id });
 }
 
@@ -406,7 +406,7 @@ export function acUnit(ctx, o, zone) {
     const sp = i === 0 && rng.chance(0.6) ? rng.range(0.4, 1.2) : 0, ph = rng() * TAU;
     fp.add(base, (t, m) => m.makeRotationY(ph + t * sp + (sp ? Math.sin(t * 0.7) * 0.4 : 0)));
   });
-  solid(ctx, o.x, o.y, o.z, 1.9, y0 + H + 0.25, 1.9);
+  solid(ctx, o.x, o.y, o.z, 1.9, y0 + H + 0.25, 1.9, 'metal');
   void zone;
 }
 

@@ -38,7 +38,7 @@ export function bench(ctx, x, y, z, yaw = 0) {
   bindModel(p, 'bench', [], { origin: 'base', xform: new THREE.Matrix4().makeRotationY(Math.PI) });
   p.add(M(x, y, z, 0, yaw, 0));
   const ax = Math.abs(Math.cos(yaw)) > 0.7;
-  solid(ctx, x, y, z, ax ? 1.2 : 0.5, 0.5, ax ? 0.5 : 1.2);
+  solid(ctx, x, y, z, ax ? 1.2 : 0.5, 0.5, ax ? 0.5 : 1.2, 'wood');
 }
 
 // ---------- 路阻柱 / 消防栓 ----------
@@ -50,7 +50,7 @@ export function bollard(ctx, x, y, z, tilt = 0, yaw = 0) {
     for (const yy of [0.72, 0.8]) P.add('po_reflect', cyl(0.072, 0.072, 0.04, 12), M(0, yy, 0));
     return P;
   }, 48).add(M(x, y, z, tilt, yaw, 0));
-  if (!tilt) solid(ctx, x, y, z, 0.18, 0.9, 0.18);
+  if (!tilt) solid(ctx, x, y, z, 0.18, 0.9, 0.18, 'heavy');
 }
 export function hydrant(ctx, x, y, z, yaw = 0) {
   pool(ctx, 'hydrant', () => {
@@ -63,7 +63,7 @@ export function hydrant(ctx, x, y, z, yaw = 0) {
     flatDecal(P, 'rustrun', 0, 0.3, 0.101, 0.16, 0.4, 'z+');
     return P;
   }, 8).add(M(x, y, z, 0, yaw, 0));
-  solid(ctx, x, y, z, 0.3, 0.75, 0.3);
+  solid(ctx, x, y, z, 0.3, 0.75, 0.3, 'heavy');
 }
 
 // ---------- 公車亭(鋼架、碎玻璃、廣告燈箱、站牌)----------
@@ -89,8 +89,8 @@ export function busStop(ctx, x, y, z, yaw, rng) {
   flatDecal(P, rng() < 0.5 ? 'g_dont' : 'g_still', -L / 4, 1.3, -D / 2 + 0.012, 1.4, 0.7, 'z+');
   put(ctx, P, x, y, z, yaw);
   const c = Math.cos(yaw), s = Math.sin(yaw);
-  const wall = (lx, lz, sx2, sz2, h = H) => { const wx = x + lx * c + lz * s, wz = z - lx * s + lz * c; solid(ctx, wx, y, wz, Math.abs(sx2 * c) + Math.abs(sz2 * s), h, Math.abs(sx2 * s) + Math.abs(sz2 * c)); };
-  wall(0, -D / 2, L, 0.12); wall(L / 2, 0, 0.14, D); wall(0, -D / 2 + 0.3, L * 0.7, 0.4, 0.48);
+  const wall = (lx, lz, sx2, sz2, h = H, mat = 'metal') => { const wx = x + lx * c + lz * s, wz = z - lx * s + lz * c; solid(ctx, wx, y, wz, Math.abs(sx2 * c) + Math.abs(sz2 * s), h, Math.abs(sx2 * s) + Math.abs(sz2 * c), mat); };
+  wall(0, -D / 2, L, 0.12, H, 'glass'); wall(L / 2, 0, 0.14, D); wall(0, -D / 2 + 0.3, L * 0.7, 0.4, 0.48);
 }
 
 // ---------- 電箱(Poly Haven utility_box_01)----------
@@ -99,7 +99,7 @@ export function utilityBox(ctx, x, y, z, yaw = 0) {
   bindModel(p, 'utilitybox', [], { origin: 'base' });
   p.add(M(x, y, z, 0, yaw, 0));
   const ax = Math.abs(Math.cos(yaw)) > 0.7;
-  solid(ctx, x, y, z, ax ? 0.55 : 0.46, 1.12, ax ? 0.46 : 0.55);
+  solid(ctx, x, y, z, ax ? 0.55 : 0.46, 1.12, ax ? 0.46 : 0.55, 'metal');
 }
 
 // ---------- 動態小物(CC0 模型;載入前用程式備援)----------
@@ -251,7 +251,7 @@ export function flagPole(ctx, P, x, y, z, h = 8) {
   fl.position.set(x + 0.05, y + h - 0.7, z);
   fl.rotation.y = hash(x + z) * TAU;
   ctx.add(fl, { static: false });
-  solid(ctx, x, y, z, 0.5, h, 0.5);
+  solid(ctx, x, y, z, 0.5, h, 0.5, 'metal');
 }
 
 // ---------- 花台(混凝土 + 泥土 + 枯灌木)/ 繳費機 / 書報箱 ----------
@@ -261,7 +261,7 @@ export function planter(ctx, P, x, y, z, w, d, yaw = 0) {
   T.add('po_soil', box(w - 0.12, 0.05, d - 0.12), M(0, h - 0.08, 0));
   P.merge(T, M(x, y, z, 0, yaw, 0));
   const ax = Math.abs(Math.cos(yaw)) > 0.7;
-  solid(ctx, x, y, z, ax ? w : d, h, ax ? d : w);
+  solid(ctx, x, y, z, ax ? w : d, h, ax ? d : w, 'concrete');
   return y + h - 0.06;
 }
 export function payStation(ctx, P, x, y, z, yaw) {
@@ -272,7 +272,7 @@ export function payStation(ctx, P, x, y, z, yaw) {
   T.add('plastic_black', box(0.08, 0.02, 0.02), M(0.12, 0.85, 0.19));
   T.add('cast_iron', box(0.6, 0.06, 0.45), M(0, 0.03, 0));
   P.merge(T, M(x, y, z, 0, yaw, 0));
-  solid(ctx, x, y, z, 0.5, 1.5, 0.5);
+  solid(ctx, x, y, z, 0.5, 1.5, 0.5, 'metal');
 }
 // ---------- 購物推車(動態)----------
 function cartParts() {

@@ -194,21 +194,21 @@ export function put(ctx, obj, x, y, z, yaw = 0, opt = {}) {
   obj.rotation.set(0, yaw, 0);
   return ctx.add(obj, { static: true, collide: false, ...opt });
 }
-// 只登記碰撞(不可見方塊,登記後移出場景):cx,cz 中心、sx,sz 尺寸、h 高、y0 底
-export function solid(ctx, cx, y0, cz, sx, h, sz) {
+// 只登記碰撞(不可見方塊,登記後移出場景):cx,cz 中心、sx,sz 尺寸、h 高、y0 底;mat:材質(子彈穿透/彈著效果,見 physics/truth.js)
+export function solid(ctx, cx, y0, cz, sx, h, sz, mat = null) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(sx, h, sz));
   m.position.set(cx, y0 + h / 2, cz);
   m.visible = false;
-  ctx.add(m, { collide: true, static: false, shrink: 0 });
+  ctx.add(m, { collide: true, static: false, shrink: 0, mat });
   ctx.group.remove(m);
   m.geometry.dispose();
 }
 // 旋轉後的本地盒(以 yaw 轉)換成世界 AABB 碰撞
-export function solidLocal(ctx, x, y, z, yaw, lx, lz, sx, h, sz) {
+export function solidLocal(ctx, x, y, z, yaw, lx, lz, sx, h, sz, mat = null) {
   const c = Math.cos(yaw), s = Math.sin(yaw);
   const wx = x + lx * c + lz * s, wz = z - lx * s + lz * c;
   const ex = Math.abs(sx * c) + Math.abs(sz * s), ez = Math.abs(sx * s) + Math.abs(sz * c);
-  solid(ctx, wx, y, wz, ex, h, ez);
+  solid(ctx, wx, y, wz, ex, h, ez, mat);
 }
 
 // ---------- 實例池(重複物件:InstancedMesh,static:false)----------

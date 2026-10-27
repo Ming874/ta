@@ -1,0 +1,23 @@
+/* 靈異字幕(耳邊低語):淡、細、微微晃動,一字一字浮出;依耳朵方向偏左/偏右 */
+#gh-subs { position: fixed; left: 0; right: 0; bottom: 15%; display: flex; flex-direction: column; align-items: center; gap: .35em; pointer-events: none; z-index: 7; }
+.gh-line { position: relative; max-width: 62vw; text-align: center; font-family: "Noto Serif TC", "Songti TC", "PMingLiU", "MingLiU", serif; font-size: clamp(15px, 1.35vw, 22px);
+  letter-spacing: .3em; line-height: 1.5; color: rgba(214, 226, 238, .82); text-shadow: 0 0 10px rgba(130, 165, 210, .6), 0 0 3px rgba(0, 0, 0, .9), 0 1px 2px #000;
+  animation: ghjit .14s steps(2) infinite, ghflick 3.7s ease-in-out infinite; transition: opacity 1.3s ease, filter 1.3s ease, letter-spacing 1.6s ease; }
+.gh-line[data-ear="left"] { transform: translateX(-17vw); }
+.gh-line[data-ear="right"] { transform: translateX(17vw); }
+.gh-line[data-ear="behind"] { font-style: italic; }
+.gh-line[data-ear="both"] { text-shadow: -3px 0 6px rgba(130, 165, 210, .45), 3px 0 6px rgba(130, 165, 210, .45), 0 0 3px rgba(0, 0, 0, .9); }
+.gh-line[data-f="phone"], .gh-line[data-f="radio"] { color: rgba(222, 214, 196, .85); letter-spacing: .18em; text-shadow: 0 0 6px rgba(200, 180, 140, .35), 0 0 3px #000, 0 1px 2px #000; font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", sans-serif; }
+.gh-line small { display: block; font-size: .62em; letter-spacing: .4em; opacity: .55; font-style: normal; margin-bottom: .1em; }
+.gh-line.cap { color: rgba(190, 190, 190, .8); letter-spacing: .5em; text-shadow: 0 0 4px #000, 0 1px 2px #000; }
+.gh-line .c { opacity: 0; filter: blur(5px); display: inline-block; transform: translateY(.18em); transition: opacity .55s ease, filter .7s ease, transform .7s ease; }
+.gh-line .c.on { opacity: 1; filter: blur(.35px); transform: none; }
+.gh-line .c.br { display: block; height: 0; }
+.gh-line.out { opacity: 0; filter: blur(4px); letter-spacing: .55em; }
+@keyframes ghjit { 0% { translate: 0 0; } 50% { translate: .6px -.4px; } 100% { translate: -.5px .3px; } }
+@keyframes ghflick { 0%, 100% { opacity: 1; } 37% { opacity: .78; } 41% { opacity: .95; } 63% { opacity: .7; } 66% { opacity: .92; } }
+
+/* 寒氣:畫面邊緣結霜 + 冷色暈影(在 HUD 之下、3D 畫面之上) */
+#gh-frost { position: fixed; inset: 0; pointer-events: none; opacity: 0; background-size: cover; background-position: center;
+  -webkit-mask-image: radial-gradient(ellipse at center, transparent 48%, rgba(0, 0, 0, .45) 70%, #000 96%); mask-image: radial-gradient(ellipse at center, transparent 48%, rgba(0, 0, 0, .45) 70%, #000 96%);
+  box-shadow: inset 0 0 16vmin rgba(150, 190, 235, .3); }

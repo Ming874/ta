@@ -70,7 +70,7 @@ function boiler(ctx, P, x, y, z, yaw, R) {
   flatDecal(T, 'oil', 0, 0.006, 0, 3.4, 2.0, 'y+');
   P.merge(T, M(x, y, z, 0, yaw, 0));
   const ax = Math.abs(Math.cos(yaw)) > 0.7;
-  solid(ctx, x, y, z, ax ? L + 0.3 : 2.1, 2.5, ax ? 2.1 : L + 0.3);
+  solid(ctx, x, y, z, ax ? L + 0.3 : 2.1, 2.5, ax ? 2.1 : L + 0.3, 'heavy');
 }
 // 水泵(馬達 + 渦殼 + 底座 + 進出水管)
 function pump(ctx, P, x, y, z, yaw) {
@@ -84,7 +84,7 @@ function pump(ctx, P, x, y, z, yaw) {
   T.add('plastic_red', tor(0.12, 0.012, 4, 14), M(0.25, 1.05, 0.0, HALF, 0, 0));
   flatDecal(T, 'oil', 0, 0.006, 0, 1.8, 1.0, 'y+');
   P.merge(T, M(x, y, z, 0, yaw, 0));
-  solid(ctx, x, y, z, 1.7, 1.1, 1.7);
+  solid(ctx, x, y, z, 1.7, 1.1, 1.7, 'heavy');
 }
 // 堆高機(簡化:車身、門架、牙叉、護頂、座椅、輪)
 function forklift(ctx, P, x, y, z, yaw) {
@@ -100,7 +100,7 @@ function forklift(ctx, P, x, y, z, yaw) {
   T.add('rubber', rbox(0.5, 0.1, 0.45, 0.04), M(0, 1.08, -0.4));
   T.add('rubber', cyl(0.18, 0.18, 0.03, 12), M(0, 1.45, 0.2, 0.6, 0, 0));
   P.merge(T, M(x, y, z, 0, yaw, 0));
-  solid(ctx, x, y, z, 1.6, 2.2, 1.6);
+  solid(ctx, x, y, z, 1.6, 2.2, 1.6, 'heavy');
 }
 // 籠車
 function rollCage(P, x, y, z, yaw, R) {
@@ -142,11 +142,11 @@ function dressBoiler(ctx, zone) {
   for (const s of ctx.wallSpots(zone, { allowNearDoor: true })) wallPipes(P, s, y, R, { tray: R() < 0.3, n: 3 });
   if (freeAt(ctx, li, 24, 17.5, 1.9)) boiler(ctx, P, 24, y, 17.6, 0, R);
   if (freeAt(ctx, li, 30.5, 22.5, 1.9)) boiler(ctx, P, 30.6, y, 22.6, HALF, R);
-  if (freeAt(ctx, li, 21, 25.5, 1.0)) { P.add('po_coal', new THREE.SphereGeometry(1.0, 12, 6, 0, TAU, 0, HALF).scale(1.4, 0.5, 1.0), M(21, y, 25.6)); groundDecal(P, 'ashes', 21, 25.6, 3, 2.4, 0.3, y + 0.006); solid(ctx, 21, y, 25.6, 2.2, 0.5, 1.6); }
+  if (freeAt(ctx, li, 21, 25.5, 1.0)) { P.add('po_coal', new THREE.SphereGeometry(1.0, 12, 6, 0, TAU, 0, HALF).scale(1.4, 0.5, 1.0), M(21, y, 25.6)); groundDecal(P, 'ashes', 21, 25.6, 3, 2.4, 0.3, y + 0.006); solid(ctx, 21, y, 25.6, 2.2, 0.5, 1.6, 'stone'); }
   if (freeAt(ctx, li, 34.6, 15.4, 0.6)) { // 工作台
     P.add('wood_old', box(1.8, 0.06, 0.7), M(34.6, y + 0.9, 15.2)); for (const [a, b] of [[-0.8, -0.3], [0.8, -0.3], [-0.8, 0.3], [0.8, 0.3]]) P.add('steel', box(0.05, 0.9, 0.05), M(34.6 + a, y + 0.45, 15.2 + b));
     P.add('cast_iron', box(0.18, 0.12, 0.12), M(34.1, y + 0.99, 15.2)); P.add('steel', box(0.3, 0.02, 0.04), M(34.8, y + 0.94, 15.0, 0, 0.5, 0)); P.add('plastic_red', box(0.4, 0.2, 0.2), M(35.1, y + 1.03, 15.3));
-    solid(ctx, 34.6, y, 15.2, 1.8, 0.95, 0.7);
+    solid(ctx, 34.6, y, 15.2, 1.8, 0.95, 0.7, 'metal');
   }
   for (const [x, z] of [[19.4, 14.8], [20.2, 15.2]]) barrel(ctx, x, y, z, { yaw: R() * TAU });
   propane(ctx, 35.2, y, 26.8, false);
@@ -161,9 +161,9 @@ function dressDock(ctx, zone) {
   }
   for (let x = 104.5; x < 116; x += 1.6) groundDecal(P, 'skid', x, 39, 1.5, 0.4, 0, y + 0.006);
   if (freeAt(ctx, li, 107, 25, 1.0)) forklift(ctx, P, 107.2, y, 25.4, 0.4);
-  for (const [x, z] of [[112.6, 23.4], [114.4, 23.4], [114.6, 26.2]]) if (freeAt(ctx, li, x, z, 0.5)) { pallet(P, x, y, z, R.range(-0.2, 0.2), R.int(1, 2), R); P.add('cardboard', box(1.0, 0.6, 0.7), M(x, y + 0.6, z, 0, R.range(-0.2, 0.2), 0)); P.add('po_sheet', box(1.02, 0.62, 0.72), M(x, y + 0.6, z)); solid(ctx, x, y, z, 1.2, 0.9, 1.2); }
+  for (const [x, z] of [[112.6, 23.4], [114.4, 23.4], [114.6, 26.2]]) if (freeAt(ctx, li, x, z, 0.5)) { pallet(P, x, y, z, R.range(-0.2, 0.2), R.int(1, 2), R); P.add('cardboard', box(1.0, 0.6, 0.7), M(x, y + 0.6, z, 0, R.range(-0.2, 0.2), 0)); P.add('po_sheet', box(1.02, 0.62, 0.72), M(x, y + 0.6, z)); solid(ctx, x, y, z, 1.2, 0.9, 1.2, 'wood'); }
   for (const [x, z] of [[105.6, 33.4], [106.6, 33.6]]) rollCage(P, x, y, z, R.range(-0.4, 0.4), R);
-  if (freeAt(ctx, li, 106, 33.5, 0.9)) solid(ctx, 106.1, y, 33.5, 1.9, 1.7, 0.8);
+  if (freeAt(ctx, li, 106, 33.5, 0.9)) solid(ctx, 106.1, y, 33.5, 1.9, 1.7, 0.8, 'metal');
   for (const [x, z] of [[113.4, 31.2], [114.6, 32.4]]) crate(ctx, x, y, z, R.range(-0.3, 0.3));
   for (const [x, z] of [[110.2, 36.6], [111.1, 37.0]]) barrel(ctx, x, y, z, { yaw: R() * TAU, fallen: x > 111 });
   tyre(ctx, 108.4, y, 29.5, true);
@@ -199,10 +199,10 @@ function dressIncinerator(ctx, zone) {
     groundDecal(P, 'ashes', fx, fz - 1.6, 2.6, 1.6, 0, y + 0.006);
     P.add('po_ash', new THREE.SphereGeometry(0.6, 10, 6, 0, TAU, 0, HALF).scale(1.3, 0.3, 0.7), M(fx + 0.3, y, fz - 1.4));
     ctx.light({ x: fx, y: y + 0.9, z: fz - 0.9, color: 0xff5a18, intensity: 6, distance: 9, kind: 'fire', flicker: 0.3, zone: zone.id, glow: 0.6 });
-    solid(ctx, fx, y, fz, 3.0, 2.6, 1.0);
+    solid(ctx, fx, y, fz, 3.0, 2.6, 1.0, 'stone');
     P.add('wood_old', rod(new V3(fx + 1.9, y + 0.1, fz - 0.7), new V3(fx + 2.0, y + 1.3, fz - 0.5), 0.02, 6));
   }
-  for (const [x, z] of [[98.6, 36.4], [99.6, 40.8], [86.2, 56.2], [88.6, 56.0]]) if (freeAt(ctx, li, x, z, 0.6)) { wasteCart(P, x, y, z, R.range(-0.3, 0.3)); solid(ctx, x, y, z, 1.0, 1.1, 0.7); }
+  for (const [x, z] of [[98.6, 36.4], [99.6, 40.8], [86.2, 56.2], [88.6, 56.0]]) if (freeAt(ctx, li, x, z, 0.6)) { wasteCart(P, x, y, z, R.range(-0.3, 0.3)); solid(ctx, x, y, z, 1.0, 1.1, 0.7, 'metal'); }
   for (const [x, z] of [[97.2, 44.8], [97.8, 45.6], [84.6, 60.4]]) bioBin(ctx, x, y, z, R() * TAU);
   for (let k = 0; k < 6; k++) trashBag(ctx, 96 + R.range(-0.6, 0.6), y, 50 + R.range(-1, 1), R() * TAU, R.range(0.8, 1.0));
   litter(P, R, 92, 60, 5, 26, ['gauze', 'glove', 'mask', 'pills', 'tag'], y + 0.009);
@@ -213,7 +213,7 @@ function dressPump(ctx, zone) {
   const R = zrng(zone), P = new Parts(), li = zone.levelIndex, y = ctx.L.levels[li].y;
   for (const s of ctx.wallSpots(zone, { allowNearDoor: true })) wallPipes(P, s, y, R, { n: 3, r: 0.07, tray: R() < 0.3 });
   for (const [x, z] of [[40, 59.4], [43.4, 59.4], [56, 64.6]]) if (freeAt(ctx, li, x, z, 0.9)) pump(ctx, P, x, y, z, R() < 0.5 ? 0 : Math.PI);
-  if (freeAt(ctx, li, 56.4, 59.6, 0.8)) { P.add('po_green_paint', cyl(0.6, 0.6, 2.2, 18), M(56.4, y + 1.2, 59.6)); P.add('po_green_paint', new THREE.SphereGeometry(0.6, 18, 8, 0, TAU, 0, HALF), M(56.4, y + 2.3, 59.6)); P.add('po_label', labelQuad('gauge', 0.2, 0.2), M(56.4, y + 1.5, 60.22)); solid(ctx, 56.4, y, 59.6, 1.3, 2.9, 1.3); }
+  if (freeAt(ctx, li, 56.4, 59.6, 0.8)) { P.add('po_green_paint', cyl(0.6, 0.6, 2.2, 18), M(56.4, y + 1.2, 59.6)); P.add('po_green_paint', new THREE.SphereGeometry(0.6, 18, 8, 0, TAU, 0, HALF), M(56.4, y + 2.3, 59.6)); P.add('po_label', labelQuad('gauge', 0.2, 0.2), M(56.4, y + 1.5, 60.22)); solid(ctx, 56.4, y, 59.6, 1.3, 2.9, 1.3, 'heavy'); }
   wetSign(ctx, 47.5, y, 60.2, 0.6);
   finish(ctx, P);
 }
@@ -226,9 +226,9 @@ function dressMachine(ctx, zone) {
     P.add('po_green_paint', cyl(0.35, 0.35, 0.8, 16).rotateZ(HALF), M(88.2, y + 0.65, 31.6));
     P.add('cast_iron', cyl(0.5, 0.5, 0.18, 24).rotateZ(HALF), M(88.95, y + 0.75, 31.6));
     for (let k = 0; k < 4; k++) P.add('steel', cyl(0.012, 0.012, 2.6, 4), M(89.05, y + 2.0, 31.3 + k * 0.2));
-    solid(ctx, 88.6, y, 31.6, 1.7, 1.3, 1.1);
+    solid(ctx, 88.6, y, 31.6, 1.7, 1.3, 1.1, 'heavy');
   }
-  for (const [x, z] of [[94.6, 31.0]]) if (freeAt(ctx, li, x, z, 0.5)) { P.add('metal_gray', box(1.2, 1.9, 0.5), M(x, y + 0.95, z)); P.add('po_label', labelQuad('panel', 0.6, 0.6), M(x, y + 1.3, z + 0.255)); solid(ctx, x, y, z, 1.2, 1.9, 0.5); }
+  for (const [x, z] of [[94.6, 31.0]]) if (freeAt(ctx, li, x, z, 0.5)) { P.add('metal_gray', box(1.2, 1.9, 0.5), M(x, y + 0.95, z)); P.add('po_label', labelQuad('panel', 0.6, 0.6), M(x, y + 1.3, z + 0.255)); solid(ctx, x, y, z, 1.2, 1.9, 0.5, 'metal'); }
   barrel(ctx, 100.6, y, 48.6, { yaw: 0.3 });
   finish(ctx, P);
 }
@@ -257,7 +257,7 @@ function dressOssuary(ctx, zone) {
     flatDecal(P, R.pick(['moss', 'drip', 'stain2']), s.x + s.nx * 0.012, y + 0.3, s.z + s.nz * 0.012, 1.6, 0.6, s.nx > 0.5 ? 'x+' : s.nx < -0.5 ? 'x-' : s.nz > 0.5 ? 'z+' : 'z-');
   }
   // 地上的棺木(部分泡在水裡)、散落骨頭
-  for (const [x, z, a] of [[44.6, 30.8, 0.3], [75.2, 48.4, -0.4], [46, 48.6, 1.4]]) if (freeAt(ctx, li, x, z, 0.6)) { const T = new Parts(); T.add('wood_dark', rbox(2.0, 0.42, 0.6, 0.04), M(0, 0.21, 0)); T.add('wood_dark', rbox(1.4, 0.08, 0.62, 0.03), M(-0.3, 0.46, 0, 0, 0, 0.08)); T.add('po_bone', sph(0.09, 8, 6), M(0.7, 0.45, 0.1)); P.merge(T, M(x, y, z, 0, a, 0)); solid(ctx, x, y, z, 2.0, 0.5, 0.7); }
+  for (const [x, z, a] of [[44.6, 30.8, 0.3], [75.2, 48.4, -0.4], [46, 48.6, 1.4]]) if (freeAt(ctx, li, x, z, 0.6)) { const T = new Parts(); T.add('wood_dark', rbox(2.0, 0.42, 0.6, 0.04), M(0, 0.21, 0)); T.add('wood_dark', rbox(1.4, 0.08, 0.62, 0.03), M(-0.3, 0.46, 0, 0, 0, 0.08)); T.add('po_bone', sph(0.09, 8, 6), M(0.7, 0.45, 0.1)); P.merge(T, M(x, y, z, 0, a, 0)); solid(ctx, x, y, z, 2.0, 0.5, 0.7, 'wood'); }
   for (const c of ctx.cells(zone, { allowNearDoor: true })) if (R() < 0.15) { P.add('po_bone', cyl(0.02, 0.025, R.range(0.25, 0.45), 6).rotateZ(HALF), M(c.x + R.range(-0.6, 0.6), y + 0.03, c.z + R.range(-0.6, 0.6), 0, R() * TAU, 0)); if (R() < 0.4) sk.add(M(c.x + R.range(-0.6, 0.6), y + 0.0, c.z + R.range(-0.6, 0.6), R.range(-1, 1), R() * TAU, R.range(-0.6, 0.6))); }
   finish(ctx, P);
 }

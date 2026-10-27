@@ -47,8 +47,8 @@ export function fountain(ctx, o, zone) {
   const st = pool(ctx, 'fountain_statue', () => { const F = robedFigure(1.55, { pose: 'pray', key: 'marble', seed: 5 }); return F; }, 2);
   bindModel(st, 'gothic', [], { origin: 'base' });
   st.add(M(o.x, o.y + 0.66, o.z, 0, o.yaw ?? 0, 0));
-  solid(ctx, o.x, o.y, o.z, (R1 + 0.12) * 2 * 0.92, Hw + 0.05, (R1 + 0.12) * 2 * 0.92);
-  solid(ctx, o.x, o.y, o.z, 1.5, 2.6, 1.5);
+  solid(ctx, o.x, o.y, o.z, (R1 + 0.12) * 2 * 0.92, Hw + 0.05, (R1 + 0.12) * 2 * 0.92, 'stone');
+  solid(ctx, o.x, o.y, o.z, 1.5, 2.6, 1.5, 'stone');
   ctx.event({ kind: 'statue_mary', x: o.x, y: o.y + 1.6, z: o.z, zone: zone?.id });
 }
 
@@ -96,8 +96,8 @@ export function sacredHeart(ctx, o, zone) {
   const fp = animPool(ctx, 'flames', () => flame, 32);
   fp.add(M(cpos.x, cpos.y, cpos.z), (t, m) => { const s = 1 + Math.sin(t * 13 + 1) * 0.08 + Math.sin(t * 29) * 0.05; m.makeScale(1, s, 1); });
   ctx.light({ x: cpos.x, y: cpos.y + 0.1, z: cpos.z, color: 0xffa040, intensity: 2.2, distance: 5, kind: 'candle', flicker: 0.5, zone: zone?.id });
-  solid(ctx, o.x, o.y, o.z, 2.7, 0.4, 2.7);
-  solid(ctx, o.x, o.y, o.z, 1.3, 4.2, 1.3);
+  solid(ctx, o.x, o.y, o.z, 2.7, 0.4, 2.7, 'stone');
+  solid(ctx, o.x, o.y, o.z, 1.3, 4.2, 1.3, 'stone');
   ctx.event({ kind: 'statue_veiled', x: o.x, y: o.y + 3.8, z: o.z, zone: zone?.id });
 }
 

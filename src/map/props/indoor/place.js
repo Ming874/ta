@@ -281,7 +281,7 @@ export class Room {
       if (!this.reachOK(fp)) return null;
     } else this.mark(fp);
     const p = this.put(t, x, z, yaw, o);
-    if (o.collide !== false) this.collide(bb, x, o.y ?? this.y, z, yaw, o);
+    if (o.collide !== false) { this._tag = t.name; this.collide(bb, x, o.y ?? this.y, z, yaw, o); this._tag = null; }
     return p;
   }
   // 以代理盒呼叫 ctx.add(collide) 登記碰撞(斜放時拆成數段近似 OBB),然後移除代理
@@ -299,7 +299,7 @@ export class Room {
       proxy.scale.set(longX ? sx / n : sx, sy, longX ? sz : sz / n);
       proxy.position.set(x + px * cs + pz * sn, y + bb.min.y + sy / 2, z - px * sn + pz * cs);
       proxy.rotation.y = aligned ? Math.round(yaw / (Math.PI / 2)) * (Math.PI / 2) : yaw;
-      this.ctx.add(proxy, { collide: true, static: false, shrink: o.shrink ?? (aligned ? 0.03 : 0.08) });
+      this.ctx.add(proxy, { collide: true, static: false, shrink: o.shrink ?? (aligned ? 0.03 : 0.08), tag: this._tag, mat: o.mat });
       proxy.parent?.remove(proxy); // 場景建構器可能把物件改放到別的群組,直接從實際的父節點移除
       this.count.colliders++;
     }
@@ -339,9 +339,17 @@ export class Room {
     const p = this.wallPos(run, tPos, gap - t.bbox.min.z);
     const cs = Math.cos(run.yaw), sn = Math.sin(run.yaw);
     const x = p.x - lx * cs, z = p.z + lx * sn;
-    if (o.mount) return this.put(t, x, z, run.yaw, { ...o, y: this.y + o.mount });
+    if (o.mount) return this._mirror(t, run, this.put(t, x, z, run.yaw, { ...o, y: this.y + o.mount }));
     const r = o.collide === false ? this.putChecked(t, x, z, run.yaw, o) : this.tryPut(t, x, z, run.yaw, o);
     if (r) { r.run = run; r.tw = tPos; }
+    return this._mirror(t, run, r);
+  }
+  // [ghost] 鏡子(獨立鏡子、洗手台上的鏡子)登記成事件錨點:鏡面中心 + 朝房間的法線 + 尺寸(src/horror 的「鏡子裡的臉」)
+  _mirror(t, run, r) {
+    if (!r || !r.M || !/^(mirror|sinkwall):/.test(t.name)) return r;
+    const mw = t.name.startsWith('mirror'), dims = mw ? t.name.split(':').slice(1, 3).map(Number) : [0.47, 0.59];
+    const c = this.local(r, 0, mw ? dims[1] / 2 + 0.03 : 1.55, mw ? 0.032 : 0.02);
+    this.event({ kind: 'mirror', x: c.x, y: c.y, z: c.z, nx: run.nx ?? 0, nz: run.nz ?? 0, w: dims[0], h: dims[1] });
     return r;
   }
   // 某一側最長的牆段
