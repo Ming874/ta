@@ -282,16 +282,19 @@ export function paranormalKinds(h) {
     for (const f of c.K.faces || []) {
       if (f.li !== c.li || f.kind !== 'room' || f.win || f.a1 - f.a0 < 1.6) continue;
       const isH = f.dir === 'N' || f.dir === 'S';
-      const a = Math.max(f.a0 + 0.7, Math.min(f.a1 - 0.7, isH ? c.px : c.pz));
-      const x = isH ? a : f.fixed, z = isH ? f.fixed : a;
-      const dx = c.px - x, dz = c.pz - z, d = Math.hypot(dx, dz);
-      if (d < 2.2 || d > 7.5 || (dx * f.nx + dz * f.nz) / d < 0.6) continue; // 牆面朝玩家
-      if (c.inView(x, z, -0.25)) continue; // 要在背後
-      const cc = isH ? Math.floor(a / 2) : f.c, rr = isH ? f.r : Math.floor(a / 2);
-      if (!SOLID(c.L.charAt(c.li, cc, rr))) continue;
-      if (!c.sees(c.li, c.px, c.pz, x + f.nx * 1.0, z + f.nz * 1.0)) continue;
-      const s = (dx * f.nx + dz * f.nz) / d - Math.abs(d - 4) * 0.1;
-      if (s > bs) { bs = s; best = { x, y: f.y + rand(1.3, 1.65), z, nx: f.nx, nz: f.nz }; }
+      if (Math.abs((isH ? f.fixed - c.pz : f.fixed - c.px)) > 7.5) continue;
+      for (const k of [0, 1.5, 2.5, 3.5, 4.5]) { // 沿牆往玩家背後取樣
+        const a = Math.max(f.a0 + 0.7, Math.min(f.a1 - 0.7, isH ? c.px - c.fx * k : c.pz - c.fz * k));
+        const x = isH ? a : f.fixed, z = isH ? f.fixed : a;
+        const dx = c.px - x, dz = c.pz - z, d = Math.hypot(dx, dz);
+        if (d < 2.0 || d > 7.5 || (dx * f.nx + dz * f.nz) / d < 0.35) continue; // 牆面朝玩家
+        if (c.inView(x, z, -0.3)) continue; // 要在背後
+        const cc = isH ? Math.floor(a / 2) : f.c, rr = isH ? f.r : Math.floor(a / 2);
+        if (!SOLID(c.L.charAt(c.li, cc, rr))) continue;
+        if (!c.sees(c.li, c.px, c.pz, x + f.nx * 1.0, z + f.nz * 1.0)) continue;
+        const sc = (dx * f.nx + dz * f.nz) / d - Math.abs(d - 4) * 0.1;
+        if (sc > bs) { bs = sc; best = { x, y: f.y + rand(1.3, 1.65), z, nx: f.nx, nz: f.nz }; }
+      }
     }
     return (c._wb = best);
   }
@@ -351,7 +354,7 @@ export function paranormalKinds(h) {
     return null;
   }
   function curtains(c) {
-    return c.anchors.filter((a) => a.kind === 'bed_curtain' && a.li === c.li && near(c, a.x, a.z, 3, 9) && c.inView(a.x, a.z, 0.6) && ((c.px - a.x) * a.nx + (c.pz - a.z) * a.nz) > 0.5 && c.sees(c.li, c.px, c.pz, a.x + a.nx * 0.8, a.z + a.nz * 0.8));
+    return c.anchors.filter((a) => a.kind === 'bed_curtain' && a.li === c.li && near(c, a.x, a.z, 1.8, 9) && c.inView(a.x, a.z, 0.6) && ((c.px - a.x) * a.nx + (c.pz - a.z) * a.nz) > 0.5 && c.sees(c.li, c.px, c.pz, a.x + a.nx * 0.8, a.z + a.nz * 0.8));
   }
   function mirrorNow(c) {
     return c.anchors.find((a) => a.kind === 'mirror' && a.li === c.li && near(c, a.x, a.z, 1.0, 4.5) && c.inView(a.x, a.z, 0.8) && ((c.px - a.x) * a.nx + (c.pz - a.z) * a.nz) / (Math.hypot(c.px - a.x, c.pz - a.z) || 1) > 0.35) || null;

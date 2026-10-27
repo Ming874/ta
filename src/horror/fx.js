@@ -3,6 +3,7 @@ import * as THREE from 'three';
 // 寒氣粒子:呼出的白氣(寒氣事件時,每 3 秒左右一口)與子彈穿過鬼魂時的冷霧。
 // 一個 THREE.Points(一次 draw call),每個點有自己的大小/透明度;沒有粒子時整個隱藏。
 const N = 40;
+const _f = new THREE.Vector3();
 const VS = `
 attribute float aSize; attribute float aAlpha; uniform float uScale;
 varying float vA;
@@ -43,12 +44,12 @@ export class ColdFx {
   }
   // 呼出一口白氣(相機前方、下方一點)
   exhale(cam, k = 1) {
-    const f = new THREE.Vector3(); cam.getWorldDirection(f);
+    const f = _f; cam.getWorldDirection(f);
     const p = cam.position;
     for (let i = 0; i < 4; i++) {
       const sp = 0.4 + Math.random() * 0.25;
       this._emit(p.x + f.x * 0.3 + (Math.random() - 0.5) * 0.04, p.y - 0.1 + f.y * 0.3, p.z + f.z * 0.3 + (Math.random() - 0.5) * 0.04,
-        f.x * sp + (Math.random() - 0.5) * 0.08, 0.06 + Math.random() * 0.06, f.z * sp + (Math.random() - 0.5) * 0.08, 1.4 + Math.random() * 0.6, 0.05, 0.38 + Math.random() * 0.15, 0.2 * k);
+        f.x * sp + (Math.random() - 0.5) * 0.08, 0.06 + Math.random() * 0.06, f.z * sp + (Math.random() - 0.5) * 0.08, 1.4 + Math.random() * 0.6, 0.06, 0.5 + Math.random() * 0.2, 0.42 * k);
     }
   }
   update(dt, game, cold) {

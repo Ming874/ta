@@ -278,7 +278,7 @@ async function precompile(game, H) {
   try {
     const g = new THREE.Group();
     const geo = new THREE.SphereGeometry(0.2, 8, 6);
-    for (const s of H.app.slots.slice(0, 1)) for (const m of [s.pale, s.shade]) g.add(new THREE.Mesh(geo, m));
+    for (const s of H.app.slots.slice(0, 1)) for (const m of [s.pale, s.shade, s.depth]) g.add(new THREE.Mesh(geo, m));
     H.marks._feet(); H.marks._hands();
     for (const P of [H.marks.feet, H.marks.hands]) { const im = P.im.clone(); im.count = 1; im.visible = true; g.add(im); }
     const wm = H.marks.write({ id: 'warm', text: '·', style: 'marker' }, 0, -50, 0, 0, 1, { keep: true }); wm.visible = true;

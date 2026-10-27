@@ -63,7 +63,7 @@ export class GhostSubs {
     }
     if (Math.abs(k - this.frostShown) < 0.01) return;
     this.frostShown = k;
-    this.frostEl.style.opacity = (k * 0.95).toFixed(3);
+    this.frostEl.style.opacity = (k * 0.72).toFixed(3);
   }
 }
 

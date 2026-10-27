@@ -59,7 +59,7 @@ void main(){
   float fog = exp(-pow(uFog * vD, 2.0));
   if (uShade > 0.5) {
     float a = (0.78 + rim * 0.22) * uAlpha * mix(0.4, 1.0, feet) * fog * flick;
-    gl_FragColor = vec4(uColor * rim * 0.55, a);
+    gl_FragColor = vec4(uColor * rim * 0.9, a);
   } else {
     float a = (rim * 1.3 + 0.06) * flick * scan * feet * uAlpha * fog;
     gl_FragColor = vec4(uColor * a, 1.0);
@@ -156,12 +156,17 @@ export class Apparitions {
       mesh.visible = false; mesh.castShadow = false; mesh.receiveShadow = false; mesh.frustumCulled = false; mesh.raycast = () => {};
       mesh.renderOrder = 6;
       mesh.name = 'ghost';
+      // 深度預先繪製:只留最外層表面(不然加法混合會透出身體裡層的管狀結構,像假人)
+      const depth = new THREE.ShaderMaterial({ uniforms: { uTime: { value: 0 }, uWob: { value: 1 }, uH: { value: 1.75 } }, vertexShader: VS, fragmentShader: 'void main(){}', colorWrite: false, depthWrite: true, transparent: true, fog: false });
+      const dm = new THREE.Mesh(mesh.geometry, depth);
+      dm.renderOrder = 5; dm.castShadow = false; dm.frustumCulled = false; dm.raycast = () => {};
+      mesh.add(dm);
       scene.add(mesh);
       // 推車(護士用):簡單的箱子 + 把手,同一種材質
       const cart = new THREE.Mesh(cartGeo(), pale);
       cart.visible = false; cart.castShadow = false; cart.raycast = () => {}; cart.frustumCulled = false; cart.renderOrder = 6;
       scene.add(cart);
-      return { mesh, cart, pale, shade, a: null };
+      return { mesh, cart, pale, shade, depth, dm, a: null };
     });
     this.count = 0;
     this.log = [];
@@ -178,7 +183,7 @@ export class Apparitions {
     const geo = models.get(spec.fig || 'patient', spec.pose || 'stand');
     if (!geo) return null;
     const m = s.mesh, mat = spec.look === 'shade' ? s.shade : s.pale;
-    m.geometry = geo; m.material = mat;
+    m.geometry = geo; m.material = mat; s.dm.geometry = geo;
     const sc = FIGS[spec.fig]?.scale ?? 1;
     m.scale.setScalar(sc * (spec.scale ?? 1));
     m.position.set(spec.x, spec.y, spec.z);
@@ -230,7 +235,7 @@ export class Apparitions {
         if (d <= st) { a.x = tg.x; a.z = tg.z; a.path.shift(); if (!a.path.length) a.arrived = true; }
         else { a.x += dx / d * st; a.z += dz / d * st; a.yaw = Math.atan2(dx, dz); }
       }
-      if (a.anim && a.t - (a.animT || 0) > (a.animDt ?? 0.16)) { a.animT = a.t; a.i ^= 1; const g = models.get(a.fig, a.anim[a.i]); if (g) m.geometry = g; }
+      if (a.anim && a.t - (a.animT || 0) > (a.animDt ?? 0.16)) { a.animT = a.t; a.i ^= 1; const g = models.get(a.fig, a.anim[a.i]); if (g) { m.geometry = g; s.dm.geometry = g; } }
       if (a.face) a.yaw = Math.atan2(cx - a.x, cz - a.z); // 一直轉向玩家
       m.position.set(a.x, a.y + (a.bob ? Math.abs(Math.sin(a.t * 9)) * 0.04 : 0), a.z);
       m.rotation.y = a.yaw ?? 0;
@@ -242,6 +247,8 @@ export class Apparitions {
       mat.uniforms.uAlpha.value = k * a.alpha * (a.flick ? (Math.random() < 0.06 ? 0.2 : 1) : 1);
       mat.uniforms.uTime.value = game.time;
       mat.uniforms.uFog.value = fog;
+      const du = s.depth.uniforms; du.uTime.value = game.time; du.uWob.value = mat.uniforms.uWob.value; du.uH.value = mat.uniforms.uH.value;
+      s.dm.visible = a.out < 0 || a.out < a.outDur * 0.5; // 消散時先拿掉深度,讓溶解看得出來
       if (a.out >= 0) continue;
       // ---- 消失條件 ----
       const hy = a.y + 1.35 * (FIGS[a.fig]?.scale ?? 1);

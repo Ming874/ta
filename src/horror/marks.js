@@ -246,10 +246,11 @@ export class Marks {
     }
     const m = this[key];
     m.scale.set(w, h, 1);
-    m.position.set(x + nx * 0.02, y, z + nz * 0.02);
+    const off = kind === 'face' ? 0.012 : 0.1; // 隔簾有皺褶(±6cm),剪影要貼在皺褶外面
+    m.position.set(x + nx * off, y, z + nz * off);
     m.rotation.set(0, Math.atan2(nx, nz), 0);
     m.visible = true;
-    const e = { type: 'sil', m, t: 0, dur, peak: kind === 'face' ? 0.55 : 0.75, out: -1, x, z, kind, end() { if (this.out < 0) this.out = 0; } };
+    const e = { type: 'sil', m, t: 0, dur, peak: kind === 'face' ? 0.85 : 0.8, out: -1, x, z, kind, end() { if (this.out < 0) this.out = 0; } };
     this.fx.push(e);
     return e;
   }
@@ -315,7 +316,7 @@ export class Marks {
         continue;
       }
       if (e.type === 'sil') {
-        let k = Math.min(1, e.t / 0.9);
+        let k = Math.min(1, e.t / (e.kind === 'face' ? 0.35 : 0.9));
         if (e.out >= 0) { e.out += dt; k = Math.max(0, 1 - e.out / 0.35); }
         else if (u >= 1) e.out = 0;
         e.m.material.opacity = k * e.peak * (0.85 + 0.15 * Math.sin(e.t * 9));
