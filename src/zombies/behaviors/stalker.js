@@ -3,7 +3,7 @@
 // 狀態:chase 地面追擊、wander 天花板爬行、hit 天花板上被照到退開、knock 地面被照到退開、
 //       fall 從天花板落下、leap 撲擊、recover 撲完、attack 爪擊
 import { sfx } from '../../audio.js';
-import { K, lerp, env, rand, sstep, clamp, TAU, litBy, trackState, entered } from './kit.js';
+import { K, lerp, env, rand, sstep, clamp, TAU, litBy, trackState, entered, paced, pacedDone } from './kit.js';
 
 const CEIL = { wander: 1, hit: 1 };
 const THIGH = ['thighL', 'thighR'], SHIN = ['shinL', 'shinR'], FOOT = ['footL', 'footR'];
@@ -55,7 +55,8 @@ export function think(dt, ctx, dist, toX, toZ, w) {
     case 'wander': // 天花板上爬:沿導航場前進;到了露天處或很近且背對牠 → 落下
       w.speed = this.speed * 0.95;
       if (this._litT > 0.2) { this.go('hit'); this._flee = T.lit.flee; break; }
-      if (!ch || (dist < Pn.max && (!watched(p, this) || dist < 2.4) && this.st > 0.6) || (dist < 1.5)) this.go('fall');
+      // 落下撲人算一次「天花板掉落」驚嚇:跟伏擊共用導演的節奏(被拒絕就繼續在頭頂上跟著,最多等 6 秒;貼到 1.5m 內一定掉)
+      if (!ch || dist < 1.5 || (dist < Pn.max && (!watched(p, this) || dist < 2.4) && this.st > 0.6 && paced(this, ctx, 'ceilingDrop', dt))) { this.go('fall'); if (ch) pacedDone(this, ctx, 'ceilingDrop'); }
       break;
     case 'hit': case 'knock': { // 被照到:尖嘶、往反方向逃一陣子
       w.x = -toX / hd; w.z = -toZ / hd; w.speed = this.speed * 1.15;

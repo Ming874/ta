@@ -11,11 +11,13 @@ import { prewarm, whenWarm, variantStats, getVariant, instantiate, VARIANT_TYPES
 import { allMaterials as allZombieMaterials } from './zombies/materials.js';
 import * as audio from './audio.js';
 import { initNet } from './net/lobby.js';
+import { installHorror } from './horror/index.js';
 import { startPhysicsWorker, physicsLoad } from './physics/index.js';
 import { assets } from './sys/assets.js';
 import { installStreaming } from './sys/stream.js';
 import { loadUI } from './sys/loadui.js';
 import { pools } from './sys/workers.js';
+import { initGpuHint, gpuLabel } from './ui/gpuhint.js';
 
 performance.mark('hz:boot');
 let game = null;
@@ -53,6 +55,7 @@ const loading = loadUI(() => {
 game = new Game(document.getElementById('game'));
 game.bindInput();
 initNet(game); // [net] 主選單的多人連線入口(src/net/lobby.js)
+installHorror(game); // [ghost] 靈異系統:驚嚇導演、耳語、幻影、靈異事件(src/horror)
 window.__game = game; // 除錯用:在瀏覽器 console 操作 __game
 
 // ---- 效能基礎建設 ----
@@ -82,6 +85,8 @@ game.quality.on('change', (k, q) => game.hospital.setQuality?.(q));
   game.begin = function (...a) { assets.open('start'); assets.concurrency = 3; return begin0.apply(this, a); }; // 遊戲中少開幾條連線(多人時不塞滿下行)
 }
 
+game.perf.source('顯示卡', () => gpuLabel(game.quality.detected?.gpu)); // 雙顯卡筆電常用到內顯,面板上直接看得到
+initGpuHint(game); // 內顯 / 軟體算圖時在主選單提醒切換高效能 GPU
 game.perf.source('殭屍', () => {
   const v = variantStats();
   const alive = game.zombies ? game.zombies.filter((z) => z.alive).length : 0;

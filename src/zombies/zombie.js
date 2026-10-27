@@ -248,6 +248,7 @@ export class Zombie {
     this.rootY = Math.max(0, this.rootY);
     this.killPart = part;
     this._gib(part, hit);
+    if (this.amb) this._ambEnd(true); // [ambush] 死在埋伏姿勢:解凍、倒法跟著姿勢
   }
 
   // ---- 斷頭/斷肢(擊殺時):把該骨骼縮到 0(連帶子骨骼與命中盒),斷口加一塊血肉截面;噴血由戰鬥系統依 this.gore 處理 ----
@@ -299,6 +300,7 @@ export class Zombie {
   update(dt, ctx) {
     this.t += dt;
     if (!this.alive) { this._dead(dt, ctx); return 0; }
+    if (this.amb) { const r = this._ambUpdate(dt, ctx); if (r !== undefined) return r; } // [ambush] 埋伏/天花板上:休眠中幾乎零成本(src/zombies/ambush.pose.js)
     const { world, zombies } = ctx;
     const pos = this.pos;
     if (!(pos.x === pos.x && pos.y === pos.y && pos.z === pos.z)) this._warp(ctx, true); // 座標壞掉:直接送回出生點
@@ -353,8 +355,8 @@ export class Zombie {
     this.attackCd -= dt;
     this.specialCd -= dt;
 
-    const think = this._thinkFn || (this._thinkFn = this['_think_' + this.type]); // 快取方法,避免每幀組字串
-    const dealt = Z3.pre(this, dt, ctx, dist, w) ? 0 : think.call(this, dt, ctx, dist, toX, toZ, w); // [zombies-w3] pre:面壁等閒置怪癖
+    const think = this.amb ? this._ambThink : this._thinkFn || (this._thinkFn = this['_think_' + this.type]); // 快取方法,避免每幀組字串;[ambush] 衝出/掉落中
+    const dealt = !this.amb && Z3.pre(this, dt, ctx, dist, w) ? 0 : think.call(this, dt, ctx, dist, toX, toZ, w); // [zombies-w3] pre:面壁等閒置怪癖(埋伏中不跑)
     if (!this.alive) return dealt; // 膿腫者自爆
     // 樓梯上放慢(衝鋒/飛撲除外)
     this.onStair = world.stairAt ? world.stairAt(pos.x, pos.y, pos.z) : -1;
@@ -422,7 +424,7 @@ export class Zombie {
     const so = world.stepOffset && this.onStair >= 0 ? world.stepOffset(this.onStair, pos.x, pos.z) : 0;
     this.stepY += (so - this.stepY) * Math.min(1, dt * 18);
     this._resetPose();
-    (this._poseFn || (this._poseFn = this['_pose_' + this.type])).call(this, dt, ctx, dist, toX, toZ);
+    (this.amb ? this._ambPose : this._poseFn || (this._poseFn = this['_pose_' + this.type])).call(this, dt, ctx, dist, toX, toZ);
     this._reactions(dt, ctx);
     this._applyRoot();
     // 腳步(巨屍用重踏,爬行者用拖行,另外處理)

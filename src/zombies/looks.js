@@ -15,7 +15,7 @@ const tc = new THREE.Color(), tc2 = new THREE.Color();
 const C = (h) => new THREE.Color(h);
 const STEEL = C('#b9bec4'), STEEL_D = C('#5a5e62'), RUST = C('#5a2a12'), DRYB = C('#2c0805'), WETB = C('#4a0404');
 const EMBER = C('#ff5a10'), CHAR0 = C('#0d0a09'), CHAR1 = C('#2a1a12'), RAW = C('#6a1612'), BLISTER = C('#8a7a4a');
-const THREAD = C('#14100e'), TAPE = C('#8a8a80'), RUBBER = C('#121212'), LEATHER = C('#3a2618');
+const THREAD = C('#14100e'), RUBBER = C('#121212'), LEATHER = C('#3a2618');
 
 // 線段距離平方(縫線、裂口)
 function seg2(x, y, z, ax, ay, az, bx, by, bz) {
@@ -67,7 +67,7 @@ export const LOOKS = {
     }),
     outfit: ['nightgown', 'nightgown', 'gown'],
     extras: (K) => {
-      const { HC, hg, V, r, sstep, G } = K;
+      const { HC, hg, V, sstep, G } = K;
       // 長舌頭從脫臼的嘴裡垂出來
       const m0 = V(HC.x, HC.y + hg.my - 0.012, HC.z + hg.mouthZ - 0.045);
       const pts = [m0, m0.clone().add(V(0, -0.004, 0.04)), m0.clone().add(V(0.004, -0.03, 0.065)), m0.clone().add(V(0.008, -0.07, 0.07))];
@@ -90,7 +90,6 @@ export const LOOKS = {
         c.lerp(K.FLESH_DARK, k * 0.95);
         return Math.max(wet, k);
       };
-      void r;
     },
   },
 
@@ -107,7 +106,7 @@ export const LOOKS = {
     }),
     outfit: ['tatters'],
     extras: (K) => {
-      const { V, r, B, tShape, ty, sstep } = K;
+      const { V, B, tShape, ty, sstep } = K;
       // 背上突出的脊椎骨節
       for (let k = 0; k < 11; k++) {
         const y = 1.02 + k * 0.042, zb = tShape(ty(y), -Math.PI / 2)[1];
@@ -123,7 +122,6 @@ export const LOOKS = {
         c.multiplyScalar(0.85 + 0.15 * sstep(-0.4, 0.4, ny));
         return wet;
       };
-      void r;
     },
   },
 
@@ -321,7 +319,6 @@ export const LOOKS = {
         K.add(K.prim(new THREE.CylinderGeometry(K.prof(K.foreR, 0.9) + 0.03, K.prof(K.foreR, 0.9) + 0.03, 0.05, 16, 1, true), K.mat4(fa.head.clone().lerp(fa.tail, 0.9))), 'gear', 'forearm' + Ls, K.solid('#8a8a80', 0.25));
         K.add(K.prim(new THREE.CylinderGeometry(K.prof(K.shinR, 0.85) + 0.04, K.prof(K.shinR, 0.85) + 0.04, 0.06, 16, 1, true), K.mat4(sh.head.clone().lerp(sh.tail, 0.8))), 'gear', 'shin' + Ls, K.solid('#8a8a80', 0.25));
       }
-      void TAPE;
     },
   },
 

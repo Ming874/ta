@@ -6,6 +6,7 @@ import { cardboardBox } from './decor.js';
 import { straitjacket } from './equip.js';
 import { sign } from './art.js';
 import { rotY, litter } from './lay.js';
+import { curtainGeo } from './cloth.js';
 
 // 環境敘事小場景(依區域 id;在主題擺設之後執行,同一個 Room 規劃器 → 一樣的不擋路檢查):
 //  急診:檢傷分類失控(一排屍袋、散落的檢傷卡、往外拖的血痕)
@@ -147,12 +148,54 @@ function wardRestraint(R) {
   floorDecal(R, 'pool', x, z + 0.8, 1.1);
   trail(R, [[x, z + 0.8], [x - 1.4, z - 0.6]], 'drag', 1.2, 0.9);
 }
+// ---- [ghost] 更驚悚的佈置(輕量;不擋路) ----
+// 走廊:翻倒的推床 + 一道從走廊拖進病房的痕跡(拖痕終點在某扇病房門內)
+function corridorDrag(R) {
+  const ds = R.doors.slice().sort(() => R.rng() - 0.5);
+  const d = ds[0];
+  if (!d) return;
+  const sx = -d.nz, sz = d.nx; // 沿走廊方向
+  const ax = d.x + d.nx * 1.1 + sx * 4.5, az = d.z + d.nz * 1.1 + sz * 4.5;
+  trail(R, [[ax, az], [d.x + d.nx * 0.9, d.z + d.nz * 0.9], [d.x - d.nx * 1.6, d.z - d.nz * 1.6]], 'drag', 1.3, 0.9, { skip: 0.15 });
+  floorDecal(R, 'pool', ax, az, 0.8);
+  // 翻倒的推床(側躺,沿牆)
+  const gx = d.x + d.nx * 1.4 - sx * 3.2, gz = d.z + d.nz * 1.4 - sz * 3.2;
+  R.tryPut(gurney({ seed: 3 }), gx, gz, Math.atan2(sx, sz) + R.rand(-0.2, 0.2), { rz: Math.PI / 2 - 0.06, y: R.y + 0.34, h: 1.0 });
+  scatter(R, 'paper', 4, { near: { x: gx, z: gz, r: 1.4 } });
+}
+// 大廳:散落的拖鞋(集合廣播那晚,大家被叫下來,只穿著拖鞋)
+function lobbySlippers(R) {
+  lobbyBlocked(R);
+  const { x, z } = R.center();
+  scatter(R, 'shoe', 9, { near: { x, z, r: 7 } });
+}
+// 洗衣房:晾著的白布(「床單不夠了,先用白布」),沿牆一排,下襬破爛
+function laundrySheets(R) {
+  const run = R.walls.filter((r) => r.len > 4).sort((a, b) => b.len - a.len)[0];
+  if (!run) return;
+  const ceil = R.L.ceilY(R.li, R.c0, R.r0) - R.y;
+  for (let k = 0; k < 3; k++) {
+    const t = run.t0 + 1.0 + k * 1.35;
+    if (t > run.t1 - 0.8) break;
+    const p = R.wallPos(run, t, 0.75);
+    const w = 1.15;
+    const t2 = tpl(`gh-sheet:${k}`, (b) => { b.raw('fab_white', curtainGeo([[-w / 2, 0], [w / 2, 0]], Math.min(ceil - 0.25, 2.3), 0.45 + k * 0.08, { pleat: 0.02, rag: 0.6, holes: 0.15, seed: 90 + k }), null, 'keep'); b.box('steel', w + 0.2, 0.012, 0.012, 0, Math.min(ceil - 0.25, 2.3) + 0.01, 0); });
+    R.put(t2, p.x, p.z, run.yaw);
+  }
+}
+// 地下維修隧道:翻倒的輪椅 + 往鍋爐房拖的痕跡
+function tunnelDrag(R) {
+  const { x, z } = R.center();
+  R.dyn(wheelchair(2), x + 0.6, z + 0.4, R.rand(0, 6.28), { mass: 16, shape: 'box' }, { rz: Math.PI / 2, y: R.y + 0.3 });
+  trail(R, [[x + 1.0, z + 0.6], [x + 4.5, z + 0.9], [x + 8.5, z + 0.4]], 'drag', 1.2, 1.0, { skip: 0.25 });
+}
 export const VIGNETTES = {
   f1_er: erTriage, f2_icu: quarantine, b1_morgue: (R) => { quarantine(R); morgueDrag(R); }, f2_ward_205: barricadeBroken, f3_corridor: escapedPatient,
-  f1_lobby: lobbyBlocked, f1_cafeteria: cafeteriaHide, f2_ward_210: wardRestraint, f2_nursery: barricadeBroken,
+  f1_lobby: lobbySlippers, f1_cafeteria: cafeteriaHide, f2_ward_210: wardRestraint, f2_nursery: barricadeBroken,
+  f2_corridor: corridorDrag, f1_corridor: corridorDrag, b1_laundry: laundrySheets, b1_tunnel: tunnelDrag, // [ghost]
 };
 export function dressVignette(R, zone) {
   const fn = VIGNETTES[zone.id];
   if (fn) fn(R, zone);
-  void bin; void gurney; void posterSheet;
+  void bin; void posterSheet;
 }

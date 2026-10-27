@@ -5,6 +5,7 @@ import { Shop, shopTabs, purchase, modTotal } from '../shop.js';
 import { Pickups, Supplies } from '../pickups.js';
 import { sfx, resume as resumeAudio } from '../audio.js';
 import { settings } from '../ui/settings.js';
+import { createAmbush } from '../zombies/ambush.js';
 import { waveRoster, wavePace, waveKind, hpMul, SPECIAL, restTime, roundBonus, cleanBonus, POINTS, HOW_MUL, streakMul, streakTier, roundScore, saveBest } from './waves.js';
 
 // 回合流程:重開、開始/結束回合、出怪、休息與商店、補給、醫療包、擊殺獎勵、計分、死亡結算。以 mixin 方式掛到 Game 上
@@ -90,6 +91,7 @@ export const flowMethods = {
     }
     window.addEventListener('keydown', (e) => this.onGameplayKey(e), true); // 捕獲階段:比 input.js 先處理
     this.weaponScene.visible = false; // 標題畫面不顯示手持武器
+    this.ambush = createAmbush(this); // [ambush] 埋伏/天花板掉落(src/zombies/ambush.js;場景物件在開機預編譯前就建好)
     document.addEventListener('pointerlockchange', () => {
       if (document.pointerLockElement !== this.canvas && this.ui.map.isOpen) this.ui.map.close();
     });
@@ -106,6 +108,7 @@ export const flowMethods = {
     this.shop?.setOpen(false, true);
     if (this.shopUIOpen) this.closeShop(false);
     this.physics?.reset(); // 物理:道具回原位、清掉布娃娃與碎片
+    this.ambush?.reset(); // [ambush] 假屍體、格柵、血漬
     const p = this.player, st = this.world.start;
     p.hp = p.maxHp;
     p.alive = true;
@@ -262,15 +265,17 @@ export const flowMethods = {
     z._farT = 0;
     this.zombies.push(z);
     this.toSpawn = Math.max(0, this.toSpawn - 1);
+    this.ambush?.onSpawn(z); // [ambush] 部分改放到埋伏點(角落裝死 / 天花板上)
     if (type === 'brute') this.ui.banner('巨屍出現', '牠會咆哮後衝鋒 · 引牠撞牆再攻擊頭部', 3500, 'red');
     return z;
   },
 
   // 每幀:出怪、回合結束、休息倒數(取代 game.update 裡原本的出怪/回合區塊)
   updateRound(dt) {
+    this.ambush?.update(dt); // [ambush] 觸發、線索、假屍體
     if (this.phase === 'fighting') {
-      let alive = 0, near = Infinity;
-      for (const z of this.zombies) if (z.alive) { alive++; if (z.dist < near && Math.abs(z.dy || 0) < 3) near = z.dist; }
+      let alive = 0, near = Infinity, lurk = 0; // lurk:埋伏中的(不佔同場上限,但回合要等牠們)
+      for (const z of this.zombies) if (z.alive) { if (z.amb?.dormant) { lurk++; continue; } alive++; if (z.dist < near && Math.abs(z.dy || 0) < 3) near = z.dist; }
       // 壓力:太久沒有殭屍接近玩家(12m 內)→ 出怪間隔減半、出生點挑近一點、遠處閒晃的殭屍移近(長回合不會冷場)
       this._calmT = near < 12 ? 0 : (this._calmT || 0) + dt;
       this.spawnTimer -= dt * (this._calmT > 8 ? 2 : 1);
@@ -279,7 +284,7 @@ export const flowMethods = {
         if (this.spawnBurst > 0) { this.spawnBurst--; this.spawnTimer = 0.45; } else this.spawnTimer = this.spawnEvery * (0.7 + Math.random() * 0.6);
       }
       this._relocateStragglers(dt);
-      if (this.toSpawn === 0 && alive === 0) this.endRound();
+      if (this.toSpawn === 0 && alive === 0) { if (lurk && this.ambush) this.ambush.hunt(); else this.endRound(); } // 只剩埋伏的:叫醒找人,回合不會卡住
     } else if (this.phase === 'collecting') {
       this.collectT -= dt;
       if (this.collectT <= 0 && !this.coins.collecting) this.openRest();
@@ -305,7 +310,7 @@ export const flowMethods = {
     this._strT = 1;
     let far0 = null, fd0 = 30;
     for (const z of this.zombies) {
-      if (!z.alive || z._proxy) continue;
+      if (!z.alive || z._proxy || z.amb) continue; // [ambush] 埋伏中的由 ambush 自己搬
       const fd = w.flowDistance ? w.flowDistance(z.pos.x, z.pos.y, z.pos.z) : z.dist;
       const reach = Number.isFinite(fd);
       if (z.type === 'brute' && reach) continue; // 巨屍只有走不到時才移

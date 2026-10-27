@@ -320,7 +320,7 @@ export function curb(ctx, P, x0, z0, x1, z1, { h = 0.14, w = 0.2, y = 0, key = '
   }
   if (step && ctx) {
     const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, ax = Math.abs(x1 - x0) > Math.abs(z1 - z0);
-    solid(ctx, cx, y, cz, ax ? L : w, h, ax ? w : L);
+    solid(ctx, cx, y, cz, ax ? L : w, h, ax ? w : L, 'concrete');
   }
 }
 
@@ -405,7 +405,7 @@ export function wheelStop(ctx, P, x, z, rot = 0, y = 0) {
   P.add('po_curb_dark', g, M(x, y, z, 0, rot, 0));
   for (const s of [-0.55, 0.55]) P.add('rust', cyl(0.018, 0.018, 0.02, 6), M(x + Math.cos(rot) * s, y + 0.115, z - Math.sin(rot) * s));
   const ax = Math.abs(Math.cos(rot)) > 0.7;
-  solid(ctx, x, y, z, ax ? 1.7 : 0.22, 0.11, ax ? 0.22 : 1.7);
+  solid(ctx, x, y, z, ax ? 1.7 : 0.22, 0.11, ax ? 0.22 : 1.7, 'concrete');
 }
 export { litUV, markUV, bandV };
 

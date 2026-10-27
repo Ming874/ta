@@ -107,7 +107,7 @@ export function animLayer(z, dt, ctx) {
   // 全域 uniform(每幀一次):時間(餘燼閃爍)、手電筒開關(眼底反光)
   const now = performance.now();
   if (now !== lastT) { lastT = now; ZU.uTime.value = now * 0.001; if (ctx && ctx.player) ZU.uFlash.value = ctx.player.flashOn === false ? 0 : 1; }
-  if (!z.alive) return;
+  if (!z.alive || z.amb) return; // 埋伏/天花板掉落中:姿勢由 ambush 控制
   const b = z.b, P = a.P, t = z.t, st = z.st, S = z.state;
 
   // ---- 老人:駝背 ----

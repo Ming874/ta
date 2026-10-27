@@ -4,10 +4,9 @@
 // 對策:牠很脆弱(70 血),蓄力時被打中會中斷(stagger);被逼近時會往後退,太近才抓人
 import * as THREE from 'three';
 import { sfx } from '../../audio.js';
-import { K, clamp, lerp, sstep, env, rand, entered, trackState } from './kit.js';
+import { K, clamp, lerp, env, rand, entered, trackState, paced, pacedDone } from './kit.js';
 import { daze } from './daze.js';
 
-const R = { dx: 0, dz: 0, dy: 0, d: 0 };
 const ARM_L = 'L', ARM_R = 'R';
 const LEG_O = { toe: 0.04, wide: 0.03 }; // 步態參數(共用,不每幀配置)
 
@@ -23,7 +22,7 @@ export function think(dt, ctx, dist, toX, toZ, w) {
   switch (this.state) {
     case 'chase': {
       const hd = this.dist || 1e-3;
-      if (this.los && this.d3 > S.min && this.d3 < S.max && this.specialCd <= 0) { this.go('scream'); this.jawT = 0; break; }
+      if (this.los && this.d3 > S.min && this.d3 < S.max && this.specialCd <= 0 && paced(this, ctx, 'ambush', dt)) { this.go('scream'); this.jawT = 0; break; }
       if (dist < T.reach + 0.1 && this.attackCd <= 0 && this._canHit(world)) { this.go('attack'); K.say('zAttack', this.type, this.vp); break; }
       // 被逼近又還在冷卻:往後退(保持距離),退一陣子就停
       if (this.los && dist < 6.5 && dist > 2.2 && this.specialCd > 1.2 && this._retreat < 2.2) {
@@ -36,7 +35,7 @@ export function think(dt, ctx, dist, toX, toZ, w) {
     case 'scream':
       w.speed = 0;
       w.face = Math.atan2(toX, toZ);
-      if (this.cross(S.wind)) call(this, ctx);
+      if (this.cross(S.wind)) { call(this, ctx); pacedDone(this, ctx, 'ambush'); }
       if (this.st > S.dur) { this.go('chase'); this.specialCd = lerp(S.cd[0], S.cd[1], Math.random()); this._retreat = 0; }
       break;
     case 'attack':
@@ -56,7 +55,7 @@ export function think(dt, ctx, dist, toX, toZ, w) {
 
 // 召喚:附近的殭屍狂暴、改走最新的路;出怪提前
 function call(z, ctx) {
-  const S = z.T.scream, g = ctx.game, world = ctx.world;
+  const S = z.T.scream, g = ctx.game;
   for (const o of ctx.zombies) {
     if (o === z || !o.alive || o._proxy || o.type === 'screamer') continue;
     const dx = o.pos.x - z.pos.x, dz = o.pos.z - z.pos.z, dy = o.pos.y - z.pos.y;
@@ -67,7 +66,6 @@ function call(z, ctx) {
     if (o.state === 'idle') o.go('chase');
   }
   if (g && g.phase === 'fighting' && g.toSpawn > 0) { g.spawnTimer = Math.min(g.spawnTimer, 0.4); g.spawnBurst = (g.spawnBurst || 0) + 1; }
-  void world;
 }
 // 狂暴:暫時加速(由 frenzyTick 還原)
 export function frenzy(o, t) {

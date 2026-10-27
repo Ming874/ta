@@ -181,7 +181,7 @@ export function tree(ctx, kind, x, y, z, s = 1, yaw = 0, collide = true) {
   const v = Math.floor(hash(x * 3.1 + z * 7.7) * TREE_VAR[kind]);
   const p = pool(ctx, `tree_${kind}_${v}`, () => treeParts(kind, v * 17 + kind.length), 16);
   p.add(M(x, y, z, 0, yaw, 0, s));
-  if (collide && kind !== 'sapling') { const r = { oak: 0.42, poplar: 0.32, gnarl: 0.6, snag: 0.4 }[kind] * s; solid(ctx, x, y, z, r, 3, r); }
+  if (collide && kind !== 'sapling') { const r = { oak: 0.42, poplar: 0.32, gnarl: 0.6, snag: 0.4 }[kind] * s; solid(ctx, x, y, z, r, 3, r, 'log'); }
 }
 
 // ======================================================================
