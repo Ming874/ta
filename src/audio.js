@@ -21,7 +21,7 @@
 //  多人  playerJoin() playerLeave() chat() revive(pos?) downed(pos?) killConfirm() remoteShot(id, pos) remoteStep(pos, surface, sprint)
 //  其他  listener(x, y, z, yaw) setMood(m) setTension(x) setHealth(r) ambient() attachGame(game) attachWorld(world)
 //        setVolume(bus, v) getVolume(bus)(bus:'master' | 'music' | 'sfx' | 'voice',v 0..1,記在 localStorage)stats()
-import { A, ensure, setListener, attach, setVolume, getVolume, muffle, hurtFilter, tick, poolInfo, liveCount, bakeStats, voiceCap, emit, stopPositional, setSpace, ZV, zvState } from './audio/core.js';
+import { A, ensure, setListener, attach, setVolume, getVolume, muffle, hurtFilter, tick, poolInfo, liveCount, bakeStats, voiceCap, emit, stopPositional, setSpace, ZV, zvState, zvOcc, zvFade, acoustics, tone } from './audio/core.js';
 import { zq, zflush } from './audio/zgate.js';
 import { foley, prebakeFoley } from './audio/foley.js';
 import { voices, prebakeVoices } from './audio/voices.js';
@@ -217,6 +217,9 @@ function gateZ(o) {
 }
 
 // 除錯/測試用(OfflineAudioContext 量測)
-export const _internal = { ZV, zvState, zflush, A, attach, foley, voices, ui, body, step, zStep, remoteStep, jump, land, scare, startMusic, startAmbience, tick, poolInfo, SM, ambState, trackState, AMB, musicState, roomInfo, SCARE_KINDS, LOOP_KINDS, thunder, setRain };
+export const _internal = { ZV, zvState, zflush, core: { emit, tone, acoustics, zvOcc, zvFade, setListener }, A, attach, foley, voices, ui, body, step, zStep, remoteStep, jump, land, scare, startMusic, startAmbience, tick, poolInfo, SM, ambState, trackState, AMB, musicState, roomInfo, SCARE_KINDS, LOOP_KINDS, thunder, setRain };
 export { ix } from './audio/interact.js'; // 互動物件的機械音效(電話、開關、販賣機、鋼琴、門…;src/audio/interact.js)
 export { ghost } from './audio/ghost.js'; // [ghost] 耳邊低語(雙耳)、頸後呼吸、刺擊、寂靜、天花板爬行等靈異音效(src/audio/ghost.js)
+
+// 除錯/測試用(正式版也可在 console 操作;和 window.__game 一樣):window.__sfx.sfx.stats()、window.__sfx._internal
+if (typeof window !== 'undefined') window.__sfx = { sfx, _internal };
