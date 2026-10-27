@@ -109,7 +109,7 @@ export const tv = {
     m.cyl(M.metal, 0x999999, -0.08, by + 0.62, bz - 0.04, 0.005, 0.38, 6, 0, 0, 0.5); m.cyl(M.metal, 0x999999, 0.06, by + 0.62, bz - 0.04, 0.005, 0.38, 6, 0, 0, -0.5);
     m.box(M.matte, 0x2a2724, 0, by + 0.45, bz - 0.04, 0.12, 0.03, 0.1);
     kit.static(m, api.mtx(s), s.li);
-    if (!wall) api.box(s, -0.32, 0.02, 0.32, 0.48, 1.1);
+    if (!wall) api.box(s, -0.32, 0.02, 0.32, 0.48, 1.1, 0, 'metal');
     // 螢幕(自己的畫布 + 材質;MeshBasicMaterial + map 和其他電視同一個 shader)
     const c = document.createElement('canvas'); c.width = 96; c.height = 72;
     const g2 = c.getContext('2d');

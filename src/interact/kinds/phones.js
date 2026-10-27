@@ -252,7 +252,7 @@ export const phones = {
     }
     const pos = api.wp(s, ...focus);
     const key = spec.id || `ph${s.li}_${Math.round(pos.x * 10)}_${Math.round(pos.z * 10)}`;
-    const name = { wall: '電話', desk: '電話', nurse: '護理站電話', pay: '公共電話' }[style];
+    const name = (spec.ext && style !== 'nurse' ? `電話(${/^[A-Z]?\d/.test(spec.ext) ? '分機 ' : ''}${spec.ext})` : null) || { wall: '電話', desk: '電話', nurse: '護理站電話', pay: '公共電話' }[style];
     return makePhone(api, {
       key, pos, style, li: s.li, zone: s.zone, hs, hsI, hsM, led, leds, spec, name,
       calls: (spec.calls || []).map((id) => api.lineById(id)).filter(Boolean), pool: api.lineList(POOL[style] || 'PHONE.ring'),

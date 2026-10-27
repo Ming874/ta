@@ -106,7 +106,7 @@ export const vending = {
     kit.static(vm, api.mtx(s), s.li);
     const sign = new Model(); sign.quad(texMat('vsign', canvasTex('vsign', 256, 40, (x, w, h) => { x.fillStyle = '#f2ede0'; x.fillRect(0, 0, w, h); x.fillStyle = '#b82a26'; x.font = `bold 26px ${FONT}`; x.textAlign = 'center'; x.fillText('冷飲 · 5 元', w / 2, 29); }), { basic: true }), 0, H - 0.08, z0 + D + 0.014, 0.8, 0.12);
     kit.static(sign, api.mtx(s), s.li);
-    api.box(s, -W / 2, z0, W / 2, z0 + D, H);
+    api.box(s, -W / 2, z0, W / 2, z0 + D, H, 0, 'heavy');
     const flap = kit.pool('flap', (q) => { q.box(M.plastic, 0x2a2a2a, 0, -0.08, 0.004, 0.5, 0.16, 0.008); }, M.plastic);
     const fm = api.mtx(s, -0.05, 0.31, z0 + D + 0.014);
     const fi = flap.add(s.li, fm);
@@ -237,7 +237,7 @@ export const lift = {
     const lbl = spec.label || '遺體專用';
     const sg = new Model(); sg.quad(texMat('lift:' + lbl, canvasTex('lift:' + lbl, 256, 40, (x, w, h) => { x.fillStyle = '#b8a040'; x.fillRect(0, 0, w, h); x.fillStyle = '#1a1a1a'; x.font = `bold 26px ${FONT}`; x.textAlign = 'center'; x.fillText(lbl + ' · 貨梯', w / 2, 29); }), { basic: true }), 0, Hh + 0.12, 0.13 + D + 0.026, 0.88, 0.11);
     kit.static(sg, api.mtx(s), s.li);
-    api.box(s, -W / 2 - 0.22, 0.0, W / 2 + 0.22, 0.13 + D + 0.02, Hh + 0.25);
+    api.box(s, -W / 2 - 0.22, 0.0, W / 2 + 0.22, 0.13 + D + 0.02, Hh + 0.25, 0, 'heavy');
     const door = kit.pool('liftdoor', (q) => { q.box(M.metal, 0x9a9fa2, 0, Hh / 2, 0, W / 2 + 0.02, Hh - 0.02, 0.04); q.box(M.metal, 0x7a7e80, 0, 1.0, 0.022, W / 2 - 0.1, 0.02, 0.006); q.box(M.metal, 0x7a7e80, 0, 1.6, 0.022, W / 2 - 0.1, 0.02, 0.006); }, M.metal, { shadow: true });
     const dz = 0.13 + D + 0.05;
     const L0 = api.mtx(s, -W / 4, 0, dz), R0 = api.mtx(s, W / 4, 0, dz);
@@ -382,7 +382,7 @@ export const sink = {
     m.box(M.gloss, 0xb8c4c8, 0, 1.5, 0.008, 0.46, 0.6, 0.012); // 鏡子(模糊的)
     m.box(M.matte, 0x2a2622, 0, 1.5, 0.003, 0.5, 0.64, 0.004);
     kit.static(m, api.mtx(s), s.li);
-    api.box(s, -0.28, 0.02, 0.28, 0.48, 0.9);
+    api.box(s, -0.28, 0.02, 0.28, 0.48, 0.9, 0, 'plastic');
     const stream = kit.pool('stream', (q) => { q.cyl(M.glass, 0xb8d0e0, 0, -0.5, 0, 1, 1, 8); }, M.glass);
     const sm = api.mtx(s, 0, 1.03, 0.19).multiply(T(0, 0, 0, 0, 0, 0, 0.012, 0.2, 0.012));
     const si = stream.add(s.li, ZERO);
@@ -462,15 +462,18 @@ export const keypad = {
     return ix.register(pos, {
       id: spec.id || 'keypad' + Math.round(pos.x), kind: 'keypad', name: spec.title || '密碼鎖', reach: 1.8, radius: 0.1, scope: 'map',
       prompt: () => (solved() ? { text: `${spec.title || '密碼鎖'} · 已解鎖`, dim: true } : '輸入密碼'),
+      when: () => (spec.power && !ix.flags.has(spec.power) ? `${spec.title || '密碼鎖'} · 沒有電(先到配電盤供電)` : true), // 需要某條迴路供電
       onUse: () => {
         if (solved()) return false;
+        const knew = ix.flags.has('know.code' + code); // 跨局知識:以前解開過,就記得密碼
         ix.ui.keypad({
-          title: spec.title || '密碼鎖', sub: spec.sub || `${code.length} 位數`, len: code.length,
+          title: spec.title || '密碼鎖', sub: knew ? `你記得密碼:${code}` : spec.sub || `${code.length} 位數`, len: code.length,
           check: (c) => {
             if (c === code) {
               led.color(li, 0x3aff5a); sfx.uiClick?.();
               ixs.lockerOpen(pos);
               if (flag) ix.flags.set(flag, true);
+              ix.flags.set('know.code' + code, true);
               for (const [k, v] of Object.entries(spec.onSolve?.flags || {})) ix.flags.set(k, v);
               if (spec.onSolve?.know) ix.flags.set(spec.onSolve.know, true);
               if (spec.onSolve?.item) ix.after(0.6, () => api.give(spec.onSolve.item));
@@ -554,7 +557,8 @@ export const fusebox = {
     const cl = circuits.map((c, i) => led.add(s.li, api.mtx(s, -0.16 + i * 0.11, 1.36, 0.152).multiply(T(0, 0, 0, 0, 0, 0, 0.02, 0.02, 0.004)), 0x1a1206));
     const pos = api.wp(s, 0, 1.45, 0.16);
     const st = { n: spec.filled || 0, on: new Set() };
-    const cap = () => (spec.capacity === 'fuses' || !spec.capacity ? st.n : Math.min(st.n, spec.capacity));
+    const initial = circuits.filter((c) => c.initial); // 開局就有電的迴路(例:207 的延長線直接接發電機)
+    const cap = () => Math.max(initial.length, spec.capacity === 'fuses' || !spec.capacity ? st.n : Math.min(st.n, spec.capacity));
     const power = (c, on) => {
       if (on) st.on.add(c.id); else st.on.delete(c.id);
       ix.flags.set(c.id, on);
@@ -563,6 +567,7 @@ export const fusebox = {
       ix.emit('power', c.id, on);
     };
     for (let i = 0; i < st.n; i++) fz.set(fi[i], fm(i));
+    for (const c of initial) power(c, true);
     const panel = () => ix.ui.panel({
       title: spec.title || '配電盤', sub: () => `保險絲 ${st.n}/${slots} · 可同時供電 ${cap()} 條迴路`,
       rows: () => circuits.map((c) => ({ label: c.label, on: st.on.has(c.id), can: st.on.has(c.id) || st.on.size < cap() })),
@@ -595,6 +600,7 @@ export const fusebox = {
         for (let i = 0; i < slots; i++) fz.set(fi[i], i < st.n ? fm(i) : ZERO);
         for (const c of circuits) { led.color(cl[circuits.indexOf(c)], 0x1a1206); if (c.lights) for (const z of c.zones || []) for (const f of api.fixtures(z)) { f.ov = 1; if (f.st0 !== undefined) f.state = f.st0; } }
         st.on.clear();
+        for (const c of initial) power(c, true);
       },
     });
   },

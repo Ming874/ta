@@ -3,6 +3,7 @@ import { sfx, ix as ixs } from '../../audio.js';
 import { T, mats } from '../kit.js';
 import { noteById } from '../notes.js';
 import * as LINES from '../lines.js';
+import { MATS } from '../../physics/truth.js';
 
 // 各種互動物件共用的工具(由 place.js 建一個 api 物件傳給每個種類的 build):
 //  座標:spot = { li, x, y, z, yaw, nx, nz, zone, mount };物件局部座標 +Z 朝房間內、原點在牆面/地面
@@ -22,10 +23,13 @@ export function makeApi(game, ix, kit, R) {
     wp(s, x = 0, y = 0, z = 0) { _v.set(x, y, z).applyMatrix4(T(s.x, s.y, s.z, 0, s.yaw, 0)); return { x: _v.x, y: _v.y, z: _v.z }; },
     reg(s, x, y, z, o) { return ix.register(api.wp(s, x, y, z), { scope: 'map', ...o }); },
     // 碰撞盒:局部矩形 (x0..x1, z0..z1)、高度 h(轉成世界 AABB;yaw 是 90° 的倍數)
-    box(s, x0, z0, x1, z1, h, y0 = 0) {
+    // pm = 子彈穿透類別(physics/truth.js MATS:wood/metal/heavy/plastic/glass…)
+    box(s, x0, z0, x1, z1, h, y0 = 0, pm = 'wood') {
       const a = api.wp(s, x0, 0, z0), b = api.wp(s, x1, 0, z1);
       const cx = (a.x + b.x) / 2, cz = (a.z + b.z) / 2, sx = Math.abs(a.x - b.x), sz = Math.abs(a.z - b.z);
-      return game.world.addBox(cx, cz, Math.max(0.05, sx), Math.max(0.05, sz), h, s.y + y0);
+      const bx = game.world.addBox(cx, cz, Math.max(0.05, sx), Math.max(0.05, sz), h, s.y + y0);
+      bx.pm = MATS[pm] ? pm : 'wood'; bx.mat = MATS[bx.pm].fx; bx.tag = 'ix';
+      return bx;
     },
     lineList(key) { const v = key.split('.').reduce((o, k) => o?.[k], LINES); return Array.isArray(v) ? v : v ? [v] : []; },
     lineById(id) {

@@ -21,7 +21,7 @@ function container(api, s, spec, o) {
     prompt: () => (!unlocked ? `${o.name} · 密碼鎖(輸入密碼)` : st.open ? `關上${o.short || o.name}` : st.got ? `打開${o.short || o.name}` : `翻找${o.name}`),
     onUse: () => {
       if (!unlocked) {
-        ix.ui.keypad({ title: `${o.name} · 密碼鎖`, sub: `${code.length} 位數`, len: code.length, check: (c) => { if (c === code) { unlocked = true; api.ixs.lockerOpen(api.wp(s, ...o.focus)); ix.flags.set(spec.flag || `h.lock.${e.id}`, true); ix.after(0.9, () => api.ix.use(e)); return { ok: true, text: '喀。' }; } api.sfx.pickupDeny(); return { ok: false, text: '鎖頭轉不開' }; } });
+        ix.ui.keypad({ title: `${o.name} · 密碼鎖`, sub: ix.flags.has('know.code' + code) ? `你記得密碼:${code}` : `${code.length} 位數`, len: code.length, check: (c) => { if (c === code) { unlocked = true; api.ixs.lockerOpen(api.wp(s, ...o.focus)); ix.flags.set(spec.flag || `h.lock.${e.id}`, true); ix.flags.set('know.code' + code, true); ix.after(0.9, () => api.ix.use(e)); return { ok: true, text: '喀。' }; } api.sfx.pickupDeny(); return { ok: false, text: '鎖頭轉不開' }; } });
         return false;
       }
       st.open = !st.open;
@@ -53,7 +53,7 @@ export const locker = {
     }
     kit.static(m, api.mtx(s), s.li);
     if (spec.label) { const t = new Model(); t.quad(nameTag(api, spec.label), x0 + pick * w, 1.74, d + 0.04, 0.12, 0.038); kit.static(t, api.mtx(s), s.li); }
-    api.box(s, -(n * w) / 2, 0.02, (n * w) / 2, d + 0.03, h);
+    api.box(s, -(n * w) / 2, 0.02, (n * w) / 2, d + 0.03, h, 0, 'metal');
     const door = kit.pool('lockdoor', (q) => {
       q.box(M.paint, 0xffffff, w / 2 - 0.01, 0, 0, w - 0.02, h - 0.24, 0.012);
       for (let k = 0; k < 4; k++) q.box(M.matte, 0x444444, w / 2 - 0.01, 0.64 - k * 0.03, 0.007, w - 0.12, 0.012, 0.004);
@@ -82,7 +82,7 @@ export const drawer = { // 床頭櫃 / 抽屜櫃(上面兩個抽屜,打開的是
     m.cyl(M.gloss, 0xd8d4c4, -0.12, h + 0.06, z0 + 0.15, 0.06, 0.12, 10); // 杯子 / 藥罐
     m.box(M.matte, 0xe8e2d0, 0.1, h + 0.003, z0 + 0.2, 0.14, 0.004, 0.1, 0, 0.4);
     kit.static(m, api.mtx(s), s.li);
-    api.box(s, -w / 2, z0, w / 2, z0 + d, h + 0.02);
+    api.box(s, -w / 2, z0, w / 2, z0 + d, h + 0.02, 0, metal ? 'metal' : 'wood');
     const dr = kit.pool(metal ? 'drawerM' : 'drawerW', (q) => {
       q.box(metal ? M.paint : M.wood, 0xffffff, 0, 0, -0.18, w - 0.08, 0.1, 0.36);
       q.box(metal ? M.paint : M.wood, 0xffffff, 0, 0.0, 0.006, w - 0.04, 0.15, 0.016);
@@ -139,7 +139,7 @@ export const morgue = {
       plates.push({ i, x, y, n: nums[i] });
     }
     kit.static(m, api.mtx(s), s.li);
-    api.box(s, -(cols * cw) / 2 - 0.06, 0.02, (cols * cw) / 2 + 0.06, d + 0.03, rows * rh + 0.5);
+    api.box(s, -(cols * cw) / 2 - 0.06, 0.02, (cols * cw) / 2 + 0.06, d + 0.03, rows * rh + 0.5, 0, 'heavy');
     const tagM = (n) => texMat('mg' + n, canvasTex('mg' + n, 64, 32, (x, w, h) => { x.fillStyle = '#d8d4c4'; x.fillRect(0, 0, w, h); x.fillStyle = '#1a1a1a'; x.font = `bold 22px ${FONT}`; x.textAlign = 'center'; x.fillText(String(n).padStart(2, '0'), w / 2, 24); }), { basic: true });
     for (const p of plates) { const t = new Model(); t.quad(tagM(p.n), p.x, p.y + 0.18, d + 0.052, 0.1, 0.05); kit.static(t, api.mtx(s), s.li); }
     const door = kit.pool('mdoor', (q) => {
@@ -243,7 +243,7 @@ export const note = {
       else if (style === 'photo' || style === 'polaroid') { mat = texMat('pol', POL()); m.quad(mat, hx, y + 0.004, hz, 0.09, 0.105, -Math.PI / 2, R() * 6); }
       else { mat = texMat('paper', PAPER()); m.quad(mat, hx, y + 0.003, hz, 0.2, 0.26, -Math.PI / 2, R() * 0.8 - 0.4); }
       focus = [hx, y + 0.02, hz];
-      if (!s.host) api.box(s, -0.2, 0.17, 0.2, 0.53, 0.47);
+      if (!s.host) api.box(s, -0.2, 0.17, 0.2, 0.53, 0.47, 0, 'metal');
     }
     kit.static(m, api.mtx(s), s.li);
     const nid = spec.note;
@@ -274,7 +274,7 @@ export const candle = {
     for (let i = 0; i < n; i++) { const r = i % 2, x = -0.36 + Math.floor(i / 2) * 0.144, y = 0.86 + r * 0.14, z = 0.3 - r * 0.08 + (R() - 0.5) * 0.03, hgt = 0.06 + R() * 0.07; m.cyl(M.matte, 0xe8e0c8, x, y + hgt / 2, z, 0.025, hgt, 8); pos0.push([x, y + hgt + 0.012, z]); }
     m.box(M.metal, 0x5a4a30, 0, 0.6, 0.48, 0.16, 0.12, 0.06); // 捐獻箱
     kit.static(m, api.mtx(s), s.li);
-    api.box(s, -0.46, 0.1, 0.46, 0.5, 1.05);
+    api.box(s, -0.46, 0.1, 0.46, 0.5, 1.05, 0, 'metal');
     const flame = kit.pool('flame', (q) => { q.cone(api.M.glow, 0xffc060, 0, 0, 0, 0.012, 0.03, 0.05, 6); }, api.M.glow);
     const lit = pos0.map((p) => ({ i: flame.add(s.li, ZERO), m: api.mtx(s, ...p) }));
     let k = 0;

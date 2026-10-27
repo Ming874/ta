@@ -167,6 +167,23 @@ export function placeAll(game, ix, kit, pack, seed = 2077) {
     }
     return null;
   }
+  // 沒有合適的牆:落地的東西改放在空地中央(四周都是一般格、碰撞盒周圍留 0.6m)
+  function freeSpot(z, fp) {
+    const li = z.levelIndex, y = L.levels[li].y;
+    for (const [c, r] of shuffle(cells(z))) {
+      if (used.has(`${li},${c},${r},*`)) continue;
+      let open = true;
+      for (let dr = -1; dr <= 1 && open; dr++) for (let dc = -1; dc <= 1; dc++) if (!plain(li, c + dc, r + dr) || zoneOf(li, c + dc, r + dr) !== z) { open = false; break; }
+      if (!open) continue;
+      const side = Object.keys(SIDES)[(R() * 4) | 0], [dc, dr, yaw] = SIDES[side];
+      const cx = (c + 0.5) * 2, cz = (r + 0.5) * 2, half = Math.max(fp.w, fp.d) / 2 + 0.6;
+      if (hitBox(cx - half, cz - half, cx + half, cz + half, y + 0.05, y + Math.max(1.2, fp.y1))) continue;
+      const s = { li, c, r, side, x: cx + dc * fp.d / 2, y, z: cz + dr * fp.d / 2, yaw, nx: -dc, nz: -dr, zone: z, along: 0, free: true };
+      used.add(`${li},${c},${r},*`); for (const k of Object.keys(SIDES)) used.add(`${li},${c},${r},${k}`);
+      return s;
+    }
+    return null;
+  }
   // 台面:先找同區(或指定 near)的護理站櫃台空位
   function hostSpot(z, o) {
     for (const h of api.hosts) {
@@ -190,6 +207,7 @@ export function placeAll(game, ix, kit, pack, seed = 2077) {
     if (fp.mount === 'surface' || (kind === 'note' && !FP['note:' + spec.style]) || spec.kind === 'logbook' || kind === 'answering') s = hostSpot(z, spec);
     if (!s) s = findSpot(z, fp.mount === 'surface' ? { ...fp, mount: 'wall', y0: 0.7 } : fp, spec);
     if (!s && fp.mount === 'door') s = findSpot(z, { ...fp, mount: 'wall' }, spec);
+    if (!s && fp.mount === 'floor' && !fp.wide) s = freeSpot(z, fp);
     if (!s) { stats.failed.push(`${spec.id || spec.kind}@${spec.zone}`); return null; }
     const K = kind === 'answering' ? ANSWERING : KINDS[kind];
     if (!K) { stats.failed.push(`${spec.kind}:kind`); return null; }
