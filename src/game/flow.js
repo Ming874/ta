@@ -1,9 +1,11 @@
 import { Zombie } from '../zombies/zombie.js';
 import { TYPES } from '../zombies/types.js';
+import { spawnAffinity } from './waves.js'; // [zombies-w3] 新類型的出生區域偏好
 import { Shop, shopTabs, purchase, modTotal } from '../shop.js';
 import { Pickups, Supplies } from '../pickups.js';
 import { sfx, resume as resumeAudio } from '../audio.js';
 import { settings } from '../ui/settings.js';
+import { buildInteract } from '../interact/index.js';
 import { createAmbush } from '../zombies/ambush.js';
 import { waveRoster, wavePace, waveKind, hpMul, SPECIAL, restTime, roundBonus, cleanBonus, POINTS, HOW_MUL, streakMul, streakTier, roundScore, saveBest } from './waves.js';
 
@@ -23,6 +25,7 @@ export const flowMethods = {
     if (this.shop || this.supplies) this.disposeGameplayWorld();
     this.shop = new Shop(this.scene, this.world, { game: this });
     this.supplies = new Supplies(this.scene, this.world);
+    buildInteract(this); // 互動物件與門(src/interact;碰撞盒要在 buildNav 之前)
     if (this.pickups) { this.pickups.clear(); this.pickups.world = this.world; } // 掉落物改用新世界做貼地/撞牆
     if (this.coins) this.coins.world = this.world;
   },
@@ -33,6 +36,7 @@ export const flowMethods = {
     this.shop?.dispose();
     this.supplies?.dispose();
     this.pickups?.clear();
+    this.interact?.disposeMap?.();
     this.shop = this.supplies = null;
   },
 
@@ -107,6 +111,7 @@ export const flowMethods = {
     this.shop?.setOpen(false, true);
     if (this.shopUIOpen) this.closeShop(false);
     this.physics?.reset(); // 物理:道具回原位、清掉布娃娃與碎片
+    this.interact?.resetRun(); // 互動物件、門、旗標與道具歸零
     this.ambush?.reset(); // [ambush] 假屍體、格柵、血漬
     const p = this.player, st = this.world.start;
     p.hp = p.maxHp;
@@ -169,6 +174,7 @@ export const flowMethods = {
     this.weapons.resupply();
     this.shop?.setOpen(false);
     this.supplies?.newRound();
+    this.interact?.newRound();
     if (this.shopUIOpen) this.closeShop(false);
     this.clearPools();
     // 本回合統計(回合結束的小結、無傷獎勵)
@@ -225,6 +231,7 @@ export const flowMethods = {
       if (q.s.dark) k *= 1.5;
       if (q.s.door) k *= 1.4;
       if (q.s.vent) k *= 2.2;
+      k *= spawnAffinity(type, q.s, L); // [zombies-w3] 手術者在手術室、焦屍在鍋爐房…
       if (now - (q.s._used ?? -99) < 6) k *= 0.15;
       if (Number.isFinite(q.fd)) k *= q.fd < lo + 4 ? 0.7 : q.fd > (calm ? 30 : 42) ? 0.6 : 1;
       return k;
@@ -526,6 +533,7 @@ export const flowMethods = {
       case 'KeyE': {
         this.player.keys.KeyE = true; // [net] 合作模式按住 E 救援隊友要讀這個(放開時 input.js 的 keyup 會清掉)
         e.stopPropagation();
+        if (this.interact?.press()) return; // 互動物件(看著的電話、門、開關…;與商店/補給櫃的優先順序在 interact.pick)
         const s = this.shop?.interact(this.player);
         if (s === 'open') { this.openShop(); return; }
         if (s === 'closed') { this.ui.pickup('商店只在回合間的休息時間開放', '#a3a39a'); sfx.pickupDeny(); return; }
@@ -602,12 +610,15 @@ export const flowMethods = {
     this.stats.time += dt;
     this.updateTutorial(dt);
     this._updateHeal(dt);
+    this.interact?.update(dt);
     this.pickups?.update(dt, this);
     this.supplies?.update(dt, this);
     this.shop?.update(dt, this.time, p);
     // 互動提示
     let prompt = null, dim = false;
-    if (!(this.healT > 0)) {
+    const ix = this.interact?.pick();
+    if (ix) ({ text: prompt, dim } = ix);
+    else if (!(this.healT > 0)) {
       const s = this.shop?.interact(p);
       if (s === 'open') prompt = '按 [E] 開啟商店';
       else if (s === 'closed') { prompt = '商店 · 回合結束後的休息時間才會開放'; dim = true; }

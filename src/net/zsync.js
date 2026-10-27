@@ -398,7 +398,7 @@ export class ZombieSync {
     z._resetPose();
     (z.amb ? z._ambPose : z['_pose_' + z.type]).call(z, dt, ctx, dist, toX, toZ);
     if (z.type === 'runner' && z.state === 'leap') { const u = z.st / 0.46; z.rootY = Math.max(0, 4 * 0.42 * u * (1 - u)); }
-    z._reactions(dt);
+    z._reactions(dt, ctx); // [zombies-w3] ctx:共用動畫層(抽搐、受擊部位反應、首次遭遇提示)
     z._applyRoot();
     // 腳步聲(與 Zombie.update 相同的規則)
     if (z.type !== 'brute' && z.type !== 'crawler') {
@@ -408,7 +408,7 @@ export class ZombieSync {
     z.vp.x = z.pos.x; z.vp.y = z.pos.y + (z.type === 'crawler' ? 0.4 : z.headH); z.vp.z = z.pos.z;
     z._groan -= dt;
     if (z._groan <= 0) {
-      z._groan = { walker: 4, runner: 2.5, crawler: 4, bloater: 3.5, brute: 5 }[z.type] + Math.random() * 5;
+      z._groan = ({ walker: 4, runner: 2.5, crawler: 4, bloater: 3.5, brute: 5 }[z.type] ?? z.T.groan ?? 4) + Math.random() * 5; // [zombies-w3] 新類型讀 T.groan
       if (z.type === 'bloater' && Math.random() < 0.5) sfx.gurgle(z.vp); else sfx.groan(z.type, z.vp);
       z.jawT = 1.3;
     }

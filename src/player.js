@@ -7,9 +7,10 @@ const HEIGHT = 1.8, HEIGHT_CROUCH = 1.25; // 身高(天花板/道具盒判定)
 const RADIUS = 0.35;
 
 // 手電筒近距離亮度上限:光照與距離平方成反比,貼近牆面、白色布簾或殭屍時整片過曝,再被 Bloom 放大成一大團白光。
-// 把聚光燈的距離衰減在 SPOT_NEAR 公尺內固定(近處最多等於 2.5m 處的亮度):牆、道具、殭屍一律有效,沒有額外運算。
+// 把聚光燈的距離衰減在 SPOT_NEAR 公尺內固定(近處最多等於 5.5m 處的亮度,像眼睛適應):牆、道具、殭屍一律有效,沒有額外運算。
 // 場景裡只有手電筒是聚光燈;要在任何材質編譯前改 shader 片段,所以放在模組載入時。
-const SPOT_NEAR = 2.5;
+const SPOT_NEAR = 5.5; // 實測:淺色牆面/電話亭面板在 1.5m 處,2.5m 上限仍 100% 過曝;上限 5.5m(配合 90 的亮度)約 196/255、不過曝
+const FLASH_I = 90; // 近處上限拉遠後提高基準亮度,讓 5.5m 外照得比原本(75)更遠
 {
   const k = 'lights_pars_begin', from = 'getDistanceAttenuation( lightDistance, spotLight.distance, spotLight.decay )';
   const src = THREE.ShaderChunk[k];
@@ -82,7 +83,7 @@ export class Player {
     this.mantle = new Mantle(this); // 翻越/攀上腰高障礙物(src/player/mantle.js)
 
     // 手電筒
-    this.flashlight = new THREE.SpotLight(0xfff1d6, 75, 30, 0.62, 0.95, 1.8);
+    this.flashlight = new THREE.SpotLight(0xfff1d6, FLASH_I, 30, 0.62, 0.95, 1.8);
     this.flashlight.castShadow = true;
     this.flashlight.shadow.mapSize.set(1024, 1024);
     this.flashlight.shadow.camera.near = 0.2;
@@ -121,8 +122,8 @@ export class Player {
   toggleFlashlight() {
     this.flashOn = !this.flashOn;
     const L = this.flashlight;
-    if (!this.flashOn) this._flashI = L.intensity || this._flashI || 75;
-    L.intensity = this.flashOn ? this._flashI || 75 : 0;
+    if (!this.flashOn) this._flashI = L.intensity || this._flashI || FLASH_I;
+    L.intensity = this.flashOn ? this._flashI || FLASH_I : 0;
     L.shadow.autoUpdate = this.flashOn;
     if (this.flashOn) L.shadow.needsUpdate = true;
     sfx.flashlight(this.flashOn);

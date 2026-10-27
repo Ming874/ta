@@ -69,6 +69,15 @@ export class Hazards {
     this.clouds = [];
     this.flashes = [];
     this.acc = 0;
+    this.dots = { bleed: 0, bleedDps: 0, burn: 0, burnDps: 0 }; // 持續傷害(手術者的流血、焦屍的燒傷):剩餘秒數 + 每秒傷害
+  }
+
+  // 對本機玩家的持續傷害;同種類取較長/較痛的那個(不疊加)
+  dot(kind, dps, t) {
+    const d = this.dots;
+    if (!(kind in d)) return;
+    d[kind] = Math.max(d[kind], t);
+    d[kind + 'Dps'] = Math.max(d[kind] > 0.05 ? d[kind + 'Dps'] : 0, dps);
   }
 
   // 拋物線吐射:飛行時間依水平距離而定(可以對不同樓層吐)
@@ -244,6 +253,9 @@ export class Hazards {
       f.s.scale.setScalar(f.size * (1 + f.t * 2));
       if (f.t > 0.35) { this.scene.remove(f.s); f.s.material.dispose(); this.flashes.splice(i, 1); }
     }
+    const D = this.dots;
+    if (D.bleed > 0) { this.acc += D.bleedDps * Math.min(dt, D.bleed); D.bleed -= dt; }
+    if (D.burn > 0) { this.acc += D.burnDps * Math.min(dt, D.burn); D.burn -= dt; }
     if (this.acc >= 5) {
       const d = Math.floor(this.acc / 5) * 5;
       this.acc -= d;
@@ -259,5 +271,6 @@ export class Hazards {
     for (const f of this.flashes) this.scene.remove(f.s);
     this.shots.length = this.pools.length = this.clouds.length = this.flashes.length = 0;
     this.acc = 0;
+    this.dots.bleed = this.dots.burn = 0;
   }
 }

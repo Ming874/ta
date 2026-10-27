@@ -18,6 +18,39 @@ export const TYPES = {
     name: '巨屍', hp: 900, speed: [1.1, 1.25], coins: 45, radius: 0.58, mass: 5, reach: 1.7, dmg: 25, cd: 2.2, turn: 3,
     charge: { min: 4.5, max: 15, speed: 7.4, dmg: 32, cd: [6, 9] }, bodyArmor: 0.55,
   },
+  // ---- 第三波新增:行為在 src/zombies/behaviors/<type>.js、外觀在 src/zombies/looks.js ----
+  // 順序決定連線的類型代碼(net/protocol.js 的 ZTYPES = Object.keys(TYPES)),只能往後加。
+  // groan:閒置低吼間隔基準(秒);counter:首次出現時的對策提示
+  screamer: { // 尖叫者:骨瘦如柴、下顎脫臼;保持距離尖叫 → 召來附近殭屍(加速直奔玩家)+ 玩家暈眩。脆弱,命中可打斷尖叫
+    name: '尖叫者', hp: 70, speed: [1.7, 2.1], coins: 14, radius: 0.3, mass: 0.7, reach: 1.0, dmg: 7, cd: 1.2, turn: 7, groan: 5,
+    scream: { min: 3.5, max: 20, cd: [9, 13], wind: 0.7, dur: 2.0, call: 30, frenzy: 6, daze: 11 },
+    counter: '尖叫會召來屍群並讓你暈眩 · 優先射殺,命中可打斷尖叫',
+  },
+  stalker: { // 潛行者:四肢細長,在天花板上倒爬;被手電筒照到會尖嘶退開,繞到背後才撲下來
+    name: '潛行者', hp: 120, speed: [2.7, 3.2], coins: 16, radius: 0.32, mass: 0.8, reach: 1.15, dmg: 16, cd: 1.3, turn: 9, groan: 6,
+    pounce: { min: 1.5, max: 4.5, speed: 7.2, dmg: 22, cd: [3, 5] }, lit: { cone: 0.42, range: 20, flee: 1.4 },
+    counter: '怕光 · 用手電筒照住牠會退開,別讓牠繞到背後',
+  },
+  surgeon: { // 手術者:縫著手術刀的病患,快速三連斬造成流血;連斬後有硬直空檔
+    name: '手術者', hp: 170, speed: [2.0, 2.4], coins: 15, radius: 0.34, mass: 1, reach: 1.3, dmg: 7, cd: 1.7, turn: 8, groan: 4,
+    combo: { hits: 3, gap: 0.22 }, bleed: { dps: 4, t: 5 },
+    counter: '三連斬會讓你流血 · 拉開距離,趁連斬後的空檔反擊',
+  },
+  burned: { // 焦屍:全身焦黑冒煙;接觸會燒傷(持續傷害)、身邊有熱浪;爆炸傷害加倍,子彈打焦殼稍弱
+    name: '焦屍', hp: 160, speed: [1.25, 1.55], coins: 13, radius: 0.35, mass: 1, reach: 1.1, dmg: 9, cd: 1.4, turn: 6, groan: 4,
+    burn: { dps: 5, t: 3, aura: 1.4, auraDps: 5 }, blastMul: 2.2, bulletMul: 0.85,
+    counter: '別讓牠貼身(會燒傷) · 爆炸傷害加倍',
+  },
+  hazmat: { // 防護衣士兵:防護衣與防彈板讓子彈打身體效果差;防毒面具(頭)是弱點;掉落較好的物資
+    name: '防護衣士兵', hp: 360, speed: [1.0, 1.2], coins: 32, radius: 0.38, mass: 1.6, reach: 1.15, dmg: 16, cd: 1.8, turn: 4.5, groan: 5,
+    bodyArmor: 0.35, maskMul: 1.4,
+    counter: '防護衣擋子彈 · 瞄準防毒面具',
+  },
+  straitjacket: { // 束縛病患:雙臂綁在胸前,用頭撞;蹲低後低頭狂奔衝撞(撞牆會暈眩),撞得開輕道具
+    name: '束縛病患', hp: 140, speed: [1.45, 1.75], coins: 12, radius: 0.33, mass: 1.1, reach: 0.95, dmg: 12, cd: 1.3, turn: 7, groan: 3.5,
+    charge: { min: 3, max: 11, speed: 6.6, dmg: 20, cd: [4, 6.5] },
+    counter: '蹲低就是要衝撞 · 側閃讓牠撞牆,趁暈眩爆頭',
+  },
 };
 
 // 第 n 回合的出怪清單:第 1 回合只有行屍,之後逐步加入新類型(首次出現的回合保證至少一隻)

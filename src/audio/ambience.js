@@ -639,7 +639,8 @@ export const EVENTS = {
     }
   },
   phoneFar() { // 遠處辦公室電話響兩聲就斷
-    const h = ev(spot(10, 20), { dur: 4, room: 0.7, gain: 0.55 });
+    if (A.game?.interact?.ringFar?.(10, 24, 60)) return; // [interact] 優先讓 10~24m 外一支真的電話響(循聲找得到、接得起來)
+    const h = ev(spot(26, 36), { dur: 4, room: 0.9, gain: 0.45 }); // 否則只在很遠的地方(隔好幾道牆,走過去也找不到是正常的)
     if (!h) return;
     phoneBell(h.in, h.t, 1.2, 0.15);
   },
