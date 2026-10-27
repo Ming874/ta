@@ -94,6 +94,7 @@ export class Interact {
       obj: isObj ? target : null, pos: { x: 0, y: 0, z: 0 }, used: false, usedRound: -1, cdUntil: -1, n: 0, holdP: 0,
     };
     if (!e.id) e.id = `${e.kind}@${this.list.length}`;
+    e.reach = Math.max(2.0, e.reach); // 至少 2m(站在桌邊、低頭看地上的東西也搆得到)
     if (typeof target === 'function') e.posFn = target;
     else if (isObj && !e.dynamic) { target.updateWorldMatrix(true, false); target.getWorldPosition(_p); e.pos.x = _p.x; e.pos.y = _p.y; e.pos.z = _p.z; }
     else if (!isObj && target) { e.pos.x = target.x; e.pos.y = target.y; e.pos.z = target.z; }
