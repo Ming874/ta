@@ -38,6 +38,9 @@
 .mn-wrap .mn-best:empty { display: none; }
 .mn-wrap .mn-best span { color: var(--mn-amber); letter-spacing: 4px; margin-right: 10px; }
 .mn-wrap .mn-best b { font: 700 14px var(--mn-num); color: var(--mn-text); letter-spacing: 1px; }
+/* 演出區(之後的隨機抽地圖等):主選單右側中央,沒有內容時不佔位 */
+.mn-stage { position: absolute; right: max(4vw, 24px); top: 14vh; z-index: 2; width: min(520px, 40vw); }
+.mn-stage:empty { display: none; }
 /* 主選單右側:按鍵一覽 */
 .mn-side { position: absolute; right: max(4vw, 24px); bottom: 70px; z-index: 1; width: min(420px, 34vw); padding: 14px 18px 12px; background: rgba(8, 8, 8, .55);
   border: 1px solid rgba(255, 255, 255, .08); backdrop-filter: blur(2px); }

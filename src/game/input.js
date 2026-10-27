@@ -71,11 +71,17 @@ export const inputMethods = {
     window.addEventListener('blur', () => { this.player.keys = {}; inp.fireHeld = false; inp.aimHeld = false; inp.shift = false; });
 
     const lock = () => { resumeAudio(); canvas.requestPointerLock(); };
-    document.getElementById('startBtn').onclick = () => {
+    const startSingle = () => {
       document.getElementById('menu').classList.remove('on');
       this.ui.showHud(true);
       this.begin();
       lock();
+    };
+    // 主選單「單人生存」:有開局演出(ui.menu.beforeStart,例如隨機抽地圖)就先跑完再開始
+    document.getElementById('startBtn').onclick = () => {
+      const hooks = this.ui.menu?.beforeStart || [];
+      if (!hooks.length) { startSingle(); return; }
+      hooks.reduce((p, f) => p.then(() => f()), Promise.resolve()).catch((e) => console.warn('[menu] beforeStart', e)).then(startSingle);
     };
     document.getElementById('resumeBtn').onclick = lock;
     document.getElementById('pause').onclick = lock;

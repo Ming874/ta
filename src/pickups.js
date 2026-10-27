@@ -863,6 +863,8 @@ export class Pickups {
     this.items.splice(i, 1);
   }
 
+  dispose() { this.clear(); } // 共用模型/材質(R)留著給下一張地圖
+
   clear() {
     while (this.items.length) this._remove(this.items.length - 1);
     this.dry = 0;

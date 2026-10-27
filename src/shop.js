@@ -335,6 +335,7 @@ class Buckets {
   flush(parent, shadow = true) {
     for (const [mat, list] of this.map) {
       const m = new THREE.Mesh(mergeGeometries(list), mat);
+      m.userData.own = true; // 店面自己的合併幾何(dispose 時釋放;材質是共用的)
       m.castShadow = shadow && !mat.transparent;
       m.receiveShadow = !mat.transparent;
       m.matrixAutoUpdate = false;
@@ -673,6 +674,9 @@ export class Shop {
     this.boxes = [];
     this.anim = [];
     this.levelId = world.layout?.levels?.[S.level]?.id || '';
+    // 店面所在區域名稱(提示文字用)與店名字樣:都從地圖資料來,地圖可用 layout.shopBrand 覆寫
+    this.zoneName = (world.zoneAt ? world.zoneAt(S.x, (S.y || 0) + 0.2, S.z) : null)?.name || '';
+    this.brand = { sign: '聖心醫院 員工福利社', en: 'SACRED HEART HOSPITAL · STAFF STORE', term: '聖心醫院 補給終端 v2.3', ...(world.layout?.shopBrand || {}) };
     this.group = new THREE.Group();
     this.group.position.set(S.x, this.y, S.z);
     this.group.rotation.y = this.F.rot;
@@ -721,8 +725,8 @@ export class Shop {
         x.fillStyle = '#1d3a33'; x.fillRect(0, 0, w, h);
         x.strokeStyle = '#c9b27a'; x.lineWidth = 6; x.strokeRect(8, 8, w - 16, h - 16);
         x.fillStyle = '#e8dcc0'; x.font = `900 58px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle';
-        x.fillText('聖心醫院 員工福利社', w / 2, h * 0.42);
-        x.font = `700 22px ${FONT}`; x.fillStyle = '#c9b27a'; x.fillText('SACRED HEART HOSPITAL · STAFF STORE', w / 2, h * 0.78);
+        x.fillText(this.brand.sign, w / 2, h * 0.42);
+        x.font = `700 22px ${FONT}`; x.fillStyle = '#c9b27a'; x.fillText(this.brand.en, w / 2, h * 0.78);
         noise(x, w, h, 16);
       }, 1024, 248), roughness: 0.6,
     }));
@@ -1335,7 +1339,7 @@ export class Shop {
     x.fillStyle = '#04100a'; x.fillRect(0, 0, w, h);
     x.font = `700 15px Consolas, ${FONT}`; x.textBaseline = 'top';
     if (this.open) {
-      x.fillStyle = '#7dffa0'; x.fillText('聖心醫院 補給終端 v2.3', 10, 10);
+      x.fillStyle = '#7dffa0'; x.fillText(this.brand.term, 10, 10);
       x.fillStyle = '#3fae62'; x.fillRect(10, 32, w - 20, 1);
       x.fillStyle = '#b9ffcc';
       ['[1] 武器', '[2] 彈藥', '[3] 改裝', '[4] 裝備'].forEach((t, i) => x.fillText(t, 14, 44 + i * 22));
@@ -1454,12 +1458,19 @@ export class Shop {
     }
   }
 
+  // 拆除店面(換地圖時):移除場景物件與碰撞盒(登記在建立時的那個 World),釋放自己的合併幾何與動態貼圖;
+  // 共用材質、商品幾何與 GLB 快取留給下一次重建
   dispose() {
+    if (this.disposed) return;
     this.disposed = true;
     this.scene.remove(this.group);
     this.scene.remove(this.light);
+    this.light.dispose?.();
     for (const b of this.boxes) this.world.removeBox(b);
     this.boxes.length = 0;
+    this.group.traverse((o) => { if (o.userData.own) o.geometry.dispose(); });
+    for (const t of [this.tagTex, this.termTex, this.tvTex]) t?.dispose();
+    this.anim.length = 0;
   }
 }
 

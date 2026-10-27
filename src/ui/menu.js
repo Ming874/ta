@@ -42,7 +42,7 @@ export const KEYS = [
 ];
 const KEYS_MP = [['Tab', '計分板(多人)'], ['Enter', '聊天(多人)']];
 const TIPS = [
-  '每回合結束後有 <b>30 秒休息</b>(首領回合前 40 秒),1F 便利商店拉起捲門:買槍、彈藥、改裝、防彈背心、手榴彈與醫療包。<b>購物時遊戲暫停</b>。',
+  '每回合結束後有 <b>30 秒休息</b>(首領回合前 40 秒),商店拉起捲門(畫面上的推車標記會指路):買槍、彈藥、改裝、防彈背心、手榴彈與醫療包。<b>購物時遊戲暫停</b>。',
   '<b>每 5 回合是首領回合</b>,巨屍會出現;第 8、13、18… 回合是特殊回合(狂奔之夜 / 膿毒潮)。殭屍血量從第 5 回合起逐漸增加,記得升級武器。',
   '<b>爆頭</b>造成雙倍傷害並多拿 50% 金幣;<b>近戰擊殺</b>金幣加倍。4 秒內連續擊殺會累積<b>連殺</b>,分數倍率最高 ×2,5、8、12… 連殺另有金幣獎勵。',
   '整回合<b>毫髮無傷</b>可以拿到額外獎勵;回合結束時地上的金幣與用得到的掉落物會飛向你。',
@@ -57,6 +57,9 @@ export class Menu {
   constructor(ui) {
     this.ui = ui;
     this.panelOpen = null;
+    // 開始單人遊戲前依序等待的演出(例如之後的「隨機抽地圖」):async () => void。
+    // 注意:滑鼠鎖定需要使用者手勢,演出超過數秒時請在演出結束時讓玩家再點一下(input.js 的 startBtn)
+    this.beforeStart = [];
     document.title = '聖心醫院 · 殭屍生存';
     this._main();
     this._pause();
@@ -95,6 +98,7 @@ export class Menu {
           <div class="mn-best" id="menuBest"></div>
         </div>
       </div>
+      <div class="mn-stage" id="menuStage"></div>
       <div class="mn-side"><div class="mn-sideh">操作</div>${keyGrid(KEYS, 'compact')}</div>
       <div class="mn-foot">建議戴上耳機並全螢幕遊玩 · 所有設定與最佳紀錄只存在這台電腦的瀏覽器<br />聖心醫院 · 一款網頁 3D 殭屍生存射擊遊戲</div>`;
     m.addEventListener('click', (e) => {
@@ -104,9 +108,24 @@ export class Menu {
       if (md) { sfx.uiClick(); this.openLobby(md.dataset.mode); }
     });
     $('startBtn').addEventListener('click', () => sfx.uiClick());
+    this.mainBtns = m.querySelector('.mn-btns');
+    this.miniRow = m.querySelector('.mn-row');
+    this.stage = $('menuStage'); // 空的演出區(主選單右側中央),之後的抽地圖動畫可以放這裡
     this.showBest();
     // 回到主選單時更新最佳紀錄
     new MutationObserver(() => { if (m.classList.contains('on')) this.showBest(); }).observe(m, { attributes: true, attributeFilter: ['class'] });
+  }
+
+  // 擴充入口(之後的圖鑑、成就…):main = 大按鈕(放在模式按鈕下方),否則放進小按鈕列;回傳按鈕元素
+  addEntry({ id, label, sub = '', main = false, onClick } = {}) {
+    const b = document.createElement('button');
+    b.className = main ? 'mn-btn' : 'mn-mini';
+    if (id) b.id = id;
+    b.innerHTML = `${esc(label || '')}${main && sub ? `<small>${esc(sub)}</small>` : ''}`;
+    b.addEventListener('click', () => { sfx.uiClick(); onClick?.(); });
+    if (main) this.mainBtns.insertBefore(b, this.miniRow);
+    else this.miniRow.appendChild(b);
+    return b;
   }
 
   // 多人大廳(src/net/lobby.js):選好模式後開啟;連線模組不在時退回它自己的入口按鈕

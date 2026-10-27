@@ -104,15 +104,16 @@ export function streakTier(s) {
 
 // ---------- 本機最佳紀錄(localStorage;隱私模式/被封鎖時安靜失敗) ----------
 const BEST_KEY = 'shh.best.v1';
-export function loadBest() {
+const bestKey = (scope) => (scope ? `${BEST_KEY}:${scope}` : BEST_KEY); // scope = 地圖 id(多地圖時各自記錄)
+export function loadBest(scope = '') {
   try {
-    const b = JSON.parse(localStorage.getItem(BEST_KEY) || 'null');
+    const b = JSON.parse(localStorage.getItem(bestKey(scope)) || 'null');
     return b && typeof b === 'object' ? b : null;
   } catch { return null; }
 }
 // 回傳 { best(更新後), prev(更新前), isNew: { score, round, kills, streak } }
-export function saveBest(run) {
-  const prev = loadBest();
+export function saveBest(run, scope = '') {
+  const prev = loadBest(scope);
   const best = { ...(prev || {}) };
   const isNew = {};
   for (const k of ['score', 'round', 'kills', 'streak', 'time']) {
@@ -122,6 +123,6 @@ export function saveBest(run) {
   }
   if (isNew.score || !prev) best.date = Date.now();
   best.runs = (prev?.runs || 0) + 1;
-  try { localStorage.setItem(BEST_KEY, JSON.stringify(best)); } catch { /* 略過 */ }
+  try { localStorage.setItem(bestKey(scope), JSON.stringify(best)); } catch { /* 略過 */ }
   return { best, prev, isNew };
 }

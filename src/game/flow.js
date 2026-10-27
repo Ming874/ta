@@ -16,10 +16,23 @@ const TYPE_NAME = { walker: '行屍', runner: '狂奔者', crawler: '爬行者',
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 export const flowMethods = {
-  // 世界建構時呼叫(在 world.buildNav 之前):店面與補給點都會登記碰撞盒
+  // 世界建構時呼叫(在 world.buildNav 之前):店面與補給點都會登記碰撞盒。位置全部來自 world(world.shop / world.supplies)。
+  // 換地圖(loadMap):舊 World 還在時先 disposeGameplayWorld(),新 World 與場景建好後再呼叫這個(一樣在 buildNav 之前)
   buildGameplayWorld() {
+    if (this.shop || this.supplies) this.disposeGameplayWorld();
     this.shop = new Shop(this.scene, this.world, { game: this });
     this.supplies = new Supplies(this.scene, this.world);
+    if (this.pickups) { this.pickups.clear(); this.pickups.world = this.world; } // 掉落物改用新世界做貼地/撞牆
+    if (this.coins) this.coins.world = this.world;
+  },
+
+  // 拆掉店面、補給櫃與地上的掉落物(各自從建立時的 World 移除碰撞盒)
+  disposeGameplayWorld() {
+    if (this.shopUIOpen) this.closeShop(false);
+    this.shop?.dispose();
+    this.supplies?.dispose();
+    this.pickups?.clear();
+    this.shop = this.supplies = null;
   },
 
   // 建構子最後呼叫一次:掉落物、按鍵、統計掛鉤、設定
@@ -309,7 +322,7 @@ export const flowMethods = {
     this.ui.coinGain(bonus + clean);
     this.ui.feed(`清場獎勵 <b>+${bonus}</b>`, { icon: 'coin', color: '#f2c84b', html: true });
     if (clean) this.ui.feed(`毫髮無傷 <b>+${clean}</b>`, { icon: 'heal', color: '#7fe08f', html: true });
-    const where = this.shop?.levelId ? `${this.shop.levelId} 便利商店` : '補給站';
+    const where = [this.shop?.levelId, this.shop?.zoneName].filter(Boolean).join(' ') || '商店';
     const next = waveKind(n + 1), sp = SPECIAL[next];
     const warn = sp ? ` · 下一回合:${sp.name}` : '';
     this.ui.banner('商店開放', `休息 ${this.restT} 秒 · 前往 ${where} 按 [E] 開啟商店 · [N] 立即開始${warn}`, 5200, 'gold');
@@ -604,7 +617,7 @@ export const flowMethods = {
       accuracy: S.shots ? S.hits / S.shots : 0, shots: S.shots, hits: S.hits, time: S.time, bestStreak: S.bestStreak, streak: S.bestStreak, earned: S.earned, byType: S.byType, pickups: S.pickups || 0,
     };
     // 本機最佳紀錄(多人模式不記)
-    if (!this.net) Object.assign(run, saveBest(run));
+    if (!this.net) Object.assign(run, saveBest(run, this.mapId)); // mapId:多地圖時各地圖分開記(未設定 = 共用)
     return run;
   },
 

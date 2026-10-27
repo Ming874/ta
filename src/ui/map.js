@@ -59,6 +59,7 @@ export class MapUI {
   open(game) {
     this.game = game;
     const S = this._src(game);
+    if (S.L !== this._L) { this.cache.clear(); this._L = S.L; } // 換地圖:樓層平面圖快取作廢
     this.S = S;
     const p = game.player;
     this.me = S.L ? (game.world.levelAt ? game.world.levelAt(p.pos.y + 0.2) : S.L.levelOfY(p.pos.y + 0.2)) : 0;
