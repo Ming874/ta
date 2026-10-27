@@ -77,6 +77,7 @@ export class Game {
     this.world.buildNav(); // 場景與道具的碰撞盒都登記好之後才建導航
 
     this.player = new Player(this.camera, this.world);
+    sfx.attachGame(this); // [audio] 視線遮蔽、樓層悶音、地面材質、房間殘響、畫質、玩家狀態(蹲下/喘息)
     this.players = [this.player]; // 多人時會加入遠端玩家(殭屍追最近的)
     this.weapons = new WeaponSystem(this.weaponScene);
     this.weapons.onFire = (def, id, speed) => this.fire(def, id, speed);

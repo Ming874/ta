@@ -137,7 +137,7 @@ export const combatMethods = {
     else if (kind === 'drop') this._eject(data.id, this.weapons.models[data.id], data.n);
     else if (kind === 'knife') this.meleeHit();
     else if (kind === 'throw') this.releaseGrenade();
-    else if (kind === 'pin') sfx.dry();
+    else if (kind === 'pin') sfx.grenadePin();
   },
 
   // 拋殼:從視角模型的拋殼口換算到世界座標(依兩台相機 FOV 差修正,讓彈殼出現在畫面上同一位置)
@@ -293,7 +293,7 @@ export const combatMethods = {
     const mat = this._surfaceMat(pt, n);
     if (pellets === 1 || idx < 4) this.wfx.impact(pt, n, d, mat, power);
     else this.wfx.decals.add(pt, n, 0.035 + Math.random() * 0.02, mat === 'wood' ? DECAL.wood : mat === 'metal' ? DECAL.metal : mat === 'tile' ? DECAL.tile : DECAL.concrete, 40);
-    if (idx === 0) sfx.wall();
+    if (idx === 0) sfx.wall(pt, mat);
     // 金屬跳彈:淺角度時往反射方向再飛一小段
     if (mat === 'metal' && pellets === 1) {
       const dn = d.dot(n);

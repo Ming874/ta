@@ -2,11 +2,16 @@
 // 常駐層:低頻 drone、不和諧弦樂 cluster(顫音隨威脅升高)。
 // 排程層(200ms lookahead):心跳、戰鬥打擊脈動(7/8 拍)、隨機事件(走音音樂盒、金屬刮擦、遠處撞擊、低語、驚嚇漸強、低音和弦)。
 // 有錄音配樂播放時(tracks.js),程式配樂自動退到背景只留脈動、心跳與點綴。
+// 配樂狀態:menu(主選單)、fight(回合中,自動分成 explore 探索 / tension 緊張 / fight 激戰三段強度)、boss(巨屍在場)、
+// break / shop(回合間休息、補給)、dead(遊戲結束)。也可以直接 setMood('explore'|'tension') 指定。
+// 強度 = max(最近殭屍的距離緊張度, 最近的戰鬥活動:開槍/受傷/近戰);升級快(1 秒)、降級慢(10 秒),每段至少停留 8 秒,切換時錄音配樂交叉淡化。
 import { A, onTick, burst, tone, metal, gain, filter, rand, pick, clamp, curve } from './core.js';
 import { ambienceLevel } from './ambience.js';
 import * as TR from './tracks.js';
 
 const MOODS = {
+  explore: { drone: 0.5, pad: 0.35, pulse: 0, amb: 1, ev: { box: 1, scrape: 1, boom: 1, whisper: 1.5, stinger: 0, cluster: 1 }, gap: [7, 14] },
+  tension: { drone: 0.65, pad: 0.5, pulse: 0.25, amb: 1, ev: { box: 0.3, scrape: 2, boom: 2, whisper: 1, stinger: 1, cluster: 1 }, gap: [5, 11] },
   menu: { drone: 0.6, pad: 0.45, pulse: 0, amb: 0.85, ev: { box: 3, scrape: 1, boom: 1, whisper: 2, stinger: 0, cluster: 1 }, gap: [6, 12] },
   fight: { drone: 0.7, pad: 0.5, pulse: 0.4, amb: 1, ev: { box: 0.5, scrape: 2, boom: 2, whisper: 1, stinger: 1.5, cluster: 1 }, gap: [5, 11] },
   boss: { drone: 1, pad: 0.85, pulse: 1, amb: 0.8, ev: { box: 0, scrape: 2, boom: 2, whisper: 0, stinger: 2, cluster: 2 }, gap: [4, 8], tempo: 1.2 },
@@ -20,7 +25,7 @@ const ROOTS = [36.71, 34.65, 38.89, 32.7]; // D1 C#1 D#1 C1
 const BOX = [0, 1, 3, 6, 7, 10, 12, 13];
 
 const M = {
-  started: false, mood: 'fight', moodSet: false, tension: 0, tTarget: 0, health: 0, pain: 0, spike: 0, spikeEnd: 0,
+  started: false, mood: 'fight', sub: 'tension', subT: 0, upT: 0, downT: 0, moodSet: false, tension: 0, tTarget: 0, health: 0, pain: 0, spike: 0, spikeEnd: 0,
   nextBeat: 0, step: 0, bar: 0, nextHeart: 0, nextEvent: 0, nextRetune: 0, nextSwell: 0, trackMix: 0,
 };
 
@@ -34,8 +39,11 @@ export function startMusic() {
   const t = now + 0.5;
   Object.assign(M, { nextBeat: t, nextHeart: t, nextEvent: t + rand(3, 6), nextRetune: t + rand(20, 35), nextSwell: t + 2, quietSince: 0 });
   applyMood(2.5);
-  TR.setTrackMood(M.mood);
+  TR.setTrackMood(trackMood());
 }
+// 實際要用的狀態(fight 依強度分段)
+const trackMood = () => (M.mood === 'fight' ? M.sub : M.mood);
+const P = () => MOODS[trackMood()] || MOODS.fight;
 
 // 常駐的 drone 與弦樂層(錄音配樂播放一段時間後整組停掉省 CPU,沒有錄音時再建回來)
 function buildLayers() {
@@ -122,8 +130,8 @@ function dropLayers() {
 }
 
 function applyMood(tc = 2) {
-  if (!M.started || !M.layers) { if (M.started) ambienceLevel((MOODS[M.mood] || MOODS.fight).amb); return; }
-  const m = MOODS[M.mood] || MOODS.fight;
+  if (!M.started || !M.layers) { if (M.started) ambienceLevel(P().amb); return; }
+  const m = P();
   const n = A.ctx.currentTime, back = 1 - 0.75 * M.trackMix;
   M.droneOut.gain.setTargetAtTime(m.drone * 0.3 * back, n, tc);
   M.padOut.gain.setTargetAtTime(m.pad * 1.6 * back, n, tc);
@@ -136,7 +144,8 @@ export function setMood(mood) {
   if (mood === M.mood) return;
   const prev = M.mood;
   M.mood = mood;
-  TR.setTrackMood(mood);
+  if (mood === 'fight') { M.sub = 'tension'; M.subT = A.ctx ? A.ctx.currentTime : 0; }
+  TR.setTrackMood(trackMood());
   if (!M.started) return;
   applyMood(mood === 'dead' ? 0.6 : 2);
   const n = A.ctx.currentTime;
@@ -154,7 +163,8 @@ export function autoMood(mood) {
   M.moodSet = keep;
 }
 
-export const musicMood = () => M.mood;
+export const musicState = () => ({ mood: M.mood, sub: M.sub, intensity: +(M.intensity || 0).toFixed(2), tension: +M.tension.toFixed(2), trackMix: M.trackMix, layers: M.layers });
+export const musicMood = () => trackMood();
 export function setTension(x) { M.tTarget = clamp(+x || 0, 0, 1); }
 export function setHealth(r) { M.health = clamp((0.45 - (+r || 0)) / 0.45, 0, 1); }
 export function addPain(v) { M.pain = Math.min(1, M.pain + v); }
@@ -172,8 +182,10 @@ onTick((t) => {
   const ctx = A.ctx;
   if (!M.started || M.ctx !== ctx || (ctx.state !== 'running' && typeof ctx.startRendering !== 'function')) return;
   const ahead = t + 0.2;
-  const m = MOODS[M.mood] || MOODS.fight;
+  if (M.mood === 'fight') updateSub(t);
+  const m = P();
   M.tension += (M.tTarget - M.tension) * 0.07;
+  M.intensity = Math.max(M.tension, A.combatT ? clamp(1 - (t - A.combatT) / 14, 0, 1) * 0.75 : 0);
   M.pain = Math.max(0, M.pain - 0.015);
   const T = M.tension;
   const tm = TR.trackLevel();
@@ -208,12 +220,13 @@ onTick((t) => {
   } else M.nextHeart = t;
 
   // 戰鬥脈動
-  const pl = M.mood === 'boss' ? 1 : m.pulse > 0 ? m.pulse * (0.45 + T * 0.9) : 0;
+  const pl = M.trackMix > 0.5 ? 0 : M.mood === 'boss' ? 1 : m.pulse > 0 ? m.pulse * (0.45 + T * 0.9) : 0;
   const eighth = 60 / (96 * (m.tempo || 1)) / 2;
   if (pl > 0.02) {
     if (M.nextBeat < t) M.nextBeat = t + 0.05;
     while (M.nextBeat < ahead) { beat(M.nextBeat, M.step, pl * (1 - 0.35 * M.trackMix)); M.nextBeat += eighth; M.step = (M.step + 1) % 7; if (!M.step) M.bar++; }
   } else M.nextBeat = t;
+  M.pulseOff = M.trackMix > 0.5;
 
   // 隨機事件(有錄音配樂時減少)
   if (t > M.nextEvent) {
@@ -226,6 +239,20 @@ onTick((t) => {
     M.nextEvent = t + rand(m.gap[0], m.gap[1]) * (1 - T * 0.3);
   }
 });
+
+// fight 強度分段:升級要持續 1 秒、降級要持續 10 秒,每段至少 8 秒
+function updateSub(t) {
+  const I = M.intensity || 0;
+  const want = I >= 0.55 ? 'fight' : I >= 0.18 ? 'tension' : 'explore';
+  const rank = { explore: 0, tension: 1, fight: 2 };
+  if (want === M.sub) { M.upT = M.downT = 0; return; }
+  if (t - M.subT < 8 && rank[want] < rank[M.sub]) return;
+  if (rank[want] > rank[M.sub]) { if (!M.upT) M.upT = t; if (t - M.upT < 1) return; }
+  else { if (!M.downT) M.downT = t; if (t - M.downT < 10) return; }
+  M.sub = want; M.subT = t; M.upT = M.downT = 0;
+  TR.setTrackMood(want);
+  applyMood(want === 'fight' ? 1.2 : 3);
+}
 
 // ---------- 樂器 ----------
 function out(bus = 'music', hall = 0.5, pan = 0) {

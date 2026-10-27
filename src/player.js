@@ -116,7 +116,7 @@ export class Player {
   toggleFlashlight() {
     this.flashOn = !this.flashOn;
     this.flashlight.visible = this.flashOn;
-    sfx.dry();
+    sfx.flashlight(this.flashOn);
   }
 
   look(dx, dy) {
@@ -144,7 +144,7 @@ export class Player {
     this.shake = Math.max(this.shake, 0.35);
     this.lastHurt = t;
     if (src) this.lastHurtFrom = { x: src.x, z: src.z };
-    sfx.hurt();
+    sfx.hurt(dmg);
     return dmg;
   }
 
@@ -230,7 +230,7 @@ export class Player {
       this._coyote = this._jumpBuf = 0;
       this.stamina = Math.max(0, this.stamina - JUMP_COST);
       this._stamT = STAM_DELAY;
-      sfx.step(true, this.surface);
+      sfx.jump(this.surface);
     }
 
     // ---- 積分 + 碰撞(world.resolve 處理牆/道具/地面/天花板/落地) ----
@@ -248,7 +248,7 @@ export class Player {
     }
     if (wasAir && this.onGround && this.landV > 1) { // 落地:鏡頭下沉 + 腳步聲
       this.dipV -= Math.min(5, this.landV) * 0.32;
-      sfx.step(this.landV > 3, this.surface);
+      sfx.land(this.landV, this.surface);
     }
     const sp = Math.hypot(this.vx, this.vz);
     this.speedNorm = Math.min(1, sp / 3.3);

@@ -317,6 +317,7 @@ export class Zombie {
       this.los = this.d3 < 24 && world.hasLineOfSight(pos.x, pos.y + ey, pos.z, player.pos.x, player.pos.y + 1.4, player.pos.z);
       this.line = same && this.los && hd < 16 && world.walkLine ? world.walkLine(pos.x, pos.y, pos.z, player.pos.x, player.pos.z, 0.45, this.type === 'runner' ? VAULT_H : 0) : 0;
       if (this.type === 'runner') this._flankCheck(world, player, toX, toZ, hd);
+      if (this.los && !this.alerted && this.type !== 'runner' && this.d3 < 14) { this.alerted = true; say('zAlert', this.type, this.vp); } // [audio] 發現玩家的叫聲(奔跑者另有尖嘯)
     }
     const w = this.want;
     // 直線可走時直接衝向玩家(狂奔者連要翻越的矮障礙也直衝),否則沿導航場走(會上下樓梯);卡住重新找路時只跟導航場
