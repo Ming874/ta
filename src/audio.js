@@ -34,7 +34,7 @@ import { scare, SCARE_KINDS } from './audio/scares.js';
 import { setZone, loopStart, loopStop, startAmbience, ambState, LOOP_KINDS, resetAmbience, defineMood } from './audio/ambience.js';
 import { radio, pa, tape, storyState } from './audio/story.js';
 import * as AMB from './audio/ambience.js';
-import { thunder, setRain, rainState } from './audio/weather.js';
+import { thunder, setRain, rainState, rainGains, rainContext, rainReset } from './audio/weather.js';
 import { trackState, resumeTracks, preloadStings } from './audio/tracks.js';
 import { roomInfo, resetRooms } from './audio/rooms.js';
 import * as SM from './audio/samples.js';
@@ -202,7 +202,7 @@ export const sfx = {
   attachWorld: always((world) => { if (A.world && world && world !== A.world) resetMap(world); A.world = world || null; }),
   // 建好 Game 後呼叫一次(含 attachWorld):另外讀畫質預設(發聲上限/HRTF)、玩家狀態(蹲下、體力喘息)
   attachGame: always((game) => { A.game = game || null; const w = game && game.world; if (A.world && w && w !== A.world) resetMap(w); A.world = w || A.world; }),
-  resetMap: always((world) => resetMap(world)),
+  resetMap: always((world) => { rainReset(); resetMap(world); }),
   defineMood: always((name, bed) => defineMood(name, bed)),
   ...gateZ(zvoices2(safe)), // [zombies-w3] 第三波新殭屍的語音與音效(src/audio/zvoices2.js;含潛行者的 zStep);叫聲類經過殭屍語音閘門
   // 除錯/效能面板用
@@ -217,7 +217,7 @@ function gateZ(o) {
 }
 
 // 除錯/測試用(OfflineAudioContext 量測)
-export const _internal = { ZV, zvState, zflush, core: { emit, tone, acoustics, zvOcc, zvFade, setListener }, A, attach, foley, voices, ui, body, step, zStep, remoteStep, jump, land, scare, startMusic, startAmbience, tick, poolInfo, SM, ambState, trackState, AMB, musicState, roomInfo, SCARE_KINDS, LOOP_KINDS, thunder, setRain };
+export const _internal = { ZV, zvState, zflush, core: { emit, tone, acoustics, zvOcc, zvFade, setListener }, rain: { setRain, rainState, rainGains, rainContext, rainReset, thunder }, A, attach, foley, voices, ui, body, step, zStep, remoteStep, jump, land, scare, startMusic, startAmbience, tick, poolInfo, SM, ambState, trackState, AMB, musicState, roomInfo, SCARE_KINDS, LOOP_KINDS, thunder, setRain };
 export { ix } from './audio/interact.js'; // 互動物件的機械音效(電話、開關、販賣機、鋼琴、門…;src/audio/interact.js)
 export { ghost } from './audio/ghost.js'; // [ghost] 耳邊低語(雙耳)、頸後呼吸、刺擊、寂靜、天花板爬行等靈異音效(src/audio/ghost.js)
 

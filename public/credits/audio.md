@@ -444,3 +444,15 @@
   - 使用於:`audio/zombies/zombie_pain_6.mp3`
 
 素材清單與原始授權說明:每個檔案的作者、標題、來源網址、授權與剪輯紀錄都保存在素材 manifest(整理自 OpenGameArt、Freesound、incompetech、Kenney 等 CC0 / CC-BY 資源)。
+
+## 雨聲與雷聲(public/audio/rain/,皆為 CC0 / 免署名)
+
+裁切成穩定片段、等功率交叉淡化做成無縫循環、RMS 對齊、轉成 Opus 單聲道。
+
+| 檔案 | 來源作品 | 作者 | 授權 | 來源網址 |
+|---|---|---|---|---|
+| `audio/rain/rain_wash.ogg`(遠處雨幕,原檔 11~42.5 秒) | amb_rain_loop_1 | kresiek-the-furry | CC0 | https://opengameart.org/content/amb-rain-loop-1 |
+| `audio/rain/rain_near.ogg`(近處雨滴/水窪,原檔 660~685.5 秒) | amb rain loop 2(GoPro 實地錄音) | kresiek-the-furry | CC0 | https://opengameart.org/content/amb-rain-loop-2 |
+| `audio/rain/rain_roof.ogg`(屋頂/排水溝,原檔 21~50.5 秒) | Rain Gutter Loop | ogrebane | CC0 | https://opengameart.org/content/rain-gutter-loop |
+| `audio/rain/rain_window.ogg`(窗戶,`3.ogg` 16~39.5 秒) | Rain (loopable) | ylmir | CC0 | https://opengameart.org/content/rain-loopable |
+| `audio/rain/thunder_roll.ogg`(雷聲,原檔 21.2~44.3 秒) | Rain - Long Thunder | wuxiascrub | CC0(作者註明「No need to credit」) | https://opengameart.org/content/rain-long-thunder |
