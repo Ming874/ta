@@ -44,6 +44,7 @@ const BIAS = {
 const _a = new THREE.Vector3(), _b = new THREE.Vector3();
 
 export function installHorror(game) {
+  if (typeof location !== 'undefined' && new URLSearchParams(location.search).has('nohorror')) return null; // 除錯:?nohorror 關掉整個靈異系統(比較效能用)
   const subs = {};
   const later = []; // [時間, fn](遊戲時間)
   const watchers = [];
@@ -131,7 +132,7 @@ export function installHorror(game) {
       later.length = 0; watchers.length = 0; H.usedWrit.clear(); H.ringing = null; H.coldK = H.coldT = 0; H.coldUntil = 0;
       T.zones.clear(); T.props.clear(); T.still = 0; T.streak = 0; T.lastKill = 0; T.zonePend = null; T.next = 0;
       for (const d of H.events?.doors || []) d.primed = false;
-      models.warm();
+      if (performance.now() > 40000) models.warm();
     },
     stats() { return { ...H.director.stats(), whispers: H.whispers.count, wlog: H.whispers.log.slice(-8), apparitions: H.app?.count ?? 0, alog: H.app?.log.slice(-8) ?? [], active: H.app?.active ?? 0, models: models.state, events: H.events?.S.log.slice(-10) ?? [], cold: +H.coldK.toFixed(2) }; },
   };
@@ -150,8 +151,8 @@ export function installHorror(game) {
     try { H.marks.placeStatic(game.hospital.K, game.hospital.layout); } catch (e) { console.warn('[horror] 牆上字跡', e); }
   }
   // 選單期間就開始在背景準備幻影模型;等 main.js 的開機預編譯做完(畫質、光源數都定了)再預編譯靈異材質(不卡第一次出現)
-  setTimeout(() => models.warm(), 3000);
-  { const t0 = performance.now(); const wait = () => { if (performance.getEntriesByName('hz:precompile').length || performance.now() - t0 > 20000) precompile(game, H); else setTimeout(wait, 300); }; setTimeout(wait, 500); }
+  // 等主程式的暖機(hz:warm:殭屍變體與常用材質)做完才開始,不跟它搶 CPU/GPU 編譯執行緒;最多等 30 秒
+  { const t0 = performance.now(); const wait = () => { if (performance.getEntriesByName('hz:warm').length || performance.now() - t0 > 30000) { models.warm(); precompile(game, H); } else setTimeout(wait, 400); }; setTimeout(wait, 1000); }
 
   // ---- 觸發器與排程 ----
   const T = { zones: new Set(), props: new Set(), still: 0, streak: 0, lastKill: 0, zonePend: null, next: 0, acc: 0, low: -1e9, dark: -1e9, strk: -1e9, prop: -1e9, warn: -1e9, guide: -1e9, sig: -1e9 };
