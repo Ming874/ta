@@ -1,5 +1,6 @@
 import { prng, hashStr } from './paint.js';
-import { atlasLayout, ATLAS } from './atlas.js';
+import { atlasLayout, atlasData, ATLAS } from './atlas.js';
+import { setAtlasData } from './surfaces.js';
 
 // 標示與牆面貼花的擺放(幾何進 Buckets,依材質合併):
 //  門牌(走廊側門邊)、科別吊牌(走廊天花板吊下來,雙面 + 指向門的箭頭)、避難逃生路線圖與樓層介紹(樓梯間門旁)、
@@ -26,7 +27,9 @@ function wallPlate(B, li, key, cx, cy, cz, nx, nz, w, h, t) {
 
 export function buildSigns(K) {
   const { L, B } = K;
-  const { S } = atlasLayout();
+  const data = atlasData(L, K.mapId || 'hospital');
+  setAtlasData(data);
+  const { S } = atlasLayout(data);
   const R = prng(hashStr('signs-v2'));
   const used = []; // 已佔用的牆面位置(避免告示/字跡疊在一起)
   const free = (li, x, y, z, r) => !used.some((u) => u.li === li && Math.abs(u.y - y) < r + u.r && (u.x - x) ** 2 + (u.z - z) ** 2 < (r + u.r) ** 2);

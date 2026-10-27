@@ -1,8 +1,8 @@
 import { mkCanvas, prng, hashStr, FONT, HAND } from './paint.js';
-import { parseLayout } from '../levels.js';
 
-// 標示/告示圖集(程式繪製,在貼圖 Worker 裡畫)。版面(每一格的位置)是確定的:主執行緒用同一個 atlasLayout() 算 UV,
-// Worker 用它畫圖,兩邊不用溝通。兩張 2048² 圖集:
+// 標示/告示圖集(程式繪製,在貼圖 Worker 裡畫)。版面(每一格的位置)是確定的:主執行緒用 atlasData(L) 整理出可序列化的資料
+// (樓層平面、區域、樓梯、標示內容),同一份資料傳給 Worker;兩邊用同一個 atlasLayout(data) 算格子 → UV 與畫面一致。
+// 新地圖可用 registerSignage({ en, band, depts, notices, scrawls }) 加入自己的科別名稱、吊牌、告示與字跡。兩張 2048² 圖集:
 //  signs  門牌(每個房間一塊)、科別吊牌(中英)、圖示(箭頭/樓梯/電梯/禁菸/輻射/生物危害…)
 //  boards 避難逃生路線圖(依實際樓層平面畫,每座樓梯一張)、樓層介紹、紙本告示、手寫/噴漆字跡
 export const ATLAS = 2048;
@@ -20,14 +20,42 @@ const BAND = { er: '#b3261e', surgery: '#1f6f5c', icu: '#1f6f5c', delivery: '#b0
   morgue: '#3a3f44', autopsy: '#3a3f44', ward: '#2d7a58', xray: '#c49a1c', ct: '#c49a1c', pharmacy: '#2f6fa8', chapel: '#6a4a8a', director: '#6b4a2e', office: '#6b4a2e' };
 const BLUE = '#1d4f8a';
 
+// ---- 註冊(新地圖) ----
+const REG = { en: {}, band: {}, depts: [], notices: [], scrawls: [] };
+let regVer = 0;
+export function registerSignage(o = {}) {
+  Object.assign(REG.en, o.en || {}); Object.assign(REG.band, o.band || {});
+  for (const k of ['depts', 'notices', 'scrawls']) if (o[k]) REG[k].push(...o[k]);
+  regVer++;
+}
+// 主執行緒:把地圖整理成可序列化的資料(也是 Worker 收到的內容)
+export function atlasData(L, id = 'hospital') {
+  return {
+    id: id + ':' + regVer, W: L.W, H: L.H,
+    levels: L.levels.map((l) => ({ id: l.id, rows: l.rows })),
+    zones: L.zones.map((z) => ({ id: z.id, name: z.name, theme: z.theme, level: z.level, levelIndex: z.levelIndex, rects: z.rects, mood: z.mood })),
+    stairs: L.stairs.map((s) => ({ id: s.id, lower: s.lower, upper: s.upper, c0: s.c0, c1: s.c1, r0: s.r0, r1: s.r1, zone: s.zone })),
+    reg: { en: { ...EN, ...REG.en }, band: { ...BAND, ...REG.band }, depts: [...DEPTS, ...REG.depts], notices: [...NOTICES, ...REG.notices], scrawls: [...SCRAWLS, ...REG.scrawls] },
+  };
+}
+// 由資料重建繪圖需要的最小版面(charAt / zoneAt)
+function miniLayout(d) {
+  const grid = d.levels.map(() => new Int16Array(d.W * d.H).fill(-1));
+  d.zones.forEach((z, zi) => { for (const [c0, r0, c1, r1] of z.rects) for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) grid[z.levelIndex][r * d.W + c] = zi; });
+  return {
+    W: d.W, H: d.H, levels: d.levels, zones: d.zones, stairs: d.stairs,
+    charAt: (li, c, r) => (li < 0 || li >= d.levels.length || c < 0 || r < 0 || c >= d.W || r >= d.H ? '#' : d.levels[li].rows[r][c]),
+    zoneAt: (li, c, r) => { if (li < 0 || li >= d.levels.length || c < 0 || r < 0 || c >= d.W || r >= d.H) return null; const zi = grid[li][r * d.W + c]; return zi >= 0 ? d.zones[zi] : null; },
+  };
+}
 // ---- 房號:各樓層依位置編號(2F 病房、3F 隔離房沿用名稱裡的號碼) ----
-let layoutCache = null;
-export function atlasLayout() {
-  if (layoutCache) return layoutCache;
-  const L = parseLayout();
+let layoutCache = null, layoutKey = null;
+export function atlasLayout(data) {
+  if (layoutCache && layoutKey === data.id) return layoutCache;
+  const L = miniLayout(data), RG = data.reg;
   const zones = L.zones.filter((z) => !OUT.has(z.theme) && z.theme !== 'corridor' && z.theme !== 'shop');
   const num = new Map();
-  const pre = { B1: 'B1', '1F': '1', '2F': '2', '3F': '3' };
+  const pre = (id) => String(id).replace(/F$/i, ''); // '1F' → '1'、'B1' → 'B1'
   for (const lv of L.levels) {
     const list = zones.filter((z) => z.level === lv.id).sort((a, b) => a.rects[0][1] - b.rects[0][1] || a.rects[0][0] - b.rects[0][0]);
     let k = lv.id === '2F' || lv.id === '3F' ? 11 : 1; // 201–210 是病房、301–307 是隔離房,其他房間從 x11 起
@@ -35,14 +63,14 @@ export function atlasLayout() {
       const m = /(\d{3})$/.exec(z.name), cm = /隔離房 (\d)/.exec(z.name);
       if (m) num.set(z.id, m[1]);
       else if (cm) num.set(z.id, '30' + cm[1]);
-      else num.set(z.id, pre[lv.id] + String(k++).padStart(2, '0'));
+      else num.set(z.id, pre(lv.id) + String(k++).padStart(2, '0'));
     }
   }
   const S = { plates: {}, depts: {}, picto: {}, boards: {}, notices: {}, scrawls: {} };
   // signs:門牌 256×96(8 欄)
   zones.forEach((z, i) => { S.plates[z.id] = { atlas: 'signs', x: (i % 8) * 256, y: Math.floor(i / 8) * 96, w: 256, h: 96, num: num.get(z.id), zone: z }; });
   // 科別吊牌 512×128(4 欄),從 y=864 開始
-  DEPTS.forEach((d, i) => { S.depts[d.id] = { atlas: 'signs', x: (i % 4) * 512, y: 864 + Math.floor(i / 4) * 128, w: 512, h: 128, ...d }; });
+  RG.depts.slice(0, 32).forEach((d, i) => { S.depts[d.id] = { atlas: 'signs', x: (i % 4) * 512, y: 864 + Math.floor(i / 4) * 128, w: 512, h: 128, ...d }; });
   // 圖示 128×128(16 欄)
   PICTO.forEach((p, i) => { S.picto[p] = { atlas: 'signs', x: (i % 16) * 128, y: 1888 + Math.floor(i / 16) * 128, w: 128, h: 128 }; });
   // boards:避難圖 512×384(每層 2 張:西/東樓梯)
@@ -51,10 +79,11 @@ export function atlasLayout() {
   L.levels.forEach((lv, li) => { S.boards['dir_' + lv.id] = { atlas: 'boards', x: li * 384, y: 768, w: 384, h: 512, li }; });
   S.boards.dir_all = { atlas: 'boards', x: 1536, y: 768, w: 512, h: 512 };
   // 告示 256×352(8 欄)
-  NOTICES.forEach((n, i) => { S.notices[n.id] = { atlas: 'boards', x: i * 256, y: 1280, w: 256, h: 352, ...n }; });
+  RG.notices.slice(0, 8).forEach((n, i) => { S.notices[n.id] = { atlas: 'boards', x: i * 256, y: 1280, w: 256, h: 352, ...n }; });
   // 字跡 512×104(4 欄 × 4 列)
-  SCRAWLS.forEach((t, i) => { S.scrawls[i] = { atlas: 'boards', x: (i % 4) * 512, y: 1632 + Math.floor(i / 4) * 104, w: 512, h: 104, text: t.t, col: t.c, i }; });
-  layoutCache = { L, S, num, zones };
+  RG.scrawls.slice(0, 16).forEach((t, i) => { S.scrawls[i] = { atlas: 'boards', x: (i % 4) * 512, y: 1632 + Math.floor(i / 4) * 104, w: 512, h: 104, text: t.t, col: t.c, i }; });
+  layoutCache = { L, S, num, zones, RG };
+  layoutKey = data.id;
   return layoutCache;
 }
 // 科別吊牌(id = 指向的區域)
@@ -100,8 +129,8 @@ function grime(x, R, px, py, w, h, k = 1) { // 歲月:泛黃、髒污、刮痕
   x.fillStyle = g; x.fillRect(px, py, w, h);
   x.restore();
 }
-function plate(x, s, R) {
-  const { x: px, y: py, w, h, num, zone } = s, band = BAND[zone.theme] || BLUE;
+function plate(x, s, R, RG) {
+  const { x: px, y: py, w, h, num, zone } = s, band = RG.band[zone.theme] || BLUE, EN = RG.en;
   rr(x, px + 3, py + 3, w - 6, h - 6, 8); x.fillStyle = '#e9e6dc'; x.fill();
   x.fillStyle = band; rr(x, px + 3, py + 3, 74, h - 6, 8); x.fill(); x.fillRect(px + 60, py + 3, 17, h - 6);
   x.fillStyle = '#fff'; fitText(x, num, 66, 40, 'Arial, sans-serif'); x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(num, px + 40, py + h / 2 + 1);
@@ -192,6 +221,7 @@ function evac(x, s, R, L) {
   if (R() < 0.6) { x.fillStyle = 'rgba(90,10,8,0.75)'; for (let k = 0; k < 3; k++) { const dx = px + 60 + R() * (w - 120), dy = py + 80 + R() * (h - 160); x.beginPath(); x.ellipse(dx, dy, 6 + R() * 10, 3 + R() * 5, R() * 3, 0, 6.28); x.fill(); } }
 }
 function directory(x, s, R, L, num) {
+  const isOut = (t) => OUT.has(t);
   const { x: px, y: py, w, h } = s, all = s.li == null;
   x.fillStyle = '#1b2a3a'; x.fillRect(px + 2, py + 2, w - 4, h - 4);
   x.strokeStyle = '#b8a070'; x.lineWidth = 6; x.strokeRect(px + 5, py + 5, w - 10, h - 10);
@@ -205,7 +235,7 @@ function directory(x, s, R, L, num) {
   for (const li of lvls) {
     const lv = L.levels[li];
     if (all) { x.fillStyle = '#c8a050'; x.font = `bold 26px Arial`; x.fillText(lv.id, px + 20, yy); }
-    const items = L.zones.filter((z) => z.levelIndex === li && !OUT.has(z.theme) && z.theme !== 'corridor' && z.theme !== 'stairwell' && z.theme !== 'psych_cell' && (z.theme !== 'ward' || /201$/.test(z.name)));
+    const items = L.zones.filter((z) => z.levelIndex === li && !isOut(z.theme) && z.theme !== 'corridor' && z.theme !== 'stairwell' && z.theme !== 'psych_cell' && (z.theme !== 'ward' || /201$/.test(z.name)));
     const lineH = all ? 20 : 34;
     for (const z of items) {
       if (yy > py + h - 30) break;
@@ -266,16 +296,19 @@ function scrawl(x, s, R) {
   if (col !== 'chalk') for (let k = 0; k < 9; k++) { const dx = px + 40 + R() * (w - 80), dy = py + h / 2 + 8; const len = 8 + R() * 30; const g = x.createLinearGradient(0, dy, 0, dy + len); g.addColorStop(0, `rgba(${C[0]},${C[1]},${C[2]},0.85)`); g.addColorStop(1, `rgba(${C[0]},${C[1]},${C[2]},0)`); x.fillStyle = g; x.fillRect(dx, dy, 2 + R() * 2.5, len); }
   x.restore();
 }
-export function paintAtlas(key) {
+// key = 'signs@<地圖>' | 'boards@<地圖>';data = atlasData(L)
+export function paintAtlas(key, data) {
   const c = mkCanvas(ATLAS, ATLAS), x = c.getContext('2d');
   x.clearRect(0, 0, ATLAS, ATLAS);
-  const { L, S, num } = atlasLayout();
-  const R = prng(hashStr('atlas:' + key));
-  if (key === 'signs') {
-    for (const s of Object.values(S.plates)) plate(x, s, R);
+  if (!data) return { c, hc: null, meta: { key, empty: true } };
+  const { L, S, num, RG } = atlasLayout(data);
+  const base = key.split('@')[0];
+  const R = prng(hashStr('atlas:' + base));
+  if (base === 'signs') {
+    for (const s of Object.values(S.plates)) plate(x, s, R, RG);
     for (const s of Object.values(S.depts)) dept(x, s, R);
     for (const [id, s] of Object.entries(S.picto)) picto(x, id, s);
-  } else if (key === 'boards') {
+  } else if (base === 'boards') {
     for (const [id, s] of Object.entries(S.boards)) { if (id.startsWith('evac_')) evac(x, s, R, L); else directory(x, s, R, L, num); }
     for (const s of Object.values(S.notices)) notice(x, s, R);
     for (const s of Object.values(S.scrawls)) scrawl(x, s, R);

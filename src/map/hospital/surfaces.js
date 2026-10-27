@@ -297,8 +297,8 @@ export function surf(key) {
       if (m.defines) delete m.defines.LAYER;
       m.needsUpdate = true;
     });
-  } else if (def?.atlas) { // 程式繪製的標示圖集(Worker 畫好前是透明的)
-    const p = procTextures(def.atlas, { kind: 'atlas', placeholder: 'rgba(0,0,0,0)' });
+  } else if (def?.atlas) { // 程式繪製的標示圖集(Worker 畫好前是透明的;內容依目前地圖,見 setAtlasData)
+    const p = procTextures(def.atlas + '@' + (atlasCur?.id || 'none'), { kind: 'atlas', placeholder: 'rgba(0,0,0,0)', data: atlasCur });
     m = new THREE.MeshStandardMaterial({ map: p.tex, roughness: def.rough ?? 0.6, alphaTest: 0.5, vertexColors: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
     m.userData.noShadow = true;
   } else if (def?.decal) { // 半透明貼花(漏水流痕、裂縫)
@@ -330,6 +330,18 @@ export function surf(key) {
   return m;
 }
 export const surfKeys = () => [...cache.keys()];
+// 標示圖集的內容(atlas.js 的 atlasData(L));換地圖時呼叫,已建立的圖集材質會換上新貼圖
+let atlasCur = null;
+export function setAtlasData(data) {
+  if (atlasCur?.id === data?.id) return;
+  atlasCur = data;
+  for (const [k, def] of Object.entries(SURFACES)) {
+    if (!def.atlas || !cache.has(k)) continue;
+    cache.get(k).map = procTextures(def.atlas + '@' + data.id, { kind: 'atlas', placeholder: 'rgba(0,0,0,0)', data }).tex;
+  }
+}
+// 新地圖註冊自己的表面材質(鍵 → 定義,格式同 SURFACES)
+export function registerSurfaces(defs) { for (const [k, v] of Object.entries(defs)) { SURFACES[k] = v; cache.delete(k); } }
 // 貼花貼圖(public/textures/decals/*.webp)
 const DECAL_BASE = ((typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) || '/') + 'textures/decals/';
 const decals = new Map();

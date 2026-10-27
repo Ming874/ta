@@ -56,6 +56,8 @@ export const PBR_SETS = {
   epoxy: { tile: 3.0, ao: 1, avg: '#4f493f' },
   ceiling_tile2: { tile: 2.4, ao: 1, avg: '#f5f5f5' },
 };
+// 新地圖註冊自己的貼圖組(public/textures/<name>/…):registerPbrSets({ name: { tile, ao, avg, alpha? } })
+export function registerPbrSets(defs) { Object.assign(PBR_SETS, defs); }
 const BASE = ((typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) || '/') + 'textures/';
 const PH = { color: null, normal: '#8080ff', orm: '#ffd0ff', opacity: '#ffffff' };
 const sets = new Map(); // set → { maps: {color, normal, orm, opacity}: base Texture, clones: [], state }

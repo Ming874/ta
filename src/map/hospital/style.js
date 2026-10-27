@@ -125,4 +125,12 @@ export function zoneWear(zone, lvId) {
   const w = THEME_WEAR[zone.theme] ?? (lvId === 'B1' ? 0.8 : zone.theme === 'corridor' && lvId === '3F' ? 0.35 : 0.6);
   return Math.min(1, Math.max(0, w + (prng(hashStr('zw' + zone.id))() - 0.5) * 0.3));
 }
+// 新地圖註冊自己的主題配方:registerStyles({ walls: { theme: 配方 | { 樓層: 配方 | [配方…] } }, floors: { theme: 鍵 | { 樓層: 鍵 } }, ceils: { theme: 鍵 }, wear: { theme: 0..1 } })
+export function registerStyles({ walls, floors, ceils, wear } = {}) {
+  if (walls) Object.assign(THEME_WALL, walls);
+  if (floors) Object.assign(FLOOR_BY_THEME, floors);
+  if (ceils) Object.assign(CEIL_BY_THEME, ceils);
+  if (wear) Object.assign(THEME_WEAR, wear);
+  tintCache.clear();
+}
 export const OUTDOOR_THEMES = new Set(['alley', 'playground', 'cemetery', 'yard', 'ambulance_bay', 'plaza', 'parking', 'courtyard', 'rooftop', 'fire_escape']);
