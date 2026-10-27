@@ -66,7 +66,8 @@ export function createAmbushProps(game, L, grilles, vents) {
   });
   inst.instanceMatrix.needsUpdate = true;
   open.instanceMatrix.needsUpdate = true;
-  inst.computeBoundingSphere(); open.computeBoundingSphere();
+  inst.computeBoundingSphere();
+  open.frustumCulled = false; // 打開的黑洞一開始全部縮成 0:包圍球會是退化的(整組被剔除、永遠畫不出來),不做剔除(一個 draw call)
   const state = new Uint8Array(Math.max(1, nG)); // 0 正常 / 1 晃動中 / 2 已打開
   let dirty = false, dirtyO = false;
 
