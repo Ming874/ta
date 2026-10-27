@@ -148,7 +148,7 @@ export const flowMethods = {
   //  加權:同樓層 ×3 > 相鄰樓層 ×1.4 > 隔兩層;暗處 ×1.5、門後 ×1.4、通風口 ×2.2;路徑 22~42m 最好;
   //        6 秒內用過的 ×0.15(不連續從同一個洞冒出來)。太久沒有殭屍接近玩家(_calmT)時改挑近一點的(14~35m)
   //  符合的太少時依序放寬
-  pickSpawn(type = 'walker') {
+  pickSpawn(type = 'walker', maxFd = Infinity) {
     const w = this.world, L = w.layout, now = this.time;
     const players = this.players.filter((p) => p.alive !== false && !p.downed);
     if (!players.length) players.push(this.player);
@@ -190,7 +190,7 @@ export const flowMethods = {
       () => true,
     ];
     for (const ok of tiers) {
-      const pool = cand.filter(ok);
+      const pool = cand.filter((q) => ok(q) && !(q.fd > maxFd)); // maxFd:移動既有殭屍時只挑比牠現在更近的
       if (!pool.length) continue;
       let sum = 0;
       for (const q of pool) sum += (q.wt = weight(q));
@@ -199,7 +199,7 @@ export const flowMethods = {
       pool[0].s._used = now;
       return pool[0].s;
     }
-    return w.spawns.find((s) => !s.bad) || w.spawns[0];
+    return maxFd < Infinity ? null : w.spawns.find((s) => !s.bad) || w.spawns[0];
   },
 
   spawnZombie(type = this.queue.shift() || 'walker') {
@@ -261,9 +261,9 @@ export const flowMethods = {
       const far = !reach || fd > 55;
       z._farT = far && !z.los ? (z._farT || 0) + 1 : 0;
       if (reach && fd > fd0 && !z.los && this.time - z._born > 8) { fd0 = fd; far0 = z; }
-      if (z._farT >= (reach ? 20 : 6) && this.time - z._born > 10 && (z._warp ? z._warp(this.zctx, false) : true)) { z._farT = 0; z._born = this.time; }
+      if (z._farT >= (reach ? 20 : 6) && this.time - z._born > 10 && (z._warp ? z._warp(this.zctx, false, reach ? fd - 12 : Infinity) : true)) { z._farT = 0; z._born = this.time; }
     }
-    if (far0 && (this._calmT || 0) > 15 && far0._warp && far0._warp(this.zctx, false)) { far0._born = this.time; this._calmT = 8; }
+    if (far0 && (this._calmT || 0) > 15 && far0._warp && far0._warp(this.zctx, false, fd0 - 12)) { far0._born = this.time; this._calmT = 8; }
   },
 
   endRound() {

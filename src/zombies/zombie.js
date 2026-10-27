@@ -459,7 +459,7 @@ export class Zombie {
     const n = this._noProg;
     if (n >= 2 && this._lv < 1) { this._lv = 1; this._nudgeT = 1; this._nudgeSide = this._freeSide(world); this.stuckN++; }
     else if (n >= 4.5 && this._lv < 2) { this._lv = 2; this._repathT = 4; this._nudgeT = 0.6; this._nudgeSide = -this._nudgeSide; }
-    else if (n >= 10 && (n % 2 === 0 || now === Infinity)) { if (this._warp(ctx, false)) return; this._repathT = 2; }
+    else if (n >= 10 && (n % 2 === 0 || now === Infinity)) { if (this._warp(ctx, false, now === Infinity ? Infinity : Math.max(35, now + 10))) return; this._repathT = 2; }
     if (n < 2) this._lv = 0;
   }
 
@@ -471,8 +471,8 @@ export class Zombie {
     return l && !r ? 1 : r && !l ? -1 : Math.random() < 0.5 ? 1 : -1;
   }
 
-  // 瞬移到隱蔽的出生點(最後手段;force = 座標壞掉時不管有沒有人看到)。回傳是否成功
-  _warp(ctx, force) {
+  // 瞬移到隱蔽的出生點(最後手段;force = 座標壞掉時不管有沒有人看到;maxFd = 出生點路徑距離上限,不會越移越遠)。回傳是否成功
+  _warp(ctx, force, maxFd = Infinity) {
     const g = ctx.game, world = ctx.world;
     if (!force) {
       for (const p of ctx.players || [ctx.player]) {
@@ -481,7 +481,7 @@ export class Zombie {
         if (d < 45 && world.hasLineOfSight(p.pos.x, p.pos.y + 1.6, p.pos.z, this.pos.x, this.pos.y + 1.2, this.pos.z)) return false; // 有人看得到:不能憑空消失
       }
     }
-    const s = g && g.pickSpawn ? g.pickSpawn(this.type) : world.spawns && world.spawns[0];
+    const s = g && g.pickSpawn ? g.pickSpawn(this.type, maxFd) : world.spawns && world.spawns[0];
     if (!s) return false;
     this.pos.set(s.x, s.y || 0, s.z);
     world.resolve(this.pos, Math.min(this.T.radius, 0.42));

@@ -802,8 +802,8 @@ export class World {
   // 否則移到同層附近(4m 內)最近的空位;找不到就標記 bad(不使用)。
   // 同時標記心理學屬性:zone 區域、dark 暗處、door 門後(房間內緊鄰門口)、vent 通風口(爬行者專用)、node 導航節點
   _fixSpawns() {
-    const L = this.layout, { FN, fw } = this;
-    const DARK = new Set(['none', 'moon', 'candle', 'fluoro_dying', 'bare_bulb', 'nightlight', 'emergency', 'fire', 'sodium']);
+    const L = this.layout, { FN } = this;
+    const DARK = new Set(['none', 'candle', 'bare_bulb', 'nightlight']); // 幾乎沒有光的燈型;其餘看氛圍的環境光
     let moved = 0, bad = 0;
     for (const s of this.spawns) {
       const li = s.level, h = L.levels[li].y;
@@ -828,9 +828,11 @@ export class World {
       const c = Math.floor(s.x / 2), r = Math.floor(s.z / 2);
       const zn = L.zoneAt(li, c, r);
       s.zone = zn ? zn.id : null;
-      s.dark = !!s.vent || (zn ? DARK.has(zn.light) : !s.outdoor);
+      const mood = zn && L.moods[zn.mood];
+      s.dark = !!s.vent || (!s.outdoor && (!zn || DARK.has(zn.light) || (mood && mood.ambient <= 0.24)));
+      // 門後:室內房間(非走廊)、3 格內有門口 → 殭屍會從門口冒出來
       let door = false;
-      if (zn && zn.theme !== 'corridor' && !s.outdoor) for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) if (L.charAt(li, c + dc, r + dr) === '+') door = true;
+      if (zn && zn.theme !== 'corridor' && !s.outdoor) for (let dr = -3; dr <= 3; dr++) for (let dc = -3; dc <= 3; dc++) if (L.charAt(li, c + dc, r + dr) === '+') door = true;
       s.door = door;
     }
     this.spawnFix = { moved, bad };
