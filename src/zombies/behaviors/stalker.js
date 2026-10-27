@@ -9,10 +9,11 @@ const CEIL = { wander: 1, hit: 1 };
 const FALL_T = 0.42, LEAP_T = 0.5;
 // 四足姿勢參數(可在測試時調整)
 export const Q = {
-  hipH: 0.6, hipZ: -0.28, tilt: 0.28, spine: -0.18, chest: 0.05, neck: -0.55, head: -0.55,
-  armF: -2.15, armB: -1.25, armZ: 0.62, elS: 0.75, elW: 1.5, lift: 0.45,
-  legF: -1.95, legB: -1.15, legZ: 0.5, knee: 1.25, kneeW: 1.9,
+  hipH: 0.78, hipZ: -0.3, tilt: -0.12, spine: 0.1, chest: 0.05, neck: -0.95, head: -0.35,
+  armF: -2.5, armB: -1.9, armZ: 0.35, elS: 0.15, elW: 0.9, lift: 0.45,
+  legF: -1.8, legB: -1.25, legZ: 0.22, knee: 0.75, kneeW: 1.5,
 };
+(globalThis.__Z3Q ||= {}).stalker = Q; // 除錯:測試頁可直接調整姿勢參數
 
 export function init(z) { z._ceil = 0; z._ceilH = 3.3; z._ceilT = 0; z._litT = 0; z._flee = 0; z.specialCd = rand(0.5, 2); }
 

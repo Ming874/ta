@@ -6,6 +6,9 @@ import { sfx } from '../../audio.js';
 import { K, lerp, env, rand, sstep, trackState, entered } from './kit.js';
 
 const ZR = 0.4;
+// 綁住的雙臂姿勢參數(上臂前舉 ax、外展 az、內旋 ay、手肘 el、前臂扭轉 fy)
+export const Q = { ax: -0.3, az: -0.05, ay: -0.3, el: 1.75, fz: -1.15 };
+(globalThis.__Z3Q ||= {}).straitjacket = Q; // 除錯:測試頁可直接調整姿勢參數
 const _imp = new THREE.Vector3();
 
 export function init(z) { z.specialCd = rand(1, 3); z._lurch = rand(0, 6); }
@@ -107,9 +110,8 @@ export function pose(dt, ctx, dist, toX, toZ) {
   // 雙臂交叉綁在胸前(左右手掌搭在對側肩膀附近)
   for (let k = 0; k < 2; k++) {
     const s = k ? -1 : 1, L = k ? 'R' : 'L';
-    this._arm(L, s, -0.75 - 0.08 * Math.sin(ph + k * Math.PI) * f, -0.42 + k * 0.06, 2.05 - k * 0.1, 0.2);
-    b['forearm' + L].rotation.y = s * -0.45;
-    b['upperArm' + L].rotation.y = s * -0.35;
+    this._arm(L, s, Q.ax - 0.06 * Math.sin(ph + k * Math.PI) * f - crouch * 0.3, Q.az, Q.el - k * 0.12, 0.2, Q.ay + k * 0.08);
+    b['forearm' + L].rotation.z = s * Q.fz;
   }
   b.jaw.rotation.x = this.V.P.muzzle ? 0.02 : 0.2 + crouch * 0.6 + (run ? 0.5 : 0) + Math.sin(this.t * 5) * 0.06;
   if (!this.V.P.muzzle) this._jaw(0.2);
