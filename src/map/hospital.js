@@ -88,7 +88,7 @@ export function buildHospital(world, layout, scene, opts = {}) {
     let nearB1 = false;
     for (const c of connectors) if ((c.x - x) ** 2 + (c.z - z) ** 2 < 15 * 15) nearB1 = true;
     for (let i = 0; i < vis.length; i++) {
-      if (li === b1) vis[i] = i === b1 || i === b1 + 1 || nearB1;
+      if (li === b1) vis[i] = i === b1 || (nearB1 && i === b1 + 1); // 地下室只有靠近樓梯/坡道時看得到 1F;2F 以上看不到
       else vis[i] = i === b1 ? nearB1 || li === b1 : true;
       levelGroups[i].visible = vis[i];
     }

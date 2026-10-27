@@ -26,7 +26,8 @@ export function loadModel(key) {
   if (!p) {
     const spec = MODELS[key];
     loader ??= new GLTFLoader();
-    p = assets.task(() => loader.loadAsync(BASE + spec.file), { meta: { model: key, outdoor: true }, prio: 30 }).then((g) => { fix(g.scene, spec.tex); return g.scene; }); // 下載排隊(src/sys/assets.js)
+    // 下載排隊(src/sys/assets.js);fix 在佇列內做,交付前會用最終材質在背景預編譯 shader(含實例池版本)
+    p = assets.task(() => loader.loadAsync(BASE + spec.file).then((g) => { fix(g.scene, spec.tex); return g.scene; }), { meta: { model: key, outdoor: true }, prio: 30 });
     p.catch((e) => console.warn('[props-out] 模型載入失敗,改用程式模型', key, e?.message || e));
     cache.set(key, p);
   }

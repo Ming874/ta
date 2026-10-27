@@ -66,6 +66,7 @@ window.__perfVariants = variantStats; // 測試用
 window.__assets = assets; // 測試用:下載佇列進度
 window.__physLoad = physicsLoad;
 installStreaming(game); // 下載順序:玩家附近 → 同層 → 其他樓層
+assets.prepare = (root) => precompile(game, root, { instanced: true }); // 下載的模型交付前先在背景編好 shader(含實例池版本)
 assets.hiRes = game.quality.preset !== 'low'; // 低畫質:不下載 1K 顏色圖(省頻寬與顯示記憶體)
 game.quality.on('change', (k, q) => { assets.hiRes = q.preset !== 'low'; });
 game.hospital.setQuality?.(game.quality); // 光源池大小、道具顯示距離跟著畫質

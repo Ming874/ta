@@ -125,7 +125,8 @@ const subset = (list) => ({ traverse: (fn) => { for (const o of list) fn(o); }, 
 
 // target / camera:用哪個場景的光源與霧、哪台相機(手持武器層請傳 game.weaponScene / game.weaponCamera)
 // 編譯分批進行、每批之間讓出主執行緒(建立 program 的 CPU 工作不會變成一個好幾百 ms 的長任務)
-export async function precompile(game, root, { shadows = true, target = game.scene, camera = game.camera, budget = 12 } = {}) {
+// instanced:一般網格另外也編「InstancedMesh 版」(下載的模型零件之後常被做成實例池)
+export async function precompile(game, root, { shadows = true, target = game.scene, camera = game.camera, budget = 12, instanced = false } = {}) {
   const r = game.renderer, t0 = performance.now();
   const rt = game.composer ? game.composer.readBuffer : null;
   const parallel = !!r.extensions.get('KHR_parallel_shader_compile');
@@ -153,11 +154,17 @@ export async function precompile(game, root, { shadows = true, target = game.sce
     }
   };
   root.updateMatrixWorld(true);
-  const reps = representatives(root);
+  let src = root;
+  if (instanced) {
+    const extra = [];
+    root.traverse((o) => { if (o.isMesh && !o.isInstancedMesh && !o.isSkinnedMesh && o.geometry) { const im = new THREE.InstancedMesh(o.geometry, o.material, 1); im.castShadow = o.castShadow; extra.push(im); } });
+    src = { traverse: (fn) => { root.traverse(fn); for (const o of extra) fn(o); }, updateMatrixWorld() {} };
+  }
+  const reps = representatives(src);
   await chunked(reps, false);
   let px = null;
   if (shadows && r.shadowMap.enabled) {
-    px = shadowProxies(root, r, target);
+    px = shadowProxies(src, r, target);
     await chunked(px.children, true);
   }
   await Promise.all(jobs);
