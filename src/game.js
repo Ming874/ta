@@ -107,6 +107,7 @@ export class Game {
     window.addEventListener('resize', () => this.resize());
     this.resize();
 
+    this.initCombat(); // 先建好(含固定存在的爆炸閃光燈):光源數量是 shader 參數,之後的任何預編譯才會用對的光源數
     this.initGameplay(); // 掉落物、商店介面、HUD、設定、按鍵(src/game/flow.js)
     this.resetRun();
     this.setMood('menu');

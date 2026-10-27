@@ -32,7 +32,7 @@ export const PostShader = {
     }`,
 };
 
-// 清掉 HDR 緩衝裡偶發的 NaN/Inf,避免 Bloom 把整個畫面染成全黑;並把亮度上限壓在 12(極亮的反光不會暈開成整片白光)
+// 清掉 HDR 緩衝裡偶發的 NaN/Inf,避免 Bloom 把整個畫面染成全黑;並把高光軟壓縮到約 8 以下(極亮的反光不會暈開成整片白光)
 export const SanitizeShader = {
   uniforms: { tDiffuse: { value: null } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
@@ -43,7 +43,10 @@ export const SanitizeShader = {
       if (!(c.r >= 0.0 && c.r < 60.0)) c.r = 0.0;
       if (!(c.g >= 0.0 && c.g < 60.0)) c.g = 0.0;
       if (!(c.b >= 0.0 && c.b < 60.0)) c.b = 0.0;
-      c.rgb = min(c.rgb, vec3(12.0));
+      // 高光軟壓縮:手電筒貼近牆面時 HDR 值可達上百 → Bloom 變成一大團白。超過 2 的部分平滑壓到約 8 以下
+      // (色調映射後幾乎看不出差別,燈管光暈仍保留,只是不再炸成整片)
+      float m = max(c.r, max(c.g, c.b));
+      if (m > 2.0) { float e = m - 2.0; c.rgb *= (2.0 + e / (1.0 + e / 6.0)) / m; }
       c.a = 1.0;
       gl_FragColor = c;
     }`,

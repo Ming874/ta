@@ -110,7 +110,7 @@ export function buildHospital(world, layout, scene, opts = {}) {
     let atrium = false;
     for (const v of voids) if (x > v.x0 && x < v.x1 && z > v.z0 && z < v.z1) atrium = true;
     for (let i = 0; i < vis.length; i++) {
-      if (li === b1) vis[i] = i === b1 || i === b1 + 1 || nearB1;
+      if (li === b1) vis[i] = i === b1 || (nearB1 && i === b1 + 1); // 地下室只有靠近樓梯/坡道時看得到 1F;2F 以上看不到
       else vis[i] = i === b1 ? nearB1 || li === b1 : true;
       levelGroups[i].visible = vis[i];
       let pv = i === li || outdoor || atrium;

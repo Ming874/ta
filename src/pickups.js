@@ -4,6 +4,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { WEAPONS } from './weapons/weapon.js';
 import { sfx } from './audio.js';
 import { hpMul } from './game/waves.js';
+import { precompile } from './sys/warmup.js';
 
 // 殭屍掉落物(彈藥箱、大彈藥箱、醫療包、手榴彈)與補給點(彈藥櫃、醫療櫃)。
 // 掉落時從屍體彈出一道拋物線落地,之後懸浮旋轉;地面發光圓環 + 淡淡光柱方便在黑暗中找到。
@@ -660,15 +661,11 @@ export class Pickups {
   _warm(game) {
     this.warmed = true;
     shared();
-    const r = game.renderer, prev = r.getRenderTarget();
     const g = new THREE.Group();
     for (const k in R.tmpl) g.add(R.tmpl[k].group.clone());
     g.add(new THREE.Mesh(R.geo.ring, R.proto.ring), new THREE.Mesh(R.geo.beam, R.proto.beam), new THREE.Sprite(R.proto.glow));
-    try {
-      if (game.composer) r.setRenderTarget(game.composer.renderTarget1); // 與實際繪製同樣的(不做色調映射)設定
-      r.compile(g, game.camera, game.scene);
-    } catch { /* 略過 */ }
-    r.setRenderTarget(prev);
+    // 背景平行編譯(與實際繪製同樣的 HDR 目標/光源/陰影狀態;同步 compile 會卡住建構期間的主執行緒)
+    precompile(game, g).catch(() => { /* 略過 */ });
   }
 
   update(dt, game) {
