@@ -12,10 +12,10 @@ import * as THREE from 'three';
 //   fog('low'|'medium'|'high' 霧/體積光品質)、decals(貼花密度 0..1)、drawDistance(公尺)。
 
 export const PRESETS = {
-  low: { label: '低', shadows: false, shadowType: 'basic', shadowScale: 0.5, shadowLights: 0, bloom: false, msaa: 0, pixelMin: 0.6, pixelMax: 0.85, lights: 4, particles: 100, fog: 'low', decals: 0.4, anisotropy: 2, drawDistance: 70 },
-  medium: { label: '中', shadows: true, shadowType: 'pcf', shadowScale: 0.5, shadowLights: 1, bloom: true, msaa: 2, pixelMin: 0.6, pixelMax: 1.0, lights: 6, particles: 160, fog: 'medium', decals: 0.7, anisotropy: 4, drawDistance: 90 },
-  high: { label: '高', shadows: true, shadowType: 'pcf', shadowScale: 1, shadowLights: 2, bloom: true, msaa: 4, pixelMin: 0.7, pixelMax: 1.25, lights: 8, particles: 240, fog: 'high', decals: 1, anisotropy: 8, drawDistance: 120 },
-  ultra: { label: '極致', shadows: true, shadowType: 'pcf', shadowScale: 2, shadowLights: 4, bloom: true, msaa: 4, pixelMin: 0.85, pixelMax: 1.5, lights: 12, particles: 400, fog: 'high', decals: 1, anisotropy: 16, drawDistance: 150 },
+  low: { label: '低', shadows: false, shadowType: 'basic', shadowScale: 0.5, shadowLights: 0, bloom: false, msaa: 0, pixelMin: 0.6, pixelMax: 0.85, lights: 4, particles: 100, fog: 'low', decals: 0.4, anisotropy: 2, drawDistance: 70, flashFar: 12 },
+  medium: { label: '中', shadows: true, shadowType: 'pcf', shadowScale: 0.5, shadowLights: 1, bloom: true, msaa: 2, pixelMin: 0.6, pixelMax: 1.0, lights: 6, particles: 160, fog: 'medium', decals: 0.7, anisotropy: 4, drawDistance: 90, flashFar: 14 },
+  high: { label: '高', shadows: true, shadowType: 'pcf', shadowScale: 1, shadowLights: 2, bloom: true, msaa: 4, pixelMin: 0.7, pixelMax: 1.25, lights: 8, particles: 240, fog: 'high', decals: 1, anisotropy: 8, drawDistance: 120, flashFar: 18 },
+  ultra: { label: '極致', shadows: true, shadowType: 'pcf', shadowScale: 2, shadowLights: 4, bloom: true, msaa: 4, pixelMin: 0.85, pixelMax: 1.5, lights: 12, particles: 400, fog: 'high', decals: 1, anisotropy: 16, drawDistance: 150, flashFar: 28 },
 };
 const COMMON = { dynamicRes: true, targetFps: 60 };
 const KEY = 'hz.quality.v1';
@@ -194,6 +194,20 @@ export class Quality {
           o.shadow.needsUpdate = true;
         }
       });
+    }
+    // 手電筒陰影範圍(three 每幀把 spot 陰影相機 far 設成 light.distance=30m → 30m 內所有投影物件每幀重畫)。
+    // 只在更新陰影矩陣時暫時換成較短的距離,光照範圍不變
+    if (has('flashFar')) {
+      const sh = g.player?.flashlight?.shadow;
+      if (sh) {
+        sh.userData = sh.userData || {};
+        sh.userData.far = this.get('flashFar');
+        if (!sh.userData.wrapped) {
+          sh.userData.wrapped = true;
+          const orig = sh.updateMatrices.bind(sh);
+          sh.updateMatrices = (light) => { const d = light.distance; light.distance = Math.min(d || Infinity, sh.userData.far || d); try { orig(light); } finally { light.distance = d; } };
+        }
+      }
     }
     if (has('bloom') && g.bloom) g.bloom.enabled = !!this.get('bloom');
     if (has('msaa') && g.composer) {

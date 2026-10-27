@@ -18,6 +18,7 @@ import { loadUI } from './sys/loadui.js';
 import { pools } from './sys/workers.js';
 
 performance.mark('hz:boot');
+let game = null;
 installPWA();
 
 // ---- 關鍵檔先下載:物理 Worker(+WASM)與殭屍建模 Worker 在建世界(數秒的同步工作)之前就開始抓;
@@ -35,7 +36,6 @@ await new Promise((resolve) => {
   };
   tick();
 });
-let game = null;
 const loading = loadUI(() => {
   const p = game?.physics, v = variantStats(), a = assets.progress, ph = physicsLoad.state;
   const physOK = !p ? 0 : p.ready || p.failed || ph === 'off' || ph === 'failed' ? 1 : ph === 'wasm' || ph === 'main' ? 0.55 : 0.15;
@@ -66,6 +66,7 @@ window.__perfVariants = variantStats; // 測試用
 window.__assets = assets; // 測試用:下載佇列進度
 window.__physLoad = physicsLoad;
 installStreaming(game); // 下載順序:玩家附近 → 同層 → 其他樓層
+assets.prepare = (root) => precompile(game, root, { instanced: true }); // 下載的模型交付前先在背景編好 shader(含實例池版本)
 assets.hiRes = game.quality.preset !== 'low'; // 低畫質:不下載 1K 顏色圖(省頻寬與顯示記憶體)
 game.quality.on('change', (k, q) => { assets.hiRes = q.preset !== 'low'; });
 game.hospital.setQuality?.(game.quality); // 光源池大小、道具顯示距離跟著畫質
@@ -208,10 +209,21 @@ function installPWA() {
   link('icon', base + 'icons/icon.svg', { type: 'image/svg+xml' });
   link('apple-touch-icon', base + 'icons/icon-192.png');
   if (!head.querySelector('meta[name="theme-color"]')) { const m = document.createElement('meta'); m.name = 'theme-color'; m.content = '#050606'; head.appendChild(m); }
-  if (!import.meta.env.PROD || !('serviceWorker' in navigator) || caps.flags.has('nosw')) return;
-  // 版本號 = 主程式檔名的雜湊(每次 build 內容有變就換),Service Worker 依此切換快取
-  const v = new URL(import.meta.url).pathname.split('/').pop().replace(/\.js$/, '');
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register(`${base}sw.js?v=${encodeURIComponent(v)}`, { scope: base }).catch((e) => console.warn('[sw]', e.message));
+  // 動態載入的程式片段已不存在(舊分頁遇上新部署且快取裡沒有):重新整理拿新版。遊戲/連線中不打斷,回到選單才重整
+  window.addEventListener('vite:preloadError', (e) => {
+    e.preventDefault?.();
+    console.warn('[sw] 程式片段載入失敗,回到選單時重新整理', e.payload?.message || '');
+    const t = setInterval(() => { if (!game || (game.state !== 'playing' && !game.net)) { clearInterval(t); location.reload(); } }, 1000);
   });
+  if (!import.meta.env.PROD || !('serviceWorker' in navigator) || caps.flags.has('nosw')) return;
+  // 固定網址 sw.js:build 會把檔案清單與雜湊寫進 sw.js(vite.config.js),內容每版都不同 →
+  // 瀏覽器每次導覽都會比對,新版一部署就安裝(不用等這裡註冊)。第一次註冊等關鍵檔下載完(資源閘門打開),
+  // 安裝時預先快取程式碼才不會跟第一次載入搶頻寬
+  const t0 = performance.now();
+  const t = setInterval(() => {
+    if (!assets.isOpen && performance.now() - t0 < 30000) return;
+    clearInterval(t);
+    // 網址相同時 register 不會檢查更新(瀏覽器自己的導覽後檢查會延遲約一分鐘)→ 主動 update():新部署立刻安裝
+    navigator.serviceWorker.register(`${base}sw.js`, { scope: base, updateViaCache: 'none' }).then((r) => r.update()).catch((e) => console.warn('[sw]', e.message));
+  }, 500);
 }

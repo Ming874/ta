@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { assets } from './sys/assets.js';
+import { precompile } from './sys/warmup.js';
 import { createDisplayGun } from './weapons/models.js';
 import { WEAPONS } from './weapons/weapon.js';
 import { pickupModel } from './pickups.js';
@@ -526,7 +527,8 @@ let loader = null;
 function loadModel(key) {
   if (!gltfCache[key]) {
     loader ||= new GLTFLoader();
-    gltfCache[key] = assets.task(() => loader.loadAsync(`${BASE}models/props/${MODELS[key]}`), { meta: { model: key, shop: true }, prio: 25 }).then((g) => { // 下載排隊(src/sys/assets.js)
+    // 下載排隊(src/sys/assets.js);材質在佇列內先調整好,交付前才會用最終的材質狀態在背景預編譯 shader
+    gltfCache[key] = assets.task(() => loader.loadAsync(`${BASE}models/props/${MODELS[key]}`).then((g) => {
       g.scene.traverse((o) => {
         if (!o.isMesh) return;
         o.castShadow = true;
@@ -535,7 +537,7 @@ function loadModel(key) {
         if (m && m.transmission > 0) { m.transmission = 0; m.transparent = true; m.opacity = 0.22; m.depthWrite = false; m.roughness = 0.05; }
       });
       return g.scene;
-    });
+    }), { meta: { model: key, shop: true }, prio: 25 });
   }
   return gltfCache[key];
 }
@@ -1264,9 +1266,10 @@ export class Shop {
       this.detail.add(o);
       s.model = o;
     }).catch(() => { /* 保留替代品 */ }));
+    // 模型材質由下載佇列在交付前就在背景編好(src/sys/assets.js prepare);這裡補編店面其餘部分(非同步、正確的 HDR 目標狀態)
     Promise.all(jobs).then(() => {
       if (this.disposed || !this.game?.renderer) return;
-      try { this.game.renderer.compile(this.group, this.game.camera, this.game.scene); } catch { /* 略過 */ }
+      precompile(this.game, this.group).catch(() => { /* 略過 */ });
     });
   }
   _fallbackRegister() {
