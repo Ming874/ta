@@ -50,6 +50,7 @@ export class PvpMode {
     s.hook(g, 'nextRound', () => () => {});
     s.hook(g, 'openRest', () => () => {});
     s.hook(g, 'openShop', () => () => {}); // 對戰沒有商店
+    if (g.shop) s.hook(g.shop, 'interact', () => () => null); // 商店櫃台不顯示「休息時間開放」的提示
     // 選武器:陣亡/暖身時按數字鍵
     this.onKey = (e) => {
       if (!s.hud.pickerOpen || s.hud.chatOpen) return;
