@@ -277,6 +277,8 @@ export const flowMethods = {
 
   // 每幀:出怪、回合結束、休息倒數(取代 game.update 裡原本的出怪/回合區塊)
   updateRound(dt) {
+    // 載入後馬上開局、戰鬥 shader 還在背景預熱(main.js warmRuntime):先不出怪、不擺假屍體,最多等 12 秒
+    this.spawnHeld = this.phase === 'fighting' && this.warmed === false && (this._warmHold = (this._warmHold || 0) + dt) < 12;
     this.ambush?.update(dt); // [ambush] 觸發、線索、假屍體
     if (this.phase === 'fighting') {
       let alive = 0, near = Infinity, lurk = 0; // lurk:埋伏中的(不佔同場上限,但回合要等牠們)
@@ -284,7 +286,7 @@ export const flowMethods = {
       // 壓力:太久沒有殭屍接近玩家(12m 內)→ 出怪間隔減半、出生點挑近一點、遠處閒晃的殭屍移近(長回合不會冷場)
       this._calmT = near < 12 ? 0 : (this._calmT || 0) + dt;
       this.spawnTimer -= dt * (this._calmT > 8 ? 2 : 1);
-      if (this.toSpawn > 0 && alive < this.maxAlive && this.spawnTimer <= 0) {
+      if (!this.spawnHeld && this.toSpawn > 0 && alive < this.maxAlive && this.spawnTimer <= 0) {
         this.spawnZombie();
         if (this.spawnBurst > 0) { this.spawnBurst--; this.spawnTimer = 0.45; } else this.spawnTimer = this.spawnEvery * (0.7 + Math.random() * 0.6);
       }

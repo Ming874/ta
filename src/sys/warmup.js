@@ -211,11 +211,19 @@ export function warmDrawScene(game) {
 
 // program 第一次被使用時,three 還要查詢 uniform/attribute 位置(每個數 ms~十數 ms 的同步呼叫)。
 // 在閒置時段先做掉(一直沒有閒置時段時,最多等 200ms 就當一般任務跑,每次一個),實際畫到時就不會卡。
+// 驅動還沒編完的(KHR_parallel_shader_compile)先跳過、下一輪再來,不會在主執行緒上同步等編譯;
+// 每個閒置時段做一小批(主執行緒忙、閒置逾時時也照樣做 ~4ms,不會一次只做一個 → 載入中也能在幾秒內做完)
 export async function initPrograms(programs) {
-  const list = [...programs];
+  let list = [...programs];
   while (list.length) {
     await idle((dl) => {
-      do { const p = list.shift(); p.getUniforms(); p.getAttributes(); } while (list.length && !dl.didTimeout && dl.timeRemaining() > 6);
+      const t = performance.now(), budget = dl.didTimeout ? 4 : Math.max(2, dl.timeRemaining() - 2), rest = [];
+      for (const p of list) {
+        if (performance.now() - t > budget || (p.isReady && !p.isReady())) { rest.push(p); continue; }
+        p.getUniforms();
+        p.getAttributes();
+      }
+      list = rest;
     }, 200);
   }
 }
