@@ -307,25 +307,26 @@ const SYNTH_BACK = { hum: ['r_hum', 0.3], hvac: ['r_roomtone', 0], tone: ['r_roo
 const LIGHT_BED = { fluoro: ['r_hum', 0.5], fluoro_cold: ['r_hum', 0.6], fluoro_dying: ['r_buzzbad', 0.3], emergency: ['r_buzzbad', 0.4], monitor: ['r_hum', 0.3], surgical: ['r_hum', 0.5] };
 
 // ---------- 各 mood 的音床 ----------
+// (殭屍般的遠處呻吟/屍群聲已移除:殭屍叫聲只能來自真的在附近的殭屍,見 core.js 的 ZV 距離模型)
 // L 常駐層音量、ev 隨機事件權重、gap 事件間隔、sp 預設殘響空間
 const BEDS = {
-  corridor: { L: { hum: 0.9, hvac: 0.7, tone: 0.6, r_roomtone: 0.8 }, ev: { drip: 0.6, flicker: 0.12, moan: 0.9, door: 0.5, knock: 0.3, pipe: 0.4, gurney: 0.25 }, gap: [3, 9], sp: 'corridor' },
-  ward: { L: { hum: 0.5, hvac: 0.5, tone: 0.6, wind: 0.2, r_roomtone: 0.6 }, ev: { monitor: 0.7, moan: 0.8, drip: 0.4, flicker: 0.08, creak: 0.7, gurney: 0.3 }, gap: [3, 9], sp: 'room' },
+  corridor: { L: { hum: 0.9, hvac: 0.7, tone: 0.6, r_roomtone: 0.8 }, ev: { drip: 0.6, flicker: 0.12, door: 0.5, knock: 0.3, pipe: 0.4, gurney: 0.25 }, gap: [3, 9], sp: 'corridor' },
+  ward: { L: { hum: 0.5, hvac: 0.5, tone: 0.6, wind: 0.2, r_roomtone: 0.6 }, ev: { monitor: 0.7, drip: 0.4, flicker: 0.08, creak: 0.7, gurney: 0.3 }, gap: [3, 9], sp: 'room' },
   clinical: { L: { hum: 0.7, hvac: 0.8, whine: 0.6, tone: 0.4, r_roomtone: 0.5 }, ev: { monitor: 1.2, flicker: 0.06, drip: 0.3, clank: 0.5, creak: 0.3 }, gap: [3, 10], sp: 'tile' },
-  lobby: { L: { wind: 0.7, tone: 1, hvac: 0.2, r_wind: 0.35, r_roomtone: 0.3 }, ev: { pigeon: 0.7, drip: 0.8, moan: 0.9, door: 0.5, debris: 0.6, thunder: 0.3, creak: 0.4 }, gap: [3, 8], sp: 'hall' },
+  lobby: { L: { wind: 0.7, tone: 1, hvac: 0.2, r_wind: 0.35, r_roomtone: 0.3 }, ev: { pigeon: 0.7, drip: 0.8, door: 0.5, debris: 0.6, thunder: 0.3, creak: 0.4 }, gap: [3, 8], sp: 'hall' },
   chapel: { L: { organ: 0.9, wind: 0.3, tone: 0.5, r_roomtone: 0.2 }, ev: { creak: 0.6, whisper: 0.35, drip: 0.3, bell: 0.2 }, gap: [5, 12], sp: 'chapel' },
   safe: { L: { fridge: 0.9, radio: 0.7, neon: 0.7, tone: 0.2 }, ev: { fridgeClick: 0.4 }, gap: [10, 20], sp: 'small' },
-  emergency: { L: { hum: 0.5, buzz: 0.9, hvac: 0.4, tone: 0.4, r_buzzbad: 0.6, r_roomtone: 0.5 }, ev: { alarm: 0.6, monitor: 0.6, moan: 0.8, door: 0.5, flicker: 0.1, gurney: 0.4 }, gap: [3, 8], sp: 'room' },
-  basement: { L: { rumble: 0.8, tone: 0.7, hvac: 0.25, r_drips: 0.9, r_roomtone: 0.3 }, ev: { drip: 1.6, pipe: 1.2, moan: 0.6, clank: 0.7, rat: 0.5 }, gap: [2, 6], sp: 'tunnel' },
-  flooded: { L: { water: 0.9, rumble: 0.5, tone: 0.5, r_drips: 1.1 }, ev: { drip: 2, plop: 1.2, pipe: 0.6, moan: 0.4 }, gap: [1.5, 5], sp: 'tunnel' },
+  emergency: { L: { hum: 0.5, buzz: 0.9, hvac: 0.4, tone: 0.4, r_buzzbad: 0.6, r_roomtone: 0.5 }, ev: { alarm: 0.6, monitor: 0.6, door: 0.5, flicker: 0.1, gurney: 0.4 }, gap: [3, 8], sp: 'room' },
+  basement: { L: { rumble: 0.8, tone: 0.7, hvac: 0.25, r_drips: 0.9, r_roomtone: 0.3 }, ev: { drip: 1.6, pipe: 1.2, clank: 0.7, rat: 0.5 }, gap: [2, 6], sp: 'tunnel' },
+  flooded: { L: { water: 0.9, rumble: 0.5, tone: 0.5, r_drips: 1.1 }, ev: { drip: 2, plop: 1.2, pipe: 0.6 }, gap: [1.5, 5], sp: 'tunnel' },
   morgue: { L: { fridge: 0.6, hum: 0.6, hvac: 0.5, tone: 0.5, r_faucet: 0.6, r_roomtone: 0.4 }, ev: { drip: 0.8, clank: 0.5, creak: 0.4, flicker: 0.06, gurney: 0.3 }, gap: [3, 9], sp: 'tile' },
   industrial: { L: { machine: 1.2, fire: 0.8, rumble: 0.6, hvac: 0.3, r_generator: 0.9 }, ev: { clank: 1.2, pipe: 1, steam: 0.8 }, gap: [2, 6], sp: 'industrial' },
   nursery: { L: { hum: 0.3, tone: 0.6, wind: 0.2 }, ev: { musicbox: 0.9, creak: 0.6, laughFar: 0.12, mobile: 0.6 }, gap: [5, 12], sp: 'room' },
-  psych: { L: { hum: 0.6, whine: 0.7, tone: 0.5, r_screams: 0.22 }, ev: { knock: 1.2, moan: 0.6, scream: 0.2, flicker: 0.06, mutter: 0.5 }, gap: [3, 9], sp: 'corridor' },
+  psych: { L: { hum: 0.6, whine: 0.7, tone: 0.5, r_screams: 0.22 }, ev: { knock: 1.2, scream: 0.2, flicker: 0.06, mutter: 0.5 }, gap: [3, 9], sp: 'corridor' },
   office: { L: { hum: 0.6, hvac: 0.5, tone: 0.4, clock: 0.7, r_ac: 0.45 }, ev: { creak: 0.5, flicker: 0.06, phoneFar: 0.15 }, gap: [5, 12], sp: 'small' },
   stair: { L: { draft: 0.8, tone: 0.5, buzz: 0.4, r_howl: 0.25 }, ev: { clank: 0.7, door: 0.8, stepsFar: 0.3, drip: 0.4 }, gap: [3, 9], sp: 'stair' },
-  outdoor: { L: { wind: 1.3, leaves: 0.7, r_wind: 1 }, ev: { dog: 0.6, crow: 0.8, thunder: 0.25, siren: 0.45, chain: 0.4, owl: 0.3, hordeFar: 0.15 }, gap: [4, 10], sp: 'outdoor' },
-  outdoor_fog: { L: { wind: 0.8, fog: 0.8, r_graveyard: 0.9 }, ev: { crow: 1, dog: 0.4, bell: 0.25, chain: 0.4, owl: 0.4, siren: 0.25, hordeFar: 0.2 }, gap: [5, 11], sp: 'outdoor' },
+  outdoor: { L: { wind: 1.3, leaves: 0.7, r_wind: 1 }, ev: { dog: 0.6, crow: 0.8, thunder: 0.25, siren: 0.45, chain: 0.4, owl: 0.3 }, gap: [4, 10], sp: 'outdoor' },
+  outdoor_fog: { L: { wind: 0.8, fog: 0.8, r_graveyard: 0.9 }, ev: { crow: 1, dog: 0.4, bell: 0.25, chain: 0.4, owl: 0.4, siren: 0.25 }, gap: [5, 11], sp: 'outdoor' },
   roof: { L: { windStrong: 0.8, whistle: 0.6, r_howl: 1 }, ev: { flap: 0.8, crow: 0.3, thunder: 0.3, chain: 0.6, siren: 0.5 }, gap: [4, 9], sp: 'open' },
 };
 // (舊)區域主題 → 殘響空間表,保留供參考;實際由 rooms.js 依區域尺寸/材質計算

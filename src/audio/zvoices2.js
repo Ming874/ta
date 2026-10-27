@@ -68,7 +68,7 @@ function say(type, pos, mode) {
   if (!A.ctx) return null;
   const old = pos && typeof pos === 'object' ? busy.get(pos) : null;
   if (old && !old.dead && old.end > A.ctx.currentTime + 0.1 && (old.mode === 'die' || (old.prio > PRIO[mode] && mode !== 'pain' && mode !== 'die'))) return null;
-  const o = { pos, bus: 'voice', cat: 'voice', prio: PRIO[mode], room: 0.35, ref: type === 'hazmat' ? 1.9 : 1.6 };
+  const o = { pos, bus: 'voice', zv: mode, cat: 'voice', prio: PRIO[mode], room: 0.35, ref: type === 'hazmat' ? 1.9 : 1.6 };
   let h = null;
   const list = VOX[type][mode];
   if (list && Math.random() < MIX[mode]) {
@@ -127,7 +127,7 @@ function respir(h, at = 0) {
 export function zvoices2(safe) {
   return {
     zScream: safe((pos) => {
-      const h = emit({ pos, bus: 'voice', cat: 'voice', prio: 7, dur: 2.2, room: 0.5, hall: 0.4, ref: 3.5, maxDist: 60 });
+      const h = emit({ pos, bus: 'voice', zv: 'scream', cat: 'voice', prio: 7, dur: 2.2, room: 0.5, hall: 0.4, ref: 3.5, maxDist: 60 });
       if (!h) return;
       busy.get(pos)?.kill?.();
       h.mode = 'die'; busy.set(pos, h); // 尖叫期間不被別的叫聲切掉
@@ -140,7 +140,7 @@ export function zvoices2(safe) {
       duck(0.45, 1.2, true);
     }),
     zInhale: safe((pos) => {
-      const h = emit({ pos, bus: 'voice', cat: 'voice', prio: 6, dur: 0.8, room: 0.3, ref: 2 });
+      const h = emit({ pos, bus: 'voice', zv: 'pain', cat: 'voice', prio: 6, dur: 0.8, room: 0.3, ref: 2 });
       if (h) burst(h.in, h.t, { buf: 'pink', type: 'bandpass', f: 900, f1: 3200, glide: 0.6, q: 1.6, dur: 0.5, a: 0.35, g: 0.5 });
     }),
     zDaze: safe((k = 1) => {
@@ -160,7 +160,7 @@ export function zvoices2(safe) {
       }
     }),
     zBreath: safe((pos, type) => {
-      const h = emit({ pos, bus: 'voice', cat: 'voice', prio: 2, dur: 1.4, room: 0.3, ref: 1.4 });
+      const h = emit({ pos, bus: 'voice', zv: 'breath', cat: 'voice', prio: 2, dur: 1.4, room: 0.3, ref: 1.4 });
       if (!h) return;
       for (let i = 0; i < 3; i++) burst(h.in, h.t + i * 0.42, { buf: 'pink', type: 'bandpass', f: i % 2 ? 700 : 1100, q: 1.2, dur: 0.3, a: 0.08, g: type === 'surgeon' ? 0.3 : 0.22 });
     }),
@@ -175,7 +175,7 @@ export function zvoices2(safe) {
       crackleOn(h.in, h.t, 0.3, 1.2);
     }),
     zRespirator: safe((pos) => {
-      const h = emit({ pos, bus: 'voice', cat: 'voice', prio: 2, dur: 2.2, room: 0.3, ref: 1.6, maxDist: 28 });
+      const h = emit({ pos, bus: 'voice', zv: 'breath', cat: 'voice', prio: 2, dur: 2.2, room: 0.3, ref: 1.6, maxDist: 28 });
       if (h) respir(h);
     }),
     zMaskHit: safe((pos) => {
@@ -185,7 +185,7 @@ export function zvoices2(safe) {
       burst(h.in, h.t + 0.02, { buf: 'pink', type: 'bandpass', f: 2500, q: 1, dur: 0.5, a: 0.01, g: 0.25 }); // 濾罐漏氣
     }),
     zCharge: safe((pos) => {
-      const h = emit({ pos, bus: 'voice', cat: 'voice', prio: 6, dur: 1.4, room: 0.4, hall: 0.2, ref: 2.4 });
+      const h = emit({ pos, bus: 'voice', zv: 'attack', cat: 'voice', prio: 6, dur: 1.4, room: 0.4, hall: 0.2, ref: 2.4 });
       if (!h) return;
       if (!SM.play('zr.scream', { h, semi: -1, g: 1.8 })) voc(h.in, h.t, { ...spec('straitjacket', 'attack'), laugh: 1 });
     }),
@@ -195,7 +195,7 @@ export function zvoices2(safe) {
       if (!SM.play('glass', { h, g: 1.6 })) { burst(h.in, h.t, { buf: 'white', type: 'highpass', f: 3000, q: 0.8, dur: 0.5, a: 0.002, g: 0.6 }); for (let i = 0; i < 8; i++) metal(h.in, h.t + rand(0, 0.4), rand(3000, 6000), 0.05, 0.12); }
     }),
     zHiss: safe((pos, k = 1) => {
-      const h = emit({ pos, bus: 'voice', cat: 'voice', prio: 5, dur: 1.0, room: 0.3, ref: 2 });
+      const h = emit({ pos, bus: 'voice', zv: 'pain', cat: 'voice', prio: 5, dur: 1.0, room: 0.3, ref: 2 });
       if (!h) return;
       if (!SM.play('zc.hiss', { h, semi: 3 + k * 2, g: 1.6 + k })) burst(h.in, h.t, { buf: 'white', type: 'bandpass', f: 4500, q: 0.9, dur: 0.7, a: 0.03, g: 0.4 + k * 0.3 });
       if (k) vocal(h.in, h.t + 0.05, { ...spec('stalker', 'attack'), contour: 'shriek', f0: rand(380, 480), dur: 0.5, gain: 0.25 });
