@@ -20,6 +20,8 @@ export const ICON = {
   lock: svg('<rect x="4.5" y="10.5" width="15" height="10.5" rx="2" fill="currentColor"/><path fill="none" stroke="currentColor" stroke-width="2.2" d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7"/>'),
   check: svg('<path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.5 5 5 10-11"/>'),
   pistol: svg('<path fill="currentColor" d="M3 6.5h16.5l1 1.2v2.1h-1.6v1.4H11l-.6 1.6-1.9.4-1.3 5.8H3.4l1.9-7.2-2.3-.6z"/><path fill="rgba(0,0,0,.35)" d="M9.2 11.2h2.4l-.5 1.4-1.6.3z"/>'),
+  revolver: svg('<path fill="currentColor" d="M2.5 7.2h11.8l.9-.9h1.6v1h3.6v2H14.6c.2.5.3 1 .3 1.6 0 1.6-1.2 2.9-2.8 3.2l-1.1.2-.9 5.2H6.6l.9-5.6-2.3-.9 1-3.3H2.5z"/><circle cx="11.2" cy="10.9" r="1.5" fill="rgba(0,0,0,.4)"/>'),
+  shotgun: svg('<path fill="currentColor" d="M1 11.6h2.6l1.5-1.3h7.2V9.4h10.5v1.4H13.4v.8h8.2v1.2h-8.4l-.6 1.4h-2.1l.3-1.4H8.6l-2 4.3H4.1l1.6-4.3H4.3l-1.6 2.1H1z"/><path fill="rgba(0,0,0,.35)" d="M14.2 11.6h6v1.2h-6z"/>'),
   rifle: svg('<path fill="currentColor" d="M1 11.2h3.4l1.2-1.4h9.6V8.6h1.2v1.2H23v1.6h-4.6v1.1h-3l-.9 1.9h-2.3l.5-1.9H9.8l-1.6 4.3H5.6l1.5-4.3H5.2l-1.9 2.6H1z"/>', '0 0 24 24'),
   sniper: svg('<path fill="currentColor" d="M1 12h3l1.2-1.2h5.6V9.2H9.6V8h6.2v1.2h-1.4v1.6h3.8v-.6H23v1.7h-4.8v.8h-6l-1.2 3.9H8.6l1.1-3.9H6.1l-2 2.4H1z"/><path fill="rgba(0,0,0,.3)" d="M10.8 8.6h3.6v.6h-3.6z"/>'),
   vest: svg('<path fill="currentColor" d="M8 2.5h2.2c.3 1.4 1 2.2 1.8 2.2s1.5-.8 1.8-2.2H16l3.5 3V21c0 .3-.2.5-.5.5H5c-.3 0-.5-.2-.5-.5V5.5z"/><path fill="rgba(0,0,0,.32)" d="M6.5 11h11v2.2h-11zm0 4h11v2.2h-11z"/>'),

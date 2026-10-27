@@ -58,6 +58,33 @@ function mainBackend() {
 }
 
 // ---------- 後端:Web Worker ----------
+// 啟動 Worker 並送出 init(Worker 腳本與 WASM 開始下載);載入前收到的訊息先暫存,由 workerBackend 接手。
+// 不設逾時:慢速網路下載中不算失敗,只有真的出錯(載入失敗、init 例外)才退回主執行緒。
+export const physicsLoad = { state: 'idle', t0: 0, tScript: 0, tReady: 0, error: null }; // 給載入進度顯示
+function spawnWorker() {
+  const sab = typeof SharedArrayBuffer !== 'undefined' && globalThis.crossOriginIsolated === true;
+  const w = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
+  const box = { w, sab, buf: null, msgs: [], err: null, listener: null, onErr: null };
+  const fail = (err) => { if (!box.err) { box.err = err; physicsLoad.error = err.message; box.onErr?.(err); } };
+  w.onmessage = (e) => {
+    if (e.data?.t === 'boot') { physicsLoad.state = 'wasm'; physicsLoad.tScript = e.data.at - performance.timeOrigin; return; }
+    if (box.listener) box.listener(e); else box.msgs.push(e);
+  };
+  w.onerror = (e) => { e?.preventDefault?.(); fail(new Error(e?.message || 'physics worker 載入失敗')); };
+  w.onmessageerror = () => fail(new Error('physics worker messageerror'));
+  if (sab) box.buf = new SharedArrayBuffer(16 + OUT_LEN * 4 * 2);
+  w.postMessage({ t: 'init', sab: box.buf });
+  physicsLoad.state = 'script';
+  physicsLoad.t0 = performance.now();
+  return box;
+}
+let early = null;
+// main.js 在建世界(數秒的同步工作)之前呼叫:物理檔案先下載,不跟貼圖/模型搶頻寬
+export function startPhysicsWorker() {
+  const mode = urlMode();
+  if (early || mode === 'off' || mode === 'main' || typeof Worker === 'undefined') return;
+  try { early = spawnWorker(); } catch (e) { early = null; console.warn('[physics] 無法建立 Worker', e?.message || e); }
+}
 function workerBackend() {
   const sab = typeof SharedArrayBuffer !== 'undefined' && globalThis.crossOriginIsolated === true;
   let w = null, busy = false, latest = null, spare = null, carryDt = 0, carry = [], lastSeq = 0, ctl = null, bufs = null;
@@ -66,26 +93,27 @@ function workerBackend() {
     name: 'worker', sab, initMs: 0,
     init() {
       return new Promise((resolve, reject) => {
-        w = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
-        const timer = setTimeout(() => reject(new Error('physics worker timeout')), 30000);
-        w.onerror = (e) => { clearTimeout(timer); reject(new Error(e.message || 'physics worker error')); };
-        w.onmessage = (e) => {
+        const box = early || spawnWorker();
+        early = null;
+        w = box.w;
+        if (box.buf) {
+          ctl = new Int32Array(box.buf, 0, 4);
+          bufs = [new Float32Array(box.buf, 16, OUT_LEN), new Float32Array(box.buf, 16 + OUT_LEN * 4, OUT_LEN)];
+        }
+        const onMsg = (e) => {
           const m = e.data;
-          if (m.t === 'ready') { clearTimeout(timer); be.initMs = m.ms; resolve(); }
-          else if (m.t === 'error') { clearTimeout(timer); console.warn('[physics worker]', m.message); reject(new Error(m.message)); }
+          if (m.t === 'ready') { be.initMs = m.ms; physicsLoad.tInit = m.tInit - performance.timeOrigin; physicsLoad.tWasm = m.tReady - performance.timeOrigin; resolve(); }
+          else if (m.t === 'error') { console.warn('[physics worker]', m.message); reject(new Error(m.message)); }
           else if (m.t === 'out') {
             if (!sab) busy = false; // SAB 模式以序號判斷完成(訊息可能比共享記憶體晚到)
             if (m.events) for (const ev of m.events) events.push(ev);
             if (m.buf) latest = new Float32Array(m.buf);
           }
         };
-        let buf = null;
-        if (sab) {
-          buf = new SharedArrayBuffer(16 + OUT_LEN * 4 * 2);
-          ctl = new Int32Array(buf, 0, 4);
-          bufs = [new Float32Array(buf, 16, OUT_LEN), new Float32Array(buf, 16 + OUT_LEN * 4, OUT_LEN)];
-        }
-        w.postMessage({ t: 'init', sab: buf });
+        box.onErr = reject;
+        if (box.err) { reject(box.err); return; }
+        box.listener = onMsg;
+        for (const e of box.msgs.splice(0)) onMsg(e);
       });
     },
     // 送出命令與 dt;Worker 還在忙就累積到下一幀(不會堆積訊息)
@@ -153,7 +181,8 @@ export function createPhysics(game, opts = {}) {
   // ======================= 初始化 =======================
   async function init() {
     const want = urlMode() || opts.mode || 'worker';
-    if (want === 'off') { P.mode = stats.mode = 'off'; return; }
+    if (want === 'off') { P.mode = stats.mode = 'off'; physicsLoad.state = 'off'; return; }
+    if (want === 'main' || typeof Worker === 'undefined') physicsLoad.state = 'main';
     const t0 = performance.now();
     let be = want === 'main' || typeof Worker === 'undefined' ? mainBackend() : workerBackend();
     try { await be.init(); } catch (e) {
@@ -161,9 +190,12 @@ export function createPhysics(game, opts = {}) {
       console.warn('[physics] worker 無法啟動,改用主執行緒:', e.message);
       be.dispose();
       be = mainBackend();
+      physicsLoad.state = 'main';
       await be.init();
     }
     backend = be;
+    physicsLoad.state = 'ready';
+    physicsLoad.tReady = performance.now();
     P.mode = stats.mode = be.name + (be.sab ? '+sab' : '');
     stats.sab = be.sab;
     stats.initMs = Math.round(performance.now() - t0);
@@ -770,6 +802,8 @@ export function createPhysics(game, opts = {}) {
   }
 
   init().catch((e) => {
+    physicsLoad.state = 'failed';
+    physicsLoad.error = String(e?.message || e);
     console.warn('[physics] 無法啟動,使用原本的動畫:', e?.message || e);
     P.failed = true;
     P.ready = false;

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { assets } from '../../sys/assets.js';
 
 // CC0 PBR 貼圖組(public/textures/<set>/{color,normal,orm[,opacity]}.webp;orm = R:AO G:粗糙度)。
 // pbrTex(set, map, opts) 立刻回傳 Texture(先用平均色的佔位圖),圖片載入後就地換上同一個 Texture
@@ -64,7 +65,7 @@ const sets = new Map(); // set → { maps: {color, normal, orm, opacity}: base T
 let aniso = 8;
 export function setAnisotropy(n) { aniso = n; for (const s of sets.values()) for (const t of s.all) t.anisotropy = n; }
 const failHandlers = new Map();
-export const pbrState = { requested: 0, loaded: 0, failed: 0 };
+export const pbrState = { requested: 0, loaded: 0, failed: 0, alpha: 0 }; // alpha:已載入的鏤空(會影響陰影)貼圖組數
 
 function ph(color) {
   const c = document.createElement('canvas');
@@ -85,45 +86,42 @@ function getSet(name) {
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.anisotropy = aniso;
     t.needsUpdate = true;
+    t.userData.pbr = name; // 下載排序(src/sys/stream.js)用:哪些網格用到這組貼圖
     s.maps[m] = t;
     s.all.push(t);
   }
   sets.set(name, s);
-  queue.push(s);
-  pump();
+  load(s);
   return s;
 }
-// 載入佇列(限制同時下載數,先要求的先載)
-const queue = [];
-let active = 0;
-function pump() {
-  while (active < 6 && queue.length) {
-    const s = queue.shift();
-    const maps = Object.keys(s.maps);
-    let left = maps.length, bad = false;
-    active++;
-    pbrState.requested++;
-    for (const m of maps) {
-      const img = new Image();
-      img.decoding = 'async';
-      img.onload = () => {
-        const base = s.maps[m];
-        // 尺寸不同的新圖:先釋放舊的 GL 貼圖(不可變儲存無法改尺寸),下次使用時重新配置
-        const same = s.all.filter((t) => t.source === base.source);
-        for (const t of same) t.dispose();
-        base.image = img;
-        for (const t of same) t.needsUpdate = true;
-        if (--left === 0) done();
-      };
-      img.onerror = () => { bad = true; if (--left === 0) done(); };
-      img.src = BASE + s.name + '/' + m + '.webp';
-    }
-    const done = () => {
-      active--;
-      if (bad) { s.failed = true; pbrState.failed++; for (const fn of failHandlers.get(s.name) || []) fn(s.name); }
-      else { s.loaded = true; pbrState.loaded++; }
-      pump();
-    };
+// 下載交給 src/sys/assets.js:關鍵檔載完才開始、依玩家距離排序、限制同時下載數、背景解碼、每幀交付一張。
+// 漸進式:有 1K 顏色圖的組先載 512 的 color_s.webp(法線/orm 本來就是 512),全部基本圖載完後才依距離換成 1K
+// (低畫質不換;assets.hiRes = false)
+const HI = new Set(['asphalt', 'brick', 'ceiling_tile', 'concrete', 'concrete_wall', 'concrete_wet', 'dirt', 'grass', 'linoleum', 'metal_painted', 'paint_peeling', 'paving', 'plaster', 'rust', 'stone', 'stone_wall', 'tile_lobby', 'tile_wall', 'tile_ward', 'tile_white', 'wood_floor', 'wood_old', 'wood_panel',
+  'plaster_paint', 'wallpaper_old', 'plaster_blue', 'plaster_damaged', 'brick_white', 'gloss_paint', 'tile_sq', 'plaster_mould', 'lino_pattern', 'checker_bw', 'anti_skid', 'epoxy', 'ceiling_tile2']);
+function swap(s, m, img) {
+  const base = s.maps[m];
+  // 尺寸不同的新圖:先釋放舊的 GL 貼圖(不可變儲存無法改尺寸),下次使用時重新配置
+  const same = s.all.filter((t) => t.source === base.source);
+  for (const t of same) t.dispose();
+  base.image = img;
+  const bmp = typeof ImageBitmap !== 'undefined' && img instanceof ImageBitmap; // 已在解碼時翻轉
+  for (const t of same) { if (bmp) t.flipY = false; t.needsUpdate = true; }
+}
+function load(s) {
+  const maps = Object.keys(s.maps);
+  let left = maps.length, bad = false;
+  pbrState.requested++;
+  const done = () => {
+    if (bad) { s.failed = true; pbrState.failed++; for (const fn of failHandlers.get(s.name) || []) fn(s.name); }
+    else { s.loaded = true; pbrState.loaded++; if (s.def.alpha) pbrState.alpha++; }
+  };
+  for (const m of maps) {
+    const small = m === 'color' && HI.has(s.name);
+    assets.image(BASE + s.name + '/' + (small ? 'color_s' : m) + '.webp', { meta: { pbr: s.name, map: m } }).then((img) => {
+      swap(s, m, img);
+      if (small && assets.hiRes) assets.image(BASE + s.name + '/color.webp', { meta: { pbr: s.name, map: 'hi' } }).then((hi) => { if (assets.hiRes) swap(s, m, hi); }, () => {});
+    }, () => { bad = true; }).finally(() => { if (--left === 0) done(); });
   }
 }
 // 取得某組某張貼圖的複本(共用影像,自己的 repeat/rotation)

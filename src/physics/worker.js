@@ -5,12 +5,14 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { createCore, OUT_LEN, H } from './core.js';
 
 let core = null, ctl = null, bufs = null;
+const epoch = () => performance.timeOrigin + performance.now(); // 與主執行緒比對用的絕對時間
+self.postMessage({ t: 'boot', at: epoch() }); // 腳本已下載、模組已執行(接著 init 下載 WASM)
 
 self.onmessage = async (e) => {
   const m = e.data;
   try {
     if (m.t === 'init') {
-      const t0 = performance.now();
+      const t0 = performance.now(), tInit = epoch();
       await RAPIER.init();
       core = createCore(RAPIER);
       // 暖機:先讓 WASM 熱起來,第一次真正步進才不會卡
@@ -23,7 +25,7 @@ self.onmessage = async (e) => {
         ctl = new Int32Array(m.sab, 0, 4);
         bufs = [new Float32Array(m.sab, 16, OUT_LEN), new Float32Array(m.sab, 16 + OUT_LEN * 4, OUT_LEN)];
       }
-      self.postMessage({ t: 'ready', ms: performance.now() - t0, sab: !!bufs });
+      self.postMessage({ t: 'ready', ms: performance.now() - t0, sab: !!bufs, tInit, tReady: epoch() });
       return;
     }
     if (m.t !== 'frame' || !core) return;

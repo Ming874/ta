@@ -44,11 +44,22 @@ export class Hud {
     this.zoneEl = this.loc.children[1];
     this.zoneBig = add(mk('hd hd-zonebig'));
     this.round = add(mk('hd hd-round', '<div class="hd-rn">第 <b>1</b> 回合</div><div class="hd-rs">殭屍 <b>0</b></div>'));
+    this.round.id = 'roundinfo'; // 對戰模式(src/net/pvp.js)會用這個 id 隱藏回合資訊
     this.roundNum = this.round.querySelector('b');
     this.roundSub = this.round.children[1];
     this.coins = add(mk('hd hd-coins', `<span class="hd-cgain"></span>${ICON.coin}<b>0</b>`));
     this.coinGainEl = this.coins.children[0];
     this.coinNum = this.coins.querySelector('b');
+    this.scoreEl = add(mk('hd hd-score', '分數 <b>0</b>'));
+    this.scoreNum = this.scoreEl.querySelector('b');
+    this.scoreShown = 0;
+    this.scoreTarget = 0;
+    this.streakEl = add(mk('hd hd-streak hd-hide', '<b></b><span></span><div class="hd-bar"><div class="fill"></div></div>'));
+    this.streakNum = this.streakEl.children[0];
+    this.streakMul = this.streakEl.children[1];
+    this.streakFill = this.streakEl.querySelector('.fill');
+    this.streakEnd = 0;
+    this.streakLen = 1;
 
     this.vitals = add(mk('hd hd-vitals', `
       <div class="hd-row hd-hp">${ICON.cross}<b class="num">100</b><div class="hd-bar"><div class="trail"></div><div class="fill"></div><div class="seg"></div></div></div>
@@ -76,7 +87,7 @@ export class Hud {
     this.warnEl = add(mk('hd hd-warn hd-hide'));
     this.healEl = add(mk('hd hd-heal hd-hide', '治療中<div class="hd-bar"><div class="fill"></div></div>'));
     this.healFill = this.healEl.querySelector('.fill');
-    this.wp = add(mk('hd hd-wp hd-hide', `<i class="arr"></i>${ICON.cart}<span></span><small>補給站</small>`));
+    this.wp = add(mk('hd hd-wp hd-hide', `<i class="arr"></i>${ICON.cart}<span></span><small>商店</small>`));
     this.wpArr = this.wp.children[0];
     this.wpTxt = this.wp.querySelector('span');
     this.wpSub = this.wp.querySelector('small');
@@ -127,8 +138,11 @@ export class Hud {
   }
 
   // ---------- 武器 / 道具 ----------
-  setAmmo(name, mag, reserve, reloading, cap = 0) {
-    this._set('wn', `${name}|${reloading ? 1 : 0}`, () => { this.wName.innerHTML = esc(name) + (reloading ? '<em>換彈中…</em>' : ''); });
+  // tier = 這把武器的改裝總等級(名稱旁顯示小菱形)
+  setAmmo(name, mag, reserve, reloading, cap = 0, tier = 0) {
+    this._set('wn', `${name}|${reloading ? 1 : 0}|${tier}`, () => {
+      this.wName.innerHTML = (tier ? `<i class="tier" title="改裝等級">${'◆'.repeat(Math.min(tier, 9))}</i>` : '') + esc(name) + (reloading ? '<em>換彈中…</em>' : '');
+    });
     this._set('mag', mag, (v) => { this.magEl.textContent = v; });
     this._set('res', reserve, (v) => { this.resEl.textContent = `/ ${v}`; });
     const st = mag === 0 ? (reserve === 0 ? 'empty dry' : 'empty') : cap && mag <= Math.max(1, Math.floor(cap * 0.25)) ? 'low' : '';
@@ -178,16 +192,36 @@ export class Hud {
     this.coinGainEl.animate([{ opacity: 1, color: '#ff8a70' }, { opacity: 0, transform: 'translateY(.6em)', color: '#ff8a70' }], { duration: 900, easing: 'ease-in' });
   }
 
+  // ---------- 分數 / 連殺 ----------
+  setScore(n, instant = false) {
+    this.scoreTarget = n;
+    if (instant || n < this.scoreShown) { this.scoreShown = n; this.scoreNum.textContent = n.toLocaleString('en-US'); }
+  }
+  // 連殺:數字 + 分數倍率 + 剩餘時間條(gap 秒內再殺一隻才延續;用遊戲時間 t,暫停/購物時不倒數)
+  streak(n, mul, gap, t) {
+    if (n < 2) { this._set('stk', 0, () => this.streakEl.classList.add('hd-hide')); this.streakEnd = 0; return; }
+    this.streakEnd = t + gap;
+    this.streakLen = gap;
+    this.v.stk = n;
+    this.streakEl.classList.remove('hd-hide');
+    this.streakNum.textContent = `${n} 連殺`;
+    this.streakMul.textContent = `×${mul.toFixed(1)}`;
+    this.streakEl.classList.toggle('hot', n >= 5);
+    this.streakNum.getAnimations().forEach((a) => a.cancel());
+    this.streakNum.animate([{ transform: 'scale(1.35)' }, { transform: 'scale(1)' }], { duration: 260, easing: 'ease-out' });
+  }
+
   // ---------- 回合 ----------
   setRound(n) { this._set('round', n, (v) => { this.roundNum.textContent = v; }); }
   setZombies(n) {
     this._set('rs', `z${n}`, () => { this.roundSub.className = 'hd-rs'; this.roundSub.innerHTML = `殭屍 <b>${n}</b>`; });
   }
-  setRest(sec, canSkip = true) {
+  // next = 下一回合是特殊/首領回合時的名稱
+  setRest(sec, canSkip = true, next = '') {
     const s = Math.max(0, Math.ceil(sec));
-    this._set('rs', `r${s}|${canSkip}`, () => {
+    this._set('rs', `r${s}|${canSkip}|${next}`, () => {
       this.roundSub.className = `hd-rs rest${s <= 5 ? ' urgent' : ''}`;
-      this.roundSub.innerHTML = `休息 <b>${s}</b> 秒${canSkip ? ` · ${withKeys('[N] 立即開始')}` : ''}`;
+      this.roundSub.innerHTML = `休息 <b>${s}</b> 秒${next ? ` · 下一回合 <i class="nx">${esc(next)}</i>` : ''}${canSkip ? ` · ${withKeys('[N] 立即開始')}` : ''}`;
     });
   }
   setRoundText(html) { this._set('rs', `t${html}`, () => { this.roundSub.className = 'hd-rs'; this.roundSub.innerHTML = html; }); }
@@ -283,6 +317,19 @@ export class Hud {
       if ((d > 0 && this.coinShown > this.coinTarget) || (d < 0 && this.coinShown < this.coinTarget)) this.coinShown = this.coinTarget;
       this._set('coins', this.coinShown, (v) => { this.coinNum.textContent = v; });
     }
+    // 分數滾動
+    if (this.scoreShown !== this.scoreTarget) {
+      const d = this.scoreTarget - this.scoreShown;
+      this.scoreShown += Math.max(1, Math.round(d * Math.min(1, dt * 8)));
+      if (this.scoreShown > this.scoreTarget) this.scoreShown = this.scoreTarget;
+      this.scoreNum.textContent = this.scoreShown.toLocaleString('en-US');
+    }
+    // 連殺剩餘時間(遊戲時間)
+    if (this.streakEnd) {
+      const k = (this.streakEnd - game.time) / this.streakLen;
+      if (k <= 0) { this.streakEnd = 0; this.v.stk = 0; this.streakEl.classList.add('hd-hide'); }
+      else this.streakFill.style.transform = `scaleX(${k.toFixed(3)})`;
+    }
     // 受傷方向弧
     for (const a of this.arcs) {
       const age = (now - a.t) / 1000;
@@ -328,7 +375,7 @@ export class Hud {
         if (edge) this.wpArr.style.transform = `rotate(${Math.atan2(x, y).toFixed(2)}rad)`;
         const floor = Math.abs(dy) > 2 ? (dy < 0 ? ' ↓' : ' ↑') : '';
         this._set('wpd', `${Math.round(d)}${floor}`, (v) => { this.wpTxt.textContent = `${v.replace(/ .*/, '')}m${floor}`; });
-        this._set('wps', shop.levelId || '', (v) => { this.wpSub.textContent = v ? `補給站 · ${v}` : '補給站'; });
+        this._set('wps', shop.levelId || '', (v) => { this.wpSub.textContent = v ? `商店 · ${v}` : '商店'; });
       }
     }
     this._set('wpshow', !!show, (v) => this.wp.classList.toggle('hd-hide', !v));
@@ -336,6 +383,10 @@ export class Hud {
 
   reset() {
     for (const k of ['feedEl', 'pops', 'pickEl']) this[k].replaceChildren();
+    this.streakEnd = 0;
+    this.v.stk = 0;
+    this.streakEl.classList.add('hd-hide');
+    this.setScore(0, true);
     for (const a of this.arcs) { a.t = -9; a.op = -1; a.el.style.opacity = 0; }
     this.zoneSeen.clear();
     this._lastLvl = null;
