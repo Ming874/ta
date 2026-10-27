@@ -200,6 +200,7 @@ export class NetSession {
   stop() {
     if (!this.active) return;
     this.active = false;
+    clearTimeout(this._resumeT);
     const g = this.game;
     for (const off of this.unsub) off();
     this.unsub.length = 0;
@@ -283,10 +284,17 @@ export class NetSession {
     on('pings', (m) => { for (const [id, rtt] of m.r) { const rp = this.remotes.get(id); if (rp) rp.rtt = rtt; else if (id === this.me) this.myRtt = rtt; } });
     on('chat', (m) => this.hud.chatLine(m.name, m.text, m.id === this.me));
     on('reconnecting', () => this.hud.reconnecting(true));
-    on('reconnected', () => {
-      // 伺服器若沒有接回座位(超過保留時間),就結束這場
-      const t = setTimeout(() => { if (this.active) this.lobby.matchLost('重新連線失敗:座位已釋出'); }, 4000);
-      const off = c.on('joined', (m) => { off(); clearTimeout(t); if (m.resumed) { this.hud.reconnecting(false); this.onResumed(m); } });
+    // 重新連上:伺服器在 welcome 告訴我們座位有沒有保住(超過保留時間就結束這場);保住的話緊接著送 joined(房間現況)
+    on('reconnected', (m) => {
+      clearTimeout(this._resumeT);
+      if (!m.resumed) { this.lobby.matchLost('重新連線失敗:座位已釋出'); return; }
+      this._resumeT = setTimeout(() => { if (this.active) this.lobby.matchLost('重新連線失敗:座位已釋出'); }, 5000);
+    });
+    on('joined', (m) => {
+      if (!m.resumed || !this.active) return;
+      clearTimeout(this._resumeT);
+      this.hud.reconnecting(false);
+      this.onResumed(m);
     });
     on('lost', () => this.lobby.matchLost('與伺服器的連線中斷'));
 

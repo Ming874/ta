@@ -413,7 +413,8 @@ function drop(c) {
   setTimeout(() => { if (c.gone && c.room === room) leave(c, 'timeout'); }, L.grace).unref();
 }
 
-// 用 token 接手原本的座位;舊連線可能還沒被偵測到斷線(半開的 TCP),直接踢掉舊的
+// 用 token 接手原本的座位;舊連線可能還沒被偵測到斷線(半開的 TCP),直接踢掉舊的。
+// 只接手座位,'joined' 由呼叫端在 'welcome' 之後送(用戶端先知道是重連,再收到房間狀態)
 function resume(c, token) {
   const old = byToken.get(token);
   if (!old || old === c || !old.room) return false;
@@ -423,12 +424,15 @@ function resume(c, token) {
   room.slots[c.slot] = c;
   byToken.set(c.token, c);
   old.room = null;
+  return true;
+}
+function resumed(c) {
+  const room = c.room;
   c.send({ t: 'joined', room: room.info(), you: c.slot, token: c.token, resumed: true });
   room.cast({ t: 'peer', p: room.player(c), back: true }, c);
   // 房主斷線超過寬限、當時又沒有人在線可以接手(例如大家同時斷線)→ 回來的人接手
   const h = room.slots[room.host];
   if (!h || (h.gone && now() - h.gone > L.hostGrace)) migrate(room);
-  return true;
 }
 
 function log(...a) { console.log(new Date().toISOString().slice(11, 19), ...a); }
@@ -444,8 +448,9 @@ function onText(c, msg) {
       if (msg.v !== PROTO) { c.send({ t: 'error', code: 'version', msg: '遊戲已更新,請重新整理頁面' }); return c.ws.close(4000, 'version'); }
       c.hello = true;
       c.name = clean(msg.name, L.nameLen) || `倖存者${String(c.id % 1000).padStart(3, '0')}`;
-      const resumed = typeof msg.token === 'string' && msg.token.length < 64 && resume(c, msg.token);
-      c.send({ t: 'welcome', id: c.id, v: PROTO, name: c.name, token: c.token, resumed, now: mono() });
+      const back = typeof msg.token === 'string' && msg.token.length < 64 && resume(c, msg.token);
+      c.send({ t: 'welcome', id: c.id, v: PROTO, name: c.name, token: c.token, resumed: back, now: mono() });
+      if (back) resumed(c);
       return;
     }
     case 'ping': return c.send({ t: 'pong', c: Number.isFinite(msg.c) ? msg.c : 0, s: mono() });

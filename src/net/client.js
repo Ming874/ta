@@ -4,6 +4,7 @@ import { PROTO } from './protocol.js';
 
 const utf8Len = (s) => { let n = 0; for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); n += c < 0x80 ? 1 : c < 0x800 ? 2 : c >= 0xd800 && c < 0xdc00 ? (i++, 4) : 3; } return n; };
 const RETRY = [300, 700, 1200, 2000, 3000, 4000, 5000];
+const DEAD_MS = 7000; // 這麼久沒收到任何東西(伺服器每 5 秒廣播延遲、每 2 秒回 pong)就當連線已死,主動重連
 
 export class NetClient {
   constructor() {
@@ -64,6 +65,7 @@ export class NetClient {
   }
 
   _message(data) {
+    this.lastRx = performance.now();
     if (typeof data !== 'string') {
       this._acc.inB += data.byteLength;
       this._acc.inM++;
@@ -144,7 +146,12 @@ export class NetClient {
 
   _startTimers() {
     this._stopTimers();
-    this._timers.push(setInterval(() => this.ping(), 2000));
+    this.lastRx = performance.now();
+    this._timers.push(setInterval(() => {
+      // 網路靜默斷掉時瀏覽器可能很久都不會觸發 close(關閉握手卡住):收不到東西就自己斷開、走重連
+      if (this.status === 'open' && performance.now() - this.lastRx > DEAD_MS) { this._drop(); return; }
+      this.ping();
+    }, 2000));
     this._timers.push(setInterval(() => {
       const a = this._acc, s = this.stats;
       s.inBps = a.inB; s.outBps = a.outB; s.inMps = a.inM; s.outMps = a.outM;
@@ -153,6 +160,12 @@ export class NetClient {
     }, 1000));
   }
   _stopTimers() { for (const t of this._timers) clearInterval(t); this._timers.length = 0; }
+  _drop() {
+    const ws = this.ws;
+    this.ws = null; // 之後這條連線的 onclose 不再處理
+    if (ws) { ws.onmessage = null; try { ws.close(4001, 'timeout'); } catch { /* 忽略 */ } }
+    this._closed({ code: 4001 });
+  }
 
   ping() { if (this.status === 'open') this._send({ t: 'ping', c: performance.now() }); }
   serverNow() { return performance.now() + this.offset; }

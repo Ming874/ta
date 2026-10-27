@@ -275,9 +275,11 @@ export class NetHud {
     // 隊友列表(合作)
     if (!s.pvp) {
       let html = '';
+      const now = performance.now();
       for (const rp of s.remotes.values()) {
-        const st = !rp.connected ? 'off' : rp.downed ? 'down' : !rp.alive ? 'dead' : '';
-        const label = !rp.connected ? '斷線' : rp.downed ? '倒地' : (rp.flags & F.DEAD) || !rp.alive ? '陣亡' : `${Math.round(Math.hypot(rp.pos.x - g.player.pos.x, rp.pos.z - g.player.pos.z))}m`;
+        const stale = rp.has && now - rp.lastMsg > 3000; // 收不到他的狀態(可能是我自己斷線)
+        const st = !rp.connected || stale ? 'off' : rp.downed ? 'down' : !rp.up ? 'dead' : '';
+        const label = !rp.connected ? '斷線' : stale ? '無訊號' : rp.downed ? '倒地' : (rp.flags & F.DEAD) || !rp.up ? '陣亡' : `${Math.round(Math.hypot(rp.pos.x - g.player.pos.x, rp.pos.z - g.player.pos.z))}m`;
         html += `<div class="m mp-panel ${st}"><div class="n"><span>${esc(rp.name)}</span><span>${label}</span></div><div class="hp"><i style="width:${Math.max(0, Math.min(100, rp.hp))}%"></i></div></div>`;
       }
       if (html !== this._teamHtml) { this.team.innerHTML = html; this._teamHtml = html; }
