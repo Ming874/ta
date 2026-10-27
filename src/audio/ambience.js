@@ -300,7 +300,8 @@ const LV = { hum: 1.27, buzz: 2.5, whine: 1.5, hvac: 0.63, tone: 2.5, wind: 1.07
 // 斷電時會停的層
 const ELECTRIC = new Set(['hum', 'buzz', 'whine', 'hvac', 'fridge', 'radio', 'neon', 'machine', 'r_roomtone', 'r_hum', 'r_buzzbad', 'r_flicker', 'r_ac']);
 // 錄音音床存在時,對應的合成層退到這個比例(避免兩層打架)
-const SYNTH_BACK = { hum: ['r_hum', 0.35], hvac: ['r_roomtone', 0.3], buzz: ['r_buzzbad', 0.4], wind: ['r_wind', 0.45], windStrong: ['r_howl', 0.45], water: ['r_drips', 0.5], machine: ['r_generator', 0.5] };
+// (0 = 錄音載好後整層拆掉,省音訊執行緒)
+const SYNTH_BACK = { hum: ['r_hum', 0.3], hvac: ['r_roomtone', 0], tone: ['r_roomtone', 0], buzz: ['r_buzzbad', 0], wind: ['r_wind', 0.35], windStrong: ['r_howl', 0], water: ['r_drips', 0.4], machine: ['r_generator', 0], fog: ['r_graveyard', 0.5] };
 // 區域燈光 → 額外的錄音電器聲
 const LIGHT_BED = { fluoro: ['r_hum', 0.5], fluoro_cold: ['r_hum', 0.6], fluoro_dying: ['r_flicker', 0.45], emergency: ['r_buzzbad', 0.4], monitor: ['r_hum', 0.3], surgical: ['r_hum', 0.5] };
 
@@ -806,6 +807,8 @@ function caw(d, t) {
 //       'alarm' 'clock' 'fridge' 'neon' 'candles' 'incubator' 'cctv' 'ac' 'screams' 'horde' 'eating' 'breathing';聆聽者靠近才建立節點。
 // 有錄音的種類先用錄音(第一次用到時載入,沒載好前用合成版本)
 const LOOP_REC = { generator: ['generator', 0.9], tv_static: ['tv', 0.7], fluorescent: ['buzzbad', 0.9], water_drip: ['faucet', 1.2], wind: ['howl', 0.8], machine_hum: ['ac', 0.8], phone: ['phone', 0.5], music_box: ['musicbox', 0.8], screams: ['screams', 0.9], horde: ['horde', 0.9], eating: ['eating', 1.2], breathing: ['breathfast', 0.6] };
+// 用環境層的建構函式做定位循環音:層內排程寫到 L.out,這裡把輸出節點包進去
+function layerLoop(k, o) { const b = LAYERS[k](o); const L = { out: o }; return { ...b, ev: b.ev ? (now) => b.ev(now, L) : undefined }; }
 const LOOPK = {
   monitor: { r: 12, g: 1, room: 0.4, build() { // 生理監視器:規律的嗶聲(偶爾變快)
     let next = 0, bpm = rand(58, 80);
@@ -814,9 +817,9 @@ const LOOPK = {
   phone: { r: 16, g: 1, room: 0.6, build(d) { const L = { srcs: [] }; let next = 0; L.ev = (now) => { if (now < next) return; next = now + 6; phoneBell(d, now + 0.05, 2, 0.08); }; return L; } },
   music_box: { r: 10, g: 1, room: 0.6, build(d) { let next = 0; return { srcs: [], ev(now) { if (now < next) return; next = now + rand(9, 14); musicBox(d, now + 0.05, 10, 0.04, 0.994); } }; } },
   alarm: { r: 30, g: 1, room: 0.7, build(d) { const o = osc('square', 760); const g = gain(0, filter('lowpass', 2500, 0.7, d)); o.connect(g); let next = 0, on = false; return { srcs: [o], ev(now) { if (now < next) return; on = !on; next = now + (on ? 0.35 : 0.5); g.gain.setTargetAtTime(on ? 0.02 : 0, now, 0.01); } }; } },
-  clock: { r: 8, g: 1, room: 0.4, build(d) { return LAYERS.clock(gain(3, d)); } },
-  fridge: { r: 10, g: 1, room: 0.3, build(d) { return LAYERS.fridge(gain(3, d)); } },
-  neon: { r: 10, g: 1, room: 0.3, build(d) { return LAYERS.neon(gain(4, d)); } },
+  clock: { r: 8, g: 1, room: 0.4, build(d) { return layerLoop('clock', gain(3, d)); } },
+  fridge: { r: 10, g: 1, room: 0.3, build(d) { return layerLoop('fridge', gain(3, d)); } },
+  neon: { r: 10, g: 1, room: 0.3, build(d) { return layerLoop('neon', gain(4, d)); } },
   candles: { r: 6, g: 1, room: 0.3, build(d) { return { srcs: [crackle(d, 0.05)] }; } }, // 燭芯的細小劈啪
   incubator: { r: 9, g: 1, room: 0.3, build(d) { const o = osc('sine', 120); o.connect(gain(0.008, d)); const n = noise('pink'); n.connect(filter('bandpass', 700, 1, gain(0.01, d))); let next = 0; return { srcs: [o, n], ev(now, L) { if (now < next) return; next = now + rand(3, 6); for (let i = 0; i < 2; i++) tone(L.d, now + 0.05 + i * 0.18, { f: 1760, dur: 0.06, g: 0.015 }); } }; } },
   cctv: { r: 9, g: 1, room: 0.3, build(d) { const o = osc('sawtooth', 60); o.connect(filter('lowpass', 300, 0.7, gain(0.006, d))); const n = noise('white'); const g = gain(0.004, d); n.connect(filter('bandpass', 4200, 1.5, g)); return { srcs: [o, n], w: [wander(g.gain, 0.001, 0.008, 0.2, 1.2)] }; } },

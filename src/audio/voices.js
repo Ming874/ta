@@ -201,7 +201,7 @@ const VOX = {
   },
 };
 // 用錄音的機率(其餘用合成)
-const MIX = { groan: 0.7, alert: 0.85, attack: 0.75, pain: 0.7, die: 0.8 };
+const MIX = { groan: 0.8, alert: 0.85, attack: 0.75, pain: 0.7, die: 0.8 };
 // 各情境的音量(量測後:3 公尺處 低吼 ≈ -27、發現 ≈ -22、攻擊 ≈ -21、痛叫 ≈ -27、死亡 ≈ -24 LUFS),錄音與合成分開校正
 const REC_G = { groan: 1.7, alert: 2.2, attack: 2.5, pain: 2.5, die: 1.8 };
 // 各類型錄音的音量(巨屍的咆哮錄音本身很猛,要壓;走屍稍微提)
@@ -230,9 +230,9 @@ function say(type, pos, mode, prio, over) {
     if (h) { claim(pos, h, mode); return h; }
   }
   const sm = mode === 'alert' ? 'attack' : mode;
-  // 短促、頻繁的痛叫與攻擊吼叫:各類型預烘焙 5 個變體(連射時不必每次即時合成)
-  if (!over && (sm === 'pain' || sm === 'attack')) {
-    const set = baked(`v|${type}|${sm}`, 5, sm === 'pain' ? 0.8 : 1, (dst, t0) => vocal(dst, t0, spec(type, sm)), 1, 24000);
+  // 頻繁的低吼、痛叫與攻擊吼叫:各類型預烘焙多個變體(不必每次即時合成,一次合成要建 20~60 個節點)
+  if (!over && (sm === 'pain' || sm === 'attack' || sm === 'groan')) {
+    const set = baked(`v|${type}|${sm}`, VN[sm], VL[sm], (dst, t0) => vocal(dst, t0, spec(type, sm)), 1, 24000);
     if (set) {
       const b = pick(set), r = rand(0.95, 1.05);
       const h = emit({ ...o, dur: b.duration / r });
@@ -250,10 +250,11 @@ function say(type, pos, mode, prio, over) {
   return h;
 }
 
+const VN = { pain: 5, attack: 5, groan: 4 }, VL = { pain: 0.8, attack: 1, groan: 2.9 }; // 變體數、長度
 export function prebakeVoices() {
-  for (const ty of Object.keys(TYPE)) for (const m of ['pain', 'attack']) prebakeSet(ty, m);
+  for (const ty of Object.keys(TYPE)) for (const m of ['pain', 'attack', 'groan']) prebakeSet(ty, m);
 }
-function prebakeSet(type, m) { baked(`v|${type}|${m}`, 5, m === 'pain' ? 0.8 : 1, (dst, t0) => vocal(dst, t0, spec(type, m)), 1, 24000, 1); }
+function prebakeSet(type, m) { baked(`v|${type}|${m}`, VN[m], VL[m], (dst, t0) => vocal(dst, t0, spec(type, m)), 1, 24000, 1); }
 
 export const voices = {
   // 閒置低吼(各類型自己的聲音)

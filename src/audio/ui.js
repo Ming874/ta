@@ -1,5 +1,5 @@
 // 介面、商店、拾取、裝備、多人提示音:清楚但不吵,音色延續醫院主題(監視器嗶聲、老收銀機、無線電對講)。
-import { A, emit, burst, tone, metal, gain, filter, rand, pick, curve, duck, muffle } from './core.js';
+import { A, emit, burst, tone, metal, gain, filter, rand, pick, curve, duck, muffle, baked, playBuf } from './core.js';
 import { click, clack, slide, cloth, squeal, tinnitus } from './foley.js';
 import { grunt } from './voices.js';
 import * as SM from './samples.js';
@@ -8,6 +8,12 @@ import { sting } from './tracks.js';
 const rl = {};
 const limit = (k, s) => { const n = performance.now() / 1000; if (n - (rl[k] ?? -9) < s) return false; rl[k] = n; return true; }; // 牆鐘時間(離線量測時每個 context 都從 0 開始)
 const U = (o = {}) => emit({ bus: 'ui', prio: 4, dur: 1, ...o });
+// 短的合成提示音:第一次之後烘焙成緩衝(每次只剩一個 BufferSource,不必每次建 6~10 個節點)
+function cue(name, h, len, synth) {
+  const set = baked(`cue|${name}`, 2, len, (dst, t0) => synth({ in: dst, t: t0 }), 1, 32000);
+  if (set) { playBuf(h.in, h.t, pick(set), { rate: rand(0.99, 1.01) }); return; }
+  synth(h);
+}
 const F = (o = {}) => emit({ bus: 'sfx', prio: 4, room: 0.12, dur: 1, ...o }); // 有實體感的手部動作(走音效匯流排)
 
 function velcro(d, t, dur, g) { // 魔鬼氈撕開:密集不規則的爆裂顆粒
@@ -122,8 +128,7 @@ export const ui = {
     if (!limit('tab', 0.05)) return;
     const h = U({ dur: 0.3, gain: 5 });
     if (!h) return;
-    click(h.in, h.t, 2200, 0.16);
-    tone(h.in, h.t, { f: rand(1450, 1550), dur: 0.03, g: 0.03 });
+    cue('tab', h, 0.12, (x) => { click(x.in, x.t, 2200, 0.16); tone(x.in, x.t, { f: rand(1450, 1550), dur: 0.03, g: 0.03 }); });
   },
   shopHover() {
     if (!limit('shover', 0.04)) return;
@@ -239,8 +244,7 @@ export const ui = {
     if (!limit('pdeny', 0.5)) return;
     const h = U({ dur: 0.4, gain: 2 });
     if (!h) return;
-    burst(h.in, h.t, { type: 'lowpass', f: 300, dur: 0.06, g: 0.2 });
-    tone(filter('lowpass', 600, 0.8, h.in), h.t, { type: 'sawtooth', f: 98, dur: 0.12, hold: 0.03, g: 0.05 });
+    cue('pdeny', h, 0.3, (x) => { burst(x.in, x.t, { type: 'lowpass', f: 300, dur: 0.06, g: 0.2 }); tone(filter('lowpass', 600, 0.8, x.in), x.t, { type: 'sawtooth', f: 98, dur: 0.12, hold: 0.03, g: 0.05 }); });
   },
   pickupItem() {
     const h = F({ dur: 0.9, gain: 1.6 });
@@ -288,9 +292,7 @@ export const ui = {
     if (!limit('low', 0.9)) return;
     const h = U({ dur: 0.4, gain: 3 });
     if (!h) return;
-    click(h.in, h.t, 3200, 0.08);
-    click(h.in, h.t + 0.09, 3200, 0.07);
-    tone(h.in, h.t, { f: 1600, dur: 0.03, g: 0.015 });
+    cue('low', h, 0.3, (x) => { click(x.in, x.t, 3200, 0.08); click(x.in, x.t + 0.09, 3200, 0.07); tone(x.in, x.t, { f: 1600, dur: 0.03, g: 0.015 }); });
   },
 
   // ---------- 多人 ----------
@@ -312,9 +314,7 @@ export const ui = {
     if (!limit('chat', 0.08)) return;
     const h = U({ dur: 0.3, gain: 3 });
     if (!h) return;
-    click(h.in, h.t, 2400, 0.09);
-    tone(h.in, h.t + 0.02, { f: 1320, dur: 0.05, g: 0.025 });
-    burst(h.in, h.t + 0.08, { type: 'bandpass', f: 2200, q: 1.2, dur: 0.03, g: 0.02 });
+    cue('chat', h, 0.2, (x) => { click(x.in, x.t, 2400, 0.09); tone(x.in, x.t + 0.02, { f: 1320, dur: 0.05, g: 0.025 }); burst(x.in, x.t + 0.08, { type: 'bandpass', f: 2200, q: 1.2, dur: 0.03, g: 0.02 }); });
   },
   revive(pos) {
     if (pos && Number.isFinite(pos.x)) { // 隊友被救起(定位)
@@ -353,8 +353,6 @@ export const ui = {
     if (!limit('kill', 0.05)) return;
     const h = U({ dur: 0.4, gain: 2 });
     if (!h) return;
-    metal(h.in, h.t, 2300, 0.07, 0.07, [1, 2.7]);
-    tone(h.in, h.t, { f: 90, f1: 55, dur: 0.08, g: 0.14 });
-    burst(h.in, h.t, { type: 'highpass', f: 7000, dur: 0.01, g: 0.035 });
+    cue('kill', h, 0.25, (x) => { metal(x.in, x.t, 2300, 0.07, 0.07, [1, 2.7]); tone(x.in, x.t, { f: 90, f1: 55, dur: 0.08, g: 0.14 }); burst(x.in, x.t, { type: 'highpass', f: 7000, dur: 0.01, g: 0.035 }); });
   },
 };

@@ -16,8 +16,7 @@ function makeDeck() {
   el.crossOrigin = 'anonymous';
   const src = A.ctx.createMediaElementSource(el);
   const g = gain(0, A.bus.music);
-  src.connect(g);
-  const d = { el, g, track: null, tok: 0, ending: false };
+  const d = { el, g, src, on: false, track: null, tok: 0, ending: false };
   el.addEventListener('error', () => { if (d.track) { X.failed.add(d.track.f); if (X.decks[X.cur] === d) { X.playing = null; next(true); } } });
   el.addEventListener('timeupdate', () => {
     if (X.decks[X.cur] !== d || !d.track || d.ending || !el.duration) return;
@@ -39,7 +38,12 @@ function fadeOut(d, sec) {
   d.g.gain.setValueAtTime(d.g.gain.value, n);
   d.g.gain.linearRampToValueAtTime(0, n + sec);
   const tok = ++d.tok;
-  setTimeout(() => { if (d.tok === tok) { d.el.pause(); d.track = null; d.el.removeAttribute('src'); d.el.load(); } }, sec * 1000 + 150);
+  setTimeout(() => { if (d.tok === tok) { d.el.pause(); d.track = null; d.el.removeAttribute('src'); d.el.load(); plug(d, false); } }, sec * 1000 + 150);
+}
+function plug(d, on) {
+  if (d.on === on) return;
+  d.on = on;
+  try { if (on) d.src.connect(d.g); else d.src.disconnect(); } catch { /* 已斷 */ }
 }
 
 function playTrack(tr, sec, fromStart) {
@@ -48,6 +52,7 @@ function playTrack(tr, sec, fromStart) {
   const nx = X.decks[(X.cur + 1) % 2];
   if (old && old.track) fadeOut(old, sec);
   nx.tok++;
+  plug(nx, true);
   nx.track = tr;
   nx.ending = false;
   nx.el.loop = false;
@@ -123,9 +128,10 @@ function stingEl(key) {
     el.preload = 'auto';
     el.src = BASE + S.f;
     const g = gain(0, A.bus.music);
-    A.ctx.createMediaElementSource(el).connect(g);
-    e = { el, g, ctx: A.ctx, ok: true };
+    const src = A.ctx.createMediaElementSource(el);
+    e = { el, g, src, on: false, ctx: A.ctx, ok: true, tok: 0 };
     el.addEventListener('error', () => { e.ok = false; });
+    el.addEventListener('ended', () => { if (e.on) { e.on = false; try { src.disconnect(); } catch { /* 已斷 */ } } });
     ST.set(key, e);
   }
   return e.ok ? e : null;
@@ -135,6 +141,9 @@ export function sting(key, g = 1, fo = 0) {
   const e = stingEl(key);
   if (!e) return false;
   const S = STINGS[key], n = A.ctx.currentTime, el = e.el;
+  if (!e.on) { e.on = true; e.src.connect(e.g); }
+  const tok = ++e.tok;
+  if (fo > 0) setTimeout(() => { if (e.tok === tok && e.on) { el.pause(); e.on = false; try { e.src.disconnect(); } catch { /* 已斷 */ } } }, (fo + 1.7) * 1000);
   try { el.currentTime = 0; } catch { /* 尚未可跳 */ }
   e.g.gain.cancelScheduledValues(n);
   e.g.gain.setValueAtTime((S.g ?? 1) * g, n);

@@ -162,6 +162,7 @@ function casingAt(d, t, f, g, kind, surf, bounces) {
 }
 
 let reloadH = null, lastShot = 0, physCase = -99;
+const RKEY = { pistol: 'pistol.magin', revolver: 'rev.load', ak47: 'ak.magin', m4a1: 'm4.magin', barrett: 'sniper.round' }; // 判斷換彈錄音是否已載入
 const GUNS = Object.keys(GUN);
 // 開機時(選單中)先烘焙最常用的合成層
 export function prebakeFoley() {
@@ -234,7 +235,11 @@ export const foley = {
     const h = emit({ bus: 'sfx', prio: 4, room: 0.2, dur: len + 0.8, gain: 0.38 });
     if (!h) return;
     reloadH = h;
-    reloadSeq(h, id, len, empty !== false, surfaceHere());
+    // 整段換彈(錄音 + 合成)第一次用到後烘焙成緩衝:之後每次只剩一個 BufferSource(否則一次要建 60~100 個節點)
+    const surf = surfaceHere(), em = empty !== false, hard = (HARD[surf] ?? 0) >= 0.7, q = Math.round(len * 10) / 10, rec = S.has(RKEY[id]) ? 1 : 0;
+    const set = baked(`reload|${id}|${q}|${em ? 1 : 0}|${hard ? 1 : 0}|${rec}`, 2, q + 0.8, (dst, t0) => reloadSeq({ in: dst, t: t0 }, id, q, em, hard ? 'tile' : 'carpet'), 1, 32000);
+    if (set) { playBuf(h.in, h.t, pick(set), { rate: rand(0.985, 1.015) }); return; }
+    reloadSeq(h, id, len, em, surf);
   },
 
   // 泵動上膛(霰彈槍開火後/裝填完)

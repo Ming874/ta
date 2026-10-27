@@ -100,6 +100,7 @@ export function attach(ctx) {
   // ---- 殘響 ----
   A.zrIn = gain(1);
   A.zrOut = gain(1, A.mix);
+  A.hallX = gain(0); // 區域殘響時間超過上限時,部分送進大廳網路補長尾巴(建好 A.hall 後接上)
   A.zr = [0, 1].map((i) => {
     const c = ctx.createConvolver();
     const g = gain(i === 0 ? 1 : 0, c);
@@ -109,10 +110,11 @@ export function attach(ctx) {
   });
   A.zrCur = 0;
   A.echo = makeEcho();
-  A.hall = ctx.createConvolver();
-  A.hall.buffer = makeIR(ctx, { dur: 3.4, pre: 0.035, damp: 0.82, er: 16 });
-  A.hall.connect(gain(0.55, A.mix));
+  A.hall = makeHall(3.2);
+  A.hall.out.connect(gain(0.55, A.mix));
   A.duckRev = gain(1, A.hall);
+  A.zrIn.connect(A.hallX);
+  A.hallX.connect(A.hall);
   const sends = (k) => ({ room: gain(vg(v[k]), A.zrIn), echo: gain(vg(v[k]), A.echo.in), hall: gain(vg(v[k]), A.hall) });
   A.send = { sfx: sends('sfx'), voice: sends('voice'), music: { hall: gain(vg(v.music), A.duckRev) } };
   A.room = A.send.sfx.room; // 舊名相容
@@ -124,7 +126,7 @@ export function attach(ctx) {
   A.lastDuck = -1;
   A.muffleUntil = 0;
   for (const k in POOLS) POOLS[k].strips = [];
-  setListener(A.L.x, A.L.y, A.L.z, A.L.yaw);
+  setListener(A.L.x, A.L.y, A.L.z, A.L.yaw, true);
   setSpace(A.space || 'corridor', true);
   if (A.timer) clearInterval(A.timer);
   if (typeof ctx.startRendering !== 'function') A.timer = setInterval(tick, 50);
@@ -214,6 +216,7 @@ export const SPACES = {
   open: { ir: { dur: 0.5, pre: 0.012, damp: 0.9, bright: 0.55, er: 3, erSpan: 0.02, erG: 0.5 }, wet: 0.16, echo: 0.4, e: [0.48, 0.66, 0.22], out: true },
 };
 const irCache = new Map();
+const IR_MAX = 2.2; // 卷積脈衝的殘響時間上限(秒);更長的空間另外加大廳延遲網路的送出量
 
 // 換空間:key 為預設名稱,或傳入 { key, ir, wet, echo, e, out }(rooms.js 依房間尺寸算出)。
 // 新 IR 載入閒置的 convolver,輸入端交叉淡化(舊空間的殘響尾巴自然消失)
@@ -231,7 +234,7 @@ export function setSpace(key, now = false) {
     const z = A.zr[slot];
     let ir = irCache.get(k);
     if (!ir || ir.sampleRate !== A.ctx.sampleRate) {
-      ir = makeIR(A.ctx, S.ir);
+      ir = makeIR(A.ctx, S.ir.dur > IR_MAX ? { ...S.ir, dur: IR_MAX } : S.ir);
       if (irCache.size > 40) irCache.delete(irCache.keys().next().value);
       irCache.set(k, ir);
     }
@@ -239,6 +242,8 @@ export function setSpace(key, now = false) {
     z.key = k;
   }
   A.zr.forEach((z, i) => z.g.gain.setTargetAtTime(i === slot ? S.wet : 0, t, tc));
+  const extra = S.ir && S.ir.dur > IR_MAX ? Math.min(0.5, (S.ir.dur - IR_MAX) * 0.25) : 0; // 超長殘響的尾巴
+  if (A.hallX) A.hallX.gain.setTargetAtTime(extra, t, tc);
   A.zrCur = slot;
   const E = A.echo, e = S.e || [0.25, 0.37, 0.3];
   E.in.gain.setTargetAtTime(S.echo, t, tc * 2);
@@ -246,6 +251,36 @@ export function setSpace(key, now = false) {
   E.dr.delayTime.setTargetAtTime(e[1], t, now ? 0.001 : 0.6);
   E.fl.gain.setTargetAtTime(e[2], t, tc);
   E.fr.gain.setTargetAtTime(e[2] * 0.9, t, tc);
+}
+
+// 大廳殘響(便宜的回授延遲網路):預延遲 → 低通 → 4 條互質長度的梳狀濾波(延遲 + 阻尼低通 + 回授)→ 左右各兩條 → 全通擴散。
+// 回授量依目標殘響時間 rt:g = 10^(-3·delay/rt)。回傳輸入節點(.out 為輸出)
+function makeHall(rt = 3.2) {
+  const ctx = A.ctx;
+  const inG = gain(1);
+  const pre = ctx.createDelay(0.2);
+  pre.delayTime.value = 0.035;
+  const lp = filter('lowpass', 3800, 0.5);
+  inG.connect(pre);
+  pre.connect(lp);
+  const out = gain(1);
+  const sides = [ctx.createStereoPanner(), ctx.createStereoPanner()];
+  sides[0].pan.value = -0.7; sides[1].pan.value = 0.7;
+  const ap = [filter('allpass', 900, 0.6), filter('allpass', 2300, 0.6)];
+  for (let i = 0; i < 2; i++) { sides[i].connect(ap[i]); ap[i].connect(out); }
+  [0.0897, 0.1013, 0.1171, 0.1283].forEach((dt, i) => {
+    const d = ctx.createDelay(0.5);
+    d.delayTime.value = dt;
+    const damp = filter('lowpass', 2600 - i * 250, 0.5);
+    const fb = gain(Math.pow(10, (-3 * dt) / rt) * 0.96);
+    lp.connect(d);
+    d.connect(damp);
+    damp.connect(fb);
+    fb.connect(d);
+    damp.connect(gain(0.32, sides[i & 1]));
+  });
+  inG.out = out;
+  return inG;
 }
 
 // 回聲網路:左右兩條不同長度的延遲 + 回授 + 低通(每次反射越來越暗)
@@ -319,12 +354,17 @@ export function shaper(k, dest) {
 }
 
 // ---------- 聆聽者 ----------
-export function setListener(x, y, z, yaw) {
+let lsT = -1, lsX = 1e9, lsY = 0, lsZ = 0, lsYaw = 0;
+export function setListener(x, y, z, yaw, force = false) {
   const L = A.L;
   L.x = x; L.y = y; L.z = z; L.yaw = yaw;
   const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
   L.fx = fx; L.fz = fz;
   if (!A.ctx) return;
+  const now = performance.now();
+  const moved = Math.abs(x - lsX) + Math.abs(y - lsY) + Math.abs(z - lsZ), turned = Math.abs(yaw - lsYaw);
+  if (!force && (now - lsT < 33 || (moved < 0.03 && turned < 0.01))) return;
+  lsT = now; lsX = x; lsY = y; lsZ = z; lsYaw = yaw;
   const l = A.ctx.listener;
   if (l.positionX) {
     l.positionX.value = x; l.positionY.value = y; l.positionZ.value = z;
@@ -372,8 +412,10 @@ function occlusion(px, py, pz, d) {
   A.stats.los++;
   const h1 = ray(L.x, L.y, L.z, px, py, pz);
   if (h1 === Infinity) return 0;
-  const ux = px - L.x, uz = pz - L.z, ul = Math.hypot(ux, uz) || 1, sx = (-uz / ul) * 0.7, sz = (ux / ul) * 0.7;
-  if (ray(L.x, L.y, L.z, px + sx, py, pz + sz) === Infinity || ray(L.x, L.y, L.z, px - sx, py, pz - sz) === Infinity || ray(L.x, L.y, L.z, px, py + 1.2, pz) === Infinity) return 0.4;
+  if (d < 15) {
+    const ux = px - L.x, uz = pz - L.z, ul = Math.hypot(ux, uz) || 1, sx = (-uz / ul) * 0.7, sz = (ux / ul) * 0.7;
+    if (ray(L.x, L.y, L.z, px + sx, py, pz + sz) === Infinity || ray(L.x, L.y, L.z, px - sx, py, pz - sz) === Infinity || ray(L.x, L.y, L.z, px, py + 1.2, pz) === Infinity) return 0.4;
+  }
   const h2 = ray(px, py, pz, L.x, L.y, L.z);
   const thick = h2 === Infinity ? 0 : d - h1 - h2;
   return thick < 0.35 ? 0.7 : 1;
@@ -381,6 +423,7 @@ function occlusion(px, py, pz, d) {
 
 // 填入 AC = { cut 低通頻率, g 直達聲增益, rv 殘響送出倍率 }(重用同一個物件,不配置)
 const AC = { cut: 20000, g: 1, rv: 1 };
+const OCC = new WeakMap();
 export function acoustics(px, py, pz, d, s) {
   let cut = 20000 / (1 + d * 0.17); // 空氣吸收 + 遠處繞射:10m ≈ 7kHz、30m ≈ 3.3kHz
   let g = 1, rv = 1;
@@ -388,11 +431,14 @@ export function acoustics(px, py, pz, d, s) {
   let occ = fl ? 1 : 0;
   if (A.world && A.world.rayDistance && d > 1.4) {
     const fy = levelOf(py - 0.3) * LEVEL_H, sy = Math.max(py, fy + 1.1); // 抬到離地 1.1m 再測,避免矮櫃台/欄杆把腳步聲整個擋掉
-    if (s) { // 聲道條快取:聲源與聆聽者都沒移動超過 0.5m 時 0.15 秒內沿用
-      const L = A.L, now = A.ctx.currentTime;
-      if (now - s.losT < 0.15 && Math.abs(s.lx - L.x) + Math.abs(s.lz - L.z) < 0.5 && Math.abs(s.sx - px) + Math.abs(s.sz - pz) < 0.5) occ = s.occV;
-      else { occ = occlusion(px, sy, pz, d); s.losT = now; s.lx = L.x; s.lz = L.z; s.sx = px; s.sz = pz; s.occV = occ; }
-    } else occ = occlusion(px, sy, pz, d);
+    const key = s && (s.key || s);
+    let c = key ? OCC.get(key) : null;
+    const L = A.L, now = A.ctx.currentTime;
+    if (c && now - c.t < 0.25 && Math.abs(c.lx - L.x) + Math.abs(c.lz - L.z) < 0.5 && Math.abs(c.sx - px) + Math.abs(c.sz - pz) < 0.5) occ = c.v;
+    else {
+      occ = occlusion(px, sy, pz, d);
+      if (key) { if (!c) { c = { t: 0, lx: 0, lz: 0, sx: 0, sz: 0, v: 0 }; OCC.set(key, c); } c.t = now; c.lx = L.x; c.lz = L.z; c.sx = px; c.sz = pz; c.v = occ; }
+    }
   }
   if (occ > 0) {
     if (fl && occ >= 0.7) { cut = Math.min(cut, 560 / fl); g = Math.pow(0.38, fl); rv = 0.5; } // 隔著樓板:只剩低頻
@@ -410,12 +456,12 @@ const revDist = (d) => (0.75 + Math.min(1.3, d / 9)) / (1 + d * 0.07); // 擴散
 // 每個聲音只建一個自己的增益節點接到聲道條上;聲道條滿了就依優先權/距離搶占。位置可即時跟隨移動中的聲源。
 // hrtf:近距離(< hrtfD 公尺)時用 HRTF(前後上下分得出來),遠的用等功率平移(省運算)
 const POOLS = {
-  voice: { max: 8, hrtfD: 14, bus: 'voice' }, // 殭屍語音
-  step: { max: 8, hrtfD: 10, bus: 'sfx' }, // 腳步、拖行
-  fx: { max: 14, hrtfD: 6, bus: 'sfx' }, // 其他定位音效
+  voice: { max: 8, hrtfD: 9, bus: 'voice' }, // 殭屍語音
+  step: { max: 8, hrtfD: 6, bus: 'sfx' }, // 腳步、拖行
+  fx: { max: 14, hrtfD: 4, bus: 'sfx' }, // 其他定位音效
   gun: { max: 6, hrtfD: 6, bus: 'sfx', steal: true }, // 遠端玩家槍聲(新的一定要出聲)
   scare: { max: 3, hrtfD: 99, bus: 'scare' },
-  amb: { max: 8, hrtfD: 8, bus: 'amb' }, // 環境中的定位事件(滴水、管線、烏鴉)
+  amb: { max: 8, hrtfD: 4, bus: 'amb' }, // 環境中的定位事件(滴水、管線、烏鴉)
   loop: { max: 10, hrtfD: 0, bus: 'amb' }, // 定位循環音(發電機、電視)
   casing: { max: 4, hrtfD: 0, bus: 'sfx', steal: true }, // 彈殼落地(近、短、多)
 };
@@ -427,7 +473,7 @@ export const poolInfo = () => {
 
 function makeStrip(pool) {
   const ctx = A.ctx;
-  const s = { pool, vg: null, h: null, end: 0, prio: 0, d: 0, src: null, upd: 0, room: 0, hall: 0, echo: 0, t0: 0, model: 'equalpower', losT: -9, lx: 0, lz: 0, sx: 0, sz: 0, occV: 0 };
+  const s = { pool, vg: null, h: null, end: 0, prio: 0, d: 0, src: null, upd: 0, room: 0, hall: 0, echo: 0, t0: 0, model: 'equalpower', losT: -9, lx: 0, lz: 0, sx: 0, sz: 0, occV: 0, px: 1e9, py: 0, pz: 0, cut: 0, og: 0, rvv: 0 };
   s.in = gain(1);
   s.lp = filter('lowpass', 18000, 0.5);
   const p = (s.pan = ctx.createPanner());
@@ -462,11 +508,12 @@ function fadeKill(g, n, len = 0.04) {
   g.gain.linearRampToValueAtTime(0, n + len);
 }
 
-function grab(pool, prio, d, now) {
-  let free = null;
-  for (const s of pool.strips) if (!s.vg || s.end <= now) { free = s; break; }
+function grab(pool, prio, d, now, model) {
+  let free = null, other = null;
+  for (const s of pool.strips) if (!s.vg || s.end <= now) { if (s.model === model) { free = s; break; } if (!other) other = s; }
+  if (!free && pool.strips.length < pool.max) { const s = makeStrip(pool); s.pan.panningModel = model; s.model = model; pool.strips.push(s); return { s, late: 0 }; }
+  free = free || other;
   if (free) { release(free); return { s: free, late: 0 }; }
-  if (pool.strips.length < pool.max) { const s = makeStrip(pool); pool.strips.push(s); return { s, late: 0 }; }
   let vic = null;
   for (const s of pool.strips) {
     if (pool.steal) { if (!vic || s.t0 < vic.t0) vic = s; } // 搶最舊的
@@ -485,7 +532,7 @@ function grab(pool, prio, d, now) {
 
 // 更新聲道條的位置/濾波/遮蔽/殘響送出(init = 立即設定;否則平滑滑動)
 function pv(prm, v, t) { prm.setValueAtTime(v, t); }
-function pt(prm, v, t) { prm.setTargetAtTime(v, t, 0.06); }
+function pt(prm, v, t) { prm.setTargetAtTime(v, t, 0.08); }
 function place(s, init, t0) {
   const p = s.src, ctx = A.ctx, t = t0 ?? ctx.currentTime, L = A.L;
   const py = p.y ?? 1.2;
@@ -497,14 +544,23 @@ function place(s, init, t0) {
     const back = -(dx * L.fx + dz * L.fz) / (Math.hypot(dx, dz) || 1);
     if (back > 0) cut *= 1 - 0.45 * back;
   }
-  const set = init ? pv : pt, pan = s.pan;
-  if (pan.positionX) { set(pan.positionX, p.x, t); set(pan.positionY, py, t); set(pan.positionZ, p.z, t); } else pan.setPosition(p.x, py, p.z);
-  set(s.lp.frequency, Math.max(120, cut), t);
-  set(s.occ.gain, ac.g, t);
+  // 只在數值真的變了才排自動化(每個持續中的 setTarget 都會讓參數變成逐樣本計算:panner 逐樣本算方位、biquad 逐樣本算係數,很貴)
+  const pan = s.pan;
+  if (init || Math.abs(p.x - s.px) + Math.abs(py - s.py) + Math.abs(p.z - s.pz) > 0.04) {
+    if (pan.positionX) { pv(pan.positionX, p.x, t); pv(pan.positionY, py, t); pv(pan.positionZ, p.z, t); } else pan.setPosition(p.x, py, p.z);
+    s.px = p.x; s.py = py; s.pz = p.z;
+  }
+  cut = Math.max(120, cut);
   const rv = revDist(d) * ac.rv;
-  set(s.sr.gain, s.room * rv, t);
-  set(s.se.gain, s.echo * rv, t);
-  set(s.sh.gain, s.hall * rv, t);
+  if (init) {
+    pv(s.lp.frequency, cut, t); pv(s.occ.gain, ac.g, t);
+    pv(s.sr.gain, s.room * rv, t); pv(s.se.gain, s.echo * rv, t); pv(s.sh.gain, s.hall * rv, t);
+    s.cut = cut; s.og = ac.g; s.rvv = rv;
+    return;
+  }
+  if (Math.abs(cut - s.cut) > s.cut * 0.1) { pt(s.lp.frequency, cut, t); s.cut = cut; }
+  if (Math.abs(ac.g - s.og) > 0.04) { pt(s.occ.gain, ac.g, t); s.og = ac.g; }
+  if (Math.abs(rv - s.rvv) > s.rvv * 0.15 + 0.01) { pt(s.sr.gain, s.room * rv, t); pt(s.se.gain, s.echo * rv, t); pt(s.sh.gain, s.hall * rv, t); s.rvv = rv; }
 }
 
 // ---------- 全域發聲上限 ----------
@@ -593,7 +649,8 @@ export function emit(o = {}) {
     return h;
   }
   const pool = POOLS[o.cat] || POOLS.fx;
-  const got = grab(pool, prio, d, now);
+  const model = hrtfOn() && d < (o.hrtfD ?? pool.hrtfD) ? 'HRTF' : 'equalpower';
+  const got = grab(pool, prio, d, now, model);
   if (!got) { vgN.disconnect(); A.stats.culled++; return null; }
   const s = got.s;
   h.t += got.late;
@@ -604,15 +661,14 @@ export function emit(o = {}) {
   s.t0 = now;
   s.prio = prio;
   s.src = o.track === false ? { x: pos.x, y: pos.y, z: pos.z } : pos; // 預設跟著聲源物件移動(殭屍 vp 每幀就地更新)
+  s.key = pos; // 遮蔽快取用原始物件
   s.room = o.room ?? 0;
   s.hall = o.hall ?? 0;
   s.echo = o.echo ?? s.room * 0.7;
   s.pan.refDistance = o.ref ?? 1.5;
   s.pan.rolloffFactor = o.roll ?? 1.1;
-  const model = hrtfOn() && d < (o.hrtfD ?? pool.hrtfD) ? 'HRTF' : 'equalpower';
   if (model !== s.model) { s.pan.panningModel = model; s.model = model; }
   s.upd = now;
-  s.losT = -9;
   place(s, true, now + got.late);
   vgN.connect(s.in);
   h.strip = s;
@@ -644,7 +700,7 @@ export function tick() {
   const c0 = performance.now();
   const now = ctx.currentTime;
   purge(now);
-  let budget = 10; // 每次最多做 10 條的完整聲學更新(含射線查詢)
+  let budget = 8; // 每次最多做 8 條的完整聲學更新(含射線查詢,有快取)
   for (const k in POOLS) {
     for (const s of POOLS[k].strips) {
       if (!s.vg) continue;
@@ -760,7 +816,7 @@ export function bake(secs, fn, ch = 1, sr) {
 const BK = new Map(); // key → { bufs: [], want, len, fn, ch, sr, used, pend }
 const Q = []; // 待烘焙工作(每項 = 一個變體)
 let bakeCh = 0, pumping = false;
-const MAXSEC = 260;
+const MAXSEC = 160; // 約 30MB 上限(以 48kHz 單聲道換算)
 const chSec = (b) => b.duration * b.numberOfChannels * (b.sampleRate / 48000);
 function evict() {
   while (bakeCh > MAXSEC && BK.size > 1) {
@@ -816,7 +872,7 @@ export const bakeStats = () => ({ sets: BK.size, queued: Q.length, chSec: +bakeC
 export function duck(depth = 0.55, release = 0.35, big = false) {
   if (!A.ctx) return;
   const n = A.ctx.currentTime;
-  if (n - A.lastDuck < 0.06 && depth >= A.lastDepth) return; // 連射時不必每發重排自動化
+  if (n - A.lastDuck < 0.15 && depth >= A.lastDepth - 0.05) return; // 連射時不必每發重排自動化
   A.lastDuck = n;
   A.lastDepth = depth;
   for (const node of big ? [A.duck, A.duckAmb, A.duckRev, A.duckVoice] : [A.duck, A.duckAmb, A.duckRev]) {
