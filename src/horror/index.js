@@ -134,6 +134,8 @@ export function installHorror(game) {
       for (const d of H.events?.doors || []) d.primed = false;
       if (performance.now() > 40000) models.warm();
     },
+    // main.js warmRuntime 呼叫:每種靈異材質一個代表物件(加進暖機群組 → 預編譯 + 離屏畫一次)
+    warmObjects() { H.warmIn = true; return warmSet(H); },
     stats() { return { ...H.director.stats(), whispers: H.whispers.count, wlog: H.whispers.log.slice(-8), apparitions: H.app?.count ?? 0, alog: H.app?.log.slice(-8) ?? [], active: H.app?.active ?? 0, models: models.state, events: H.events?.S.log.slice(-10) ?? [], cold: +H.coldK.toFixed(2) }; },
   };
   H.director = new Director(H);
@@ -151,8 +153,10 @@ export function installHorror(game) {
     try { H.marks.placeStatic(game.hospital.K, game.hospital.layout); } catch (e) { console.warn('[horror] 牆上字跡', e); }
   }
   // 選單期間就開始在背景準備幻影模型;等 main.js 的開機預編譯做完(畫質、光源數都定了)再預編譯靈異材質(不卡第一次出現)
-  // 等主程式的暖機(hz:warm:殭屍變體與常用材質)做完才開始,不跟它搶 CPU/GPU 編譯執行緒;最多等 30 秒
-  { const t0 = performance.now(); const wait = () => { if (performance.getEntriesByName('hz:warm').length || performance.now() - t0 > 30000) { models.warm(); precompile(game, H); } else setTimeout(wait, 400); }; setTimeout(wait, 1000); }
+  // 靈異材質由 main.js 的暖機(warmRuntime → H.warmObjects())一起預編譯,hz:warm 之後 shader 數量不再增加;
+  // 幻影模型(背景 Worker 建模 + 閒置烘焙,不新增 shader)等 hz:warm 之後才開始,不跟暖機搶 CPU。
+  // 主程式沒有叫 warmObjects(舊版/測試頁)時,30 秒後自己預編譯當退路
+  { const t0 = performance.now(); const wait = () => { const warm = performance.getEntriesByName('hz:warm').length; if (warm || performance.now() - t0 > 30000) { models.warm(); if (!H.warmIn) precompile(game, H); } else setTimeout(wait, 400); }; setTimeout(wait, 1000); }
 
   // ---- 觸發器與排程 ----
   const T = { zones: new Set(), props: new Set(), still: 0, streak: 0, lastKill: 0, zonePend: null, next: 0, acc: 0, low: -1e9, dark: -1e9, strk: -1e9, prop: -1e9, warn: -1e9, guide: -1e9, sig: -1e9 };
@@ -279,20 +283,26 @@ export function installHorror(game) {
   return H;
 }
 
-// 預編譯靈異材質(幻影兩種、腳印/手印、字跡、寒氣粒子):先在背景執行緒編好,第一次出現不卡
+// 每種靈異材質一個代表物件(幻影 pale/shade/深度、腳印/手印、門縫光、剪影 ×2、電視、電梯光、字跡、寒氣粒子)
+function warmSet(H) {
+  if (!H.app) return [];
+  const out = [], geo = new THREE.SphereGeometry(0.2, 8, 6);
+  const s = H.app.slots[0];
+  for (const m of [s.pale, s.shade, s.depth]) { const x = new THREE.Mesh(geo, m); x.frustumCulled = false; out.push(x); }
+  for (const m of H.marks.warmList()) { const c = m.clone(); c.visible = true; c.frustumCulled = false; if (c.isInstancedMesh) c.count = 1; out.push(c); }
+  out.push(H.marks.warmWriting());
+  const pts = H.fx.pts.clone(); pts.visible = true; out.push(pts);
+  return out;
+}
+// 退路:自己預編譯(主程式沒有呼叫 warmObjects 時)
 async function precompile(game, H) {
   if (!H.app || H.warm) return;
   H.warm = 'compiling';
   try {
     const g = new THREE.Group();
-    const geo = new THREE.SphereGeometry(0.2, 8, 6);
-    for (const s of H.app.slots.slice(0, 1)) for (const m of [s.pale, s.shade, s.depth]) g.add(new THREE.Mesh(geo, m));
-    for (const m of H.marks.warmList()) { const c = m.clone(); c.visible = true; if (c.isInstancedMesh) c.count = 1; g.add(c); }
-    const wm = H.marks.write({ id: 'warm', text: '·', style: 'marker' }, 0, -50, 0, 0, 1, { keep: true }); wm.visible = true;
-    const pts = H.fx.pts.clone(); pts.visible = true; g.add(pts);
+    for (const o of warmSet(H)) g.add(o);
     const res = await warmCompile(game, g, { shadows: false });
     if (res?.programs) await initPrograms(res.programs);
-    wm.visible = false;
     H.warm = 'done';
   } catch (e) { H.warm = 'failed'; console.warn('[horror] 預編譯', e); }
 }

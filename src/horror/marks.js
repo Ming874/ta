@@ -158,6 +158,13 @@ export class Marks {
   }
   // 預編譯用:每種材質一個代表(可見、在畫面外)
   warmList() { return [this.feet.im, this.hands.im, this.strip, this.faceM, this.curtM, this.tv, this.lift]; }
+  // 字跡材質的代表(參數與 write() 建的完全一樣 → 同一個 shader)
+  warmWriting() {
+    const c = document.createElement('canvas'); c.width = c.height = 4;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshStandardMaterial({ map: tex(c), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, roughness: 0.85 }));
+    m.frustumCulled = false;
+    return m;
+  }
   _feet() {
     if (!this.feet) {
       const g = new THREE.PlaneGeometry(0.13, 0.26); g.rotateX(-Math.PI / 2);
