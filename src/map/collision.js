@@ -86,8 +86,8 @@ function dialStep(G, dist, Q, qh, qt, info, DOFF, xe, st, budget) {
 }
 
 export class World {
-  constructor() {
-    const L = parseLayout();
+  // L:parseLayout() 格式的地圖資料(省略 = 目前的地圖)。所有碰撞/導航/出生點都只由 L 推導,換地圖時重建一個新的 World 即可
+  constructor(L = parseLayout()) {
     this.layout = L;
     this.spawns = L.spawns;
     this.start = L.start;
@@ -985,7 +985,7 @@ export class World {
     let best = 1.5, bx = 0, bz = 0;
     for (let a = 0; a < 16; a++) {
       const dx = CDX[a], dz = CDZ[a];
-      let h = y, ok = false, gap = false;
+      let h = y, gap = false;
       for (let s = 1; s <= 14; s++) {
         const l = s * 0.25, px = x + dx * l, pz = z + dz * l;
         const g = this._navFind(Math.floor(px / FINE), Math.floor(pz / FINE), h);
@@ -994,7 +994,6 @@ export class World {
           if (gap) { // 穿過窄縫回到一般節點:省下的路徑距離
             const gain = (d0 - this.dist[g]) * (FINE / 2) - l;
             if (this.dist[g] !== INF && gain > best) { best = gain; bx = dx; bz = dz; }
-            ok = true;
             break;
           }
           continue;
@@ -1006,7 +1005,6 @@ export class World {
         h = hh;
         gap = true;
       }
-      if (ok) continue;
     }
     if (best <= 1.5) return false;
     out.x = bx; out.z = bz;
