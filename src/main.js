@@ -10,12 +10,14 @@ import { texStats, texturesReady } from './sys/texworker.js';
 import { prewarm, whenWarm, variantStats, getVariant, instantiate } from './zombies/model.js';
 import { materials as zombieMaterials } from './zombies/materials.js';
 import * as audio from './audio.js';
+import { initNet } from './net/lobby.js';
 
 performance.mark('hz:boot');
 installPWA();
 
 const game = new Game(document.getElementById('game'));
 game.bindInput();
+initNet(game); // [net] 主選單的多人連線入口(src/net/lobby.js)
 window.__game = game; // 除錯用:在瀏覽器 console 操作 __game
 
 // ---- 效能基礎建設 ----

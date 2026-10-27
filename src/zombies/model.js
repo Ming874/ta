@@ -61,6 +61,8 @@ const BODY = {
   crawler: (r) => ({ s: r.range(0.93, 1.0), sw: 0.95, hip: 0.95, g: 0.82, fat: 0.88, musc: 0.1, belly: 0, thin: 1, arm: 1.04, neck: 0.9, head: 1, legless: r.chance(0.65) }),
   bloater: (r) => ({ s: r.range(0.97, 1.04), sw: 1.08, hip: 1.2, g: r.range(1.32, 1.45), fat: 1.3, musc: 0, belly: 1.6, thin: 0, arm: 0.97, neck: 1.4, head: 1.02 }),
   brute: (r) => ({ s: r.range(1.2, 1.26), sw: 1.42, hip: 1.08, g: 1.62, fat: 1.12, musc: 1.3, belly: 0.1, thin: 0, arm: 1.08, neck: 1.55, head: 0.86 }),
+  // 倖存者(多人連線的玩家角色):健康、結實的成年人
+  survivor: (r) => ({ s: r.range(0.97, 1.04), sw: r.range(1.0, 1.08), hip: r.range(0.97, 1.03), g: r.range(1.02, 1.12), fat: r.range(0.97, 1.05), musc: r.range(0.35, 0.7), belly: r.range(0, 0.1), thin: 0, arm: 1, neck: r.range(1.02, 1.1), head: r.range(0.98, 1.02) }),
 };
 
 const SKINS = {
@@ -72,6 +74,14 @@ const SKINS = {
   fresh: ['#a89183', '#7d6463', '#6d5070'],
   bloat: ['#8f9168', '#5d6836', '#6c5c3a'],
   brute: ['#716a72', '#4a3f4e', '#4b3049'],
+  // 健康膚色:[膚色, 陰影, 紅潤]
+  fair: ['#e9c3ac', '#cf9f88', '#d98e84'],
+  light: ['#dcae90', '#bf8d72', '#cf8274'],
+  medium: ['#c69270', '#a5734f', '#bf735e'],
+  olive: ['#b48c66', '#93703f', '#ad6e52'],
+  tan: ['#a5764f', '#835a37', '#a0604a'],
+  brown: ['#7f5638', '#5f3e26', '#80463a'],
+  deep: ['#5c3b27', '#422a1b', '#643528'],
 };
 const SKIN_BY_TYPE = {
   walker: ['rot', 'pale', 'jaundice', 'dark', 'blue', 'rot'],
@@ -79,10 +89,12 @@ const SKIN_BY_TYPE = {
   crawler: ['rot', 'blue', 'pale'],
   bloater: ['bloat'],
   brute: ['brute', 'dark'],
+  survivor: ['fair', 'light', 'medium', 'olive', 'tan', 'brown', 'deep'],
 };
 const BRUISE = col('#3a2038'), BRUISE_Y = col('#7a7a3a'), DIRT = col('#2e2820'), BLOOD = col('#5a0505'), BLOOD_DRY = col('#2c0805');
 const FLESH = col('#6a1414'), FLESH_DARK = col('#220404'), NECRO = col('#1e1a1e'), BONE = col('#cfc2a2'), CHAR = col('#141010');
 const SOCKET = col('#2a2026'), LIPS = col('#3a2228'), CAVITY = col('#120808'), PUS = col('#9a9a30'), VEIN = col('#2a2a3a');
+const NAIL = col('#e0b4a6');
 
 function bloodAmt(list, x, y, z) {
   let m = 0;
@@ -104,14 +116,16 @@ function bloodAmt(list, x, y, z) {
 // buildShape:純幾何 + 骨架 + 命中盒(不碰材質與 DOM,可在 Worker 執行,見 model.worker.js);buildVariant = buildShape + 綁材質
 export function buildVariant(type, seed, opt = {}) { return bindMaterials(buildShape(type, seed, opt)); }
 export function bindMaterials(v) {
-  const M = materials();
-  v.materials = v.slots.map((s) => (s === 'eye' ? M.eye[v.type] || M.eye.walker : M[s]));
+  const healthy = v.type === 'survivor'; // 倖存者:乾淨皮膚與清澈的眼睛(衣物/裝備/頭髮與殭屍共用)
+  const M = healthy ? survivorMats(v.eyeKey || 'brown') : materials();
+  v.materials = v.slots.map((s) => (s === 'eye' ? (healthy ? M.eye.survivor : M.eye[v.type] || M.eye.walker) : M[s]));
   return v;
 }
 export function buildShape(type, seed, opt = {}) {
   const r = rng(seed);
   const P = BODY[type](r);
-  P.fem = (type === 'walker' || type === 'runner') && r.chance(0.35) ? 1 : 0;
+  const healthy = type === 'survivor'; // 倖存者:無傷口、無血、乾淨衣物(只在 healthy 分支多用亂數,殭屍外觀不變)
+  P.fem = healthy ? (opt.fem ? 1 : 0) : (type === 'walker' || type === 'runner') && r.chance(0.35) ? 1 : 0;
   if (P.fem) { P.sw *= 0.9; P.hip *= 1.05; P.g *= 0.9; P.musc *= 0.3; P.neck *= 0.88; P.head *= 0.97; }
   const rig = makeRig(P);
   const B = (n) => rig.bones[rig.index[n]];
@@ -120,13 +134,14 @@ export function buildShape(type, seed, opt = {}) {
   const add = (geo, slot, weights, painter) => { pieces.push({ geo, slot, weights, painter }); return geo; };
 
   // ---- 外觀參數 ----
-  const pal = SKINS[r.pick(SKIN_BY_TYPE[type])];
+  const pal = SKINS[opt.skin || r.pick(SKIN_BY_TYPE[type])];
   const L = {
     skin: col(pal[0]), dark: col(pal[1]), livid: col(pal[2]), ends: col(pal[1]).lerp(col('#3a3448'), 0.5),
     mottle: r.range(0.55, 0.95), livor: r.range(0.4, 1), k: r() * 100, dirt: r.range(0.15, 0.45),
     fresh: type === 'runner' ? 1 : r.range(0.1, 0.5), veins: type === 'brute' || type === 'bloater' ? 1 : type === 'runner' ? 0.6 : r.range(0, 0.4),
     bruises: [], blood: [], clothBlood: [], wounds: [], pustules: [],
   };
+  if (healthy) Object.assign(L, { ends: col(pal[2]), mottle: 0.12, livor: 0, dirt: r.range(0.03, 0.08), fresh: 1, veins: 0 });
 
   // ---- 身體各部形狀 ----
   const T0 = 0.82, T1 = 1.56;
@@ -204,21 +219,28 @@ export function buildShape(type, seed, opt = {}) {
     bloater: () => { wound('gash', 'torso', 0.03); wound('burn', 'torso', 0.06); },
     brute: () => { wound('gash', 'arm', 0.03); wound('gash', 'torso', 0.035); wound('burn', r.pick(['arm', 'torso']), 0.05); wound('bite', 'leg', 0.035); },
   };
-  WOUNDS[type]();
-  for (let i = 0, n = 3 + ((r() * 5) | 0); i < n; i++) { const s = surf(r.pick(['torso', 'arm', 'leg', 'arm', 'neck'])); L.bruises.push({ c: s.p, r: r.range(0.03, 0.07), k: r() * 50 }); }
-  // 嘴邊流下的血
   const mouth = V(0, HC.y - 0.06, HC.z + 0.09);
-  const mouthBlood = type === 'runner' ? 1 : r.range(0.3, 1);
-  for (let i = 0; i < 2 + mouthBlood * 4; i++) L.blood.push({ c: mouth.clone().add(V(r.range(-0.02, 0.02), r.range(-0.01, 0.005), 0)), r: 0.012, drip: r.range(0.05, 0.12 + mouthBlood * 0.35), k: r() * 50 });
-  L.blood.push({ c: V(0, HC.y - 0.09, HC.z + 0.07), r: 0.03 * mouthBlood, sq: 0.5 });
-  for (const s of [1, -1]) { const h = B(s > 0 ? 'handL' : 'handR'); if (r.chance(0.7)) L.blood.push({ c: h.head.clone().lerp(h.tail, 0.6), r: r.range(0.05, 0.09) }); }
-  // 衣服上的血:領口、胸前抹痕、噴濺
-  L.clothBlood.push({ c: V(0, 1.42, 0.12), r: 0.06 + mouthBlood * 0.08, drip: 0.15 + mouthBlood * 0.35, sq: 0.4, k: r() * 50 });
-  for (let i = 0, n = 2 + ((r() * 4) | 0); i < n; i++) { const s = surf(r.pick(['torso', 'torso', 'leg'])); L.clothBlood.push({ c: s.p.addScaledVector(s.n, 0.02), r: r.range(0.03, 0.08), drip: r.chance(0.5) ? r.range(0.05, 0.25) : 0, sq: 0.7, k: r() * 50 }); }
+  if (!healthy) {
+    WOUNDS[type]();
+    for (let i = 0, n = 3 + ((r() * 5) | 0); i < n; i++) { const s = surf(r.pick(['torso', 'arm', 'leg', 'arm', 'neck'])); L.bruises.push({ c: s.p, r: r.range(0.03, 0.07), k: r() * 50 }); }
+    // 嘴邊流下的血
+    const mouthBlood = type === 'runner' ? 1 : r.range(0.3, 1);
+    for (let i = 0; i < 2 + mouthBlood * 4; i++) L.blood.push({ c: mouth.clone().add(V(r.range(-0.02, 0.02), r.range(-0.01, 0.005), 0)), r: 0.012, drip: r.range(0.05, 0.12 + mouthBlood * 0.35), k: r() * 50 });
+    L.blood.push({ c: V(0, HC.y - 0.09, HC.z + 0.07), r: 0.03 * mouthBlood, sq: 0.5 });
+    for (const s of [1, -1]) { const h = B(s > 0 ? 'handL' : 'handR'); if (r.chance(0.7)) L.blood.push({ c: h.head.clone().lerp(h.tail, 0.6), r: r.range(0.05, 0.09) }); }
+    // 衣服上的血:領口、胸前抹痕、噴濺
+    L.clothBlood.push({ c: V(0, 1.42, 0.12), r: 0.06 + mouthBlood * 0.08, drip: 0.15 + mouthBlood * 0.35, sq: 0.4, k: r() * 50 });
+    for (let i = 0, n = 2 + ((r() * 4) | 0); i < n; i++) { const s = surf(r.pick(['torso', 'torso', 'leg'])); L.clothBlood.push({ c: s.p.addScaledVector(s.n, 0.02), r: r.range(0.03, 0.08), drip: r.chance(0.5) ? r.range(0.05, 0.25) : 0, sq: 0.7, k: r() * 50 }); }
+  }
 
   // 頭部參數(skull 傷口需要)
   const decayed = type === 'crawler' || (type === 'walker' && r.chance(0.3));
-  const H = {
+  const H = healthy ? {
+    w: P.head * r.range(0.97, 1.03) * (P.fem ? 0.97 : 1.02), h: P.head * r.range(0.98, 1.03), d: P.head * r.range(0.98, 1.02),
+    jaw: P.fem ? r.range(0.62, 0.68) : r.range(0.7, 0.8), brow: P.fem ? r.range(0.6, 0.8) : r.range(0.9, 1.25), sock: r.range(0.55, 0.75),
+    nose: r.range(0.9, 1.15), cheek: r.range(0.8, 1.15), thin: 0.2, lips: P.fem ? r.range(1.05, 1.25) : r.range(0.85, 1.05),
+    decay: 0, seed: r() * 100, mouthW: 1,
+  } : {
     w: P.head * r.range(0.97, 1.04) * (type === 'brute' ? 1.12 : 1) * (type === 'bloater' ? 1.08 : 1), h: P.head * r.range(0.97, 1.03), d: P.head * r.range(0.97, 1.03),
     jaw: type === 'brute' ? 0.86 : r.range(0.62, 0.74), brow: type === 'brute' ? 1.8 : r.range(0.7, 1.3), sock: lerp(0.9, 1.35, P.thin) * (type === 'bloater' ? 0.6 : 1),
     nose: decayed && r.chance(0.5) ? 0 : r.range(0.8, 1.15), cheek: r.range(0.6, 1.3), thin: P.thin, lips: decayed && r.chance(0.6) ? -0.6 : r.range(0.7, 1.2),
@@ -260,7 +282,19 @@ export function buildShape(type, seed, opt = {}) {
   const veinAt = (x, y, z) => (L.veins > 0 ? sstep(0.9, 0.97, 1 - Math.abs(noise3(x * 14 + L.k, y * 9, z * 14))) * L.veins : 0);
 
   const tc = new THREE.Color();
-  const skinPainter = (part, extra) => (x, y, z, nx, ny, nz, i, out) => {
+  // 健康皮膚:細微的膚色不均、手腳末端與臉頰較紅潤、極淡的灰塵(戰場上的倖存者)
+  const healthyPainter = (part, extra) => (x, y, z, nx, ny, nz, i, out) => {
+    const c = tc.copy(L.skin);
+    c.lerp(L.dark, sstep(-0.2, 0.5, fbm(x * 2.6 + L.k, y * 2.6, z * 2.6, 3)) * 0.18);
+    c.multiplyScalar(0.9 + fbm(x * 15, y * 15 + L.k, z * 15, 3) * 0.1);
+    if (part === 'hand' || part === 'foot') c.lerp(L.ends, 0.22);
+    c.lerp(L.dark, sstep(0.1, -0.7, ny) * 0.12); // 下側較暗(腋下、下巴下)
+    c.lerp(DIRT, sstep(0.25, 0.6, fbm(x * 2.5 + 40, y * 2.5, z * 2.5, 3)) * L.dirt);
+    let wet = 0.05;
+    if (extra) wet = extra(x, y, z, nx, ny, nz, i, c, wet);
+    out[0] = c.r; out[1] = c.g; out[2] = c.b; out[3] = wet;
+  };
+  const skinPainter = (part, extra) => (healthy ? healthyPainter(part, extra) : (x, y, z, nx, ny, nz, i, out) => {
     const c = tc.copy(L.skin);
     c.lerp(L.dark, sstep(-0.1, 0.4, fbm(x * 3.1 + L.k, y * 3.1, z * 3.1, 4)) * L.mottle);
     c.multiplyScalar(0.6 + fbm(x * 13, y * 13 + L.k, z * 13, 3) * 0.25);
@@ -285,7 +319,7 @@ export function buildShape(type, seed, opt = {}) {
     if (b > 0) { c.lerp(L.fresh > 0.5 ? BLOOD : BLOOD_DRY, b * 0.92); wet = Math.max(wet, b * (0.4 + L.fresh * 0.6)); }
     if (extra) wet = extra(x, y, z, nx, ny, nz, i, c, wet);
     out[0] = c.r; out[1] = c.g; out[2] = c.b; out[3] = wet;
-  };
+  });
 
   // ---- 軀幹 ----
   const legless = !!P.legless;
@@ -345,9 +379,25 @@ export function buildShape(type, seed, opt = {}) {
     if (lz < 0) j *= sstep(-0.03, 0, lz);
     return j;
   };
-  const hairCol = col(r.pick(['#1b1714', '#3a2a1e', '#6e6a62', '#7a6748', '#2a2420']));
-  const hasHair = type !== 'brute' && type !== 'bloater' && r.chance(type === 'crawler' ? 0.4 : 0.75);
-  const headExtra = (x, y, z, nx, ny, nz, i, c, wet) => {
+  const hairCol = col(opt.hair || r.pick(['#1b1714', '#3a2a1e', '#6e6a62', '#7a6748', '#2a2420']));
+  const hasHair = healthy ? opt.hair !== null : type !== 'brute' && type !== 'bloater' && r.chance(type === 'crawler' ? 0.4 : 0.75);
+  const LIP = col('#9a5048'), BROW = hairCol.clone().multiplyScalar(0.8);
+  const stubble = healthy && !P.fem && opt.beard ? opt.beard : 0;
+  const headExtra = healthy ? (x, y, z, nx, ny, nz, i, c, wet) => {
+    const lx = x - HC.x, ly = y - HC.y, lz = z - HC.z;
+    for (const s of [1, -1]) c.lerp(L.dark, G((lx - s * 0.031 * H.w) ** 2 + ((ly - 0.009) * 1.5) ** 2 + (lz - 0.08) ** 2 * 0.4, 0.016) * 0.28); // 眼窩陰影
+    c.lerp(LIP, G(lx * lx * 0.3 + (ly - hg.my) ** 2 * 2.2, 0.012) * sstep(0.05, 0.08, lz) * (P.fem ? 0.6 : 0.4));
+    for (const s of [1, -1]) c.lerp(L.livid, G((lx - s * 0.045) ** 2 + (ly + 0.012) ** 2 + (lz - 0.07) ** 2, 0.022) * 0.14); // 臉頰紅潤
+    c.lerp(L.livid, G(lx * lx + (ly + 0.02) ** 2 + (lz - 0.1) ** 2, 0.012) * 0.12); // 鼻頭
+    if (hasHair) c.lerp(BROW, G(((ly - 0.04) * 1.6) ** 2 + (Math.abs(lx) - 0.032) ** 2 * 0.5, 0.008) * sstep(0.07, 0.09, lz) * (P.fem ? 0.75 : 0.92)); // 眉毛
+    if (stubble) { // 鬍渣:下巴、上唇、兩頰下緣
+      const jawZone = sstep(-0.01, -0.04, ly) * sstep(0.0, 0.04, lz) * (1 - sstep(0.075, 0.09, Math.hypot(lx, (ly + 0.06) * 0.8)));
+      const lipZone = G(lx * lx * 0.4 + (ly - hg.my - 0.012) ** 2 * 6, 0.012) * sstep(0.07, 0.09, lz);
+      const k = clamp((jawZone + lipZone) * (0.65 + noise3(x * 300, y * 300, z * 300) * 0.5), 0, 1) * stubble;
+      c.lerp(BROW, k * 0.55 * (1 - G(lx * lx + (ly - hg.my) ** 2 * 3, 0.006))); // 嘴唇本身不長鬍子
+    }
+    return wet;
+  } : (x, y, z, nx, ny, nz, i, c, wet) => {
     const lx = x - HC.x, ly = y - HC.y, lz = z - HC.z;
     for (const s of [1, -1]) c.lerp(SOCKET, G((lx - s * 0.031 * H.w) ** 2 + ((ly - 0.009) * 1.5) ** 2 + (lz - 0.08) ** 2 * 0.4, 0.016) * 0.7);
     c.lerp(LIPS, G(lx * lx * 0.3 + (ly - hg.my) ** 2 * 2.2, 0.013) * sstep(0.05, 0.08, lz) * 0.75);
@@ -368,13 +418,24 @@ export function buildShape(type, seed, opt = {}) {
   for (const s of [1, -1]) {
     const e = prim(new THREE.SphereGeometry(0.0125 * Math.min(1, P.head * 1.05), 16, 12), mat4(V(HC.x + s * 0.031 * H.w, HC.y + 0.012, HC.z + eyeZ), [r.range(-0.1, 0.15), s * r.range(0.0, 0.25), 0]));
     add(e, 'eye', 'head', (x, y, z, nx, ny, nz, i, out) => { out[0] = out[1] = out[2] = 1; out[3] = 1; });
+    if (healthy) { // 眼皮:上下兩片略大的球殼蓋住眼球,只露出杏仁形的眼睛,邊緣畫出睫毛線
+      const er = 0.0125 * Math.min(1, P.head * 1.05), ec = V(HC.x + s * 0.031 * H.w, HC.y + 0.012, HC.z + eyeZ);
+      for (const [t0, t1, up] of [[0, 1.2, 1], [1.95, Math.PI, 0]]) {
+        const lid = prim(new THREE.SphereGeometry(er * 1.14, 20, 8, 0, Math.PI * 2, t0, t1 - t0), mat4(ec, [up ? 0.1 : -0.06, s * 0.15, 0]));
+        add(lid, 'skin', 'head', skinPainter('head', (x, y, z, nx, ny, nz, i, c, wet) => {
+          const edge = up ? sstep(er * 0.18, er * 0.42, y - ec.y) : sstep(-er * 0.2, -er * 0.45, y - ec.y);
+          if (z > ec.z) c.multiplyScalar(lerp(up ? 0.3 : 0.6, 1, edge));
+          return wet;
+        }));
+      }
+    }
   }
   // 牙齒 + 口腔
   const zf = hg.mouthZ;
-  const toothCol = [col('#b8a878'), col('#8a7a52'), col('#5a4a30')];
-  for (const up of [true, false]) {
+  const toothCol = healthy ? [col('#e8e2cf'), col('#ddd5bd'), col('#d2c8ab')] : [col('#b8a878'), col('#8a7a52'), col('#5a4a30')];
+  for (const up of healthy ? [] : [true, false]) { // 倖存者閉著嘴,不需要牙齒
     for (let k = 0; k < 10; k++) {
-      if (r.chance(decayed ? 0.3 : 0.12)) continue;
+      if (!healthy && r.chance(decayed ? 0.3 : 0.12)) continue;
       const a = ((k - 4.5) / 4.5) * 0.9;
       const h = 0.0095 * r.range(0.75, 1.15) * (type === 'brute' && !up ? 1.3 : 1);
       const tx = Math.sin(a) * 0.024 * H.w, tz = zf - 0.0055 - (1 - Math.cos(a)) * 0.03;
@@ -391,17 +452,17 @@ export function buildShape(type, seed, opt = {}) {
   if (hasHair) {
     const hair = hg.geo.clone();
     const p = hair.attributes.position.array, n = hair.attributes.normal.array;
-    const long = P.fem || r.chance(0.2);
-    const patchy = type === 'crawler' || r.chance(0.4) ? r.range(-0.05, 0.15) : -1;
+    const long = healthy ? !!opt.longHair : P.fem || r.chance(0.2);
+    const patchy = healthy ? -1 : type === 'crawler' || r.chance(0.4) ? r.range(-0.05, 0.15) : -1;
     const alpha = new Float32Array(p.length / 3);
     for (let i = 0; i < alpha.length; i++) {
       const lx = p[i * 3] - HC.x, ly = p[i * 3 + 1] - HC.y, lz = p[i * 3 + 2] - HC.z;
-      const line = lz > 0 ? lerp(0.07, 0.055, sstep(0.0, 0.05, Math.abs(lx))) - (1 - sstep(0.02, 0.07, lz)) * 0.03 : lerp(long ? -0.075 : -0.05, -0.02, sstep(0.0, 0.07, Math.abs(lx)) * sstep(-0.02, 0.0, lz));
+      const line = lz > 0 ? lerp(healthy ? 0.086 : 0.07, healthy ? 0.06 : 0.055, sstep(0.0, 0.05, Math.abs(lx))) - (1 - sstep(0.02, 0.07, lz)) * 0.03 : lerp(long ? -0.075 : -0.05, -0.02, sstep(0.0, 0.07, Math.abs(lx)) * sstep(-0.02, 0.0, lz));
       let a = sstep(line - 0.008, line + 0.01, ly);
       if (Math.abs(lx) > 0.055 && ly < 0.03 && lz > -0.04 && lz < 0.03) a *= sstep(0.06, 0.08, Math.abs(ly - 0.0) + 0.06 - (lz + 0.04) * 0.4); // 耳朵處
       if (patchy > -1) a *= sstep(patchy + 0.06, patchy, fbm(lx * 25 + L.k, ly * 25, lz * 25, 3));
       alpha[i] = a;
-      const off = 0.003 + a * (long ? 0.007 : 0.004);
+      const off = 0.003 + a * (long ? 0.007 : healthy ? 0.006 : 0.004);
       p[i * 3] += n[i * 3] * off; p[i * 3 + 1] += n[i * 3 + 1] * off; p[i * 3 + 2] += n[i * 3 + 2] * off;
     }
     const idx = hair.index.array, keep = [];
@@ -411,10 +472,11 @@ export function buildShape(type, seed, opt = {}) {
     add(hair, 'hair', (x, y, z, i) => { const j = jawW(x, y, z, i); return [['head', 1 - j], ['jaw', j]]; }, hp);
     if (long) { // 垂下的長髮束
       const strands = [];
-      for (let k = 0; k < 34; k++) {
-        const a = r.range(0.75, 2.4) * r.sign() * (r.chance(0.3) ? 0.7 : 1);
+      for (let k = 0; k < (healthy ? 30 : 34); k++) {
+        // 倖存者的長髮只垂在耳後與背後(不遮臉);殭屍的亂髮會蓋住臉
+        const a = healthy ? r.range(1.75, 3.05) * r.sign() : r.range(0.75, 2.4) * r.sign() * (r.chance(0.3) ? 0.7 : 1);
         const out = V(Math.sin(a), 0, Math.cos(a));
-        const len = r.range(0.14, 0.3), w = r.range(0.012, 0.022);
+        const len = healthy ? r.range(0.12, 0.22) : r.range(0.14, 0.3), w = r.range(0.012, 0.022);
         const top = V(HC.x + out.x * 0.07 * H.w, HC.y + r.range(0.02, 0.07), HC.z + out.z * 0.095 - 0.005);
         const tan = V(out.z, 0, -out.x);
         const pos = [], uv = [], ids = [];
@@ -437,7 +499,7 @@ export function buildShape(type, seed, opt = {}) {
   }
 
   // ---- 手臂與手 ----
-  const curl = type === 'brute' ? [1.3, 1.5, 1.2] : type === 'runner' ? [0.5, 0.9, 0.7] : [r.range(0.15, 0.6), r.range(0.4, 0.9), r.range(0.3, 0.7)];
+  const curl = healthy ? [0.85, 1.15, 0.95] : type === 'brute' ? [1.3, 1.5, 1.2] : type === 'runner' ? [0.5, 0.9, 0.7] : [r.range(0.15, 0.6), r.range(0.4, 0.9), r.range(0.3, 0.7)]; // 倖存者:握槍的手勢
   const gloves = { v: null };
   const handPieces = (s) => {
     const hs = lerp(1, P.g, 0.6) * (type === 'brute' ? 1.1 : 1);
@@ -495,7 +557,8 @@ export function buildShape(type, seed, opt = {}) {
       if (gloves.v) { c.lerp(gloves.v, 0.92); return wet * 0.5; }
       let tn = 9;
       for (const t of tips) tn = Math.min(tn, (x - t.x) ** 2 + (y - t.y) ** 2 + (z - t.z) ** 2);
-      c.lerp(col('#2a2418'), sstep(0.0002, 0.00003, tn) * 0.85); // 黑指甲
+      if (healthy) c.lerp(NAIL, sstep(0.0002, 0.00003, tn) * 0.45); // 指甲
+      else c.lerp(col('#2a2418'), sstep(0.0002, 0.00003, tn) * 0.85); // 黑指甲
       return wet;
     }));
   }
@@ -537,7 +600,7 @@ export function buildShape(type, seed, opt = {}) {
   const shoe = (Ls, style) => {
     const f = feet[Ls];
     const g = tube(f.A.clone().add(V(0, 0, -0.008)), f.B.clone().add(V(0, 0, 0.012)), footShape(1.13, 0.008), { cols: 18, rows: 14, front: V(0, 1, 0) });
-    const up = col({ sneaker: r.pick(['#d8d8d0', '#3a3a3a', '#6a6a70']), clog: r.pick(['#d8d8e0', '#5a8aa8', '#a86a7a']), leather: '#1c1814', boot: '#141414' }[style]);
+    const up = col({ sneaker: r.pick(['#d8d8d0', '#3a3a3a', '#6a6a70']), clog: r.pick(['#d8d8e0', '#5a8aa8', '#a86a7a']), leather: '#1c1814', boot: '#141414', desert: '#7d6a4c', work: '#4a3322', trainer: '#2a2c30' }[style]);
     const sole = col(style === 'sneaker' || style === 'clog' ? '#d0d0c8' : '#0e0e0e');
     add(g, 'gear', ['shin' + Ls, 'foot' + Ls], (x, y, z, nx, ny, nz, i, out) => {
       const c = tc.copy(y < 0.024 ? sole : up);
@@ -545,7 +608,7 @@ export function buildShape(type, seed, opt = {}) {
       if (y < 0.024 && style !== 'sneaker') c.multiplyScalar(0.6);
       out[0] = c.r; out[1] = c.g; out[2] = c.b; out[3] = 1;
     });
-    if (style === 'boot') {
+    if (style === 'boot' || style === 'desert' || style === 'work') {
       const sh = B('shin' + (Ls === 'L' ? 'L' : 'R'));
       const bg = tube(sh.tail.clone().add(V(0, -0.03, 0)), sh.tail.clone().lerp(sh.head, 0.32), (t, th) => { const q = prof(shinR, 1 - t * 0.32) + 0.012; return [Math.cos(th) * q, Math.sin(th) * q * 1.08]; }, { cols: 18, rows: 4, capA: 0, capB: 0 });
       add(bg, 'gear', ['shin' + Ls, 'foot' + Ls], (x, y, z, nx, ny, nz, i, out) => { const v = 0.8 + fbm(x * 20, y * 20, z * 20, 2) * 0.4; out[0] = up.r * v; out[1] = up.g * v; out[2] = up.b * v; out[3] = 1; });
@@ -554,7 +617,36 @@ export function buildShape(type, seed, opt = {}) {
 
   // ---- 服裝 ----
   const tc2 = new THREE.Color();
-  const clothPaint = (g, o) => {
+  // 倖存者的衣物:乾淨、完整,支援格紋/迷彩/反光條
+  const cleanPaint = (g, o) => {
+    const base = col(o.color), edge = g.userData.edge, k = r() * 50;
+    const fade = o.fade ? col(o.fade) : null, alt = o.alt ? col(o.alt) : null, alt2 = o.alt2 ? col(o.alt2) : null;
+    const stripeCol = o.stripeColor ? col(o.stripeColor) : null;
+    return (x, y, z, nx, ny, nz, i, out) => {
+      const c = tc2.copy(base);
+      if (fade) c.lerp(fade, sstep(-0.1, 0.5, fbm(x * 4 + k, y * 2, z * 4, 3)) * 0.5);
+      if (o.plaid && alt) { // 格紋法蘭絨:繞身體的直條 + 水平條交錯,加細的亮色線
+        const ang = Math.atan2(x, z) * (o.plaid * 0.32), u = Math.sin(ang), v = Math.sin(y * o.plaid);
+        c.lerp(alt, sstep(0.2, 0.45, u) * 0.5 + sstep(0.2, 0.45, v) * 0.5);
+        if (alt2) c.lerp(alt2, Math.max(sstep(0.965, 0.99, Math.sin(ang + 1.9)), sstep(0.965, 0.99, Math.sin(y * o.plaid + 1.9))) * 0.55);
+      }
+      if (o.camo && alt) { // 迷彩色塊
+        const n1 = fbm(x * 9 + k, y * 7, z * 9, 3), n2 = fbm(x * 13 + 40, y * 11 + k, z * 13, 3);
+        c.lerp(alt, sstep(0.05, 0.12, n1));
+        if (alt2) c.lerp(alt2, sstep(0.18, 0.24, n2));
+      }
+      c.multiplyScalar(0.82 + fbm(x * 7 + k, y * 7, z * 7, 3) * 0.16);
+      if (o.pattern) c.multiplyScalar(1 - 0.12 * o.pattern(x, y, z));
+      c.lerp(DIRT, clamp(sstep(0.2, 0.6, fbm(x * 2.3 + 11, y * 2.3, z * 2.3 + k, 4)) * o.dirt + sstep(0.45, 0.05, y) * 0.35 * o.dirt, 0, 0.6));
+      if (stripeCol && o.stripes) for (const s of o.stripes) if (y > s[0] && y < s[1]) { c.copy(stripeCol).multiplyScalar(0.92 + noise3(x * 60, y * 60, z * 60) * 0.1); break; }
+      if (edge && edge[i] < 0.01) c.multiplyScalar(0.78); // 布邊縫線
+      let a = 1;
+      if (o.cut) a *= o.cut(x, y, z, nx, ny, nz);
+      out[0] = c.r; out[1] = c.g; out[2] = c.b; out[3] = a;
+    };
+  };
+  const clothPaint = (g, o) => (healthy ? cleanPaint(g, o) : dirtyPaint(g, o));
+  const dirtyPaint = (g, o) => {
     const base = col(o.color), edge = g.userData.edge, k = r() * 50;
     const fade = o.fade ? col(o.fade) : null;
     return (x, y, z, nx, ny, nz, i, out) => {
@@ -585,20 +677,21 @@ export function buildShape(type, seed, opt = {}) {
     const off = o.off ?? 0.012;
     const g = tube(V(0, T0, 0), V(0, T1, 0), offset(tShape, off), { cols: 40, rows: 24, t0: ty(o.y0), t1: ty(o.y1 ?? T1), capA: 0, capB: 0, hemB: false });
     displace(g, (x, y, z, nx, ny, nz) => torsoDisp(x, y, z, nx, ny, nz) * (o.tight ?? 0.9) + folds(o.loose ?? 0.004)(x, y, z));
-    add(g, 'cloth', torsoW, clothPaint(g, o));
+    add(g, o.slot ?? 'cloth', torsoW, clothPaint(g, o));
     if (!o.sleeve) return;
+    const so = o.sleeveStripes ? { ...o, stripes: o.sleeveStripes } : o;
     for (const s of [1, -1]) {
       const Ls = s > 0 ? 'L' : 'R';
       const ua = B('upperArm' + Ls), fa = B('forearm' + Ls);
       const uDir = ua.tail.clone().sub(ua.head).normalize();
       const len1 = Math.min(1, o.sleeve / 0.45);
-      const sg = tube(ua.head.clone().addScaledVector(uDir, -0.03), ua.tail, offset(upperShape, off + 0.004), { cols: 16, rows: 8, t1: len1, capA: 0, capB: 0, hemA: false, hemB: o.sleeve <= 0.45 });
+      const sg = tube(ua.head.clone().addScaledVector(uDir, -0.03), ua.tail, offset(upperShape, off + 0.004), { cols: 16, rows: 8, t1: len1, capA: healthy ? 0.85 : 0, capB: 0, hemA: false, hemB: o.sleeve <= 0.45 });
       displace(sg, folds(0.004));
-      add(sg, 'cloth', ['clav' + Ls, 'upperArm' + Ls, 'forearm' + Ls], clothPaint(sg, o));
+      add(sg, o.slot ?? 'cloth', ['clav' + Ls, 'upperArm' + Ls, 'forearm' + Ls], clothPaint(sg, so));
       if (o.sleeve > 0.45) {
         const fg = tube(fa.head.clone().addScaledVector(uDir, -0.03), fa.tail, offset(foreShape, off + 0.006), { cols: 16, rows: 8, t1: Math.min(0.95, (o.sleeve - 0.45) / 0.5), capA: 0, capB: 0, hemA: false });
         displace(fg, folds(0.005));
-        add(fg, 'cloth', ['upperArm' + Ls, 'forearm' + Ls, 'hand' + Ls], clothPaint(fg, o));
+        add(fg, o.slot ?? 'cloth', ['upperArm' + Ls, 'forearm' + Ls, 'hand' + Ls], clothPaint(fg, so));
       }
     }
   };
@@ -607,18 +700,18 @@ export function buildShape(type, seed, opt = {}) {
     const off = o.off ?? 0.013;
     const g = tube(V(0, T0, 0), V(0, T1, 0), offset(tShape, off), { cols: 40, rows: 8, t0: 0, t1: ty(o.waist ?? 1.03), capA: 0.6, capB: 0, hemB: false });
     displace(g, (x, y, z, nx, ny, nz) => torsoDisp(x, y, z, nx, ny, nz) * 0.8 + folds(0.003)(x, y, z));
-    add(g, 'cloth', torsoW, clothPaint(g, o));
+    add(g, o.slot ?? 'cloth', torsoW, clothPaint(g, o));
     if (legless) return;
     for (const s of [1, -1]) {
       const Ls = s > 0 ? 'L' : 'R';
       const th = B('thigh' + Ls), sh = B('shin' + Ls);
       const tg = tube(th.head.clone().add(V(0, 0.07, 0)), th.tail, offset(thighShape, off + 0.004), { cols: 18, rows: 10, t1: Math.min(1, o.len / 0.5), capA: 0, capB: 0, hemA: false, hemB: o.len <= 0.5 });
       displace(tg, folds(o.loose ?? 0.005));
-      add(tg, 'cloth', ['hips', 'thigh' + Ls, 'shin' + Ls], clothPaint(tg, o));
+      add(tg, o.slot ?? 'cloth', ['hips', 'thigh' + Ls, 'shin' + Ls], clothPaint(tg, o));
       if (o.len > 0.5) {
         const sg = tube(sh.head.clone().add(V(0, 0.03, 0)), sh.tail, offset(shinShape, off + 0.01), { cols: 16, rows: 10, t1: Math.min(0.97, (o.len - 0.5) / 0.5), capA: 0, capB: 0, hemA: false });
         displace(sg, folds((o.loose ?? 0.005) * 1.2));
-        add(sg, 'cloth', ['thigh' + Ls, 'shin' + Ls, 'foot' + Ls], clothPaint(sg, o));
+        add(sg, o.slot ?? 'cloth', ['thigh' + Ls, 'shin' + Ls, 'foot' + Ls], clothPaint(sg, o));
       }
     }
   };
@@ -729,7 +822,157 @@ export function buildShape(type, seed, opt = {}) {
       if (!legless) bottom({ color: pickC(['#3b4250', '#4a4538']), len: r.range(0.6, 1), dirt: 0.8, wear: 0.16, hem: 0.05 });
     },
   };
+  // ---- 倖存者裝備 ----
+  const surfZ = (y, front) => tShape(ty(y), front ? Math.PI / 2 : -Math.PI / 2)[1];
+  const solid = (hex, rough = 0.25) => { const cc = col(hex); return (x, y, z, nx, ny, nz, i, out) => { const v = 1 - rough / 2 + fbm(x * 30, y * 30, z * 30, 2) * rough; out[0] = cc.r * v; out[1] = cc.g * v; out[2] = cc.b * v; out[3] = 1; }; };
+  const pillow = (g, a) => { smoothNormals(g); return displace(g, () => a); }; // 圓角膨起(軟質袋子)
+  const piece = (geo, pos, rot, slot, bones, paint, soft = 0) => { const g = prim(geo, mat4(pos, rot || [0, 0, 0])); add(soft ? pillow(g, soft) : g, slot, bones, paint); return g; };
+  // 只保留 keep(質心) 為真的三角形(裁出袖孔、帽緣等)
+  const cutTris = (g, keep) => {
+    const p = g.attributes.position.array, idx = g.index.array, kept = [];
+    for (let k = 0; k < idx.length; k += 3) {
+      const a = idx[k] * 3, b = idx[k + 1] * 3, c = idx[k + 2] * 3;
+      if (keep((p[a] + p[b] + p[c]) / 3, (p[a + 1] + p[b + 1] + p[c + 1]) / 3, (p[a + 2] + p[b + 2] + p[c + 2]) / 3)) kept.push(idx[k], idx[k + 1], idx[k + 2]);
+    }
+    g.setIndex(kept);
+    return g;
+  };
+  const strap = (s, off, hex) => { // 肩帶:從前胸翻過肩膀到後背
+    const x = s * rig.sw * 0.5, yt = 1.43;
+    const pts = [V(x * 0.9, yt - 0.03, surfZ(yt - 0.03, true) + off), V(x, 1.5, surfZ(1.5, true) * 0.6 + 0.01), V(x * 1.04, 1.545, -0.012), V(x, 1.5, surfZ(1.5, false) * 0.6 - 0.01), V(x * 0.9, yt - 0.03, surfZ(yt - 0.03, false) - off)];
+    const g = prim(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 16, 0.013, 6, false));
+    g.scale(1, 1, 1);
+    add(g, 'gear', ['chest', 'clav' + (s > 0 ? 'L' : 'R')], solid(hex));
+  };
+  const vest = (o) => { // 防彈背心 / 戰術背心:前後兩片板、側邊束帶、肩帶、MOLLE 織帶、口袋
+    const off = o.off ?? 0.024, y0 = o.y0 ?? 1.03, y1 = o.y1 ?? 1.43;
+    const g = tube(V(0, T0, 0), V(0, T1, 0), offset(tShape, off), { cols: 48, rows: 18, t0: ty(y0), t1: ty(y1), capA: 0, capB: 0, hemA: false, hemB: false });
+    // 袖孔:腋下以上的側面挖掉,只留前後兩片板
+    cutTris(g, (x, y, z) => !(y > (o.open ?? 1.22) && Math.abs(z + 0.01) < 0.62 * Math.abs(x)));
+    displace(g, (x, y, z, nx, ny, nz) => torsoDisp(x, y, z, nx, ny, nz) * 0.5 + (o.plates ? 0.008 * sstep(0.35, 0.7, Math.abs(nz)) * sstep(y0, y0 + 0.05, y) * (1 - sstep(y1 - 0.05, y1, y)) : 0));
+    const vc = col(o.color), sc = o.stripeColor ? col(o.stripeColor) : null, k = r() * 50;
+    add(g, 'gear', torsoW, (x, y, z, nx, ny, nz, i, out) => {
+      const c = tc.copy(vc).multiplyScalar(0.84 + fbm(x * 22 + k, y * 22, z * 22, 2) * 0.24);
+      if (o.molle && Math.abs(nz) > 0.45 && Math.sin((y - y0) * TAU / 0.026) > 0.8) c.multiplyScalar(0.6);
+      if (sc && o.stripes) for (const s of o.stripes) if (y > s[0] && y < s[1] && Math.abs(nz) > 0.3) { c.copy(sc); break; }
+      if (o.cross && nz < -0.5 && Math.abs(x) < 0.045 && Math.abs(y - 1.3) < 0.045 && (Math.abs(x) < 0.014 || Math.abs(y - 1.3) < 0.014)) c.setRGB(0.55, 0.03, 0.03); // 背後紅十字
+      c.lerp(DIRT, sstep(0.2, 0.6, fbm(x * 3, y * 3, z * 3, 3)) * 0.12);
+      if (y < y0 + 0.006 || y > y1 - 0.006) c.multiplyScalar(0.7);
+      out[0] = c.r; out[1] = c.g; out[2] = c.b; out[3] = 1;
+    });
+    for (const s of [1, -1]) strap(s, off, o.color);
+    const pz = surfZ(1.13, true) + off + 0.02;
+    for (const px of o.pouches ?? []) {
+      piece(new THREE.BoxGeometry(0.05, 0.085, 0.032, 2, 2, 2), V(px, 1.13, pz), null, 'gear', ['spine', 'chest'], solid(o.pouch || o.color, 0.3), 0.004);
+      piece(new THREE.BoxGeometry(0.054, 0.022, 0.04), V(px, 1.18, pz + 0.002), [0.15, 0, 0], 'gear', ['spine', 'chest'], solid(o.pouch || o.color, 0.4));
+    }
+    if (o.radio) piece(new THREE.BoxGeometry(0.035, 0.075, 0.026), V(-0.075 * P.sw, 1.38, surfZ(1.38, true) + off + 0.016), [0, 0.2, 0], 'gear', ['chest'], solid('#141414', 0.15));
+    if (o.badge) piece(new THREE.BoxGeometry(0.03, 0.036, 0.005), V(0.075 * P.sw, 1.36, surfZ(1.36, true) + off + 0.004), null, 'gear', ['chest'], solid('#b8963a', 0.1));
+  };
+  const backpack = (o) => {
+    const d = o.d ?? 0.13, bz = surfZ(1.25, false) - d / 2 - 0.03;
+    piece(new THREE.BoxGeometry(0.28, 0.38, d, 3, 4, 2), V(0, 1.24, bz), [-0.06, 0, 0], 'cloth', ['chest', 'spine'], cleanPaint({ userData: {} }, { color: o.color, dirt: 0.15 }), 0.014);
+    piece(new THREE.BoxGeometry(0.21, 0.15, 0.05, 2, 2, 1), V(0, 1.13, bz - d / 2 - 0.02), [-0.06, 0, 0], 'cloth', ['chest', 'spine'], solid(o.alt || o.color, 0.3), 0.009);
+    piece(new THREE.BoxGeometry(0.29, 0.07, d + 0.01, 2, 1, 2), V(0, 1.44, bz + 0.012), [0.12, 0, 0], 'cloth', ['chest'], solid(o.alt || o.color, 0.3), 0.01);
+    for (const s of [1, -1]) piece(new THREE.BoxGeometry(0.042, 0.3, 0.012), V(s * rig.sw * 0.56, 1.33, surfZ(1.33, true) + 0.016), [-0.14, 0, 0], 'gear', ['chest', 'spine'], solid('#1c1c1c'));
+  };
+  const belt = (o = {}) => {
+    const y = o.y ?? 0.99;
+    add(prim(new THREE.TorusGeometry(1, 0.11, 6, 36), mat4(V(0, y, 0.004), [Math.PI / 2, 0, 0], [0.165 * P.hip * P.fat + 0.028, 0.12 * P.fat + 0.028, 0.3])), 'gear', 'hips', solid(o.color ?? '#1a1918'));
+    piece(new THREE.BoxGeometry(0.042, 0.032, 0.01), V(0, y, surfZ(y, true) + 0.03), null, 'gear', 'hips', solid(o.buckle ?? '#8a8a80', 0.1));
+    for (const a of o.pouches ?? []) { const sx = Math.sin(a), sz = Math.cos(a); piece(new THREE.BoxGeometry(0.06, 0.07, 0.035, 2, 2, 1), V(sx * (rig.hw + 0.1), y - 0.015, sz * 0.15), [0, a, 0], 'gear', 'hips', solid(o.pouch ?? '#222220', 0.3), 0.004); }
+  };
+  const holster = (s = -1, hex = '#1b1b1a') => piece(new THREE.BoxGeometry(0.035, 0.16, 0.085, 1, 2, 2), V(s * (rig.hw + 0.085), 0.84, 0.01), null, 'gear', ['hips', 'thigh' + (s > 0 ? 'L' : 'R')], solid(hex), 0.006);
+  const kneePads = (hex) => { for (const s of [1, -1]) { const Ls = s > 0 ? 'L' : 'R', kn = B('shin' + Ls).head; piece(new THREE.BoxGeometry(0.085, 0.1, 0.03, 2, 2, 1), V(kn.x, kn.y - 0.02, kn.z + prof(shinR, 0) + 0.03), null, 'gear', 'shin' + Ls, solid(hex), 0.008); } };
+  const patch = (s, hex, t = 0.3) => { const ua = B('upperArm' + (s > 0 ? 'L' : 'R')); const p = ua.head.clone().lerp(ua.tail, t); p.x += s * (prof(armR, t) + 0.02); piece(new THREE.BoxGeometry(0.004, 0.045, 0.055), p, null, 'gear', 'upperArm' + (s > 0 ? 'L' : 'R'), solid(hex, 0.15)); };
+  const armband = (s, hex) => { const ua = B('upperArm' + (s > 0 ? 'L' : 'R')); const p = ua.head.clone().lerp(ua.tail, 0.45); add(prim(new THREE.TorusGeometry(prof(armR, 0.45) + 0.02, 0.013, 6, 20), mat4(p, [Math.PI / 2, 0, 0], [1, 1, 1.6])), 'cloth', 'upperArm' + (s > 0 ? 'L' : 'R'), solid(hex, 0.1)); };
+  const dome = (off, keep, slot, paint) => { // 頭盔/帽子:頭部網格外推後裁切
+    const g = hg.geo.clone();
+    const p = g.attributes.position.array, n = g.attributes.normal.array, kept = [];
+    for (let i = 0; i < p.length / 3; i++) { p[i * 3] += n[i * 3] * off; p[i * 3 + 1] += n[i * 3 + 1] * off; p[i * 3 + 2] += n[i * 3 + 2] * off; }
+    const idx = g.index.array, ok = (i) => keep(p[i * 3] - HC.x, p[i * 3 + 1] - HC.y, p[i * 3 + 2] - HC.z);
+    for (let k = 0; k < idx.length; k += 3) if (ok(idx[k]) && ok(idx[k + 1]) && ok(idx[k + 2])) kept.push(idx[k], idx[k + 1], idx[k + 2]);
+    g.setIndex(kept);
+    add(g, slot, 'head', paint);
+  };
+  const brim = (r0, a0, a1, y, z, tilt, hex, th = 0.006) => piece(new THREE.CylinderGeometry(r0, r0, th, 28, 1, false, a0, a1 - a0), V(HC.x, HC.y + y, HC.z + z), [tilt, 0, 0], 'gear', 'head', solid(hex, 0.2));
+  const HAT = {
+    helmet: (hex) => { dome(0.026, (x, y, z) => y > (z > 0.02 ? 0.04 : -0.045) + Math.abs(x) * 0.15 * (z > 0 ? 1 : 0), 'gear', solid(hex, 0.3)); },
+    hardhat: (hex) => { dome(0.03, (x, y, z) => y > 0.03, 'gear', solid(hex, 0.12)); brim(0.13, -Math.PI, Math.PI, 0.035, -0.005, 0.05, hex, 0.008); },
+    fire: (hex) => { dome(0.034, (x, y, z) => y > 0.025, 'gear', solid(hex, 0.14)); brim(0.18, Math.PI * 0.55, Math.PI * 1.45, 0.03, -0.02, -0.18, hex, 0.01); brim(0.115, -0.8, 0.8, 0.035, 0.0, 0.1, hex, 0.008); },
+    cap: (hex) => { dome(0.01, (x, y, z) => y > (z > 0 ? 0.058 : 0.0) - Math.abs(x) * 0.08, 'cloth', cleanPaint({ userData: {} }, { color: hex, dirt: 0.1 })); brim(0.105, -0.95, 0.95, 0.056, 0.02, 0.18, hex); },
+    police: (hex) => { dome(0.011, (x, y, z) => y > (z > 0 ? 0.06 : 0.01), 'cloth', solid(hex, 0.2)); piece(new THREE.CylinderGeometry(0.112, 0.1, 0.045, 28), V(HC.x, HC.y + 0.1, HC.z - 0.005), [-0.08, 0, 0], 'cloth', 'head', solid(hex, 0.2)); brim(0.1, -0.9, 0.9, 0.06, 0.02, 0.3, '#0c0c0c', 0.005); },
+    beanie: (hex) => { dome(0.013, (x, y, z) => y > (z > 0 ? 0.052 : -0.02), 'cloth', cleanPaint({ userData: {} }, { color: hex, dirt: 0.1, pattern: (x, y, z) => (Math.sin(Math.atan2(x, z - HC.z) * 60) > 0 ? 1 : 0) })); },
+  };
+  const hood = (hex) => add(tube(V(-0.1, 1.505, -0.075), V(0.1, 1.505, -0.075), (t, th) => [Math.cos(th) * 0.036, Math.sin(th) * 0.05], { cols: 12, rows: 8 }), 'cloth', ['chest', 'neck'], cleanPaint({ userData: {} }, { color: hex, dirt: 0.15 }));
+  // 倖存者服裝:乾淨完整(wear 只影響殭屍),每套都有可辨識的輪廓與配色
+  Object.assign(OUT, {
+    tactical: () => {
+      top({ color: '#5f5c40', alt: '#47472f', alt2: '#7d7152', camo: 1, y0: 0.92, sleeve: 0.97, dirt: 0.18, off: 0.014, loose: 0.006 });
+      bottom({ color: '#5c5644', alt: '#46432f', alt2: '#7a6e52', camo: 1, len: 1, dirt: 0.22, off: 0.016, loose: 0.008 });
+      vest({ color: '#3d3c2d', off: 0.034, plates: 1, molle: 1, pouches: [-0.07, 0, 0.07], radio: 1 });
+      belt({ color: '#2b2a22', pouches: [1.9, -1.9] }); holster(-1); kneePads('#2f2e26'); patch(1, '#3a3a2a');
+      gloves.v = col('#2b2a25');
+      shoes = 'desert';
+    },
+    medic: () => {
+      top({ color: '#2f6f78', y0: 0.92, sleeve: 0.33, dirt: 0.12, off: 0.013, loose: 0.005, cut: (x, y, z) => (z > 0 ? sstep(0.004, 0.012, Math.abs(x) - (y - 1.36) * 0.55) : 1) });
+      top({ color: '#20262c', y0: 1.3, y1: 1.5, sleeve: 0.97, dirt: 0.1, off: 0.009, loose: 0.004 }); // 長袖內搭
+      bottom({ color: '#30353b', len: 1, dirt: 0.2, off: 0.016, loose: 0.008 });
+      vest({ color: '#2a2d30', off: 0.03, y0: 1.06, molle: 1, pouches: [-0.06, 0.06], cross: 1 });
+      armband(1, '#e8e4dc'); belt({ color: '#1e1e1e', pouches: [2.2] });
+      gloves.v = col('#5c80a8');
+      shoes = 'trainer';
+    },
+    worker: () => {
+      top({ color: '#34404e', y0: 0.92, sleeve: 0.97, dirt: 0.2, off: 0.013, loose: 0.006 });
+      vest({ color: '#c6d22c', off: 0.026, y0: 1.0, y1: 1.47, stripeColor: '#c8c8c0', stripes: [[1.1, 1.13], [1.28, 1.31]] });
+      bottom({ color: '#2f4466', fade: '#58719a', len: 1, dirt: 0.28, off: 0.014, waist: 1.0 });
+      belt({ color: '#4a3322', buckle: '#9a8a60', pouches: [1.7, -1.7, 2.4] }); kneePads('#202020');
+      gloves.v = col('#8a6a3a');
+      shoes = 'work';
+    },
+    hoodie: () => {
+      top({ color: '#5c5f66', y0: 0.88, sleeve: 0.98, dirt: 0.14, off: 0.017, loose: 0.009, tight: 0.75, stripeColor: '#3e4046', stripes: [[0.88, 0.92]], sleeveStripes: [[0.93, 0.96]] });
+      hood('#5a5d64');
+      bottom({ color: '#2c3a54', fade: '#56688a', len: 1, dirt: 0.2, off: 0.013, waist: 1.0 });
+      backpack({ color: '#7a2a24', alt: '#5a1e1a' });
+      shoes = 'sneaker';
+    },
+    police: () => {
+      top({ color: '#1e2a40', y0: 0.92, sleeve: 0.97, dirt: 0.1, off: 0.013, loose: 0.005 });
+      bottom({ color: '#1a2030', len: 1, dirt: 0.15, off: 0.015, loose: 0.007 });
+      vest({ color: '#16181c', off: 0.03, molle: 0, stripeColor: '#d0d0c8', stripes: [[1.3, 1.335]], radio: 1, badge: 1, pouches: [-0.06] });
+      belt({ color: '#0e0e0e', buckle: '#b0b0a8', pouches: [1.6, -1.6, 2.5, -2.5] }); holster(-1, '#0e0e0e'); patch(1, '#b8963a'); patch(-1, '#b8963a');
+      shoes = 'boot';
+    },
+    hunter: () => {
+      top({ color: '#7a1c18', alt: '#141414', alt2: '#c8a040', plaid: 70, y0: 0.9, sleeve: 0.97, dirt: 0.2, off: 0.015, loose: 0.007 });
+      vest({ color: '#5a4a32', off: 0.03, y0: 1.04, pouches: [-0.07, 0.07] });
+      bottom({ color: '#4a3a28', len: 1, dirt: 0.3, off: 0.016, loose: 0.009 });
+      backpack({ color: '#4a5236', alt: '#3a4028', d: 0.15 });
+      gloves.v = col('#5a4630');
+      shoes = 'work';
+    },
+    firefighter: () => {
+      const tan = { color: '#a8904e', stripeColor: '#d8d24a', dirt: 0.3, off: 0.022, loose: 0.01, tight: 0.7 };
+      top({ ...tan, y0: 0.86, sleeve: 0.98, stripes: [[0.9, 0.935], [1.3, 1.335]], sleeveStripes: [[0.96, 0.99], [1.24, 1.27]] });
+      bottom({ ...tan, len: 1, off: 0.024, stripes: [[0.2, 0.235]] });
+      belt({ color: '#141414' });
+      gloves.v = col('#1c1c1c');
+      shoes = 'boot';
+    },
+    biker: () => {
+      top({ color: '#5a5c60', y0: 0.92, sleeve: 0.3, dirt: 0.1, off: 0.011 }); // T 恤
+      top({ color: '#1e1b1a', y0: 0.94, sleeve: 0.97, dirt: 0.12, off: 0.02, loose: 0.006, slot: 'gear', cut: (x, y, z) => (z > 0 ? sstep(0.008, 0.02, Math.abs(x) - (y > 1.25 ? (y - 1.25) * 0.4 + 0.02 : 0.02)) : 1) });
+      bottom({ color: '#2a3446', fade: '#4c5a72', len: 1, dirt: 0.2, off: 0.013, waist: 1.0 });
+      belt({ color: '#2a1e16', buckle: '#c0c0c0' });
+      gloves.v = col('#151413');
+      shoes = 'boot';
+    },
+  });
   const OUTFIT_BY_TYPE = {
+    survivor: ['tactical', 'medic', 'worker', 'hoodie', 'police', 'hunter', 'firefighter', 'biker'],
     walker: ['gown', 'gown', 'gown', 'doctor', 'scrubs', 'civilian', 'janitor', 'surgeon'],
     runner: ['scrubs', 'surgeon', 'civilian', 'civilian', 'gown'],
     crawler: ['rags', 'gown'],
@@ -738,6 +981,7 @@ export function buildShape(type, seed, opt = {}) {
   };
   const outfit = opt.outfit || r.pick(OUTFIT_BY_TYPE[type]);
   if (!opt.nude) OUT[outfit]();
+  if (healthy && opt.hat) HAT[opt.hat[0]](opt.hat[1]);
   if (!legless) for (const Ls of ['L', 'R']) (shoes === 'bare' ? barefoot(Ls, sock) : shoe(Ls, shoes));
 
   // ---- 斷肢殘端:脊椎與內臟 ----
@@ -783,7 +1027,7 @@ export function buildShape(type, seed, opt = {}) {
   HC.multiplyScalar(P.s);
   geo.computeBoundingSphere(); // 實例化時直接給 SkinnedMesh,免得 three 逐頂點蒙皮重算(每隻殭屍 ~40k 頂點、數 MB 垃圾)
   return {
-    type, geometry: geo, slots: used, rig, P,
+    type, geometry: geo, slots: used, rig, P, eyeKey: healthy ? opt.eye || 'brown' : null,
     legT: rig.bones[rig.index.thighL].head.distanceTo(rig.bones[rig.index.thighL].tail),
     legS: rig.bones[rig.index.shinL].head.distanceTo(rig.bones[rig.index.shinL].tail),
     hitboxes: hitboxes(rig, P, type),
@@ -860,7 +1104,13 @@ function request(type, k) {
     return cache[type][k];
   }, (e) => { if (!p.failed) console.warn('[model] worker 建模失敗,改同步', e.message); return null; }).finally(() => { vstat.pending--; delete inflight[key]; }));
 }
+// 多人連線:代理殭屍要用房主那邊的同一個變體(變體 k 用固定種子,各端一致)
+let forced = null;
+export function forceVariant(type, i) { forced = { type, i }; }
+export const getVariantAt = (type, i) => getVariant(type, i | 0);
+export const variantIndexOf = (v) => (v && v.k != null ? v.k : 0);
 export function getVariant(type, k) {
+  if (k == null && forced && forced.type === type) { k = forced.i; forced = null; }
   const list = cache[type] || (cache[type] = []);
   const n = PER_TYPE[type] || 1;
   if (k != null) { k = ((k % n) + n) % n; return list[k] || buildSync(type, k); } // 指定變體
@@ -913,6 +1163,94 @@ export function whenWarm() {
 }
 export function variantStats() {
   return { ready: readyCount(), total: TOTAL, pending: vstat.pending, worker: vstat.worker, sync: vstat.sync, syncMs: Math.round(vstat.syncMs), warmMs: vstat.tDone && vstat.t0 ? Math.round(vstat.tDone - vstat.t0) : null, pool: pool ? pool.info() : null };
+}
+
+// ---------- 倖存者(多人連線的玩家角色) ----------
+// 8 種外觀(依房間座位決定,同房間不重複):服裝、膚色、髮型、帽子、眼睛顏色都不同
+export const SURVIVOR_LOOKS = [
+  { outfit: 'tactical', fem: 0, skin: 'light', hair: '#2a2420', beard: 0.7, hat: ['helmet', '#4b4b37'], eye: 'brown' },
+  { outfit: 'medic', fem: 1, skin: 'tan', hair: '#1b1714', longHair: 1, eye: 'dark' },
+  { outfit: 'worker', fem: 0, skin: 'brown', hair: '#151210', beard: 0.5, hat: ['hardhat', '#d8b42a'], eye: 'dark' },
+  { outfit: 'hoodie', fem: 1, skin: 'fair', hair: '#6a4a2c', longHair: 1, eye: 'green' },
+  { outfit: 'police', fem: 0, skin: 'medium', hair: '#3a2a1e', hat: ['police', '#1a2236'], eye: 'brown' },
+  { outfit: 'hunter', fem: 0, skin: 'olive', hair: '#5a3d24', beard: 1, hat: ['beanie', '#b85a1e'], eye: 'hazel' },
+  { outfit: 'firefighter', fem: 0, skin: 'deep', hair: null, beard: 0.4, hat: ['fire', '#7a1a14'], eye: 'dark' },
+  { outfit: 'biker', fem: 1, skin: 'light', hair: '#8a6a42', longHair: 1, hat: ['cap', '#202022'], eye: 'blue' },
+];
+const scache = [];
+export function survivorVariant(look) {
+  const i = ((look | 0) % SURVIVOR_LOOKS.length + SURVIVOR_LOOKS.length) % SURVIVOR_LOOKS.length;
+  return scache[i] || (scache[i] = buildVariant('survivor', 6000 + i * 7919, SURVIVOR_LOOKS[i]));
+}
+export const survivorReady = (look) => !!scache[((look | 0) % SURVIVOR_LOOKS.length + SURVIVOR_LOOKS.length) % SURVIVOR_LOOKS.length];
+
+// 倖存者材質:健康皮膚(細緻毛孔)、清澈的眼睛;衣物/裝備/頭髮與殭屍共用
+const IRIS = { brown: '#5a3a1e', dark: '#2a1a10', green: '#4a6a3a', hazel: '#7a5a2a', blue: '#4a6a9a' };
+let SM = null;
+function survivorMats(eyeKey = 'brown') {
+  if (!SM) {
+    const base = materials();
+    const S = 256, r = rng(4242);
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const x = c.getContext('2d');
+    x.fillStyle = '#ece5df';
+    x.fillRect(0, 0, S, S);
+    const img = x.getImageData(0, 0, S, S), d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const n = (r() - 0.5) * 9;
+      d[i] += n; d[i + 1] += n; d[i + 2] += n;
+      if (r() < 0.008) { d[i] -= 16; d[i + 1] -= 18; d[i + 2] -= 16; } // 毛孔
+    }
+    x.putImageData(img, 0, 0);
+    const map = new THREE.CanvasTexture(c);
+    map.wrapS = map.wrapT = THREE.RepeatWrapping;
+    map.colorSpace = THREE.SRGBColorSpace;
+    map.anisotropy = 4;
+    const bump = map.clone();
+    bump.colorSpace = THREE.NoColorSpace;
+    bump.needsUpdate = true;
+    const skin = new THREE.MeshStandardMaterial({ vertexColors: true, map, bumpMap: bump, bumpScale: 0.45, roughness: 0.56 });
+    SM = { base, skin, eyes: {} };
+  }
+  if (!SM.eyes[eyeKey]) {
+    const W = 128, H = 64, r = rng(77 + eyeKey.length);
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const x = c.getContext('2d');
+    x.fillStyle = '#efe9e0';
+    x.fillRect(0, 0, W, H);
+    for (let i = 0; i < 14; i++) { // 淡淡的微血管
+      let px = r() < 0.5 ? 54 + r() * 10 : r() * 10, py = r() * H;
+      x.strokeStyle = 'rgba(190,90,90,' + (0.12 + r() * 0.15) + ')';
+      x.lineWidth = 0.5;
+      x.beginPath();
+      x.moveTo(px, py);
+      for (let k = 0; k < 4; k++) { px += (32 - px) * 0.12 + (r() - 0.5) * 4; py += (32 - py) * 0.1 + (r() - 0.5) * 4; x.lineTo(px, py); }
+      x.stroke();
+    }
+    const iris = IRIS[eyeKey] || IRIS.brown;
+    const g = x.createRadialGradient(32, 32, 0, 32, 32, 10.5);
+    g.addColorStop(0, '#050505');
+    g.addColorStop(0.36, '#050505');
+    g.addColorStop(0.42, iris);
+    g.addColorStop(0.85, iris);
+    g.addColorStop(1, 'rgba(40,30,20,0.9)');
+    x.fillStyle = g;
+    x.beginPath();
+    x.arc(32, 32, 10.5, 0, Math.PI * 2);
+    x.fill();
+    x.fillStyle = 'rgba(255,255,255,0.85)'; // 眼神光
+    x.beginPath();
+    x.arc(29, 29, 1.6, 0, Math.PI * 2);
+    x.fill();
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    SM.eyes[eyeKey] = new THREE.MeshStandardMaterial({ map: t, roughness: 0.12 });
+  }
+  const B0 = SM.base;
+  return { skin: SM.skin, cloth: B0.cloth, gear: B0.gear, bone: B0.bone, hair: B0.hair, glow: B0.glow, eye: { survivor: SM.eyes[eyeKey] } };
 }
 
 // 依變體建立一個可動的實例:SkinnedMesh + 骨架 + 命中盒

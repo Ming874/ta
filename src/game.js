@@ -132,6 +132,7 @@ export class Game {
   // ---------- 主更新 ----------
   update(dt) {
     this.time += dt;
+    if (this.net) this.net.update(dt); // [net] 多人連線:殭屍快照、遠端玩家、回合同步、多人 HUD(src/net/session.js)
     this.hospital.update(this.time, dt, this.player);
     this.post.uniforms.time.value = this.time % 100;
     this.updateParticles(dt);
@@ -146,11 +147,12 @@ export class Game {
     }
 
     const paused = this.paused || this.shopUIOpen;
-    if (paused) return;
+    if (paused && !this.net) return; // [net] 多人模式世界不暫停,只是本機玩家不能操作
 
     const p = this.player;
-    p.update(dt, true);
+    p.update(dt, !paused && !p.downed && p.alive !== false); // [net] 倒地/陣亡/多人暫停選單時不能移動
     this.physics.begin(dt); // 物理:送出上一幀的命令,Worker 與下面的遊戲邏輯平行步進
+    if (this.net) this.net.afterPlayer(dt); // [net] 倒地/觀戰鏡頭、遠端角色動畫、送出本機狀態
     const targets = this.flowTargets();
     if (targets.length) this.world.updateFlow(targets);
     sfx.listener(p.pos.x, p.pos.y + (p.eyeH || 1.65), p.pos.z, p.yaw);

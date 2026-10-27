@@ -1,0 +1,57 @@
+/* 多人連線大廳(主選單的多人入口) */
+#mp-entry { margin-top: 12px; background: #23302a; border-color: #4a8a5a; }
+#mp-entry:hover { background: #2e4236; }
+#mp-lobby { position: fixed; inset: 0; z-index: 12; display: none; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.8); font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", system-ui, sans-serif; color: #dcdcd2; }
+#mp-lobby.on { display: flex; }
+#mp-lobby .box { width: min(860px, 94vw); max-height: 92vh; overflow: auto; background: rgba(12, 15, 14, 0.97); border: 1px solid #44504a; padding: 22px 28px 18px; box-shadow: 0 10px 40px #000; }
+#mp-lobby h2 { margin: 0 0 4px; font-size: 30px; letter-spacing: 8px; color: #cfd3c8; display: flex; justify-content: space-between; align-items: baseline; }
+#mp-lobby h2 small { font-size: 13px; letter-spacing: 1px; opacity: 0.6; }
+#mp-lobby h3 { margin: 18px 0 8px; font-size: 15px; letter-spacing: 3px; color: #9fb4a2; font-weight: 400; }
+#mp-lobby .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+#mp-lobby label { font-size: 14px; opacity: 0.85; }
+#mp-lobby input[type='text'] { font: inherit; font-size: 17px; padding: 8px 10px; color: #f0f0e8; background: #0a0d0c; border: 1px solid #4a524c; outline: none; }
+#mp-lobby input[type='text']:focus { border-color: #7aa884; }
+#mp-lobby input.code { width: 150px; text-transform: uppercase; letter-spacing: 6px; font-size: 20px; text-align: center; }
+#mp-lobby input.nick { width: 220px; }
+#mp-lobby select { font: inherit; font-size: 15px; padding: 6px 8px; color: #eee; background: #0a0d0c; border: 1px solid #4a524c; }
+#mp-lobby button { font: inherit; font-size: 16px; letter-spacing: 2px; padding: 9px 20px; color: #eee; background: #2c3a30; border: 1px solid #4a8a5a; cursor: pointer; }
+#mp-lobby button:hover:not(:disabled) { filter: brightness(1.25); }
+#mp-lobby button:disabled { opacity: 0.4; cursor: not-allowed; }
+#mp-lobby button.red { background: #7a1a15; border-color: #b4443a; }
+#mp-lobby button.grey { background: #2a2a2a; border-color: #5a5a5a; }
+#mp-lobby button.big { font-size: 19px; padding: 12px 30px; letter-spacing: 4px; }
+#mp-lobby .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+#mp-lobby .mode { padding: 14px 16px; border: 1px solid #3a423c; background: #121816; cursor: pointer; text-align: left; letter-spacing: 0; }
+#mp-lobby .mode.sel { border-color: #c9a84a; box-shadow: 0 0 0 1px #c9a84a inset; background: #1a1f18; }
+#mp-lobby .mode b { display: block; font-size: 19px; letter-spacing: 3px; margin-bottom: 4px; color: #e8e0c8; }
+#mp-lobby .mode span { font-size: 13px; opacity: 0.75; line-height: 1.6; }
+#mp-lobby .opts { margin-top: 10px; display: flex; gap: 18px; flex-wrap: wrap; align-items: center; font-size: 14px; }
+#mp-lobby .list { border: 1px solid #2e3631; max-height: 230px; overflow: auto; }
+#mp-lobby .list .r { display: grid; grid-template-columns: 110px 1fr 110px 70px 90px; gap: 8px; align-items: center; padding: 8px 12px; border-bottom: 1px solid #1e2420; font-size: 15px; cursor: pointer; }
+#mp-lobby .list .r:hover { background: #1a221d; }
+#mp-lobby .list .r .c { letter-spacing: 3px; color: #d8c890; font-weight: 700; }
+#mp-lobby .list .r .st { font-size: 12px; opacity: 0.7; }
+#mp-lobby .list .empty { padding: 18px; text-align: center; opacity: 0.55; font-size: 14px; }
+#mp-lobby .msg { min-height: 20px; margin-top: 12px; font-size: 14px; color: #ffb4a0; }
+#mp-lobby .msg.ok { color: #9fe0a8; }
+#mp-lobby .foot { margin-top: 16px; display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; opacity: 0.85; }
+#mp-lobby .status { font-size: 12px; opacity: 0.65; letter-spacing: 1px; }
+/* 房間 */
+#mp-lobby .roomcode { font-size: 44px; letter-spacing: 12px; color: #e8d48a; font-weight: 700; user-select: text; }
+#mp-lobby .players { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#mp-lobby .pl { display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: #121816; border: 1px solid #2e3631; min-height: 22px; }
+#mp-lobby .pl.empty { opacity: 0.35; border-style: dashed; }
+#mp-lobby .pl .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+#mp-lobby .pl .nm { flex: 1; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#mp-lobby .pl .tag { font-size: 12px; padding: 2px 7px; border: 1px solid #555; opacity: 0.85; }
+#mp-lobby .pl .tag.ready { color: #8fe09a; border-color: #4a8a5a; }
+#mp-lobby .pl .tag.host { color: #ffd46a; border-color: #8a7a3a; }
+#mp-lobby .pl .tag.off { color: #ff9a80; border-color: #8a4a3a; }
+#mp-lobby .pl .ping { font-size: 12px; opacity: 0.55; width: 52px; text-align: right; }
+#mp-lobby .pl .kick { font-size: 12px; padding: 2px 8px; letter-spacing: 0; }
+#mp-lobby .chatbox { margin-top: 10px; border: 1px solid #2e3631; background: #0b0e0d; }
+#mp-lobby .chatbox .log { height: 110px; overflow: auto; padding: 6px 10px; font-size: 14px; line-height: 1.6; }
+#mp-lobby .chatbox .log b { color: #8fd8ff; margin-right: 6px; }
+#mp-lobby .chatbox .log .sys { color: #9a9a8a; font-style: italic; }
+#mp-lobby .chatbox input { width: 100%; box-sizing: border-box; border: none; border-top: 1px solid #2e3631; font-size: 15px; }
+#mp-lobby .help { font-size: 13px; opacity: 0.6; line-height: 1.8; margin-top: 10px; }
