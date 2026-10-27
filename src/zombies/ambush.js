@@ -4,7 +4,7 @@ import { ambushSfx } from '../audio/ambush.js';
 import { settings } from '../ui/settings.js';
 import { Zombie } from './zombie.js';
 import { forceVariant } from './model.js';
-import { LURK, PERCH, BURST, DROP, POSE, isPerch, makeAmb } from './ambush.pose.js';
+import { LURK, PERCH, POSE, isPerch, makeAmb } from './ambush.pose.js';
 import { createAmbushProps } from './ambush.props.js';
 import { precompile } from '../sys/warmup.js';
 
@@ -25,7 +25,7 @@ const CORNERS = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
 const POSE_H = { [POSE.slump]: 0.75, [POSE.lie]: 0.3, [POSE.supine]: 0.3, [POSE.crouch]: 0.9, [POSE.stand]: 1.5 };
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
 const rand = (a, b) => a + Math.random() * (b - a);
-const _v = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0), _down = new THREE.Vector3(0, -1, 0), _o = new THREE.Vector3(), _d = new THREE.Vector3();
+const _v = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0), _down = new THREE.Vector3(0, -1, 0);
 const _snap = { x: 0, y: 0, z: 0 };
 
 function rng(seed) {
