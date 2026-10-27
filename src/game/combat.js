@@ -41,7 +41,7 @@ export const combatMethods = {
   initCombat() {
     if (this.wfx) return;
     this.wfx = new WeaponFX(this.scene, this.world);
-    this.ballistics = new Ballistics(this); // [physics] 子彈穿透/玻璃/鐵網(src/physics/penetration.js)
+    this.ballistics = this.world.ballistics = new Ballistics(this); // [physics] 子彈穿透/玻璃/鐵網(src/physics/penetration.js;翻越也會查櫃台玻璃)
     this.chud = new CenterHud();
     this.nades = []; // 飛行中的手榴彈
     this.gore = []; // 噴血源

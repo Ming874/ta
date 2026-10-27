@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { sfx } from './audio.js';
+import { Mantle } from './player/mantle.js';
 
 const EYE = 1.65, EYE_CROUCH = 1.05; // 眼睛高度(腳底起算)
 const HEIGHT = 1.8, HEIGHT_CROUCH = 1.25; // 身高(天花板/道具盒判定)
@@ -78,6 +79,7 @@ export class Player {
     this._spacePrev = false;
     this._crouchToggle = false;
     this._cell = -1;
+    this.mantle = new Mantle(this); // 翻越/攀上腰高障礙物(src/player/mantle.js)
 
     // 手電筒
     this.flashlight = new THREE.SpotLight(0xfff1d6, 75, 30, 0.62, 0.95, 1.8);
@@ -107,6 +109,7 @@ export class Player {
     this.dip = this.dipV = 0;
     this.crouching = this._crouchToggle = false;
     this.crouchT = 0;
+    this.mantle.active = false;
     this.height = HEIGHT;
     this.stamina = 1;
     this.exhausted = false;
@@ -183,7 +186,7 @@ export class Player {
     if (canMove && cDown && !this._cPrev) this._crouchToggle = !this._crouchToggle;
     this._cPrev = cDown;
     let crouch = canMove && this._crouchToggle;
-    if (!crouch && this.crouching && w.ceilAt && w.ceilAt(p.x, p.z, p.y) - p.y < HEIGHT + 0.02) crouch = true;
+    if (!crouch && this.crouching && (w.headroom ? w.headroom(p.x, p.z, p.y, RADIUS) : w.ceilAt ? w.ceilAt(p.x, p.z, p.y) : Infinity) - p.y < HEIGHT + 0.02) crouch = true; // 頭上(含道具)空間不夠就站不起來
     this.crouching = crouch;
     this.height = crouch ? HEIGHT_CROUCH : HEIGHT;
     this.crouchT += ((crouch ? 1 : 0) - this.crouchT) * Math.min(1, dt * 9);
@@ -224,7 +227,11 @@ export class Player {
     this._spacePrev = space;
     this._jumpBuf -= dt;
     this._coyote = this.onGround ? 0.1 : this._coyote - dt;
-    if (this._jumpBuf > 0 && this._coyote > 0 && !crouch && this.stamina >= JUMP_COST * 0.5) {
+    if (this._jumpBuf > 0 && this._coyote > 0 && !crouch && this.stamina >= JUMP_COST * 0.5 && len > 0 && this.onGround && this.mantle.start(wx, wz)) { // 往腰高障礙物前進時:翻越取代跳躍
+      this._coyote = this._jumpBuf = 0;
+      this.stamina = Math.max(0, this.stamina - JUMP_COST * 1.4);
+      this._stamT = STAM_DELAY;
+    } else if (this._jumpBuf > 0 && this._coyote > 0 && !crouch && this.stamina >= JUMP_COST * 0.5) {
       this.vy = JUMP_V * (this.inWater ? 0.8 : 1);
       this.onGround = false;
       this._coyote = this._jumpBuf = 0;
@@ -235,16 +242,19 @@ export class Player {
 
     // ---- 積分 + 碰撞(world.resolve 處理牆/道具/地面/天花板/落地) ----
     const wasAir = !this.onGround;
-    if (!this.onGround) { this.vy -= G * dt; p.y += this.vy * dt; }
-    const ex = p.x + this.vx * dt, ez = p.z + this.vz * dt;
-    p.x = ex;
-    p.z = ez;
-    w.resolve(p, RADIUS, this);
-    // 被牆推回:去掉往牆裡的速度分量(貼牆滑行、被擊退撞牆不會黏住)
-    const px = p.x - ex, pz = p.z - ez, pl = Math.hypot(px, pz);
-    if (pl > 1e-5) {
-      const nx = px / pl, nz = pz / pl, vn = this.vx * nx + this.vz * nz;
-      if (vn < 0) { this.vx -= nx * vn; this.vz -= nz * vn; }
+    if (this.mantle.active) this.mantle.update(dt); // 翻越中:固定軌跡,結束時才碰撞
+    else {
+      if (!this.onGround) { this.vy -= G * dt; p.y += this.vy * dt; }
+      const ex = p.x + this.vx * dt, ez = p.z + this.vz * dt;
+      p.x = ex;
+      p.z = ez;
+      w.resolve(p, RADIUS, this);
+      // 被牆推回:去掉往牆裡的速度分量(貼牆滑行、被擊退撞牆不會黏住)
+      const px = p.x - ex, pz = p.z - ez, pl = Math.hypot(px, pz);
+      if (pl > 1e-5) {
+        const nx = px / pl, nz = pz / pl, vn = this.vx * nx + this.vz * nz;
+        if (vn < 0) { this.vx -= nx * vn; this.vz -= nz * vn; }
+      }
     }
     if (wasAir && this.onGround && this.landV > 1) { // 落地:鏡頭下沉 + 腳步聲
       this.dipV -= Math.min(5, this.landV) * 0.32;
@@ -273,7 +283,7 @@ export class Player {
       const d = p.y - this.viewY;
       this.viewY = d > 1 || d < -1 ? p.y : this.viewY + d * Math.min(1, dt * 16);
     } else this.viewY = p.y;
-    this.eyeH = EYE + (EYE_CROUCH - EYE) * this.crouchT;
+    this.eyeH = EYE + (EYE_CROUCH - EYE) * this.crouchT + this.mantle.eye;
     this.shake = Math.max(0, this.shake - dt);
     const bobAmp = this.onGround ? 1 - this.crouchT * 0.5 : 0;
     const bobY = Math.sin(this.bobT * 2) * 0.035 * this.speedNorm * bobAmp;
@@ -281,7 +291,7 @@ export class Player {
     const sh = this.shake * (Math.random() - 0.5) * 0.08;
     this.camera.position.set(p.x + bobX * cos, this.viewY + this.eyeH + bobY + this.dip + sh, p.z - bobX * sin);
     this.camera.rotation.order = 'YXZ';
-    this.camera.rotation.set(this.pitch + sh, this.yaw, 0);
+    this.camera.rotation.set(this.pitch + sh + this.mantle.pitch, this.yaw, this.mantle.roll);
   }
 
   get eye() {
