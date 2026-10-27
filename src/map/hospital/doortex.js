@@ -2,9 +2,9 @@ import * as THREE from 'three';
 
 // 門的 PBR 圖集(全部程式產生,0 下載):顏色(窗洞是透明 → alphaTest 挖空)2048²、法線 1024²(由高度圖 Sobel 算)、
 // ORM 1024²(R = AO、G = 粗糙度、B = 金屬度;MeshStandardMaterial 的 aoMap/roughnessMap/metalnessMap 共用一張)。
-// 版面:七種門面各 512×1024(縱向 = 2.9m,寬 = 一扇門寬 0.985m)、右下角是門框、門邊、五金、玻璃、貼紙、門縫光。
+// 版面:七種門面各 512×1024(縱向 = 2.9m,寬 = 一扇門寬 0.962m)、右下角是門框、門邊、五金、玻璃、貼紙、門縫光。
 // 所有門扇、門框、五金共用一個材質(每層一個 BatchedMesh → 1 個 draw call),玻璃一個、門縫光一個。
-export const SPAN = 2.9, LW = 0.985;
+export const SPAN = 2.9, LW = 0.962; // 門扇寬(2m 門洞兩扇,中間留 6mm 門縫;openings.js 的 lw 與這裡一致)
 const AW = 2048, AH = 2048, NR = 1024, K = NR / AW;
 export const FACES = { ward: [0, 0], wood: [512, 0], fire: [1024, 0], cell: [1536, 0], metal: [0, 1024], swing: [512, 1024], chapel: [1024, 1024] };
 const FRAMES = ['trim_white', 'trim_gray', 'steel_dirty', 'steel_brushed', 'trim_wood', 'trim_alu'];

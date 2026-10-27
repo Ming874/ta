@@ -20,7 +20,7 @@ const PEN = { fire: 'heavy', cell: 'heavy', metal: 'metal', swing: 'metal', glas
 const BARRICADE_COST = 10, BARRICADE_HP = 9, MAX_BARRICADES = 3;
 const angDiff = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
 
-export function setupDoors(game, ix, { leaves = [], seed = 77, lockSpecs = [] } = {}) {
+export function setupDoors(game, ix, { leaves = [], seed = 77, lockSpecs = [], leafApi = null, fixtures = null } = {}) {
   const world = game.world, R = rng(seed);
   const ways = new Map();
   for (const l of leaves) {
@@ -301,8 +301,67 @@ export function setupDoors(game, ix, { leaves = [], seed = 77, lockSpecs = [] } 
   }
   ix.on('flag', () => { for (const w of list) if (w.lock && !w.lock.open && w.lock.flag && ix.flags.has(w.lock.flag)) { w.lock.open = true; for (const l of w.leaves) colliders(l); ix.emit('unlock', w); } });
 
+  // ---------- 門縫透光:關著的門、房裡有燈 → 門下的地上有一道光(走廊那側);偶爾有影子從門後走過,或停在門後敲門 ----------
+  const byZone = new Map();
+  for (const f of fixtures || []) if (f.zone) { const k = f.zone.id; if (!byZone.has(k)) byZone.set(k, []); byZone.get(k).push(f); }
+  const leakWays = leafApi?.hasLeak ? list.filter((w) => leafApi.hasLeak(w.key)) : [];
+  for (const w of leakWays) {
+    const l = w.leaves[0];
+    w.wf = l.wf; w.dirRoom = l.dirRoom; w.axis = l.axis;
+    w.room = l.zone && l.zone.theme !== 'corridor' ? l.zone : null;
+    w.lit = byZone.get(w.room?.id) || null;
+    w.lr = w.lg = w.lb = 0;
+  }
+  const bump = (u, c, s) => Math.exp(-(((u - c) / s) ** 2));
+  let leakT = 0, shade = null, shadeNext = 40 + R() * 40;
+  const shadeK = (S, now) => { // 門後的人影:走過 = 兩隻腳各遮一下;停下 = 一腳、兩腳,停在門後,最後走開
+    const u = now - S.t0;
+    if (!S.stop) return Math.max(0.05, 1 - 0.8 * bump(u, 0.5, 0.2) - 0.85 * bump(u, 1.1, 0.2));
+    if (u < 0.9) return 1 - 0.75 * bump(u, 0.55, 0.2);
+    if (u < 5.6) return 0.12 + 0.05 * Math.sin(u * 3.1);
+    return Math.min(1, 0.12 + (u - 5.6) * 0.8);
+  };
+  const wantShade = (w, p, now) => { // 玩家在走廊這側 2.5~8m、看著那扇門
+    const out = -w.dirRoom, sd = ((w.axis === 'z' ? p.z : p.x) - w.wf) * out;
+    if (sd < 1.2) return false;
+    const d = Math.hypot(w.cx - p.x, w.cz - p.z);
+    if (d < 2.5 || d > 8) return false;
+    const yaw = game.player.yaw ?? 0, fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    if (((w.cx - p.x) * fx + (w.cz - p.z) * fz) / d < 0.75) return false;
+    const D = game.horror?.director;
+    if (D?.request && !D.request('underDoor', { pos: pos(w, 0.1) })) return false;
+    D?.notify?.('underDoor', { pos: pos(w, 0.1) });
+    shade = { w, t0: now, stop: R() < 0.35 };
+    if (shade.stop) ix.after(2.2 + R() * 1.2, () => { if (shade?.w === w && allClosed(w)) ixs.doorKnock?.(pos(w, 1.2), R() < 0.5 ? 3 : 2); });
+    ix.emit('doorShadow', w, shade.stop);
+    return true;
+  };
+  if (leakWays.length) ix.tick((dt) => {
+    if ((leakT -= dt) > 0) return true;
+    leakT = 0.1;
+    const p = game.player.pos, li = world.layout.levelOfY(p.y + 0.3), now = game.time;
+    if (shade && now - shade.t0 > (shade.stop ? 7 : 1.8)) shade = null;
+    let cand = null;
+    for (const w of leakWays) {
+      let r = 0, g = 0, b = 0;
+      if (w.lit && w.li === li && Math.abs(w.cx - p.x) < 20 && Math.abs(w.cz - p.z) < 20 && allClosed(w)) {
+        for (const f of w.lit) if (f.state !== 2 && f.cur > 0.02) { const k = Math.min(1.2, f.cur); r += f.color.r * k; g += f.color.g * k; b += f.color.b * k; }
+        const m = Math.max(r, g, b);
+        if (m > 1) { r /= m; g /= m; b /= m; }
+        let s = 0.8;
+        if (shade?.w === w) s *= shadeK(shade, now);
+        else if (m > 0.15 && !cand) cand = w;
+        r *= s; g *= s; b *= s;
+      }
+      if (Math.abs(r - w.lr) + Math.abs(g - w.lg) + Math.abs(b - w.lb) > 0.02) { leafApi.leak(w.key, r, g, b); w.lr = r; w.lg = g; w.lb = b; }
+    }
+    if (!shade && cand && now > shadeNext && game.state === 'playing' && game.phase !== 'fighting') { if (wantShade(cand, p, now)) shadeNext = now + 70 + R() * 70; }
+    return true;
+  });
+
   const api = {
-    list, ways, colliders, setState, barricade, unbar, isClosed, allClosed,
+    list, ways, colliders, setState, barricade, unbar, isClosed, allClosed, leakWays,
+    shadow(w, stop = false) { shade = { w, t0: game.time, stop }; }, // 測試/劇情用:讓某扇門後面有人影
     reset() { // 新的一局:門回到建構時的狀態,木板拆掉,鎖重新鎖上
       for (const w of list) {
         if (w.bar) unbar(w, false, false);

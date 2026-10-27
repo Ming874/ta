@@ -15,7 +15,7 @@
 //  樂器   pianoNote(pos, midi, vel) musicBoxWind(pos) musicBox(pos, n, slow)(回傳秒數)mobileChime(pos)
 //  電梯   elevatorDing(pos) elevatorDoor(pos, open) elevatorMotor(pos)
 //  火警/廣播 alarmPull(pos) alarmStart(key, pos) alarmStop(key) paKey(pos) micFeedback(pos)
-//  門     doorOpen(pos, kind) doorClose(pos, kind)(kind:'fire' | 'cell' | 'ward' | 'glass' | 'wood')doorBash(pos, heavy) barricade(pos) barricadeBreak(pos)
+//  門     doorOpen(pos, kind) doorClose(pos, kind)(kind:'fire' | 'cell' | 'ward' | 'glass' | 'wood')doorBash(pos, heavy) barricade(pos) barricadeBreak(pos) doorKnock(pos, n)
 //  收納   lockerOpen/lockerClose(pos) drawerOpen/drawerClose(pos) cabinetOpen/cabinetClose(pos) rummage(pos)
 //  水     tapStart(key, pos, dirty) tapStop(key) tapSqueak(pos) pipeKnock(pos)
 //  其他   typeKey(pos) typeReturn(pos) nurseCall(pos) tuneSweep(pos) tvOn(pos) tvOff(pos) wheelSqueak(pos) gurneyRoll(pos)(這兩個會跟隨傳入的位置物件)
@@ -1002,6 +1002,17 @@ export const ix = {
     if (set) playBuf(h.in, h.t, pick(set), { rate: rand(0.94, 1.06), g: rand(0.85, 1) });
     else bashSynth(h.in, h.t, hv);
     if (hv) duck(0.75, 0.35);
+  }),
+  doorKnock: safe((pos, n = 3) => { // 門的另一邊有人用指節敲門:悶、慢,最後一下停頓比較久
+    const h = E(pos, { prio: 4, room: 0.55, hall: 0.05, dur: 0.6 + n * 0.55, ref: 1.6, roll: 1, maxDist: 26, gain: 1.5 });
+    if (!h) return;
+    let t = h.t;
+    for (let i = 0; i < n; i++) {
+      tone(h.in, t, { f: rand(92, 120), f1: 58, dur: 0.11, g: 0.45 });
+      burst(h.in, t, { type: 'lowpass', f: 650, f1: 180, dur: 0.07, g: 0.38 });
+      burst(h.in, t, { type: 'bandpass', f: rand(380, 520), q: 2.5, dur: 0.03, g: 0.12 });
+      t += i === n - 2 ? rand(0.75, 1.05) : rand(0.34, 0.46);
+    }
   }),
   barricade: safe((pos) => { // 釘木板:木板靠上門框 → 3~4 下鐵鎚(釘子越打越深,音高變高)→ 木板受力的吱嘎
     const h = E(pos, { prio: 4, room: 0.6, dur: 3.2, ref: 2, gain: 1.05 });

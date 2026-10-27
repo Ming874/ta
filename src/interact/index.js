@@ -36,7 +36,7 @@ export function buildInteract(game) {
   const pack = PACKS[`./packs/${mapId}.js`]?.default || null;
   const kit = createKit({ root: H.group || game.scene, levelGroups: H.propGroups || null });
   let doors = null, placed = null;
-  try { doors = setupDoors(game, ix, { leaves: H.doorLeaves || [], lockSpecs: (pack?.items || []).filter((i) => i.kind === 'lock') }); } catch (e) { console.warn('[interact] doors', e); }
+  try { doors = setupDoors(game, ix, { leaves: H.doorLeaves || [], leafApi: H.leaves || null, fixtures: H.lights?.fixtures || null, lockSpecs: (pack?.items || []).filter((i) => i.kind === 'lock') }); } catch (e) { console.warn('[interact] doors', e); }
   try { placed = placeAll(game, ix, kit, pack); } catch (e) { console.warn('[interact] place', e); }
   const nStatic = kit.finish();
   ix.map = { kit, doors, api: placed?.api, stats: placed?.stats, pack, nStatic };
