@@ -141,7 +141,7 @@ export function installHorror(game) {
     resetRun() {
       H.director.reset(); H.whispers.reset(); H.app?.clear(); H.marks?.clear(); H.fx?.clear();
       later.length = 0; watchers.length = 0; H.usedWrit.clear(); H.ringing = null; H.coldK = H.coldT = 0; H.coldUntil = 0;
-      H.calls?.reset(); T.spots.clear();
+      H.calls?.reset(); T.spots.clear(); H._pace = false;
       T.zones.clear(); T.props.clear(); T.still = 0; T.streak = 0; T.lastKill = 0; T.zonePend = null; T.next = 0;
       for (const d of H.events?.doors || []) d.primed = false;
       if (performance.now() > 40000) models.warm();

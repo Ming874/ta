@@ -40,6 +40,7 @@ export function scareKinds(h) {
   const D = () => game.interact?.doors || null;
   const wayOK = (w, c) => w.li === c.li && !w.out && !w.lock && !w.bar && !w.leaves.some((l) => l.anim || l._gh);
   const blocked = (w) => { const near = (p) => p && Math.abs(p.y - w.y) < 1.6 && Math.hypot(p.x - w.cx, p.z - w.cz) < 1.15; if (near(game.player.pos)) return true; for (const z of game.zombies) if (z.alive && near(z.pos)) return true; return false; };
+  const doorSees = (c, w) => { const ax = w.leaves[0]?.axis, sx = Math.sign(c.px - w.cx) || 1, sz = Math.sign(c.pz - w.cz) || 1; const tx = ax === 'z' ? w.cx : w.cx + sx * 1.0, tz = ax === 'z' ? w.cz + sz * 1.0 : w.cz; return c.sees(c.li, c.px, c.pz, tx, tz); };
   const tip = (l, a) => { const cc = Math.cos(a), ss = -Math.sin(a); return [l.group.position.x + cc * l.lw, l.group.position.z + ss * l.lw]; };
   // 慢慢打開(往玩家那一側;開到一半多),結束時更新碰撞盒
   function creep(w, px, pz, dur, frac = rand(0.5, 0.72)) {
@@ -153,7 +154,7 @@ export function scareKinds(h) {
       return true;
     } },
     // 繞著頭轉的低語(從背後開始,繞一圈半)
-    circle: { ok: (c) => !c.zNear && P().speedNorm < 0.5 && !W.busy, run() {
+    circle: { ok: (c) => !c.zNear && P().speedNorm < 0.5 && !(W.busy && W.cur?.prio >= 5), run() {
       const l = W.pick('cue', { cue: 'circle', round: game.round }) || W.pick('idle', { round: game.round, phase: game.phase });
       if (!l) return null;
       return W.say(l, { priority: 5, orbit: { r: 0.55, w: rand(2.2, 3) * (Math.random() < 0.5 ? -1 : 1), a: 0 }, ear: 'behind', mode: 'syllabic' });
@@ -181,7 +182,7 @@ export function scareKinds(h) {
       return s;
     } },
     // 院內廣播故障重播(萬嵐的集合廣播系統;STORY.md §1.10:合成、甜美、制式,叫人集合的喇叭都裝了誘集模組)
-    paHijack: { ok: () => !W.busy && !!W.pick('pa', { round: game.round, phase: game.phase }), run() {
+    paHijack: { ok: () => !!W.pick('pa', { round: game.round, phase: game.phase }) && !(W.busy && W.cur?.prio >= 8), run() {
       const l = W.pick('pa', { round: game.round, phase: game.phase });
       sfx.pa('up');
       h.after(2.1, () => { const r = W.say(l, { filter: 'pa', priority: 8, force: true }); const d = r?.dur ?? 4; h.after(d - 0.4, () => { if (Math.random() < 0.6) ghost.paGlitch(); else sfx.pa('down'); }); });
@@ -249,10 +250,15 @@ export function scareKinds(h) {
           const p = P().pos, d = Math.hypot(q.x - p.x, q.z - p.z), dot = lookDot(q.x, q.z);
           if (d < 3.6 && dot > 0.75 && hops > 0) { ghost.stinger('hit'); P().addShake?.(0.22); h.chill(0.6, 5); A.dismiss(q, 'look', true); return; }
           if (dot < 0.35) away += dt; else away = 0;
-          if (away > 0.45 && hops < 5) { // 沒在看:往玩家靠近一步
+          if (away > 0.45 && hops < 5) { // 沒在看:往玩家靠近一步(落點要能走、而且看得到玩家)
             away = 0;
-            const k = Math.min(2.8, d - 3.2);
-            if (k > 0.5) { const nx = q.x + (p.x - q.x) / d * k, nz = q.z + (p.z - q.z) / d * k; if (walk(c, nx, nz)) { q.x = nx; q.z = nz; hops++; sfx.remoteStep({ x: nx, y: lv(c), z: nz }); } }
+            const k0 = Math.min(2.8, d - 3.2), ux = (p.x - q.x) / d, uz = (p.z - q.z) / d;
+            if (k0 > 0.5) for (const [kk, lat] of [[1, 0], [0.7, 0], [1, 0.8], [1, -0.8], [0.5, 0.6], [0.5, -0.6]]) {
+              const k = k0 * kk, nx = q.x + ux * k - uz * lat, nz = q.z + uz * k + ux * lat;
+              if (!walk(c, nx, nz) || !c.sees(c.li, nx, nz, p.x, p.z)) continue;
+              q.x = nx; q.z = nz; hops++; sfx.remoteStep({ x: nx, y: lv(c), z: nz });
+              break;
+            }
           }
         } });
       if (a) { cue('creeper', 0.4, 'behind', 2); h.director.hold(12); }
@@ -277,7 +283,7 @@ export function scareKinds(h) {
     // 窗玻璃的倒影裡,有人站在你背後(轉頭:沒有人)
     reflection: { ok: (c) => free() && models.ready('patient') && !!reflectWin(c), run(c) {
       const R = reflectWin(c);
-      const a = A.spawn({ tag: 'reflection', fig: pick(['patient', 'man']), pose: 'stand', look: 'pale', alpha: 0.42, x: R.x, y: lv(c), z: R.z, yaw: R.yaw, dur: 2.6, fadeIn: 0.5,
+      const a = A.spawn({ tag: 'reflection', fig: pick(['patient', 'man']), pose: 'stand', look: 'pale', alpha: 0.62, x: R.x, y: lv(c), z: R.z, yaw: R.yaw, dur: 2.8, fadeIn: 0.45,
         vanish: { flash: false, look: 0, near: 0 },
         onTick: (q) => { if (lookDot(R.wx, R.wz) < 0.55) A.dismiss(q, 'look'); }, // 不看玻璃了(轉頭)→ 不見
         onVanish: (why) => { if (why === 'look') { ghost.breathNeck(0.8); cue('reflect', 0.5, 'behind', 0.8); } } });
@@ -338,7 +344,7 @@ export function scareKinds(h) {
       const d = dist(c, w.cx, w.cz);
       if (d < 3.5 || d > 14) continue;
       const v = viewDot(c, w.cx, w.cz);
-      if (v < 0.6 || !c.seesNear(w.cx, w.cz)) continue;
+      if (v < 0.6 || !doorSees(c, w)) continue;
       const s = v - d * 0.02;
       if (s > bs) { bs = s; best = w; }
     }
@@ -351,7 +357,7 @@ export function scareKinds(h) {
       if (!wayOK(w, c) || Dd.allClosed(w) || blocked(w)) continue;
       const d = dist(c, w.cx, w.cz);
       if (d < 2.5 || d > 9 || viewDot(c, w.cx, w.cz) > -0.2) continue;
-      if (!c.seesNear(w.cx, w.cz)) continue;
+      if (!doorSees(c, w)) continue;
       return w;
     }
     return null;
@@ -363,7 +369,7 @@ export function scareKinds(h) {
     for (const w of Dd.list) {
       if (!wayOK(w, c) || Dd.allClosed(w) || blocked(w)) continue;
       const d = dist(c, w.cx, w.cz);
-      if (d < 5 || d > 24 || viewDot(c, w.cx, w.cz) < 0.7 || !c.seesNear(w.cx, w.cz)) continue;
+      if (d < 5 || d > 24 || viewDot(c, w.cx, w.cz) < 0.7 || !doorSees(c, w)) continue;
       out.push([d, w]);
     }
     return out.sort((a, b) => b[0] - a[0]).slice(0, 5).map((x) => x[1]);

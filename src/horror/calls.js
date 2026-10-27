@@ -19,6 +19,11 @@ const lineDur = (text) => 0.55 + syllabify(text, LINE_RATE).dur + 0.9;
 export function createCalls(h) {
   const game = h.game;
   const S = { used: new Set(), count: 0, ringback: new Map(), live: null };
+  // 可推動的道具(和事件共用快取 h._dyn)
+  const dynList = () => {
+    if (!h._dyn && game.hospital?.group) { h._dyn = []; game.hospital.group.traverse((o) => { if (o.userData?.dynamic && /wc|wheel|cart|iv|linen|gurney|trolley|chair|stool|bin|box/i.test(o.userData.kind || o.name || '')) h._dyn.push(o); }); }
+    return h._dyn || [];
+  };
   const side = (p, yaw, x, z) => {
     const fx = -Math.sin(yaw), fz = -Math.cos(yaw), dx = x - p.x, dz = z - p.z, d = Math.hypot(dx, dz) || 1, dot = (dx * fx + dz * fz) / d;
     if (dot < -0.5) return 'behind';
@@ -31,9 +36,10 @@ export function createCalls(h) {
     const L = game.world?.layout, li = ctx.li ?? (L ? Math.max(0, L.levelOfY(p.y + 0.3)) : 1);
     const zone = ctx.zone || (game.hospital?.zone ? { id: game.hospital.zone.id, name: game.hospital.zone.name, theme: game.hospital.zone.theme } : null);
     const Dd = game.interact?.doors;
-    // 門:互動系統的門(關著/開著),背後 7m 內
-    let doors = ctx.doors;
-    if (!doors && Dd) {
+    // 門:互動代理給的 doors(key 對應到互動系統的門 → 才能真的讓它開/關);沒給就自己掃
+    let doors = null;
+    if (Array.isArray(ctx.doors)) doors = ctx.doors.map((d) => { const w = d.way || Dd?.ways?.get?.(d.key) || null; return { ...d, way: w, style: d.style || w?.style, state: w ? (Dd.allClosed(w) ? 'closed' : 'open') : d.state, side: d.side || side(p, p.yaw, d.x, d.z) }; });
+    else if (Dd) {
       doors = [];
       for (const w of Dd.list) {
         if (w.li !== li || w.out) continue;
@@ -42,17 +48,14 @@ export function createCalls(h) {
         doors.push({ key: w.key, x: w.cx, y: w.y, z: w.cz, dist: d, side: side(p, p.yaw, w.cx, w.cz), state: Dd.allClosed(w) ? 'closed' : 'open', style: w.style, way: w, locked: !!w.lock, barred: !!w.bar });
       }
     }
-    // 背後的可動道具
-    let near = ctx.near;
-    if (!near) {
-      near = [];
-      for (const o of h._dyn || []) {
-        o.updateWorldMatrix(true, false);
-        const e = o.matrixWorld.elements, x = e[12], z = e[14], d = Math.hypot(x - p.x, z - p.z);
-        if (d > 6 || Math.abs(e[13] - p.y) > 1.6) continue;
-        const k = (o.userData.kind || o.name || '').toLowerCase(), key = Object.keys(PROP_NAMES).find((n) => k.includes(n));
-        if (key) near.push({ kind: key, name: PROP_NAMES[key], x, y: e[13], z, dist: d, side: side(p, p.yaw, x, z), obj: o });
-      }
+    // 背後的可動道具(物理推得動的;名字用 PROP_NAMES)— 互動代理的 near 只用來補名字,推東西要自己的清單
+    const near = [];
+    for (const o of dynList()) {
+      o.updateWorldMatrix(true, false);
+      const e = o.matrixWorld.elements, x = e[12], z = e[14], d = Math.hypot(x - p.x, z - p.z);
+      if (d > 6 || Math.abs(e[13] - p.y) > 1.6) continue;
+      const k = (o.userData.kind || o.name || '').toLowerCase(), key = Object.keys(PROP_NAMES).find((n) => k.includes(n));
+      if (key) near.push({ kind: key, name: PROP_NAMES[key], x, y: e[13], z, dist: d, side: side(p, p.yaw, x, z), obj: o });
     }
     const win = (game.hospital?.K?.windowInfo || []).filter((w) => w.li === li && !w.boarded && !w.store).map((w) => ({ w, d: Math.hypot(w.x - p.x, w.z - p.z) })).filter((q) => q.d < 8).sort((a, b) => a.d - b.d)[0]?.w || null;
     const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw), bx = p.x - fx * 1.6, bz = p.z - fz * 1.6;
@@ -70,6 +73,7 @@ export function createCalls(h) {
   // ---- 挑一通 ----
   function choose(ctx, sc) {
     const D = h.director, ghostOK = D.silent && D.level !== 'off';
+    if (ctx.want) { const c = CALLS.find((q) => q.id === ctx.want) || (PLACE_CALLS[ctx.want] && { ...PLACE_CALLS[ctx.want], id: 'place:' + ctx.want, act: 1 }); if (c && (c.sys || ghostOK) && okNeed(c.need, sc)) return c; } // 測試/劇情指定
     const rb = S.ringback.get(ctx.id);
     if (rb && ghostOK) { S.ringback.delete(ctx.id); const c = CALLS.find((q) => q.id === 'call.ringback'); if (c) return c; }
     const act = Math.min(3, D.act + (S.count >= 3 ? 1 : 0)); // 接過幾通之後,電話比幕次更早變得正面
