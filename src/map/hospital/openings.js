@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { prng, hashStr } from './paint.js';
 import { DIRS, ARROW } from './shell.js';
 import { revealFor } from './style.js';
-import { Buckets } from './builder.js';
+import { buildLeaves } from './leaves.js';
 
 // 門(門框、門楣、門扇的各種狀態)、窗(窗框、玻璃狀態、木板封窗、百葉、窗簾、鐵條)、
 // 欄杆/櫃台/矮牆/女兒牆、鐵欄杆與圍籬(含灌木)、電梯。全部放在牆格/門格內,不擋通道。
@@ -105,6 +105,7 @@ function emitLeaf(B, li, style, hinge, psi, lw, lh, R, fallen = false) {
 export function buildDoors(K) {
   const { L, B } = K;
   const dyn = []; // 會被事件推動的門(樓梯間防火門、隔離房門)
+  const all = []; // 全部門扇(互動、碰撞盒)
   K.doorList = [];
   for (const lv of L.levels) {
     const li = lv.index, y = lv.y;
@@ -142,12 +143,13 @@ export function buildDoors(K) {
       if (style === 'none') continue;
       const roomB = sb.kind === 'room' && sb.zone?.theme !== 'corridor' && !d.outB ? true : sa.kind === 'room' && sa.zone?.theme !== 'corridor' && !d.outA ? false : R() < 0.5;
       const dirRoom = roomB ? 1 : -1, wf = roomB ? w1 : w0;
-      const double = style === 'swing' || style === 'ward' || style === 'chapel' || style === 'glass';
+      // 全部做成雙扇門(關上時剛好封住 2m 門洞;單扇門關上會留一道縫)。門扇是可轉動的實例(src/map/hospital/leaves.js),
+      // 每扇有自己的代理 group:事件(甩門)與互動(開關門、碰撞盒、殭屍推門)只改 group.rotation.y
       const lh = h - 0.03;
-      const hinges = double ? [[u0, 1], [u1, -1]] : [[R() < 0.5 ? u0 : u1, 0]];
-      if (!double) hinges[0][1] = hinges[0][0] === u0 ? 1 : -1;
-      const lw = double ? (u1 - u0) / 2 - 0.015 : 1.15;
+      const hinges = [[u0, 1], [u1, -1]];
+      const lw = (u1 - u0) / 2 - 0.015;
       const dynamic = (style === 'fire' || style === 'cell') && !d.outA && !d.outB;
+      const ang = (du, dw) => Math.atan2(-(d.axis === 'z' ? dw : du), d.axis === 'z' ? du : dw);
       for (const [uh, sgn] of hinges) {
         let state = R.pick(['flat', 'flat', 'flat', 'room', 'room', 'ajar', 'fallen', 'none']);
         if (style === 'glass') state = R.pick(['flat', 'room', 'none', 'ajar']);
@@ -158,33 +160,29 @@ export function buildDoors(K) {
         if (state === 'flat') { du = 0; dw = -dirRoom; }
         else if (state === 'room') { du = 0; dw = dirRoom; }
         else { const th = R.r(0.45, 1.05); du = sgn * Math.cos(th); dw = dirRoom * Math.sin(th); }
-        const dxw = d.axis === 'z' ? du : dw, dzw = d.axis === 'z' ? dw : du;
-        const psi = Math.atan2(-dzw, dxw);
+        const psi = ang(du, dw);
         const hinge = [F.X(hu, hw), y + 0.01, F.Z(hu, hw)];
         if (state === 'fallen') {
           const cu = (u0 + u1) / 2 + R.r(-0.5, 0.5), cw = wf + dirRoom * R.r(0.9, 1.3);
           emitLeaf(B, li, style, [F.X(cu, cw) - 0.5, y + 0.06, F.Z(cu, cw) + 0.9], R.r(0, 6.28), lw, lh, R, true);
           continue;
         }
-        if (dynamic) {
-          const DB = new Buckets();
-          emitLeaf(DB, 0, style, [0, 0, 0], 0, lw, lh, R);
-          const g = new THREE.Group();
-          g.position.set(hinge[0], hinge[1], hinge[2]);
-          g.rotation.y = psi;
-          DB.build([g]);
-          g.traverse((o) => { if (o.isMesh) { o.matrixAutoUpdate = true; } });
-          K.levelGroups[li].add(g);
-          // 關門時的角度:門扇橫跨門洞
-          const closed = Math.atan2(-(d.axis === 'z' ? 0 : sgn), d.axis === 'z' ? sgn : 0);
-          dyn.push({ li, style, group: g, open: psi, closed, x: hinge[0], y, z: hinge[2], cx: (F.X(u0, w0) + F.X(u1, w1)) / 2, cz: (F.Z(u0, w0) + F.Z(u1, w1)) / 2, zone: (roomB ? sb.zone : sa.zone) || sa.zone || sb.zone });
-          continue;
-        }
-        emitLeaf(B, li, style, hinge, psi, lw, lh, R);
+        const g = new THREE.Object3D();
+        g.position.set(hinge[0], hinge[1], hinge[2]);
+        g.rotation.y = psi;
+        const leaf = {
+          li, style, group: g, open: psi, closed: ang(sgn, 0), swingA: ang(0, -dirRoom), swingB: ang(0, dirRoom), x: hinge[0], y, z: hinge[2],
+          cx: (F.X(u0, w0) + F.X(u1, w1)) / 2, cz: (F.Z(u0, w0) + F.Z(u1, w1)) / 2, zone: (roomB ? sb.zone : sa.zone) || sa.zone || sb.zone,
+          lw, lh, sgn, state, axis: d.axis, door: `${li},${c},${r}`, za: sa.zone, zb: sb.zone, out: !!(d.outA || d.outB), events: dynamic,
+        };
+        all.push(leaf);
+        if (dynamic) dyn.push(leaf); // 驚嚇事件(甩門)只用樓梯間防火門與隔離房門(和以前一樣)
       }
     }
   }
   K.dynDoors = dyn;
+  K.doorLeaves = all;
+  K.leaves = buildLeaves(K, all, (style, lw, lh) => leafParts(style, lw, lh));
   return dyn;
 }
 

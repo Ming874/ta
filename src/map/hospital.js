@@ -133,6 +133,7 @@ export function buildHospital(world, layout, scene, opts = {}) {
   let cullTick = 0;
   const H = {
     group: root, stats, layout: L, lights, atmo, K, levelGroups, propGroups, propEvents, propLights, vis, propVis, events, game: null, chunks,
+    leaves: K.leaves, doorLeaves: K.doorLeaves || [], // 門扇實例與代理(src/map/hospital/leaves.js;互動與碰撞在 src/interact/doors.js)
     propDistance: 54, // 道具區塊的顯示距離(公尺):霧裡看不到的就不畫,setQuality 依 drawDistance 調整
     // post.js 會呼叫:提供 renderer(環境貼圖、各向異性)與品質設定
     attachRenderer(r, game) {
@@ -181,6 +182,7 @@ export function buildHospital(world, layout, scene, opts = {}) {
       if (st === 'playing' && H._state !== 'playing') events.reset();
       H._state = st;
       try { events.update(time, dt, player, H.game, { li, zone, mood: style.mood, outdoor, fx: camFwd.x / fl, fz: camFwd.z / fl }); } catch (e) { console.warn('[events]', e); }
+      K.leaves?.update(); // 角度有變的門扇才重寫實例矩陣
       // 月光陰影:靜態,只在一開始與貼圖載完時重算(玩家在地面以上時)
       const loaded = pbrState.alpha + procStats.done; // 只有鏤空貼圖會改變陰影形狀(其他貼圖載完不必重畫 2048 陰影圖)
       if (li !== b1 && (shadowFrames < 2 || loaded !== lastLoaded)) { atmo.moon.shadow.needsUpdate = true; shadowFrames++; lastLoaded = loaded; }
@@ -191,6 +193,7 @@ export function buildHospital(world, layout, scene, opts = {}) {
     // 換地圖時:移除場景、釋放幾何(材質/貼圖是全域快取,可給下一張地圖共用)
     dispose() {
       events.dispose();
+      K.leaves?.dispose();
       lights.dispose?.();
       scene.remove(root);
       root.traverse((o) => { if (o.geometry && !o.geometry.userData?.shared) o.geometry.dispose(); });

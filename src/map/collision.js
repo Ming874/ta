@@ -672,6 +672,7 @@ export class World {
       const list = this.boxGrid[r * W + c];
       for (let k = 0; k < list.length; k++) {
         const b = list[k];
+        if (b.nav === false) continue; // 關著的門扇:擋人擋子彈,但導航照樣穿過(殭屍走到門前會把門推開或撞破,src/interact/doors.js)
         if (b.maxY <= h + BOX_STEP || b.minY >= h + clear || (lowH > 0 && b.maxY <= h + lowH)) continue;
         const bx = x < b.minX ? b.minX : x > b.maxX ? b.maxX : x;
         const bz = z < b.minZ ? b.minZ : z > b.maxZ ? b.maxZ : z;
