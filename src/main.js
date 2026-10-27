@@ -17,6 +17,7 @@ import { assets } from './sys/assets.js';
 import { installStreaming } from './sys/stream.js';
 import { loadUI } from './sys/loadui.js';
 import { pools } from './sys/workers.js';
+import { initGpuHint, gpuLabel } from './ui/gpuhint.js';
 
 performance.mark('hz:boot');
 let game = null;
@@ -84,6 +85,8 @@ game.quality.on('change', (k, q) => game.hospital.setQuality?.(q));
   game.begin = function (...a) { assets.open('start'); assets.concurrency = 3; return begin0.apply(this, a); }; // 遊戲中少開幾條連線(多人時不塞滿下行)
 }
 
+game.perf.source('顯示卡', () => gpuLabel(game.quality.detected?.gpu)); // 雙顯卡筆電常用到內顯,面板上直接看得到
+initGpuHint(game); // 內顯 / 軟體算圖時在主選單提醒切換高效能 GPU
 game.perf.source('殭屍', () => {
   const v = variantStats();
   const alive = game.zombies ? game.zombies.filter((z) => z.alive).length : 0;
