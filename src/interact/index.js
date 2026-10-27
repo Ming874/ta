@@ -33,7 +33,7 @@ export function buildInteract(game) {
   const t0 = performance.now();
   const H = game.hospital || {};
   const mapId = game.mapId || 'hospital';
-  const pack = (PACKS[`./packs/${mapId}.js`] || (mapId === 'hospital' ? null : null))?.default || null;
+  const pack = PACKS[`./packs/${mapId}.js`]?.default || null;
   const kit = createKit({ root: H.group || game.scene, levelGroups: H.propGroups || null });
   let doors = null, placed = null;
   try { doors = setupDoors(game, ix, { leaves: H.doorLeaves || [], lockSpecs: (pack?.items || []).filter((i) => i.kind === 'lock') }); } catch (e) { console.warn('[interact] doors', e); }
@@ -48,7 +48,7 @@ export function buildInteract(game) {
 // 第一次有電話響:提示怎麼接(走新手提示系統;提示被關掉時改用訊息列,一局一次)
 function hints(game, ix) {
   TIP_TEXT.phone ||= ['電話在響', '附近的電話在響……循著鈴聲找到它,看著電話按 [E] 接聽'];
-  TIP_TEXT.interact ||= ['調查', '看著發亮提示的東西按 [E]:電話、開關、抽屜、收音機、門……有些要按住 [E]'];
+  TIP_TEXT.interact ||= ['調查', '看著東西時畫面下方出現提示,就按 [E]:電話、門、開關、抽屜、收音機……有些要按住 [E]'];
   let told = false;
   ix.on('ring', () => {
     if (told) return;

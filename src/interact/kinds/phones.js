@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { Model, T } from '../kit.js';
 
 // 電話:壁掛電話(老式米色)、桌上電話(九〇年代多鍵話機,放在小邊桌)、護理站(櫃台 + 多線話機 + 呼叫燈板)、大廳公共電話(遮音罩)。
@@ -86,14 +87,134 @@ function payphone(m, M) {
   for (let i = 0; i < 8; i++) m.cyl(M.metal, STEEL, -0.16, 1.12 - i * 0.032, 0.12, 0.022, 0.03, 8); // 金屬軟管
 }
 
+// 一支電話的狀態機(有模型的電話與道具錨點電話共用)。
+// 響鈴提示:鈴聲(定位)+ 線路燈閃 + 聽筒在座上跳動;看著它 2.5m 內 → 「按 [E] 接聽電話」。
+// 接起來:劇情指定的來電(spec.calls)用我們的台詞;其他交給靈異系統 game.horror.phone({ id, pos })(它挑這一局沒用過的電話台詞),
+// 沒有靈異系統時用 lines.js 的 PHONE 台詞 + 合成電話聲 + 字幕。
+function makePhone(api, o) {
+  const { ix, ixs, R, game } = api;
+  const { key, pos, style, hs, hsI, hsM, led, leds = [], calls = [], pool = [], spec = {} } = o;
+  const jig = new THREE.Matrix4();
+  const P = {
+    key, pos, style, li: o.li, zone: o.zone, state: 'idle', ringT: 0, line: null, special: spec.special || null, cb: 0,
+    ring: spec.ring || o.ring || (R() < 0.45 ? 'near' : 'tension'), offT: 0, talk: null, t: 0, used: new Set(), ghost: false, _tick: null,
+    nextLine() {
+      for (const l of calls) if (!this.used.has(l.id)) { this.used.add(l.id); return l; }
+      return null;
+    },
+    poolLine(list = pool) {
+      const free = list.filter((l) => !api.usedLines.has(l.id));
+      const l = free.length ? free[(R() * free.length) | 0] : null;
+      if (l) api.usedLines.add(l.id);
+      return l;
+    },
+    run() { this._tick ||= ix.tick((dt) => P.update(dt)); },
+    // 響:line = 指定台詞;dur = 響多久;ghost = 靈異系統讓它響的(接起來交給 game.horror.phone)
+    startRing(line = null, dur = 14, ghost = false) {
+      if (this.state !== 'idle') return false;
+      this.state = 'ringing'; this.ringT = dur; this.t = 0; this.ghost = ghost;
+      this.line = line || (ghost ? null : this.nextLine());
+      ixs.ringStart(key, pos, RING_KIND[style] || 'bell');
+      ix.emit('ring', P);
+      this.run();
+      return true;
+    },
+    stopRing() { ixs.ringStop(key); if (hs) hs.set(hsI, hsM); for (const i of leds) led.color(i, 0x221a10); },
+    lift() { if (hs) hs.set(hsI, ZERO); ixs.pickup(null); },
+    down() { if (hs) hs.set(hsI, hsM); ixs.hangup(pos); },
+    tones() { ixs.dialTone(false); ixs.busyTone(false); ixs.offHook(false); ixs.lineNoise(false); },
+    answer() {
+      const ghost = this.ghost, ln = this.line;
+      this.stopRing();
+      this.lift();
+      this.state = 'call'; this.offT = 0; this.ghost = false; this.line = null;
+      const hz = game.horror;
+      let h = null;
+      if (!ln && hz?.phone) { try { h = hz.phone({ id: key, pos, ringing: ghost }); } catch { h = null; } }
+      const l = h ? null : ln || this.poolLine();
+      if (l) { h = api.speak(l, { filter: 'phone' }); ix.flags.set('h.call.' + (l.id || key), true); }
+      ixs.lineNoise(true);
+      this.talk = h;
+      this.callEnd = game.time + (h?.dur || (h ? 5 : 2.5)) + 0.4;
+      if (!h) api.say('', '(只有沙沙的雜訊)', 2200, 'phone');
+      ix.emit('call', P, l || null);
+    },
+    pickUp() { // 沒在響:撥號音;偶爾線上已經有人
+      this.lift();
+      this.state = 'off'; this.offT = 0;
+      const idle = api.lineList('PHONE.idle');
+      if (idle.length && R() < 0.3) { const l = this.poolLine(idle); if (l) { ixs.lineNoise(true); this.talk = api.speak(l, { filter: 'phone' }); return; } }
+      ixs.dialTone(true);
+    },
+    hangUp(auto = false) {
+      this.talk?.stop?.(); this.talk?.kill?.(); this.talk = null;
+      this.tones();
+      this.down();
+      const was = this.state;
+      this.state = 'idle';
+      if (auto) api.toast('電話線拉不到那麼遠', '#a3a39a');
+      if (this.special === 'callback' && was === 'call' && this.cb < 3) { // 回撥:掛掉後幾秒又響,一次比一次近
+        const cbl = api.lineList('PHONE.callback');
+        const l = cbl[Math.min(this.cb, cbl.length - 1)] || null;
+        this.cb++;
+        ix.after(3.5 + R() * 3, () => { if (this.state === 'idle') this.startRing(l, 18); });
+      }
+    },
+    update(dt) {
+      if (this.state === 'ringing') {
+        this.ringT -= dt; this.t += dt;
+        const ringOn = this.t % 3 < 1.1; // 響 1 秒、停 2 秒
+        const on = ringOn && (this.t % 0.3) < 0.15;
+        for (const i of leds) led.color(i, ringOn ? (on ? 0xff6a24 : 0x6a1a08) : 0x221a10);
+        if (hs) { // 聽筒在座上跳
+          if (ringOn) { jig.copy(hsM).multiply(T(0, 0.004 * Math.abs(Math.sin(this.t * 52)), 0, 0, 0, Math.sin(this.t * 47) * 0.05)); hs.set(hsI, jig); }
+          else hs.set(hsI, hsM);
+        }
+        if (this.ringT <= 0) { // 沒人接
+          this.stopRing(); this.state = 'idle'; this.ghost = false;
+          if (api.near(pos, 14)) { const ms = api.lineList('PHONE.missed'); const m = ms[(R() * ms.length) | 0]; if (m) api.say('', m.text || '(電話停了。)', 2600); }
+          ix.emit('missed', P);
+        }
+        return true;
+      }
+      if (this.state === 'off' || this.state === 'call') {
+        this.offT += dt;
+        const pp = game.player.pos;
+        if (Math.hypot(pp.x - pos.x, pp.z - pos.z) > 2.8 || Math.abs(pp.y + 1.2 - pos.y) > 2.5 || game.state !== 'playing') { this.hangUp(game.state === 'playing'); return true; }
+        if (this.state === 'call' && game.time > this.callEnd && !this._busy) { this._busy = true; ixs.lineNoise(false); ixs.busyTone(true); }
+        if (this.state === 'off' && this.offT > 12 && !this._howl) { this._howl = true; ixs.dialTone(false); ixs.offHook(true); }
+        return true;
+      }
+      this._busy = this._howl = false;
+      this._tick = null;
+      return false;
+    },
+    reset() { if (this.state === 'off' || this.state === 'call') { this.talk?.stop?.(); this.tones(); } this.stopRing(); this.state = 'idle'; this.cb = 0; this.used.clear(); this.nearDone = false; this.ghost = false; },
+  };
+  P.e = ix.register(pos, {
+    id: key, kind: 'phone', name: o.name || '電話', reach: 2.5, radius: o.radius || 0.16, priority: 2, scope: 'map',
+    prompt: () => (P.state === 'ringing' ? '接聽電話' : P.state === 'idle' ? (style === 'pay' ? '拿起話筒' : '拿起電話') : '掛上電話'),
+    onUse: () => {
+      if (P.state === 'ringing') P.answer();
+      else if (P.state === 'idle') P.pickUp();
+      else { P.hangUp(); return; }
+      P.run();
+    },
+    reset: () => P.reset(),
+  });
+  api.phones.push(P);
+  return P;
+}
+
 export const phones = {
   build(api, s, spec = {}) {
-    const { kit, M, ix, ixs, R, game } = api;
+    const { kit, M, ix } = api;
     const style = spec.style || 'wall';
     const { hs, led } = phonePools(api);
     const m = new Model();
-    let hsRest, ledLocal = [], focus, extra = {};
-    if (style === 'wall') { wallPhone(m, M); hsRest = T(-0.1, 1.42, 0.075, 0, 0, Math.PI / 2); focus = [0, 1.45, 0.08]; }
+    let hsRest, focus;
+    const ledLocal = [], extra = {};
+    if (style === 'wall') { wallPhone(m, M); hsRest = T(-0.1, 1.42, 0.075, 0, 0, Math.PI / 2); focus = [0, 1.45, 0.08]; ledLocal.push([0.06, 1.582, 0.074]); }
     else if (style === 'pay') {
       payphone(m, M);
       hsRest = T(-0.14, 1.44, 0.16, 0, 0, Math.PI / 2, 1.1, 1.1, 1.1); focus = [0, 1.45, 0.16];
@@ -123,166 +244,72 @@ export const phones = {
     const hsM = world.clone().multiply(hsRest);
     const hsI = hs.add(s.li, hsM);
     const leds = ledLocal.map((p) => led.add(s.li, world.clone().multiply(T(p[0], p[1], p[2], 0, 0, 0, 0.014, 0.01, 0.006)), 0x221a10));
-    // 呼叫燈板(護理站)
-    if (extra.cells) {
+    if (extra.cells) { // 呼叫燈板(護理站)
       const board = { cells: extra.cells.map((c) => ({ ...c, i: led.add(s.li, world.clone().multiply(T(c.x, c.y, c.z, 0, 0, 0, 0.12, 0.05, 0.004)), 0x1a0806), on: false })) };
-      board.light = (room, on = true, blink = false) => { for (const c of board.cells) if (c.room === String(room)) { c.on = on; c.blink = blink; led.color(c.i, on ? 0xff3a26 : 0x1a0806); } };
+      board.light = (room, on = true) => { for (const c of board.cells) if (c.room === String(room)) { c.on = on; led.color(c.i, on ? 0xff3a26 : 0x1a0806); } };
       board.all = (on) => { for (const c of board.cells) board.light(c.room, on); };
       api.nurseBoard = ix.nurseBoard = board;
     }
     const pos = api.wp(s, ...focus);
     const key = spec.id || `ph${s.li}_${Math.round(pos.x * 10)}_${Math.round(pos.z * 10)}`;
-    const calls = (spec.calls || []).map((id) => api.lineById(id)).filter(Boolean);
-    const pool = api.lineList(POOL[style] || 'PHONE.ring');
-    const P = {
-      key, pos, style, li: s.li, zone: s.zone, state: 'idle', ringT: 0, line: null, special: spec.special || null, cb: 0, ring: spec.ring || (R() < 0.45 ? 'near' : 'tension'),
-      offT: 0, talk: null, ledT: 0, used: new Set(),
-      nextLine() {
-        for (const l of calls) if (!this.used.has(l.id)) { this.used.add(l.id); return l; }
-        const free = pool.filter((l) => !api.usedLines.has(l.id));
-        const l = free.length ? free[(R() * free.length) | 0] : null;
-        if (l) api.usedLines.add(l.id);
-        return l;
-      },
-      startRing(line = null, dur = 14) {
-        if (this.state !== 'idle') return false;
-        this.state = 'ringing'; this.ringT = dur; this.line = line || this.nextLine();
-        ixs.ringStart(key, pos, RING_KIND[style]);
-        ix.emit('ring', P);
-        this._tick ||= ix.tick((dt) => P.update(dt));
-        return true;
-      },
-      stopRing() { ixs.ringStop(key); },
-      lift() { hs.set(hsI, ZERO); ixs.pickup(null); },
-      down() { hs.set(hsI, hsM); ixs.hangup(pos); },
-      tones(off = true) { ixs.dialTone(false); ixs.busyTone(false); ixs.offHook(false); ixs.lineNoise(false); },
-      answer() {
-        this.stopRing();
-        this.lift();
-        this.state = 'call';
-        const ln = this.line || this.nextLine();
-        this.line = null;
-        const hz = game.horror;
-        if (this.ghost && hz?.phone) { try { this.talk = hz.phone({ pos, id: key, ringing: true }); } catch { this.talk = null; } this.ghost = false; this.offT = 0; this.callEnd = game.time + 6; return; }
-        if (ln) { ixs.lineNoise(true); this.talk = api.speak(ln, { filter: 'phone' }); this.callEnd = game.time + this.talk.dur + 0.4; ix.flags.set('h.call.' + (ln.id || key), true); ix.emit('call', P, ln); }
-        else { ixs.lineNoise(true); this.callEnd = game.time + 3; api.say('', '(只有雜訊)', 2200, 'phone'); }
-        this.offT = 0;
-      },
-      pickUp() { // 沒在響:撥號音;偶爾線上已經有人
-        this.lift();
-        this.state = 'off';
-        this.offT = 0;
-        const hz = game.horror;
-        if (hz?.phone && R() < 0.35) { try { this.talk = hz.phone({ pos, id: key, ringing: false }); } catch { this.talk = null; } if (this.talk) return; }
-        const idle = api.lineList('PHONE.idle');
-        if (idle.length && R() < 0.3) { const l = idle[(R() * idle.length) | 0]; ixs.lineNoise(true); this.talk = api.speak(l, { filter: 'phone' }); }
-        else ixs.dialTone(true);
-      },
-      hangUp(auto = false) {
-        this.talk?.stop?.(); this.talk = null;
-        this.tones();
-        this.down();
-        const was = this.state;
-        this.state = 'idle';
-        if (auto) api.toast('電話線拉不到那麼遠', '#a3a39a');
-        if (this.special === 'callback' && was === 'call' && this.cb < 3) { // 回撥:掛掉後幾秒又響
-          const cbl = api.lineList('PHONE.callback');
-          const l = cbl[Math.min(this.cb, cbl.length - 1)];
-          this.cb++;
-          ix.after(3.5 + R() * 3, () => { if (this.state === 'idle') this.startRing(l, 18); });
-        }
-      },
-      update(dt) {
-        if (this.state === 'ringing') {
-          this.ringT -= dt;
-          this.ledT += dt;
-          const on = (this.ledT % 0.5) < 0.25;
-          for (const i of leds) led.color(i, on ? 0xff5a20 : 0x221a10);
-          const hz = game.horror;
-          if (this.ringT <= 0) { // 沒人接
-            this.stopRing(); this.state = 'idle';
-            for (const i of leds) led.color(i, 0x221a10);
-            if (api.near(pos, 14)) { const ms = api.lineList('PHONE.missed'); if (ms.length) api.say('', (ms[(R() * ms.length) | 0].text || ''), 2600); }
-            ix.emit('missed', P);
-            void hz;
-          }
-          return true;
-        }
-        if (this.state === 'off' || this.state === 'call') {
-          this.offT += dt;
-          const d = Math.hypot(game.player.pos.x - pos.x, game.player.pos.z - pos.z);
-          if (d > 2.6 || Math.abs(game.player.pos.y - pos.y + 1.2) > 2.5) { this.hangUp(true); return true; }
-          if (this.state === 'call' && game.time > this.callEnd && !this._busy) { this._busy = true; ixs.lineNoise(false); ixs.busyTone(true); }
-          if (this.state === 'off' && this.offT > 12 && !this._howl) { this._howl = true; ixs.dialTone(false); ixs.offHook(true); }
-          return true;
-        }
-        for (const i of leds) led.color(i, 0x221a10);
-        this._busy = this._howl = false;
-        this._tick = null;
-        return false;
-      },
-      reset() { if (this.state !== 'idle') { this.talk?.stop?.(); this.tones(); hs.set(hsI, hsM); } this.stopRing(); this.state = 'idle'; this.cb = 0; this.used.clear(); this.nearDone = false; },
-    };
-    // 靈異系統正在響的電話剛好是這一支(或就在旁邊)
-    const ghostRinging = () => { const r = game.horror?.ringing; return r?.pos && Math.hypot(r.pos.x - pos.x, r.pos.z - pos.z) < 1.2 && Math.abs(r.pos.y - pos.y) < 1.5; };
     const name = { wall: '電話', desk: '電話', nurse: '護理站電話', pay: '公共電話' }[style];
-    P.e = api.reg(s, ...focus, {
-      id: key, kind: 'phone', name, reach: style === 'nurse' ? 2.2 : 1.9, radius: 0.16, priority: 2,
-      prompt: () => (P.state === 'ringing' || ghostRinging() ? '接聽電話' : P.state === 'idle' ? (style === 'pay' ? '拿起話筒' : '拿起電話') : '掛上電話'),
-      onUse: () => {
-        if (P.state === 'ringing') P.answer();
-        else if (ghostRinging() && P.state === 'idle') { P.ghost = true; P.state = 'ringing'; P.answer(); P._tick ||= ix.tick((dt) => P.update(dt)); }
-        else if (P.state === 'idle') { P.pickUp(); P._tick ||= ix.tick((dt) => P.update(dt)); }
-        else P.hangUp();
-      },
-      reset: () => P.reset(),
+    return makePhone(api, {
+      key, pos, style, li: s.li, zone: s.zone, hs, hsI, hsM, led, leds, spec, name,
+      calls: (spec.calls || []).map((id) => api.lineById(id)).filter(Boolean), pool: api.lineList(POOL[style] || 'PHONE.ring'),
     });
-    api.phones.push(P);
-    return P;
   },
 };
 
-// 現有道具上的電話錨點(game.hospital.propEvents kind 'phone'):沒有自己的模型,能接、能拿起來
+// 現有道具上的電話錨點(game.hospital.propEvents kind 'phone'):模型是合併過的道具,另外加一顆會閃的線路燈
 export function anchorPhone(api, ev) {
-  const { ix, ixs, game, R } = api;
+  const { game } = api;
+  const { led } = phonePools(api);
+  const li = Math.max(0, game.world.layout.levelOfY(ev.y - 0.5));
   const pos = { x: ev.x, y: ev.y + 0.05, z: ev.z };
-  const key = `pa${Math.round(ev.x * 10)}_${Math.round(ev.z * 10)}`;
-  const P = {
-    key, pos, style: 'anchor', li: game.world.layout.levelOfY(ev.y - 0.5), zone: ev.zone, state: 'idle', ring: 'tension', used: new Set(), line: null,
-    startRing(line = null, dur = 12) { if (this.state !== 'idle') return false; this.state = 'ringing'; this.ringT = dur; this.line = line; ixs.ringStart(key, pos, 'bell'); ix.emit('ring', P); this._t ||= ix.tick((dt) => this.tick(dt)); return true; },
-    tick(dt) { if (this.state === 'ringing') { this.ringT -= dt; if (this.ringT <= 0) { ixs.ringStop(key); this.state = 'idle'; } return true; } if (this.state === 'call' && game.time > this.end) { ixs.lineNoise(false); ixs.hangup(pos); this.state = 'idle'; } if (this.state === 'idle') { this._t = null; return false; } return true; },
-    reset() { ixs.ringStop(key); ixs.lineNoise(false); this.state = 'idle'; },
-  };
-  P.e = ix.register(pos, {
-    id: key, kind: 'phone', name: '電話', reach: 1.8, radius: 0.18, scope: 'map',
-    prompt: () => (P.state === 'ringing' || (game.horror?.ringing?.pos && Math.hypot(game.horror.ringing.pos.x - pos.x, game.horror.ringing.pos.z - pos.z) < 1.2) ? '接聽電話' : P.state === 'call' ? '掛上電話' : '拿起電話'),
-    onUse: () => {
-      if (P.state === 'call') { P.talk?.stop?.(); ixs.lineNoise(false); ixs.hangup(pos); P.state = 'idle'; return; }
-      const ringing = P.state === 'ringing';
-      ixs.ringStop(key);
-      ixs.pickup(null);
-      P.state = 'call';
-      const hz = game.horror;
-      let h = null;
-      if (hz?.phone && (!P.line || !ringing)) { try { h = hz.phone({ pos, id: key, ringing: ringing || !!hz.ringing }); } catch { h = null; } }
-      if (!h) { const l = P.line || api.lineList(ringing ? 'PHONE.ring' : 'PHONE.idle')[(R() * 5) | 0]; if (l) { ixs.lineNoise(true); h = api.speak(l, { filter: 'phone' }); } }
-      P.talk = h; P.line = null;
-      P.end = game.time + (h?.dur || 4) + 0.5;
-      P._t ||= ix.tick((dt) => P.tick(dt));
-    },
-    reset: () => P.reset(),
-  });
-  api.phones.push(P);
-  return P;
+  const leds = [led.add(li, T(ev.x, ev.y + 0.07, ev.z, 0, 0, 0, 0.016, 0.012, 0.016), 0x221a10)];
+  return makePhone(api, { key: `pa${Math.round(ev.x * 10)}_${Math.round(ev.z * 10)}`, pos, style: 'anchor', li, zone: ev.zone, led, leds, ring: 'tension', radius: 0.2, pool: api.lineList('PHONE.ring') });
 }
 
-// 電話導演:緊張空檔讓附近一支電話響(看不到的那一支最好)、靠近就響的電話、旗標觸發
+// 電話導演:緊張空檔讓附近一支電話響(看不到的那一支最好)、靠近就響的電話、旗標觸發;
+// 靈異系統讓電話響(game.horror 'phone:ring')→ 那一支真的電話開始響、能接;收音機自己打開('radio:on')→ 可以關掉
 export function phoneDirector(api) {
-  const { ix, game, R } = api;
-  let next = 50 + R() * 40, t = 0;
+  const { ix, game, R, ixs, sfx } = api;
+  let next = 50 + R() * 40, t = 0, bound = null;
+  const near = (pos, r = 1.6) => { let best = null, bd = r; for (const P of api.phones) { const d = Math.hypot(P.pos.x - pos.x, P.pos.z - pos.z) + Math.abs(P.pos.y - (pos.y ?? P.pos.y)) * 0.5; if (d < bd) { bd = d; best = P; } } return best; };
+  const bind = (H) => {
+    bound = H;
+    H.on?.('phone:ring', (d) => { const P = d?.pos && near(d.pos); if (P && P.state === 'idle') P.startRing(null, Math.max(4, (d.until ?? game.time + 9) - game.time + 3), true); });
+    H.on?.('radio:on', (d) => { // 靈異系統把收音機/電視打開了:那裡出現「關掉」的互動(13 秒後它自己會停)
+      if (!d?.pos) return;
+      const tv = d.kind === 'tv' || d.kind === 'cctv';
+      const e = ix.register(d.pos, {
+        id: `ghost-radio:${Math.round(d.pos.x)}_${Math.round(d.pos.z)}:${(game.time * 10) | 0}`, kind: 'radio', name: tv ? '電視' : '收音機', reach: 2.4, radius: 0.3, scope: 'run',
+        prompt: tv ? '關掉電視' : '關掉收音機',
+        onUse: () => { sfx.loopStop('gh-radio'); if (tv) ixs.tvOff(d.pos); else ixs.switchClick(d.pos, false); e.remove(); ix.emit('radio:off', d); },
+      });
+      ix.after(13, () => e.remove());
+    });
+  };
   ix.on('flag', (k) => { for (const P of api.phones) if (P.ring === 'flag:' + k) P.startRing(); });
-  ix.on('reset', () => { next = 50 + R() * 40; });
+  ix.on('reset', () => { next = 50 + R() * 40; api.lastRing = -1e9; });
+  ix.on('ring', () => { api.lastRing = game.time; });
+  const dir = {
+    ring: (id) => { const P = id ? api.phones.find((q) => q.key === id || q.e?.id === id) : api.phones.find((q) => q.state === 'idle'); return P ? P.startRing() : false; },
+    // 讓 pos 附近(2m 內)的那支電話響;沒有就回傳 false(呼叫端不要只放鈴聲)
+    ringAt: (pos, dur = 12) => { const P = near(pos, 2.2); return P && P.state === 'idle' ? P.startRing(null, dur) : false; },
+    // 讓同一層、離玩家 a~b 公尺的一支電話響(優先看不到的)
+    ringFar: (a = 10, b = 24, gap = 0) => {
+      if (game.time - (api.lastRing ?? -1e9) < gap) return false;
+      const p = game.player.pos, li = game.world.layout.levelOfY(p.y + 0.3);
+      const cand = api.phones.filter((P) => P.state === 'idle' && P.ring !== 'never' && P.li === li && (() => { const d = Math.hypot(P.pos.x - p.x, P.pos.z - p.z); return d > a && d < b; })());
+      if (!cand.length) return false;
+      const hidden = cand.filter((P) => !game.world.hasLineOfSight(p.x, p.y + 1.6, p.z, P.pos.x, P.pos.y, P.pos.z));
+      const list = hidden.length ? hidden : cand;
+      return list[(R() * list.length) | 0].startRing();
+    },
+  };
   ix.tick((dt) => {
+    if (game.horror && game.horror !== bound) bind(game.horror);
     if ((t += dt) < 1) return true;
     t = 0;
     if (game.state !== 'playing') return true;
@@ -294,10 +321,8 @@ export function phoneDirector(api) {
       if (d < 8 && d > 2.5 && calm) { P.nearDone = true; if (R() < 0.7) P.startRing(); }
     }
     if (now < next || !calm || api.phones.some((P) => P.state === 'ringing')) return true;
-    const cand = api.phones.filter((P) => P.state === 'idle' && P.ring !== 'never' && P.li === li && (() => { const d = Math.hypot(P.pos.x - p.x, P.pos.z - p.z); return d > 6 && d < 24; })());
-    if (cand.length) { const P = cand[(R() * cand.length) | 0]; P.startRing(); next = now + 75 + R() * 70; }
-    else next = now + 15;
+    next = now + (dir.ringFar(6, 24) ? 75 + R() * 70 : 15);
     return true;
   });
-  return { ring: (id) => { const P = id ? api.phones.find((q) => q.key === id || q.e?.id === id) : api.phones.find((q) => q.state === 'idle'); return P ? P.startRing() : false; } };
+  return dir;
 }

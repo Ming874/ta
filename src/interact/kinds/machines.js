@@ -56,7 +56,7 @@ export const lightswitch = {
         apply(!st.on);
         if (!st.on && R() < 0.14) ix.after(3 + R() * 5, () => { if (!st.on) { apply(true); const t = api.LINES.MISC?.lightsBack; if (t && api.near(pos, 14)) api.feed(t, '#bfb6d8'); } });
       },
-      reset: () => { if (!st.on) apply(true, false); st.on = on0; for (const f of fx) f.ov = 1; },
+      reset: () => { st.on = on0; st.flick = 0; tog.set(ti, base.clone().multiply(T(0, 0, 0, on0 ? 0.5 : -0.5 + Math.PI))); for (const f of fx) f.ov = 1; }, // 安靜地回到開局狀態(不閃、不提示)
     });
   },
 };

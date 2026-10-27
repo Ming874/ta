@@ -188,7 +188,7 @@ export function createKit({ root, levelGroups = null, levelOfY = null }) {
       kit.group(li).add(o);
       return o;
     },
-    pool(name, make, mat, opt) { let p = pools.get(name); if (!p) { p = new Pool(kit, name, make(new Model()), mat, opt); pools.set(name, p); } return p; },
+    pool(name, make, mat, opt) { let p = pools.get(name); if (!p) { const m = new Model(); make(m); p = new Pool(kit, name, m, mat, opt); pools.set(name, p); } return p; },
     finish() {
       let n = 0;
       for (const [li, byMat] of statics) {

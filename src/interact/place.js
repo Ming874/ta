@@ -217,7 +217,9 @@ export function placeAll(game, ix, kit, pack, seed = 2077) {
   api.director = phoneDirector(api);
   alarmBonus(api);
   ix.phones = api.phones;
-  ix.ring = (id) => api.director.ring(id);
+  ix.ring = (id) => api.director.ring(id); // 讓某支電話響(id 省略 = 任一支閒著的)
+  ix.ringAt = (pos, dur) => api.director.ringAt(pos, dur); // 讓 pos 旁邊那支真的電話響(驚嚇事件用);沒有電話回傳 false
+  ix.ringFar = (a, b, gap) => api.director.ringFar(a, b, gap); // 讓同層 a~b 公尺外的一支電話響(環境音「遠處電話」用)
   return { api, stats };
 }
 
