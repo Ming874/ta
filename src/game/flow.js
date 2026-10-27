@@ -258,8 +258,9 @@ export const flowMethods = {
   },
 
   spawnZombie(type = this.queue.shift() || 'walker') {
-    const s = this.pickSpawn(type);
-    const j = s.vent ? 0.15 : 1.1; // 出生點周圍 0.6m 內保證淨空(collision.js 檢查過)
+    const at = this._ambAt; // [ambush] 埋伏現身:指定位置(所有玩家都看不到的掩蔽點/天花板),不加隨機偏移
+    const s = at || this.pickSpawn(type);
+    const j = at ? 0 : s.vent ? 0.15 : 1.1; // 出生點周圍 0.6m 內保證淨空(collision.js 檢查過)
     const pos = { x: s.x + (Math.random() - 0.5) * j, y: s.y || 0, z: s.z + (Math.random() - 0.5) * j };
     const z = new Zombie(this.scene, pos, this.round, type);
     if (s.yaw !== undefined) z.heading = s.yaw; // 從通風口爬出來:面向房內
@@ -286,12 +287,13 @@ export const flowMethods = {
       // 壓力:太久沒有殭屍接近玩家(12m 內)→ 出怪間隔減半、出生點挑近一點、遠處閒晃的殭屍移近(長回合不會冷場)
       this._calmT = near < 12 ? 0 : (this._calmT || 0) + dt;
       this.spawnTimer -= dt * (this._calmT > 8 ? 2 : 1);
-      if (!this.spawnHeld && this.toSpawn > 0 && alive < this.maxAlive && this.spawnTimer <= 0) {
-        this.spawnZombie();
+      const held = this.ambush?.reserved || 0; // [ambush] 預留給虛擬埋伏點的(還沒現身、仍算在 toSpawn 裡)
+      if (!this.spawnHeld && this.toSpawn > held && alive < this.maxAlive && this.spawnTimer <= 0) {
+        if (this.spawnZombie()) alive++; // 這一幀剛出的也算活著(否則最後一隻出生的那一幀會誤判清場)
         if (this.spawnBurst > 0) { this.spawnBurst--; this.spawnTimer = 0.45; } else this.spawnTimer = this.spawnEvery * (0.7 + Math.random() * 0.6);
       }
       this._relocateStragglers(dt);
-      if (this.toSpawn === 0 && alive === 0) { if (lurk && this.ambush) this.ambush.hunt(); else this.endRound(); } // 只剩埋伏的:叫醒找人,回合不會卡住
+      if (alive === 0 && this.toSpawn <= held) { if ((lurk || held) && this.ambush) this.ambush.hunt(); else this.endRound(); } // 只剩預留/裝死的:收尾(放回佇列、起身),回合不會卡住
     } else if (this.phase === 'collecting') {
       this.collectT -= dt;
       if (this.collectT <= 0 && !this.coins.collecting) this.openRest();
