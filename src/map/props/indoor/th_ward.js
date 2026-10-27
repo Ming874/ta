@@ -39,6 +39,7 @@ export function dressWard(R, zone) {
       const path = [[wx, bz - 0.62], [wx + dx * 2.3, bz - 0.62], [wx + dx * 2.3, bz + 0.62], [wx, bz + 0.62]].map(([x, z]) => [x - x0, z - z0]);
       const bunch = n === 207 && id === 11 ? 0.05 : [0.75, 0.25, 0.85, 0.5][(k + (side > 0 ? 2 : 0)) % 4];
       R.put(tpl(`curtain:${id}:${bunch}:${n === 207}`, (b) => curtainSet(b, path, ceil, { seed: 40 + id + (n === 207 ? 3 : 0), bunch, holes: id === -10 ? 1 : 0.3, rag: 0.4 })), x0, z0, 0);
+      if (bunch < 0.52) R.event({ kind: 'bed_curtain', x: wx + dx * 2.3, y: R.y + 0.05, z: bz, nx: dx, nz: 0 }); // [ghost] 拉上的隔簾:隔簾後的人影(src/horror)
       // 點滴架(靜態;床頭旁)
       if (k === 0 || id === 11) { const pos = R.at(run, bz - 0.95, 0.95); R.putChecked(ivPole(id === 11 ? 2 : 1 + k), pos.x, pos.z, 0); }
     }
