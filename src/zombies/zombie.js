@@ -274,6 +274,7 @@ export class Zombie {
     if (this.losT <= 0) {
       this.losT = 0.15 + Math.random() * 0.1;
       this.los = this.d3 < 18 && world.hasLineOfSight(this.pos.x, this.pos.y + 1.4, this.pos.z, player.pos.x, player.pos.y + 1.4, player.pos.z);
+      if (this.los && !this.alerted && this.type !== 'runner' && this.d3 < 14) { this.alerted = true; say('zAlert', this.type, this.vp); } // [audio] 發現玩家的叫聲(奔跑者另有尖嘯)
     }
     const w = this.want;
     // 看得到且路徑幾乎是直線時直接衝向玩家,否則沿導航場走(會上下樓梯)

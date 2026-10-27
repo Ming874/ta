@@ -1,25 +1,29 @@
 // 錄音配樂:用 <audio> 串流播放(不整首解碼進記憶體)→ MediaElementSource → 配樂匯流排(受配樂音量與閃避控制)。
-// 兩台「唱盤」交叉淡入淡出;依配樂狀態(menu/fight/boss/break/shop/dead)挑曲目,非循環曲目快結束時自動接下一首。
-// 某首載入失敗就跳過;全部失敗或尚未開始時,程式配樂(music.js)單獨撐場。
+// 兩台「唱盤」交叉淡入淡出;依配樂狀態(menu/explore/tension/fight/boss/break/shop/dead)挑曲目。
+// 不用原生 loop(MP3 循環點會有空隙):每首快結束前 xf 秒就交叉淡化到另一台唱盤(同狀態的另一首,或同一首從頭),完全無縫。
+// 長曲目第一次播放時從隨機的段落開始(配合淡入),每局聽到的不一樣。某首載入失敗就跳過;全部失敗時程式配樂(music.js)單獨撐場。
 import { A, gain, clamp, pick } from './core.js';
-import { TRACKS } from './bank.js';
+import { TRACKS, STINGS } from './bank.js';
 
 const BASE = `${import.meta.env?.BASE_URL ?? '/'}audio/`;
-const X = { mood: null, decks: [], cur: -1, failed: new Set(), playing: null, want: null, tries: 0, ctx: null, wantT: 0 };
+const X = { mood: null, decks: [], cur: -1, failed: new Set(), playing: null, ctx: null, level: 1, blocked: false };
+// 換狀態時的淡入淡出秒數
+const FADE = { menu: 3, explore: 4.5, tension: 3, fight: 1.8, boss: 1.4, break: 3.5, shop: 3, dead: 1.2 };
 
 function makeDeck() {
   const el = new Audio();
   el.preload = 'auto';
+  el.crossOrigin = 'anonymous';
   const src = A.ctx.createMediaElementSource(el);
   const g = gain(0, A.bus.music);
   src.connect(g);
-  const d = { el, g, track: null, fading: 0 };
-  el.addEventListener('error', () => { if (d.track) { X.failed.add(d.track.f); if (X.decks[X.cur] === d) { X.playing = null; pickNext(true); } } });
+  const d = { el, g, track: null, tok: 0, ending: false };
+  el.addEventListener('error', () => { if (d.track) { X.failed.add(d.track.f); if (X.decks[X.cur] === d) { X.playing = null; next(true); } } });
   el.addEventListener('timeupdate', () => {
-    if (X.decks[X.cur] !== d || !d.track || d.track.loop) return;
-    if (el.duration && el.duration - el.currentTime < (d.track.xf ?? 4)) pickNext(false);
+    if (X.decks[X.cur] !== d || !d.track || d.ending || !el.duration) return;
+    if (el.duration - el.currentTime < (d.track.xf ?? 5)) { d.ending = true; if (d.track.loop) next(false); else if (X.mood === 'dead') fadeOut(d, d.track.xf ?? 2); else next(false); }
   });
-  el.addEventListener('ended', () => { if (X.decks[X.cur] === d && d.track && !d.track.loop) pickNext(true); });
+  el.addEventListener('ended', () => { if (X.decks[X.cur] === d && !d.ending) next(true); });
   return d;
 }
 
@@ -34,58 +38,108 @@ function fadeOut(d, sec) {
   d.g.gain.cancelScheduledValues(n);
   d.g.gain.setValueAtTime(d.g.gain.value, n);
   d.g.gain.linearRampToValueAtTime(0, n + sec);
-  const el = d.el, tok = (d.fading = Math.random());
-  setTimeout(() => { if (d.fading === tok) { el.pause(); d.track = null; } }, sec * 1000 + 100);
+  const tok = ++d.tok;
+  setTimeout(() => { if (d.tok === tok) { d.el.pause(); d.track = null; d.el.removeAttribute('src'); d.el.load(); } }, sec * 1000 + 150);
 }
 
-function playTrack(tr, sec = 3) {
+function playTrack(tr, sec, fromStart) {
   if (!ensureDecks()) return;
   const old = X.decks[X.cur];
   const nx = X.decks[(X.cur + 1) % 2];
   if (old && old.track) fadeOut(old, sec);
-  nx.fading = 0;
+  nx.tok++;
   nx.track = tr;
-  nx.el.loop = !!tr.loop;
-  nx.el.src = BASE + tr.f;
-  try { nx.el.currentTime = tr.at || 0; } catch { /* metadata 未載入 */ }
+  nx.ending = false;
+  nx.el.loop = false;
+  if (!nx.el.src.endsWith(tr.f)) nx.el.src = BASE + tr.f;
+  // 起點:從頭,或長曲目隨機四分之一段落
+  const at = fromStart || !tr.loop || tr.dur < 50 ? 0 : pick([0, 0.25, 0.5, 0.75]) * (tr.dur - 10);
+  const seek = () => { try { nx.el.currentTime = at; } catch { /* 尚未可跳 */ } };
+  if (nx.el.readyState >= 1) seek(); else nx.el.addEventListener('loadedmetadata', seek, { once: true });
   const n = A.ctx.currentTime;
   nx.g.gain.cancelScheduledValues(n);
   nx.g.gain.setValueAtTime(0, n);
-  nx.g.gain.linearRampToValueAtTime(tr.g ?? 0.6, n + sec);
+  nx.g.gain.linearRampToValueAtTime((tr.g ?? 0.6) * X.level, n + sec);
   const p = nx.el.play();
-  if (p && p.catch) p.catch(() => { /* 自動播放被擋:等下一次互動 */ X.playing = null; });
+  if (p && p.catch) p.catch(() => { X.blocked = true; X.playing = null; }); // 自動播放被擋:等下一次互動(resumeTracks)
   X.cur = (X.cur + 1) % 2;
   X.playing = tr;
+  X.blocked = false;
 }
 
 function listFor(mood) { return (TRACKS[mood] || []).filter((t) => !X.failed.has(t.f)); }
 
-function pickNext(now) {
+// 接下一首:同狀態裡換一首不同的(只有一首就同一首從頭,交叉淡化)
+function next(now) {
   const list = listFor(X.mood);
   if (!list.length) { const d = X.decks[X.cur]; if (d && d.track) fadeOut(d, 3); X.playing = null; return; }
-  if (!now && X.want === X.playing) return;
   const cand = list.length > 1 ? list.filter((t) => t !== X.playing) : list;
   const tr = pick(cand);
-  X.want = tr;
-  playTrack(tr, now ? 2 : tr.xf ?? 4);
+  playTrack(tr, now ? 2 : tr.xf ?? 5, true);
 }
 
-// 配樂狀態改變:同一組曲目就不切
+// 配樂狀態改變:同一組曲目(或共用曲目)就不切
 export function setTrackMood(mood) {
+  if (X.mood === mood && X.playing) return;
   X.mood = mood;
   if (!A.ctx) return;
   const list = listFor(mood);
   if (X.playing && list.includes(X.playing)) return;
-  if (!list.length) { const d = X.decks[X.cur]; if (d && d.track) fadeOut(d, mood === 'dead' ? 1.5 : 3); X.playing = null; return; }
-  const tr = pick(list);
-  X.want = tr;
-  playTrack(tr, mood === 'boss' || mood === 'dead' ? 1.5 : 3.5);
+  if (!list.length) { const d = X.decks[X.cur]; if (d && d.track) fadeOut(d, FADE[mood] ?? 3); X.playing = null; return; }
+  playTrack(pick(list), FADE[mood] ?? 3, mood === 'menu' || mood === 'dead');
+}
+
+// 自動播放被擋住後,下一次使用者互動時重試
+export function resumeTracks() { if (X.blocked && X.mood) { const m = X.mood; X.mood = null; setTrackMood(m); } }
+
+// 整體音量(配樂狀態內的強弱,例如探索時壓低);sec 淡化秒數
+export function trackGain(v, sec = 2) {
+  X.level = clamp(v, 0, 1.5);
+  const d = X.decks[X.cur];
+  if (!d || !d.track || !A.ctx || d.ending) return;
+  const n = A.ctx.currentTime;
+  d.g.gain.cancelScheduledValues(n);
+  d.g.gain.setValueAtTime(d.g.gain.value, n);
+  d.g.gain.linearRampToValueAtTime((d.track.g ?? 0.6) * X.level, n + sec);
 }
 
 // 目前錄音配樂的存在感(0..1),程式配樂據此退到背景
 export function trackLevel() {
   const d = X.decks[X.cur];
-  return d && d.track && !d.el.paused ? 1 : 0;
+  return d && d.track && !d.el.paused && d.el.readyState >= 2 ? 1 : 0;
 }
 
-export const trackState = () => ({ mood: X.mood, playing: X.playing ? X.playing.f : null, failed: [...X.failed], decks: X.decks.map((d) => (d.track ? `${d.track.f}@${d.el.currentTime.toFixed(1)}${d.el.paused ? '(p)' : ''} g=${d.g.gain.value.toFixed(2)}` : '-')) });
+export const trackState = () => ({ mood: X.mood, playing: X.playing ? X.playing.f : null, failed: [...X.failed], blocked: X.blocked, decks: X.decks.map((d) => (d.track ? `${d.track.f}@${d.el.currentTime.toFixed(1)}${d.el.paused ? '(p)' : ''} g=${d.g.gain.value.toFixed(2)}` : '-')) });
+
+// ---------- 一次性配樂刺擊(串流)----------
+// 每個刺擊一個預先載好的 <audio>(只存壓縮資料),播放時接到配樂匯流排;g 額外增益、fo 幾秒後淡出(可截短長的刺擊)
+const ST = new Map();
+function stingEl(key) {
+  const S = STINGS[key];
+  if (!S || !A.ctx || typeof Audio === 'undefined' || typeof A.ctx.createMediaElementSource !== 'function') return null;
+  let e = ST.get(key);
+  if (!e || e.ctx !== A.ctx) {
+    const el = new Audio();
+    el.preload = 'auto';
+    el.src = BASE + S.f;
+    const g = gain(0, A.bus.music);
+    A.ctx.createMediaElementSource(el).connect(g);
+    e = { el, g, ctx: A.ctx, ok: true };
+    el.addEventListener('error', () => { e.ok = false; });
+    ST.set(key, e);
+  }
+  return e.ok ? e : null;
+}
+export function preloadStings() { for (const k in STINGS) stingEl(k); }
+export function sting(key, g = 1, fo = 0) {
+  const e = stingEl(key);
+  if (!e) return false;
+  const S = STINGS[key], n = A.ctx.currentTime, el = e.el;
+  try { el.currentTime = 0; } catch { /* 尚未可跳 */ }
+  e.g.gain.cancelScheduledValues(n);
+  e.g.gain.setValueAtTime((S.g ?? 1) * g, n);
+  if (fo > 0) { e.g.gain.setValueAtTime((S.g ?? 1) * g, n + fo); e.g.gain.linearRampToValueAtTime(0, n + fo + 1.5); }
+  const p = el.play();
+  if (p && p.catch) p.catch(() => {});
+  return el.readyState >= 2;
+}

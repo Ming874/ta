@@ -1,17 +1,37 @@
-// 音效與配樂:WebAudio 即時合成 + 錄音樣本(public/audio/,CC0 / CC-BY)。樣本缺少或載入失敗時一律退回合成版本。
-// 架構:audio/core(混音、分區殘響、可重用的 3D 聲道條、遮蔽、發聲上限)、audio/samples + bank(樣本庫)、audio/foley(槍枝與動作擬音)、
-//       audio/steps(9 種地面的腳步)、audio/voices(殭屍語音)、audio/ambience(區域環境音、定位循環音)、audio/scares(驚嚇音)、
-//       audio/ui(介面/商店/拾取/多人)、audio/music(程式配樂)、audio/tracks(錄音配樂串流)
-import { A, ensure, setListener, attach, setVolume, muffle, tick, poolInfo } from './audio/core.js';
-import { foley } from './audio/foley.js';
-import { voices } from './audio/voices.js';
-import { startMusic, setMood, autoMood, setTension, setHealth, addPain } from './audio/music.js';
-import { step, remoteStep, zStep } from './audio/steps.js';
+// 音效與配樂:WebAudio 即時合成 + 錄音樣本(public/audio/,CC0 / CC-BY,署名見 public/credits/audio.md)。樣本缺少或載入失敗時一律退回合成版本。
+// 架構:audio/core(混音匯流排、分區殘響、可重用的 3D 聲道條、遮蔽、全域發聲上限與搶占、閒置時間烘焙)、audio/rooms(依區域尺寸算殘響)、
+//       audio/samples + bank(樣本庫)、audio/foley(槍枝與動作擬音)、audio/steps(9 種地面的腳步、跳躍/落地)、audio/body(蹲下、喘息、手電筒)、
+//       audio/voices(殭屍語音)、audio/ambience(區域環境音、定位循環音)、audio/weather(雨、雷)、audio/scares(驚嚇音)、
+//       audio/ui(介面/商店/拾取/多人)、audio/music(程式配樂與配樂狀態)、audio/tracks(錄音配樂串流、刺擊)
+//
+// 給其他模組的介面(全部安全:AudioContext 未建立時不做事,任何合成錯誤也不往外丟):
+//  武器  shot(id) dry(id?) reload(id, dur?, empty?) pump() switch(id?) adsIn(id?) adsOut(id?) casing(pos, surface, kind, bounce)
+//        grenadePin() grenadeThrow() grenadeBounce(pos) explosion(pos, size) knifeSwing() knifeHit(pos, flesh) lowAmmo()
+//  玩家  step(sprint, surface) jump(surface) land(speed, surface) crouch(down) flashlight(on) hurt(amount?) knock() armorHit()
+//        hit() headshot() wall(pos, surface) setStamina(r, exhausted)(可省略:attachGame 後自動讀 player.stamina)
+//  拾取  coin(i) pickupAmmo() pickupMed() pickupItem() pickupDeny() pickupLand(pos, kind) heal() armorEquip()
+//  介面  buy() deny() shopOpen() shopClose() shopTab() shopHover() upgrade() cashRegister() shutter(pos, open) door(pos, kind)
+//        uiClick() uiHover() countdown(n) roundStart() roundEnd()
+//  殭屍  groan(type, pos) zAlert(type, pos) zAttack(type, pos) zPain(type, pos) zDie(type, pos) shriek(pos) roar(pos) gurgle(pos)
+//        crawl(pos) bite(pos) zStep(type, pos, surface) stomp(pos) wallImpact(pos) thud(pos, heavy) spit(pos) splash(pos) sizzle(pos) burst(pos)
+//  氣氛  scare(kind, pos)(kind 見 audio/scares.js 開頭)setZone(zoneId, mood) loopStart(key, kind, pos) loopStop(key)
+//        thunder(dist, delay?) setRain(level, outdoorFactor?)(說明見 audio/weather.js 開頭)
+//  多人  playerJoin() playerLeave() chat() revive(pos?) downed(pos?) killConfirm() remoteShot(id, pos) remoteStep(pos, surface, sprint)
+//  其他  listener(x, y, z, yaw) setMood(m) setTension(x) setHealth(r) ambient() attachGame(game) attachWorld(world)
+//        setVolume(bus, v) getVolume(bus)(bus:'master' | 'music' | 'sfx' | 'voice',v 0..1,記在 localStorage)stats()
+import { A, ensure, setListener, attach, setVolume, getVolume, muffle, hurtFilter, tick, poolInfo, liveCount, bakeStats, voiceCap, emit } from './audio/core.js';
+import { foley, prebakeFoley } from './audio/foley.js';
+import { voices, prebakeVoices } from './audio/voices.js';
+import { startMusic, setMood, autoMood, setTension, setHealth, addPain, musicState } from './audio/music.js';
+import { step, remoteStep, zStep, jump, land, prebakeSteps } from './audio/steps.js';
+import { body, setBodyHealth, prebakeBody } from './audio/body.js';
 import { ui } from './audio/ui.js';
-import { scare } from './audio/scares.js';
-import { setZone, loopStart, loopStop, startAmbience, ambState } from './audio/ambience.js';
+import { scare, SCARE_KINDS } from './audio/scares.js';
+import { setZone, loopStart, loopStop, startAmbience, ambState, LOOP_KINDS } from './audio/ambience.js';
 import * as AMB from './audio/ambience.js';
-import { trackState } from './audio/tracks.js';
+import { thunder, setRain, rainState } from './audio/weather.js';
+import { trackState, resumeTracks, preloadStings } from './audio/tracks.js';
+import { roomInfo } from './audio/rooms.js';
 import * as SM from './audio/samples.js';
 
 // AudioContext 只能在使用者互動後建立/恢復;第一次互動(點擊、按鍵)就自動啟動,選單也聽得到配樂與環境音
@@ -22,12 +42,16 @@ function boot() {
   SM.startLoading();
   startAmbience();
   startMusic();
+  preloadStings();
+  // 閒置時間預先烘焙常用的合成層(不在遊戲當下建圖)
+  setTimeout(() => { prebakeFoley(); prebakeSteps(); prebakeVoices(); prebakeBody(); }, 600);
 }
 export function resume() {
   const c = ensure();
   if (!c) return;
   if (c.state === 'suspended') c.resume().then(boot, () => {});
   else boot();
+  resumeTracks();
 }
 if (typeof document !== 'undefined') {
   const unlock = () => { resume(); if (A.ctx && A.ctx.state === 'running') for (const e of ['pointerdown', 'keydown', 'touchstart']) document.removeEventListener(e, unlock, true); };
@@ -41,14 +65,18 @@ const safe = (fn) => (...args) => {
 };
 const always = (fn) => (...args) => { try { return fn(...args); } catch (e) { if (import.meta.env?.DEV) console.warn('[audio]', e); } };
 
+let lastMood = null;
 export const sfx = {
   // ---- 武器 ----
   shot: safe((id) => foley.shot(id)),
-  dry: safe(() => foley.dry()),
-  reload: safe((id, dur, shells) => foley.reload(id, dur, shells)), // dur:實際換彈秒數(可選,讓聲音對齊改裝後的速度)
-  switch: safe(() => foley.switch()),
-  adsIn: safe(() => foley.adsIn()),
-  adsOut: safe(() => foley.adsOut()),
+  dry: safe((id) => foley.dry(id)),
+  reload: safe((id, dur, empty) => foley.reload(id, dur, empty)), // dur:實際換彈秒數(對齊改裝後的速度);empty:空膛(要放槍機);霰彈槍每裝一發呼叫一次
+  pump: safe(() => foley.pump()),
+  switch: safe((id) => foley.switch(id)),
+  adsIn: safe((id) => foley.adsIn(id)),
+  adsOut: safe((id) => foley.adsOut(id)),
+  casing: safe((pos, surface, kind, n) => foley.casing(pos, surface, kind, n)), // 實體彈殼每次彈跳:kind 'pistol'|'rifle'|'shell'
+  grenadePin: safe(() => foley.grenadePin()),
   grenadeThrow: safe(() => foley.grenadeThrow()),
   grenadeBounce: safe((pos) => foley.grenadeBounce(pos)),
   explosion: safe((pos, size = 1) => foley.explosion(pos, size)),
@@ -58,7 +86,12 @@ export const sfx = {
 
   // ---- 玩家 ----
   step: safe((sprint = false, surface) => step(sprint, surface)),
-  hurt: safe(() => { foley.hurt(); addPain(0.5); }),
+  jump: safe((surface) => jump(surface)),
+  land: safe((speed = 3, surface) => land(speed, surface)), // speed:落下速度 m/s
+  crouch: safe((down = true) => body.crouch(down)),
+  flashlight: safe((on = true) => body.flashlight(on)),
+  setStamina: always((r, exhausted) => body.setStamina(r, exhausted)),
+  hurt: safe((amount) => { foley.hurt(amount); addPain(0.5); }),
   knock: safe(() => { foley.knock(); addPain(0.7); }),
   armorHit: safe(() => foley.armorHit()),
   armorEquip: safe(() => ui.armorEquip()),
@@ -75,6 +108,7 @@ export const sfx = {
   pickupMed: safe(() => ui.pickupMed()),
   pickupDeny: safe(() => ui.pickupDeny()),
   pickupItem: safe(() => ui.pickupItem()),
+  pickupLand: safe((pos, kind) => ui.pickupLand(pos, kind)),
   shopOpen: safe(() => ui.shopOpen()),
   shopClose: safe(() => ui.shopClose()),
   shopTab: safe(() => ui.shopTab()),
@@ -82,15 +116,16 @@ export const sfx = {
   upgrade: safe(() => ui.upgrade()),
   cashRegister: safe(() => ui.cashRegister()),
   shutter: safe((pos, open = true) => ui.shutter(pos, open)),
-  door: safe((pos, kind = 'creak') => ui.door(pos, kind)),
+  door: safe((pos, kind = 'creak') => ui.door(pos, kind)), // kind:'creak' | 'slam' | 'metal' | 'cell'
   uiClick: safe(() => ui.uiClick()),
   uiHover: safe(() => ui.uiHover()),
   countdown: safe((n) => ui.countdown(n)),
   roundStart: safe(() => { ui.roundStart(); autoMood('fight'); muffle(0, 0, 0.5); }),
   roundEnd: safe(() => { ui.roundEnd(); autoMood('break'); }),
 
-  // ---- 殭屍語音(3D;位置物件會被即時跟隨) ----
+  // ---- 殭屍語音(3D;位置物件會被即時跟隨;同一隻殭屍同時只發一個聲音) ----
   groan: safe((type, pos) => voices.groan(type, pos)),
+  zAlert: safe((type, pos) => voices.alert(type, pos)), // 發現玩家
   zAttack: safe((type, pos) => voices.attack(type, pos)),
   zPain: safe((type, pos) => voices.pain(type, pos)),
   zDie: safe((type, pos) => voices.die(type, pos)),
@@ -110,11 +145,13 @@ export const sfx = {
   sizzle: safe((pos) => foley.sizzle(pos)),
   burst: safe((pos) => foley.burst(pos)),
 
-  // ---- 驚嚇 / 環境(未建立 context 時也可呼叫,狀態會先記下) ----
+  // ---- 驚嚇 / 環境 / 天氣(未建立 context 時也可呼叫,狀態會先記下) ----
   scare: safe((kind, pos) => scare(kind, pos)),
   setZone: always((zoneId, mood) => setZone(zoneId, mood)),
   loopStart: always((key, kind, pos) => loopStart(key, kind, pos)),
   loopStop: always((key) => loopStop(key)),
+  thunder: safe((dist, delay) => thunder(dist, delay)),
+  setRain: always((level, outdoorFactor) => setRain(level, outdoorFactor)),
 
   // ---- 多人 ----
   playerJoin: safe(() => ui.playerJoin()),
@@ -124,19 +161,31 @@ export const sfx = {
   downed: safe((pos) => ui.downed(pos)),
   killConfirm: safe(() => ui.killConfirm()),
   remoteShot: safe((id, pos) => foley.shot(id, pos, true)),
-  remoteStep: safe((pos, surface) => remoteStep(pos, surface)),
+  remoteStep: safe((pos, surface, sprint) => remoteStep(pos, surface, sprint)),
 
   // ---- 聆聽者 / 配樂 / 設定 ----
   listener: always((x, y, z, yaw) => setListener(x, y, z, yaw)),
-  setMood: always((m) => setMood(m)),
+  setMood: always((m) => {
+    if (m === 'dead' && lastMood && lastMood !== 'dead' && lastMood !== 'menu' && A.ctx) { // 死亡:最後一口氣 + 世界變悶
+      const h = emit({ bus: 'sfx', prio: 9, room: 0.2, dur: 3 });
+      if (h) SM.play('player.death', { h, g: 0.6 });
+      muffle(0.6, 2.5, 3);
+    } else if (lastMood === 'dead' && m !== 'dead') { muffle(0, 0, 0.5); hurtFilter(1); }
+    lastMood = m;
+    setMood(m);
+  }),
   setTension: always((x) => setTension(x)),
-  setHealth: always((r) => setHealth(r)), // 玩家血量比例 0..1(低血量時出現心跳)
+  setHealth: always((r) => { setHealth(r); hurtFilter(r); setBodyHealth(r); }), // 玩家血量比例 0..1(低血量:心跳、世界變悶、顫抖的呼吸)
   ambient: safe(() => boot()),
-  setVolume: always((kind, v) => setVolume(kind, v)), // kind:'master' | 'music' | 'sfx',v 0..1(會記在 localStorage)
-  getVolume: (kind) => A.vol[kind],
-  // 建好 World 後呼叫一次:啟用視線遮蔽、樓層悶音、地面材質(彈殼/彈著/殭屍腳步)、自動區域判斷
+  setVolume: always((bus, v) => setVolume(bus, v)), // bus:'master' | 'music' | 'sfx' | 'voice',v 0..1(記在 localStorage)
+  getVolume: (bus) => getVolume(bus),
+  // 建好 World 後呼叫一次:啟用視線遮蔽、樓層悶音、地面材質(彈殼/彈著/殭屍腳步)、自動區域判斷與依房間尺寸的殘響
   attachWorld: always((world) => { A.world = world || null; }),
+  // 建好 Game 後呼叫一次(含 attachWorld):另外讀畫質預設(發聲上限/HRTF)、玩家狀態(蹲下、體力喘息)
+  attachGame: always((game) => { A.game = game || null; A.world = (game && game.world) || A.world; }),
+  // 除錯/效能面板用
+  stats: () => (A.ctx ? { state: A.ctx.state, voices: liveCount(), cap: voiceCap(), pools: poolInfo(), bake: bakeStats(), samples: SM.stats(), stats: A.stats, music: musicState(), amb: ambState(), rain: rainState() } : { state: 'none' }),
 };
 
 // 除錯/測試用(OfflineAudioContext 量測)
-export const _internal = { A, attach, foley, voices, ui, step, zStep, remoteStep, scare, startMusic, startAmbience, tick, poolInfo, SM, ambState, trackState, AMB };
+export const _internal = { A, attach, foley, voices, ui, body, step, zStep, remoteStep, jump, land, scare, startMusic, startAmbience, tick, poolInfo, SM, ambState, trackState, AMB, musicState, roomInfo, SCARE_KINDS, LOOP_KINDS, thunder, setRain };

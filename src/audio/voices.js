@@ -156,45 +156,116 @@ export function vocal(dest, t, S) {
   return end;
 }
 
+
 // ---------- 對外:殭屍語音 ----------
-// 錄音樣本與合成語音混用(增加變化):各類型用不同的移調,巨屍/腫脹者壓低、奔跑者拉高
-const SEMI = { walker: 0, runner: 3.5, crawler: 1.5, bloater: -3.5, brute: -6 };
-const MIX = { groan: 0.55, attack: 0.6, pain: 0.5, die: 0.6 }; // 用樣本的機率
-const REF = { brute: 2.4 };
+// 每種殭屍 × 情境有自己的錄音組(移調讓體型聽得出來:巨屍/腫脹者壓低、奔跑者拉高),與共振峰合成混用增加變化;
+// 同一隻殭屍同時只會發一個聲音(新的叫聲切掉舊的,死亡除外),也避免一群殭屍疊成噪音。
+const SEMI = { walker: 0, runner: 3, crawler: 1.5, bloater: -3, brute: -5 };
+const REF = { brute: 2.4, bloater: 1.9 };
+// [樣本 key, 增益, 額外移調]:依情境與類型挑一組(隨機)
+const VOX = {
+  groan: {
+    walker: [['zw.groan', 1, 0], ['z.growl', 0.8, -1]],
+    runner: [['z.growl', 0.9, 2], ['z.grunt', 0.9, 3]],
+    crawler: [['zc.hiss', 0.9, 0], ['zc.gurgle', 1, 0], ['zw.groan', 0.8, 3]],
+    bloater: [['zb.belch', 1, 0], ['zb.gurgle', 1, 0], ['zb.retch', 0.8, 0]],
+    brute: [['zx.growl', 1, 0], ['z.growl', 1, -4], ['zw.groan', 0.9, -5]],
+  },
+  alert: {
+    walker: [['z.growl', 1, 0], ['zw.groan', 1, 1.5]],
+    runner: [['zr.scream', 1, 0]],
+    crawler: [['zc.hiss', 1.1, 0]],
+    bloater: [['zb.retch', 1, 0], ['zb.belch', 1, -1]],
+    brute: [['zx.roar', 0.9, 0], ['zx.growl', 1.1, 0]],
+  },
+  attack: {
+    walker: [['z.attack', 1, 0], ['z.devour', 0.9, 0]],
+    runner: [['zr.attack', 1, 0], ['z.attack', 1, 3]],
+    crawler: [['zc.hiss', 1.1, 1], ['z.attack', 0.9, 2]],
+    bloater: [['z.attack', 1, -3], ['zb.retch', 1, 0]],
+    brute: [['z.attack', 1.1, -5], ['zx.growl', 1.1, 0]],
+  },
+  pain: {
+    walker: [['z.pain', 1, 0], ['z.hit', 0.9, 0], ['z.grunt', 0.9, 0]],
+    runner: [['z.pain', 1, 2.5], ['z.hit', 0.9, 3]],
+    crawler: [['z.pain', 1, 1.5], ['zc.hiss', 0.8, 2]],
+    bloater: [['z.pain', 1, -3], ['zb.gurgle', 0.9, 1]],
+    brute: [['z.pain', 1.1, -5], ['z.grunt', 1.1, -4]],
+  },
+  die: {
+    walker: [['z.die', 1, 0]],
+    runner: [['z.die', 1, 2.5], ['zr.scream', 0.7, -2]],
+    crawler: [['z.die', 1, 1.5], ['zc.gurgle', 1, -1]],
+    bloater: [['zb.vomit', 1, 0], ['z.die', 1, -3]],
+    brute: [['zx.roar', 1, -2], ['z.die', 1.2, -5]],
+  },
+};
+// 用錄音的機率(其餘用合成)
+const MIX = { groan: 0.7, alert: 0.85, attack: 0.75, pain: 0.7, die: 0.8 };
+const busy = new WeakMap(); // 聲源物件 → 目前的語音 handle
+function claim(pos, h, mode) {
+  if (!pos || typeof pos !== 'object') return;
+  const old = busy.get(pos);
+  if (old && old !== h && !old.dead && old.mode !== 'die') old.kill();
+  if (h) { h.mode = mode; busy.set(pos, h); }
+}
+// 同一隻殭屍正在死亡/尖嘯/攻擊時,不被低優先的低吼蓋掉
+function blocked(pos, prio, mode) {
+  if (!pos || typeof pos !== 'object' || !A.ctx) return false;
+  const old = busy.get(pos);
+  return !!old && !old.dead && old.end > A.ctx.currentTime + 0.1 && (old.mode === 'die' || (old.prio > prio && mode !== 'pain' && mode !== 'die'));
+}
 function say(type, pos, mode, prio, over) {
+  if (blocked(pos, prio, mode)) return null;
   const o = { pos, bus: 'voice', cat: 'voice', prio, room: 0.35, ref: REF[type] ?? 1.6 };
-  if (!over && SM.has(`z.${mode}`) && Math.random() < (MIX[mode] ?? 0.5)) {
-    const h = SM.play(`z.${mode}`, { ...o, semi: (SEMI[type] ?? 0) + rand(-0.8, 0.8), p: 0.6, g: type === 'brute' ? 1.3 : 1 });
-    if (h) return h;
+  const list = VOX[mode] && (VOX[mode][type] || VOX[mode].walker);
+  if (!over && list && Math.random() < (MIX[mode] ?? 0.6)) {
+    const [key, g, semi] = pick(list);
+    const h = SM.play(key, { ...o, semi: (SEMI[type] ?? 0) * (key.startsWith(`z${type[0]}.`) ? 0.3 : 1) + semi + rand(-0.7, 0.7), p: 0.4, g: g * (type === 'brute' ? 1.2 : 1) });
+    if (h) { claim(pos, h, mode); return h; }
   }
+  const sm = mode === 'alert' ? 'attack' : mode;
   // 短促、頻繁的痛叫與攻擊吼叫:各類型預烘焙 5 個變體(連射時不必每次即時合成)
-  if (!over && (mode === 'pain' || mode === 'attack')) {
-    const set = baked(`v|${type}|${mode}`, 5, mode === 'pain' ? 0.8 : 1, (dst, t0) => vocal(dst, t0, spec(type, mode)));
+  if (!over && (sm === 'pain' || sm === 'attack')) {
+    const set = baked(`v|${type}|${sm}`, 5, sm === 'pain' ? 0.8 : 1, (dst, t0) => vocal(dst, t0, spec(type, sm)), 1, 24000);
     if (set) {
       const b = pick(set), r = rand(0.95, 1.05);
       const h = emit({ ...o, dur: b.duration / r });
-      if (h) playBuf(h.in, h.t, b, { rate: r });
+      if (h) { playBuf(h.in, h.t, b, { rate: r }); claim(pos, h, mode); }
       return h;
     }
   }
-  const S = spec(type, mode, over);
+  const S = spec(type, sm, over);
+  if (mode === 'alert') { S.dur *= 1.6; S.gain *= 1.1; }
   const h = emit({ ...o, dur: S.dur + 0.2 });
   if (!h) return null;
   vocal(h.in, h.t, S);
+  claim(pos, h, mode);
   return h;
 }
 
+export function prebakeVoices() {
+  for (const ty of Object.keys(TYPE)) for (const m of ['pain', 'attack']) prebakeSet(ty, m);
+}
+function prebakeSet(type, m) { baked(`v|${type}|${m}`, 5, m === 'pain' ? 0.8 : 1, (dst, t0) => vocal(dst, t0, spec(type, m)), 1, 24000, 1); }
+
 export const voices = {
+  // 閒置低吼(各類型自己的聲音)
   groan(type, pos) {
     // 舊版呼叫 groan(dist):沒有位置時改成正前方對應距離
     if (typeof type === 'number') {
       const L = A.L;
       return say('walker', { x: L.x - Math.sin(L.yaw) * type, y: 1.6, z: L.z - Math.cos(L.yaw) * type }, 'groan', 1);
     }
-    return say(type, pos, 'groan', 1);
+    return say(type, pos, 'groan', 2);
+  },
+  // 發現玩家:走屍低吼轉高、奔跑者尖嘯、爬行者嘶聲、腫脹者乾嘔、巨屍短吼
+  alert(type, pos) {
+    if (type === 'runner' && Math.random() < 0.5) return voices.shriek(pos);
+    return say(type, pos, 'alert', 5);
   },
   attack(type, pos) {
-    const h = say(type, pos, 'attack', 3);
+    const h = say(type, pos, 'attack', 5);
     if (h && (type === 'runner' || type === 'brute')) burst(h.in, h.t, { buf: 'pink', type: 'bandpass', f: 1600, q: 0.8, dur: 0.2, a: 0.05, g: 0.25 });
     return h;
   },
@@ -205,27 +276,29 @@ export const voices = {
     for (let i = recentPain.length - 1; i >= 0; i--) if (now - recentPain[i].t > 0.35) recentPain.splice(i, 1);
     if (pos && recentPain.some((r) => Math.hypot(r.x - pos.x, r.z - pos.z) < 0.8)) return null;
     if (pos) recentPain.push({ t: now, x: pos.x, z: pos.z });
-    return say(type, pos, 'pain', 2);
+    return say(type, pos, 'pain', 3);
   },
   die(type, pos) {
     const h = say(type, pos, 'die', 4);
     if (h) {
       // 斷氣時的喉音雜響
       const t = h.t + 0.4 * rand(1, 2);
-      burst(h.in, t, { buf: 'pink', type: 'bandpass', f: 500, f1: 220, q: 2, dur: 0.6, a: 0.12, g: 0.12 });
+      burst(h.in, t, { buf: 'pink', type: 'bandpass', f: 500, f1: 220, q: 2, dur: 0.6, a: 0.12, g: 0.1 });
     }
     return h;
   },
   shriek(pos) {
-    if (SM.has('z.shriek') && Math.random() < 0.6) {
-      const h = SM.play('z.shriek', { pos, bus: 'voice', cat: 'voice', prio: 5, room: 0.45, hall: 0.25, ref: 2, p: 1 });
-      if (h) return;
+    if (blocked(pos, 6)) return;
+    if (Math.random() < 0.7) {
+      const h = SM.play('zr.scream', { pos, bus: 'voice', cat: 'voice', prio: 6, room: 0.45, hall: 0.25, ref: 2, p: 0.8, g: 1.1 });
+      if (h) { claim(pos, h, 'shriek'); return; }
     }
     const S = spec('runner', 'groan', {
       contour: 'shriek', f0: rand(470, 640), dur: rand(0.85, 1.15), vows: ['i', 'ae', 'a'], fs: 1.15, q: 3.5, drive: 6, breath: 1.1, fryRate: rand(60, 90), fryD: 0.3, gain: 0.55, lp: 7500, att: 0.06, rel: 0.35, jit: 0.12, wob: 0.05, makeup: 2.4,
     });
-    const h = emit({ pos, bus: 'voice', cat: 'voice', prio: 5, dur: S.dur + 0.4, hrtf: true, room: 0.45, hall: 0.25, ref: 2 });
+    const h = emit({ pos, bus: 'voice', cat: 'voice', prio: 6, dur: S.dur + 0.4, room: 0.45, hall: 0.25, ref: 2 });
     if (!h) return;
+    claim(pos, h, 'shriek');
     // 吸氣 → 尖嘯
     burst(h.in, h.t, { buf: 'pink', type: 'bandpass', f: 1800, f1: 3800, q: 1.2, dur: 0.22, a: 0.18, g: 0.18 });
     vocal(h.in, h.t + 0.18, S);
@@ -233,15 +306,17 @@ export const voices = {
     vocal(h.in, h.t + 0.2, { ...S, f0: S.f0 * 2.02, gain: 0.18, drive: 8, vows: ['i', 'e', 'ae'] });
   },
   roar(pos) {
-    if (SM.has('z.roar')) { // 錄音咆哮壓低 + 合成胸腔共鳴
-      const h = SM.play('z.roar', { pos, bus: 'voice', cat: 'voice', prio: 6, room: 0.55, hall: 0.45, ref: 4, roll: 0.8, gain: 0.8, semi: -4, p: 1 });
-      if (h) { tone(h.in, h.t + 0.1, { f: 38, f1: 30, dur: 1.6, a: 0.4, g: 0.5 }); duck(0.6, 0.8); return; }
+    if (blocked(pos, 7)) return;
+    if (Math.random() < 0.8) { // 錄音咆哮 + 合成胸腔共鳴
+      const h = SM.play(Math.random() < 0.75 ? 'zx.roar' : 'z.roar', { pos, bus: 'voice', cat: 'voice', prio: 7, room: 0.55, hall: 0.45, ref: 4, roll: 0.8, gain: 0.8, semi: -1, p: 1 });
+      if (h) { claim(pos, h, 'roar'); tone(h.in, h.t + 0.1, { f: 38, f1: 30, dur: 1.6, a: 0.4, g: 0.5 }); duck(0.6, 0.8); return; }
     }
     const S = spec('brute', 'groan', {
       contour: 'roar', f0: rand(46, 56), dur: rand(1.7, 2.1), vows: ['o', 'a', 'a'], q: 4, drive: 7, sub: 1.1, breath: 0.9, fryRate: rand(28, 34), fryD: 0.55, gain: 0.85, lp: 3200, att: 0.25, rel: 0.5, makeup: 3.6,
     });
-    const h = emit({ pos, bus: 'voice', cat: 'voice', prio: 6, dur: S.dur + 0.6, hrtf: true, room: 0.55, hall: 0.45, ref: 4, roll: 0.8, gain: 0.55 });
+    const h = emit({ pos, bus: 'voice', cat: 'voice', prio: 7, dur: S.dur + 0.6, room: 0.55, hall: 0.45, ref: 4, roll: 0.8, gain: 0.55 });
     if (!h) return;
+    claim(pos, h, 'roar');
     vocal(h.in, h.t, S);
     vocal(h.in, h.t + 0.03, { ...S, f0: S.f0 * 1.5, gain: 0.3, fs: 0.9, drive: 9, sub: 0 }); // 上層嘶吼
     burst(h.in, h.t, { buf: 'pink', type: 'bandpass', f: 520, f1: 900, q: 0.9, dur: S.dur * 0.75, a: 0.3, hold: 0.4, g: 0.35 });
@@ -249,9 +324,12 @@ export const voices = {
     duck(0.6, 0.8);
   },
   gurgle(pos) {
+    if (blocked(pos, 2)) return;
+    if (Math.random() < 0.6) { const h = SM.play(pick(['zb.gurgle', 'acid.bubble', 'zb.belch']), { pos, bus: 'voice', cat: 'voice', prio: 2, room: 0.3, ref: 1.6, g: 0.9, len: rand(1, 1.8), fo: 0.4 }); if (h) { claim(pos, h, 'groan'); return; } }
     const dur = rand(0.8, 1.4);
-    const h = emit({ pos, bus: 'voice', cat: 'voice', prio: 1, dur: dur + 0.2, hrtf: true, room: 0.3, ref: 1.6 });
+    const h = emit({ pos, bus: 'voice', cat: 'voice', prio: 2, dur: dur + 0.2, room: 0.3, ref: 1.6 });
     if (!h) return;
+    claim(pos, h, 'groan');
     const n = Math.floor(dur * rand(16, 26));
     for (let i = 0; i < n; i++) bubble(h.in, h.t + rand(0, dur), rand(110, 360), rand(0.08, 0.2), rand(0.03, 0.08));
     burst(h.in, h.t, { buf: 'brown', type: 'lowpass', f: 300, q: 2, dur: dur * 0.7, a: 0.15, g: 0.35 });

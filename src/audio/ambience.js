@@ -1,10 +1,12 @@
-// 區域環境音:依區域 mood 平滑切換的環境音床(常駐層 + 隨機定位事件)、依區域主題切換殘響空間、
-// 定位循環音(發電機、電視雜訊、故障燈管…,依距離自動啟停,遠的不佔 CPU)、斷電效果。
+// 區域環境音:依區域 mood 平滑切換的環境音床(合成常駐層 + 錄音音床 + 隨機定位事件)、依區域實際尺寸算出的殘響空間(rooms.js),
+// 定位循環音(發電機、電視雜訊、故障燈管、監視器、電話…,依距離自動啟停,遠的不佔 CPU)、斷電效果。
+// 錄音音床(醫院空調底噪、日光燈嗡聲、地下室滴水、戶外風聲…)第一次用到才載入,載好前由合成層撐場,載好後淡入、合成層退後。
 // 沒有人呼叫 setZone 時,若有 World(或 levels.js)就依聆聽者位置自動判斷區域。
-import { A, onTick, emit, gain, filter, burst, tone, metal, bubble, rand, pick, clamp, curve, setSpace, around, distTo, levelOf } from './core.js';
+import { A, onTick, emit, gain, filter, burst, tone, metal, bubble, rand, pick, clamp, curve, setSpace, around, distTo, levelOf, playBuf } from './core.js';
 import { vocal } from './voices.js';
 import * as SM from './samples.js';
 import { parseLayout } from '../map/levels.js';
+import { spaceForZone, THEME_SPACE } from './rooms.js';
 
 const ctxNow = () => A.ctx.currentTime;
 
@@ -28,8 +30,66 @@ function lfo(f, depth, param) { return osc('sine', f, gain(depth, param)); }
 // 隨機慢速起伏(陣風、水波):每次 tick 給一個新目標
 function wander(param, lo, hi, tmin, tmax) { return { param, lo, hi, tmin, tmax, next: 0 }; }
 
+// 錄音音床:解碼好的循環緩衝(單聲道)用兩個不同起點的音源左右分開 → 去相關的立體聲寬度;還沒載入時每次 tick 檢查,載好才開始並淡入
+function recBed(key, out, wide = 0.7) {
+  const g = gain(0, out), L = { srcs: [], started: false };
+  L.ev = (now, lay) => {
+    if (L.started) { if (lay) lay.started = true; return; }
+    const b = SM.loop(key);
+    if (!b) return;
+    L.started = true;
+    if (lay) lay.started = true;
+    for (const pan of [-wide, wide]) {
+      const s = A.ctx.createBufferSource();
+      s.buffer = b.b; s.loop = true;
+      s.playbackRate.value = rand(0.985, 1.015);
+      const p = A.ctx.createStereoPanner();
+      p.pan.value = pan;
+      s.connect(p); p.connect(g);
+      s.start(now, rand(0, b.b.duration));
+      L.srcs.push(s);
+    }
+    g.gain.setTargetAtTime(b.g, now, 1.5);
+  };
+  L.rec = key;
+  return L;
+}
+// 火焰劈啪:直接產生一段循環緩衝(不用每次 tick 建節點)
+let CRACK = null;
+function crackleBuf() {
+  if (CRACK && CRACK.ctx === A.ctx) return CRACK.b;
+  const sr = 24000, len = sr * 4, b = A.ctx.createBuffer(1, len, sr), d = b.getChannelData(0);
+  for (let k = 0; k < 110; k++) {
+    const i0 = (Math.random() * len) | 0, a = rand(0.05, 0.4) * (Math.random() < 0.08 ? 2.5 : 1), m = (sr * rand(0.001, 0.006)) | 0;
+    let y = 0;
+    for (let i = 0; i < m && i0 + i < len; i++) { y += 0.6 * (Math.random() * 2 - 1 - y); d[i0 + i] += y * a * Math.exp(-i / (m * 0.25)); }
+  }
+  CRACK = { ctx: A.ctx, b };
+  return b;
+}
+function crackle(dest, g = 1) {
+  const s = A.ctx.createBufferSource();
+  s.buffer = crackleBuf(); s.loop = true; s.playbackRate.value = rand(0.9, 1.1);
+  s.connect(filter('highpass', 1200, 0.6, gain(g, dest)));
+  s.start(A.ctx.currentTime, rand(0, 4));
+  return s;
+}
+
 // build(out) → { srcs:[要 stop 的音源], w:[wander], ev?(now) 層內排程 }
 const LAYERS = {
+  r_roomtone(out) { return recBed('roomtone', out); },
+  r_hum(out) { return recBed('hum', out, 0.4); },
+  r_buzzbad(out) { return recBed('buzzbad', out, 0.4); },
+  r_flicker(out) { return recBed('flicker', out, 0.3); },
+  r_drips(out) { return recBed('drips', out, 0.8); },
+  r_faucet(out) { return recBed('faucet', out, 0.3); },
+  r_wind(out) { return recBed('wind', out, 0.8); },
+  r_howl(out) { return recBed('howl', out, 0.8); },
+  r_graveyard(out) { return recBed('graveyard', out, 0.8); },
+  r_generator(out) { return recBed('generator', out, 0.5); },
+  r_ac(out) { return recBed('ac', out, 0.5); },
+  r_screams(out) { return recBed('screams', out, 0.9); },
+  r_horde(out) { return recBed('horde', out, 0.9); },
   hum(out) { // 日光燈管 120Hz 嗡鳴(台灣 60Hz 市電)+ 安定器的嘶嘶
     const o = osc('sawtooth', 120);
     o.connect(filter('lowpass', 800, 0.7, filter('highpass', 100, 0.7, gain(0.011, out))));
@@ -140,10 +200,7 @@ const LAYERS = {
     b.connect(filter('lowpass', 480, 0.7, g));
     const o = osc('sine', 52);
     o.connect(gain(0.006, out));
-    return {
-      srcs: [b, o], w: [wander(g.gain, 0.03, 0.08, 0.2, 1)],
-      ev(now, L) { if (Math.random() < 0.7) for (let i = 0; i < 3; i++) burst(L.out, now + rand(0, 0.2), { type: 'bandpass', f: rand(1800, 6000), q: 3, dur: rand(0.004, 0.012), g: rand(0.01, 0.05) }); },
-    };
+    return { srcs: [b, o, crackle(out, 0.12)], w: [wander(g.gain, 0.03, 0.08, 0.2, 1)] };
   },
   machine(out) { // 機房:馬達嗡鳴 + 規律的機械撞擊
     const o = osc('sawtooth', 60);
@@ -238,34 +295,39 @@ const LAYERS = {
   },
 };
 // 各層音量正規化(量測後:每層 1.0 ≈ -40 LUFS)
-const LV = { hum: 1.27, buzz: 2.5, whine: 1.5, hvac: 0.63, tone: 2.5, wind: 1.07, windStrong: 2, whistle: 4, leaves: 2.8, fog: 1.4, draft: 4.5, water: 1.15, rumble: 1, fire: 1, machine: 1.3, organ: 0.85, fridge: 1.8, radio: 2.5, neon: 2.5, clock: 1 };
+const LV = { hum: 1.27, buzz: 2.5, whine: 1.5, hvac: 0.63, tone: 2.5, wind: 1.07, windStrong: 2, whistle: 4, leaves: 2.8, fog: 1.4, draft: 4.5, water: 1.15, rumble: 1, fire: 1, machine: 1.3, organ: 0.85, fridge: 1.8, radio: 2.5, neon: 2.5, clock: 1,
+  r_roomtone: 0.32, r_hum: 0.3, r_buzzbad: 0.3, r_flicker: 0.32, r_drips: 0.4, r_faucet: 0.32, r_wind: 0.36, r_howl: 0.34, r_graveyard: 0.34, r_generator: 0.32, r_ac: 0.3, r_screams: 0.32, r_horde: 0.32 };
 // 斷電時會停的層
-const ELECTRIC = new Set(['hum', 'buzz', 'whine', 'hvac', 'fridge', 'radio', 'neon', 'machine']);
+const ELECTRIC = new Set(['hum', 'buzz', 'whine', 'hvac', 'fridge', 'radio', 'neon', 'machine', 'r_roomtone', 'r_hum', 'r_buzzbad', 'r_flicker', 'r_ac']);
+// 錄音音床存在時,對應的合成層退到這個比例(避免兩層打架)
+const SYNTH_BACK = { hum: ['r_hum', 0.35], hvac: ['r_roomtone', 0.3], buzz: ['r_buzzbad', 0.4], wind: ['r_wind', 0.45], windStrong: ['r_howl', 0.45], water: ['r_drips', 0.5], machine: ['r_generator', 0.5] };
+// 區域燈光 → 額外的錄音電器聲
+const LIGHT_BED = { fluoro: ['r_hum', 0.5], fluoro_cold: ['r_hum', 0.6], fluoro_dying: ['r_flicker', 0.45], emergency: ['r_buzzbad', 0.4], monitor: ['r_hum', 0.3], surgical: ['r_hum', 0.5] };
 
 // ---------- 各 mood 的音床 ----------
 // L 常駐層音量、ev 隨機事件權重、gap 事件間隔、sp 預設殘響空間
 const BEDS = {
-  corridor: { L: { hum: 0.9, hvac: 0.7, tone: 0.6 }, ev: { drip: 0.6, flicker: 1.2, moan: 0.9, door: 0.5, knock: 0.3, pipe: 0.4, gurney: 0.25 }, gap: [3, 9], sp: 'corridor' },
-  ward: { L: { hum: 0.5, hvac: 0.5, tone: 0.6, wind: 0.2 }, ev: { monitor: 0.7, moan: 0.8, drip: 0.4, flicker: 0.8, creak: 0.7, gurney: 0.3 }, gap: [3, 9], sp: 'room' },
-  clinical: { L: { hum: 0.7, hvac: 0.8, whine: 0.6, tone: 0.4 }, ev: { monitor: 1.2, flicker: 0.6, drip: 0.3, clank: 0.5, creak: 0.3 }, gap: [3, 10], sp: 'tile' },
-  lobby: { L: { wind: 0.7, tone: 1, hvac: 0.2 }, ev: { pigeon: 0.7, drip: 0.8, moan: 0.9, door: 0.5, debris: 0.6, thunder: 0.3, creak: 0.4 }, gap: [3, 8], sp: 'hall' },
-  chapel: { L: { organ: 0.9, wind: 0.3, tone: 0.5 }, ev: { creak: 0.6, whisper: 0.35, drip: 0.3, bell: 0.2 }, gap: [5, 12], sp: 'chapel' },
+  corridor: { L: { hum: 0.9, hvac: 0.7, tone: 0.6, r_roomtone: 0.8 }, ev: { drip: 0.6, flicker: 1.2, moan: 0.9, door: 0.5, knock: 0.3, pipe: 0.4, gurney: 0.25 }, gap: [3, 9], sp: 'corridor' },
+  ward: { L: { hum: 0.5, hvac: 0.5, tone: 0.6, wind: 0.2, r_roomtone: 0.6 }, ev: { monitor: 0.7, moan: 0.8, drip: 0.4, flicker: 0.8, creak: 0.7, gurney: 0.3 }, gap: [3, 9], sp: 'room' },
+  clinical: { L: { hum: 0.7, hvac: 0.8, whine: 0.6, tone: 0.4, r_roomtone: 0.5 }, ev: { monitor: 1.2, flicker: 0.6, drip: 0.3, clank: 0.5, creak: 0.3 }, gap: [3, 10], sp: 'tile' },
+  lobby: { L: { wind: 0.7, tone: 1, hvac: 0.2, r_wind: 0.35, r_roomtone: 0.3 }, ev: { pigeon: 0.7, drip: 0.8, moan: 0.9, door: 0.5, debris: 0.6, thunder: 0.3, creak: 0.4 }, gap: [3, 8], sp: 'hall' },
+  chapel: { L: { organ: 0.9, wind: 0.3, tone: 0.5, r_roomtone: 0.2 }, ev: { creak: 0.6, whisper: 0.35, drip: 0.3, bell: 0.2 }, gap: [5, 12], sp: 'chapel' },
   safe: { L: { fridge: 0.9, radio: 0.7, neon: 0.7, tone: 0.2 }, ev: { fridgeClick: 0.4 }, gap: [10, 20], sp: 'small' },
-  emergency: { L: { hum: 0.5, buzz: 0.9, hvac: 0.4, tone: 0.4 }, ev: { alarm: 0.6, monitor: 0.6, moan: 0.8, door: 0.5, flicker: 0.9, gurney: 0.4 }, gap: [3, 8], sp: 'room' },
-  basement: { L: { rumble: 0.8, tone: 0.7, hvac: 0.25 }, ev: { drip: 1.6, pipe: 1.2, moan: 0.6, clank: 0.7, rat: 0.5 }, gap: [2, 6], sp: 'tunnel' },
-  flooded: { L: { water: 0.9, rumble: 0.5, tone: 0.5 }, ev: { drip: 2, plop: 1.2, pipe: 0.6, moan: 0.4 }, gap: [1.5, 5], sp: 'tunnel' },
-  morgue: { L: { fridge: 0.6, hum: 0.6, hvac: 0.5, tone: 0.5 }, ev: { drip: 0.8, clank: 0.5, creak: 0.4, flicker: 0.6, gurney: 0.3 }, gap: [3, 9], sp: 'tile' },
-  industrial: { L: { machine: 1.2, fire: 0.8, rumble: 0.6, hvac: 0.3 }, ev: { clank: 1.2, pipe: 1, steam: 0.8 }, gap: [2, 6], sp: 'industrial' },
+  emergency: { L: { hum: 0.5, buzz: 0.9, hvac: 0.4, tone: 0.4, r_buzzbad: 0.6, r_roomtone: 0.5 }, ev: { alarm: 0.6, monitor: 0.6, moan: 0.8, door: 0.5, flicker: 0.9, gurney: 0.4 }, gap: [3, 8], sp: 'room' },
+  basement: { L: { rumble: 0.8, tone: 0.7, hvac: 0.25, r_drips: 0.9, r_roomtone: 0.3 }, ev: { drip: 1.6, pipe: 1.2, moan: 0.6, clank: 0.7, rat: 0.5 }, gap: [2, 6], sp: 'tunnel' },
+  flooded: { L: { water: 0.9, rumble: 0.5, tone: 0.5, r_drips: 1.1 }, ev: { drip: 2, plop: 1.2, pipe: 0.6, moan: 0.4 }, gap: [1.5, 5], sp: 'tunnel' },
+  morgue: { L: { fridge: 0.6, hum: 0.6, hvac: 0.5, tone: 0.5, r_faucet: 0.6, r_roomtone: 0.4 }, ev: { drip: 0.8, clank: 0.5, creak: 0.4, flicker: 0.6, gurney: 0.3 }, gap: [3, 9], sp: 'tile' },
+  industrial: { L: { machine: 1.2, fire: 0.8, rumble: 0.6, hvac: 0.3, r_generator: 0.9 }, ev: { clank: 1.2, pipe: 1, steam: 0.8 }, gap: [2, 6], sp: 'industrial' },
   nursery: { L: { hum: 0.3, tone: 0.6, wind: 0.2 }, ev: { musicbox: 0.9, creak: 0.6, laughFar: 0.12, mobile: 0.6 }, gap: [5, 12], sp: 'room' },
-  psych: { L: { hum: 0.6, whine: 0.7, tone: 0.5 }, ev: { knock: 1.2, moan: 0.6, scream: 0.2, flicker: 0.6, mutter: 0.5 }, gap: [3, 9], sp: 'corridor' },
-  office: { L: { hum: 0.6, hvac: 0.5, tone: 0.4, clock: 0.7 }, ev: { creak: 0.5, flicker: 0.6, phoneFar: 0.15 }, gap: [5, 12], sp: 'small' },
-  stair: { L: { draft: 0.8, tone: 0.5, buzz: 0.4 }, ev: { clank: 0.7, door: 0.8, stepsFar: 0.3, drip: 0.4 }, gap: [3, 9], sp: 'stair' },
-  outdoor: { L: { wind: 1.3, leaves: 0.7 }, ev: { dog: 0.6, crow: 0.8, thunder: 0.25, siren: 0.15, chain: 0.4, owl: 0.3 }, gap: [4, 10], sp: 'outdoor' },
-  outdoor_fog: { L: { wind: 0.8, fog: 0.8 }, ev: { crow: 1, dog: 0.4, bell: 0.25, chain: 0.4, owl: 0.4 }, gap: [5, 11], sp: 'outdoor' },
-  roof: { L: { windStrong: 0.8, whistle: 0.6 }, ev: { flap: 0.8, crow: 0.3, thunder: 0.3, chain: 0.6 }, gap: [4, 9], sp: 'open' },
+  psych: { L: { hum: 0.6, whine: 0.7, tone: 0.5, r_screams: 0.22 }, ev: { knock: 1.2, moan: 0.6, scream: 0.2, flicker: 0.6, mutter: 0.5 }, gap: [3, 9], sp: 'corridor' },
+  office: { L: { hum: 0.6, hvac: 0.5, tone: 0.4, clock: 0.7, r_ac: 0.45 }, ev: { creak: 0.5, flicker: 0.6, phoneFar: 0.15 }, gap: [5, 12], sp: 'small' },
+  stair: { L: { draft: 0.8, tone: 0.5, buzz: 0.4, r_howl: 0.25 }, ev: { clank: 0.7, door: 0.8, stepsFar: 0.3, drip: 0.4 }, gap: [3, 9], sp: 'stair' },
+  outdoor: { L: { wind: 1.3, leaves: 0.7, r_wind: 1 }, ev: { dog: 0.6, crow: 0.8, thunder: 0.25, siren: 0.45, chain: 0.4, owl: 0.3, hordeFar: 0.15 }, gap: [4, 10], sp: 'outdoor' },
+  outdoor_fog: { L: { wind: 0.8, fog: 0.8, r_graveyard: 0.9 }, ev: { crow: 1, dog: 0.4, bell: 0.25, chain: 0.4, owl: 0.4, siren: 0.25, hordeFar: 0.2 }, gap: [5, 11], sp: 'outdoor' },
+  roof: { L: { windStrong: 0.8, whistle: 0.6, r_howl: 1 }, ev: { flap: 0.8, crow: 0.3, thunder: 0.3, chain: 0.6, siren: 0.5 }, gap: [4, 9], sp: 'open' },
 };
-// 區域主題 → 殘響空間(比 mood 更精確:同樣是 psych,隔離軟包房很乾、走廊有顫動回聲)
-const THEME_SPACE = {
+// (舊)區域主題 → 殘響空間表,保留供參考;實際由 rooms.js 依區域尺寸/材質計算
+const THEME_SPACE_OLD = {
   corridor: 'corridor', ward: 'room', psych_cell: 'padded', stairwell: 'stair', stair_ext: 'outdoor', lobby: 'hall', chapel: 'chapel',
   tunnel: 'tunnel', ossuary: 'tunnel', pump: 'tunnel', ramp: 'tunnel', boiler: 'industrial', dock: 'industrial', incinerator: 'industrial', machine: 'industrial',
   morgue: 'tile', autopsy: 'tile', surgery: 'tile', delivery: 'tile', laundry: 'tile', cafeteria: 'room', shop: 'small', office: 'small', director: 'small',
@@ -287,6 +349,9 @@ function applyBed(tc = 1.6) {
   if (!A.ctx) return;
   const bed = BEDS[AM.mood] || BEDS.corridor, now = ctxNow(), out = layerOut();
   const want = { ...bed.L };
+  const lb = AM.zoneObj && LIGHT_BED[AM.zoneObj.light];
+  if (lb) want[lb[0]] = Math.max(want[lb[0]] || 0, lb[1]);
+  for (const k in want) { const sb = SYNTH_BACK[k]; if (sb && want[sb[0]] && SM.loop(LAYERS_REC[sb[0]])) want[k] *= sb[1]; }
   for (const k in AM.layers) if (!(k in want)) want[k] = 0;
   for (const k in want) {
     let L = AM.layers[k];
@@ -311,9 +376,11 @@ function dropLayer(k) {
 }
 
 function spaceFor(zone, mood) {
-  if (zone && THEME_SPACE[zone.theme]) return THEME_SPACE[zone.theme];
-  return (BEDS[mood] || BEDS.corridor).sp;
+  const fb = zone && THEME_SPACE[zone.theme] ? THEME_SPACE[zone.theme] : (BEDS[mood] || BEDS.corridor).sp;
+  return zone ? spaceForZone(zone, mood, fb) : fb;
 }
+// 錄音層名稱 → LOOPS key
+const LAYERS_REC = { r_roomtone: 'roomtone', r_hum: 'hum', r_buzzbad: 'buzzbad', r_flicker: 'flicker', r_drips: 'drips', r_faucet: 'faucet', r_wind: 'wind', r_howl: 'howl', r_graveyard: 'graveyard', r_generator: 'generator', r_ac: 'ac', r_screams: 'screams', r_horde: 'horde' };
 
 function apply(zoneId, mood, zoneObj) {
   AM.zone = zoneId;
@@ -322,7 +389,8 @@ function apply(zoneId, mood, zoneObj) {
   const moodChanged = m !== AM.mood;
   AM.mood = m;
   setSpace(spaceFor(zoneObj, m));
-  if (moodChanged) { applyBed(); AM.nextEv = Math.min(AM.nextEv, ctxNow() + rand(1, 3)); }
+  applyBed();
+  if (moodChanged) AM.nextEv = Math.min(AM.nextEv, ctxNow() + rand(1, 3));
 }
 
 function zoneById(id) {
@@ -604,17 +672,30 @@ export const EVENTS = {
     if (!h) return;
     for (const [dt, d] of [[0, 0.25], [0.45, 0.15], [0.7, 0.5]]) tone(h.in, h.t + dt, { f: 380, f1: 340, dur: d, a: 0.05, g: 0.03 });
   },
-  siren() { // 很遠的警笛,緩緩飄過
-    const h = emit({ bus: 'amb', dur: 9, hall: 0.8, gain: 1.6 });
+  siren() { // 很遠的警笛:美式長鳴或歐式高低音,緩緩飄過(經過時都卜勒下滑),隔著城市很悶
+    const dur = rand(8, 12);
+    const h = emit({ bus: 'amb', prio: 1, dur: dur + 0.5, hall: 0.8, echo: 0.5, gain: 1.6 });
     if (!h) return;
-    const o = A.ctx.createOscillator();
-    o.type = 'triangle';
-    const t = h.t, g = gain(0, filter('lowpass', 1200, 0.7, h.in));
-    o.frequency.setValueCurveAtTime(curve(64, (u) => 650 + 250 * Math.sin(u * 8 * Math.PI)), t, 8);
-    g.gain.setValueCurveAtTime(curve(32, (u) => 0.006 * Math.sin(Math.PI * u)), t, 8);
-    o.connect(g);
-    o.start(t);
-    o.stop(t + 8.1);
+    const t = h.t, wail = Math.random() < 0.6, dop = rand(0.9, 0.96), pan = A.ctx.createStereoPanner();
+    const g = gain(0, filter('lowpass', rand(900, 1400), 0.7, pan));
+    pan.pan.setValueAtTime(rand(-0.9, -0.3), t);
+    pan.pan.linearRampToValueAtTime(rand(0.3, 0.9), t + dur);
+    pan.connect(h.in);
+    for (const [type, mul, gg] of [['triangle', 1, 1], ['sawtooth', 2.01, 0.12]]) {
+      const o = A.ctx.createOscillator();
+      o.type = type;
+      o.frequency.setValueCurveAtTime(curve(128, (u) => mul * (wail ? 650 + 260 * Math.sin(u * dur * 0.9 * Math.PI) : (Math.floor(u * dur * 1.6) % 2 ? 730 : 590)) * (u > 0.5 ? 1 - (1 - dop) * Math.min(1, (u - 0.5) * 6) : 1)), t, dur);
+      o.connect(gain(gg, g));
+      o.start(t);
+      o.stop(t + dur + 0.1);
+    }
+    g.gain.setValueCurveAtTime(curve(48, (u) => 0.006 * Math.pow(Math.sin(Math.PI * u), 1.5)), t, dur);
+  },
+  hordeFar() { // 很遠的屍群呻吟(戶外,偶爾)
+    const h = ev(spot(35, 50, 0), { dur: 7, room: 0.3, hall: 0.9, ref: 20, roll: 0.6, maxDist: 80, gain: 0.5 });
+    if (!h) return;
+    const L = SM.loop('horde');
+    if (L) playBuf(h.in, h.t, L.b, { off: rand(0, Math.max(0, L.b.duration - 7)), len: 6, g: L.g * 0.9, fi: 1.5, fo: 2 });
   },
   chain() { // 鐵絲網圍籬被風吹得碰撞
     const h = ev(spot(6, 18), { dur: 2, room: 0.3, gain: 5.5 });
@@ -721,8 +802,29 @@ function caw(d, t) {
 }
 
 // ---------- 定位循環音 ----------
-// kind:'generator' 'tv_static' 'fluorescent' 'water_drip' 'wind' 'fire' 'machine_hum' 'radio';聆聽者靠近才建立節點
+// kind:'generator' 'tv_static' 'fluorescent' 'water_drip' 'wind' 'fire' 'machine_hum' 'radio' 'monitor' 'phone' 'music_box'
+//       'alarm' 'clock' 'fridge' 'neon' 'candles' 'incubator' 'cctv' 'ac' 'screams' 'horde' 'eating' 'breathing';聆聽者靠近才建立節點。
+// 有錄音的種類先用錄音(第一次用到時載入,沒載好前用合成版本)
+const LOOP_REC = { generator: ['generator', 0.9], tv_static: ['tv', 0.7], fluorescent: ['buzzbad', 0.9], water_drip: ['faucet', 1.2], wind: ['howl', 0.8], machine_hum: ['ac', 0.8], phone: ['phone', 0.5], music_box: ['musicbox', 0.8], screams: ['screams', 0.9], horde: ['horde', 0.9], eating: ['eating', 1.2], breathing: ['breathfast', 0.6] };
 const LOOPK = {
+  monitor: { r: 12, g: 1, room: 0.4, build() { // 生理監視器:規律的嗶聲(偶爾變快)
+    let next = 0, bpm = rand(58, 80);
+    return { srcs: [], ev(now, L) { if (now < next) return; next = now + 60 / bpm; if (Math.random() < 0.02) bpm = rand(55, 110); tone(L.d, now + 0.05, { f: 960, dur: 0.08, a: 0.003, g: 0.05 }); } };
+  } },
+  phone: { r: 16, g: 1, room: 0.6, build(d) { const L = { srcs: [] }; let next = 0; L.ev = (now) => { if (now < next) return; next = now + 6; phoneBell(d, now + 0.05, 2, 0.08); }; return L; } },
+  music_box: { r: 10, g: 1, room: 0.6, build(d) { let next = 0; return { srcs: [], ev(now) { if (now < next) return; next = now + rand(9, 14); musicBox(d, now + 0.05, 10, 0.04, 0.994); } }; } },
+  alarm: { r: 30, g: 1, room: 0.7, build(d) { const o = osc('square', 760); const g = gain(0, filter('lowpass', 2500, 0.7, d)); o.connect(g); let next = 0, on = false; return { srcs: [o], ev(now) { if (now < next) return; on = !on; next = now + (on ? 0.35 : 0.5); g.gain.setTargetAtTime(on ? 0.02 : 0, now, 0.01); } }; } },
+  clock: { r: 8, g: 1, room: 0.4, build(d) { return LAYERS.clock(gain(3, d)); } },
+  fridge: { r: 10, g: 1, room: 0.3, build(d) { return LAYERS.fridge(gain(3, d)); } },
+  neon: { r: 10, g: 1, room: 0.3, build(d) { return LAYERS.neon(gain(4, d)); } },
+  candles: { r: 6, g: 1, room: 0.3, build(d) { return { srcs: [crackle(d, 0.05)] }; } }, // 燭芯的細小劈啪
+  incubator: { r: 9, g: 1, room: 0.3, build(d) { const o = osc('sine', 120); o.connect(gain(0.008, d)); const n = noise('pink'); n.connect(filter('bandpass', 700, 1, gain(0.01, d))); let next = 0; return { srcs: [o, n], ev(now, L) { if (now < next) return; next = now + rand(3, 6); for (let i = 0; i < 2; i++) tone(L.d, now + 0.05 + i * 0.18, { f: 1760, dur: 0.06, g: 0.015 }); } }; } },
+  cctv: { r: 9, g: 1, room: 0.3, build(d) { const o = osc('sawtooth', 60); o.connect(filter('lowpass', 300, 0.7, gain(0.006, d))); const n = noise('white'); const g = gain(0.004, d); n.connect(filter('bandpass', 4200, 1.5, g)); return { srcs: [o, n], w: [wander(g.gain, 0.001, 0.008, 0.2, 1.2)] }; } },
+  ac: { r: 14, g: 1, room: 0.4, build(d) { return LOOPK.machine_hum.build(d); } },
+  screams: { r: 25, g: 1, room: 0.8, build() { return { srcs: [] }; } },
+  horde: { r: 45, g: 1, room: 0.8, build() { return { srcs: [] }; } },
+  eating: { r: 10, g: 1, room: 0.5, build(d) { let next = 0; return { srcs: [], ev(now, L) { if (now < next) return; next = now + rand(0.3, 0.7); burst(L.d, now + 0.05, { type: 'bandpass', f: rand(600, 1400), q: 2, dur: 0.12, a: 0.02, g: 0.06 }); } }; } },
+  breathing: { r: 6, g: 1, room: 0.2, build() { return { srcs: [] }; } },
   generator: { r: 28, g: 1.2, room: 0.6, build(d) { // 柴油發電機:低頻引擎脈動 + 金屬震顫
     const o = osc('sawtooth', 29);
     o.connect(filter('lowpass', 180, 1, gain(0.12, d)));
@@ -764,7 +866,7 @@ const LOOPK = {
     const b = noise('brown');
     const g = gain(0.12, d);
     b.connect(filter('lowpass', 650, 0.7, g));
-    return { srcs: [b], w: [wander(g.gain, 0.06, 0.16, 0.15, 0.8)], ev(now, L) { for (let i = 0; i < 2; i++) if (Math.random() < 0.6) burst(L.d, now + rand(0, 0.05), { type: 'bandpass', f: rand(1500, 6000), q: 3, dur: rand(0.004, 0.015), g: rand(0.03, 0.12) }); } };
+    return { srcs: [b, crackle(d, 0.35)], w: [wander(g.gain, 0.06, 0.16, 0.15, 0.8)] };
   } },
   machine_hum: { r: 18, g: 1, room: 0.5, build(d) {
     const o = osc('sawtooth', 60);
@@ -791,10 +893,18 @@ export function loopStop(key) {
 }
 function startLive(L) {
   const K = LOOPK[L.kind];
-  const h = emit({ pos: L.pos, cat: 'loop', bus: 'amb', prio: 2, dur: 1e6, room: K.room, ref: 1.5, roll: 1.1, maxDist: K.r + 6, gain: 0, track: false });
+  const h = emit({ pos: L.pos, cat: 'loop', bus: 'amb', prio: 2, dur: 1e6, room: K.room, ref: 1.5, roll: 1.1, maxDist: K.r + 6, gain: 0, track: false, nocap: true });
   if (!h) return;
   const g = gain(K.g, h.in);
-  const b = K.build(g);
+  const R = LOOP_REC[L.kind], rb = R && SM.loop(R[0]);
+  let b;
+  if (rb) { // 錄音循環(單聲道,從隨機位置開始)
+    const s = A.ctx.createBufferSource();
+    s.buffer = rb.b; s.loop = true; s.playbackRate.value = rand(0.97, 1.03);
+    s.connect(gain(rb.g * R[1] * 3.2, g));
+    s.start(h.t, rand(0, rb.b.duration));
+    b = { srcs: [s], rec: R[0] };
+  } else b = K.build(g);
   h.in.gain.setTargetAtTime(1, h.t, 0.25);
   L.live = { h, g, ...b, d: g };
 }
@@ -812,22 +922,27 @@ function wanderTick(w, now) {
 }
 
 // ---------- 排程 ----------
-let loopT = 0;
+let loopT = 0, rr2 = 0;
 onTick((now) => {
   if (!AM.out || AM.outCtx !== A.ctx) return; // 尚未啟動
   autoZone(now);
   if (AM.pending && now >= AM.pending.at) { const p = AM.pending; AM.pending = null; apply(p.zoneId, p.mood, zoneById(p.zoneId)); }
   if (AM.power < 1 && now >= AM.powerAt) { // 復電:先閃兩下
     AM.power = 1;
+    SM.play('fluoro.on', { bus: 'amb', prio: 2, gain: 0.5, room: 0.3, g: 0.5 });
     applyBed(0.05);
     for (const k in AM.layers) if (ELECTRIC.has(k)) { const p = AM.layers[k].g.gain; p.setValueAtTime(0, now + 0.15); p.setTargetAtTime(AM.layers[k].base * (LV[k] ?? 1) * AM.level, now + 0.35, 0.05); }
   }
+  let recNew = false;
   for (const k in AM.layers) {
     const L = AM.layers[k];
     if (L.off && now > L.off) { dropLayer(k); continue; }
+    if (L.rec && !L.started && L.ev) { L.ev(now, L); if (L.started) recNew = true; continue; }
     wanderTick(L.w, now);
     if (L.ev && !L.off) L.ev(now, L);
   }
+  if (recNew) applyBed(2);
+  if ((rr2++ & 63) === 0) { const use = new Set(); for (const k in AM.layers) if (AM.layers[k].rec) use.add(AM.layers[k].rec); for (const L of LOOPS.values()) if (L.live && L.live.rec) use.add(L.live.rec); SM.loopGC(now, use); }
   const bed = BEDS[AM.mood];
   if (bed && now > AM.nextEv && AM.level > 0.2) {
     const keys = Object.keys(bed.ev), tot = keys.reduce((s, k) => s + bed.ev[k], 0);
@@ -840,6 +955,7 @@ onTick((now) => {
     loopT = now;
     for (const L of LOOPS.values()) {
       const K = LOOPK[L.kind], d = distTo(L.pos), sameish = Math.abs(levelOf(L.pos.y - 0.3) - levelOf(A.L.y - 1.65)) <= 1;
+      if (!L.live && d < K.r + 8 && LOOP_REC[L.kind]) SM.loop(LOOP_REC[L.kind][0]); // 快走到時先載錄音
       if (!L.live && d < K.r && sameish) startLive(L);
       else if (L.live && (d > K.r + 5 || !sameish)) stopLive(L);
     }
@@ -848,4 +964,5 @@ onTick((now) => {
 });
 
 export const _LAYERS = LAYERS, _BEDS = BEDS;
-export const ambState = () => ({ mood: AM.mood, zone: AM.zone, space: A.space, layers: Object.keys(AM.layers), loops: [...LOOPS.values()].filter((l) => l.live).length + '/' + LOOPS.size, power: AM.power, explicit: AM.explicit });
+export const ambState = () => ({ mood: AM.mood, zone: AM.zone, space: A.space, rt: A.spaceInfo && (A.spaceInfo.rt ?? A.spaceInfo.ir?.dur), layers: Object.keys(AM.layers).map((k) => k + (AM.layers[k].rec && !AM.layers[k].started ? '(載入中)' : '')), loops: [...LOOPS.values()].filter((l) => l.live).length + '/' + LOOPS.size, power: AM.power, explicit: AM.explicit });
+export const LOOP_KINDS = Object.keys(LOOPK);
