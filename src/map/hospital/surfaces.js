@@ -79,28 +79,28 @@ export const SURFACES = {
   facade: S('plaster', 3.8, { tint: 0xa6a298, sat: 0.3, wear: [0.6, 0.8, 0.6, 0] }),
   facade_dark: S('concrete_wall', 2.4, { tint: 0x9a968e, wear: [0.6, 0.8, 0.6, 0] }),
   // ---- 地板 ----
-  tile_ward: S('tile_ward', 1.8, { cav: 0.4, wear: [0.9, 0, 0, 0] }),
-  tile_ward_b: S('tile_lobby', 1.4, { tint: 0xd4ccbc, cav: 0.4, wear: [0.8, 0, 0, 0] }),
-  tile_lobby: S('tile_lobby', 2.0, { tint: 0xe4dccc, cav: 0.4, wear: [0.8, 0, 0, 0] }),
-  terrazzo: S('terrazzo', 1.1, { rough: 0.55, tint: 0xd8d2c8, wear: [0.7, 0, 0, 0] }),
-  checker: S('checker_bw', 1.6, { tint: 0xe8e4dc, rough: 0.7, cav: 0.4, wear: [0.9, 0, 0, 0.15] }), // 黑白棋盤(餐廳)
-  linoleum: S('linoleum', 2.0, { tint: 0xb4c4b4, sat: 0.55 }),
-  linoleum_b: S('linoleum', 2.3, { tint: 0xd6c6a6, sat: 0.06, rot: Math.PI / 2 }),
-  linoleum_c: S('linoleum', 2.2, { tint: 0xa8b6c8, sat: 0.08 }),
-  linoleum_d: S('linoleum', 2.0, { tint: 0xd4aeaa, sat: 0.08, rot: Math.PI / 2 }),
-  lino_sheet: { gen: 'linoleum', wear: [0.85, 0, 0, 0] }, // 大理石紋塑膠布(病房)
-  lino_sheet_b: { gen: 'linoleum_b', wear: [0.85, 0, 0, 0] },
-  lino_sheet_c: { gen: 'linoleum_c', wear: [0.85, 0, 0, 0] },
-  lino_sheet_d: { gen: 'linoleum_d', wear: [0.85, 0, 0, 0] },
-  lino_pattern: S('lino_pattern', 1.5, { tint: 0xd0b498, sat: 0.55, rough: 0.8, wear: [0.9, 0, 0, 0] }), // 七〇年代花紋地板
-  vct: { gen: 'tile_ward_b', wear: [0.85, 0, 0, 0] },
+  tile_ward: S('tile_ward', 1.8, { cav: 0.4, scuff: 0.8, wear: [0.9, 0, 0, 0] }),
+  tile_ward_b: S('tile_lobby', 1.4, { tint: 0xd4ccbc, cav: 0.4, scuff: 0.8, wear: [0.8, 0, 0, 0] }),
+  tile_lobby: S('tile_lobby', 2.0, { tint: 0xe4dccc, cav: 0.4, scuff: 0.8, wear: [0.8, 0, 0, 0] }),
+  terrazzo: S('terrazzo', 1.1, { rough: 0.55, tint: 0xd8d2c8, scuff: 0.8, wear: [0.7, 0, 0, 0] }),
+  checker: S('checker_bw', 1.6, { tint: 0xe8e4dc, rough: 0.7, cav: 0.4, scuff: 0.8, wear: [0.9, 0, 0, 0.15] }), // 黑白棋盤(餐廳)
+  linoleum: S('linoleum', 2.0, { scuff: 0.8, tint: 0xb4c4b4, sat: 0.55 }),
+  linoleum_b: S('linoleum', 2.3, { scuff: 0.8, tint: 0xd6c6a6, sat: 0.06, rot: Math.PI / 2 }),
+  linoleum_c: S('linoleum', 2.2, { scuff: 0.8, tint: 0xa8b6c8, sat: 0.08 }),
+  linoleum_d: S('linoleum', 2.0, { scuff: 0.8, tint: 0xd4aeaa, sat: 0.08, rot: Math.PI / 2 }),
+  lino_sheet: { gen: 'linoleum', scuff: 0.9, wear: [0.85, 0, 0, 0] }, // 大理石紋塑膠布(病房)
+  lino_sheet_b: { gen: 'linoleum_b', scuff: 0.9, wear: [0.85, 0, 0, 0] },
+  lino_sheet_c: { gen: 'linoleum_c', scuff: 0.9, wear: [0.85, 0, 0, 0] },
+  lino_sheet_d: { gen: 'linoleum_d', scuff: 0.9, wear: [0.85, 0, 0, 0] },
+  lino_pattern: S('lino_pattern', 1.5, { scuff: 0.8, tint: 0xd0b498, sat: 0.55, rough: 0.8, wear: [0.9, 0, 0, 0] }), // 七〇年代花紋地板
+  vct: { gen: 'tile_ward_b', scuff: 0.9, wear: [0.85, 0, 0, 0] },
   rubber: S('rubber_floor', 2.0, { tint: 0x9aa4a8, gain: 1.6, rough: 0.9, wear: [0.6, 0, 0, 0] }),
   anti_skid: S('anti_skid', 1.2, { tint: 0xd8d0c8, sat: 0.4, cav: 0.5, wear: [0.9, 0, 0, 0.35] }), // 止滑磚(太平間/洗衣房/廚房)
-  tile_white_floor: S('tile_white', 1.6, { cav: 0.45, wear: [0.8, 0, 0, 0.2] }),
+  tile_white_floor: S('tile_white', 1.6, { scuff: 0.8, cav: 0.45, wear: [0.8, 0, 0, 0.2] }),
   concrete: S('concrete', 3.0, { wear: [0.9, 0, 0, 0.15] }),
   concrete_paint: S('concrete', 3.2, { tint: 0xc8c0b0, wear: [0.9, 0, 0, 0.1] }),
   concrete_wet: S('concrete_wet', 2.0, { rough: 0.42, wear: [0.9, 0, 0, 0.8] }),
-  epoxy: S('epoxy', 3.0, { tint: 0xb8c0b4, gain: 1.6, sat: 0.35, rough: 0.6, wear: [0.8, 0, 0, 0.3] }), // 環氧樹脂地坪
+  epoxy: S('epoxy', 3.0, { scuff: 0.8, tint: 0xb8c0b4, gain: 1.6, sat: 0.35, rough: 0.6, wear: [0.8, 0, 0, 0.3] }), // 環氧樹脂地坪
   wood_floor: S('wood_floor', 2.0, { cav: 0.3, wear: [0.8, 0, 0, 0] }),
   wood_gym: S('wood_floor', 2.6, { tint: 0xe6c49a, sat: 1.25, wear: [0.6, 0, 0, 0] }),
   wood_parquet: { gen: 'wood_parquet', wear: [0.7, 0, 0, 0] },
@@ -118,8 +118,9 @@ export const SURFACES = {
   roof_gravel: S('roof_gravel', 2.2, { wear: [0.3, 0, 0, 0.3] }),
   metal_grate: S('metal_grate', 0.5, { metal: 0.75, alphaTest: 0.5, side: 2, wear: [0, 0, 0, 0] }),
   // ---- 天花板 ----
-  ceil_tile: S('ceiling_tile', 4.0, { tint: 0xd8d4c8, wear: [0, 0.6, 0.3, 0] }),
-  ceil_tile_b: S('ceiling_tile', 4.0, { tint: 0xb4a48c, sat: 1.2, wear: [0, 1, 0.6, 0] }),
+  // 礦纖板:每片依位置換一片圖樣 + 轉 90° 的倍數 + 色差(tv = 每張貼圖 3×3 片)→ 長走廊看不出 2m 的重複
+  ceil_tile: S('ceiling_fissured', 2.0, { tint: 0xc6c2b6, norm: 1, sat: 0.9, n: 1.1, tv: 3, wear: [0, 0.18, 0.3, 0] }),
+  ceil_tile_b: S('ceiling_fissured', 2.0, { tint: 0xb2a690, norm: 1, sat: 1, n: 1.1, tv: 3, wear: [0, 0.45, 0.6, 0] }),
   ceil_tile_c: S('ceiling_tile2', 2.4, { tint: 0xc8c6bc, gain: 0.95, wear: [0, 0.8, 0.4, 0] }), // 另一款礦纖板(格線較密)
   ceil_plaster: S('plaster_paint', 3.0, { tint: 0xb0aa9c, norm: 1, sat: 0.2, wear: [0, 0.9, 0.6, 0] }),
   ceil_concrete: S('concrete', 2.6, { tint: 0x8c8882, wear: [0, 0.9, 0.6, 0] }),
@@ -161,16 +162,40 @@ const NOTILE = `
 uniform float uSat;
 uniform float uNoTile;
 uniform float uCavity;
+uniform float uTileVar;
 float ntHash( vec2 p ) { return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 ); }
 float ntNoise( vec2 p ) { vec2 i = floor( p ), f = fract( p ); f = f * f * ( 3.0 - 2.0 * f );
   return mix( mix( ntHash( i ), ntHash( i + vec2( 1.0, 0.0 ) ), f.x ), mix( ntHash( i + vec2( 0.0, 1.0 ) ), ntHash( i + vec2( 1.0, 1.0 ) ), f.x ), f.y ); }
+// 片狀材質(天花板礦纖板):每一片換成貼圖裡隨機的一片,並轉 0/90/180/270°;法線 xy 要轉回來(tvRotN)
+float tvK( vec2 id ) { return floor( ntHash( id ) * 4.0 ); }
+vec2 tvRot( vec2 c, float k ) { return k < 1.0 ? c : k < 2.0 ? vec2( - c.y, c.x ) : k < 3.0 ? - c : vec2( c.y, - c.x ); }
+vec2 tvRotN( vec2 n, vec2 uv ) { if ( uTileVar < 0.5 ) return n; float k = tvK( floor( uv * uTileVar ) ); return tvRot( n, mod( 4.0 - k, 4.0 ) ); }
+vec3 tvShade( vec2 uv ) {
+  if ( uTileVar < 0.5 ) return vec3( 1.0 );
+  float h = ntHash( floor( uv * uTileVar ) + 41.7 );
+  vec3 s = vec3( 0.93 + 0.1 * fract( h * 13.1 ) );
+  if ( h > 0.93 ) s *= vec3( 1.06, 1.06, 1.04 ); // 後來換上的新板
+  else if ( h > 0.85 ) s *= vec3( 0.96, 0.9, 0.76 ); // 泛黃受潮
+  else if ( h < 0.05 ) s *= vec3( 0.82, 0.8, 0.76 ); // 燻黑
+  return s;
+}
 vec4 ntTex( sampler2D t, vec2 uv ) {
-  if ( uNoTile < 0.5 ) return texture2D( t, uv );
-  float k = ntNoise( uv * 0.43 ) * 0.7 + ntNoise( uv * 1.31 + 17.0 ) * 0.3;
-  float l = k * 7.0; float f = fract( l ); float ia = floor( l );
-  vec2 oa = sin( vec2( 3.0, 7.0 ) * ia ), ob = sin( vec2( 3.0, 7.0 ) * ( ia + 1.0 ) );
+  vec4 res;
   vec2 dx = dFdx( uv ), dy = dFdy( uv );
-  return mix( textureGrad( t, uv + oa, dx, dy ), textureGrad( t, uv + ob, dx, dy ), smoothstep( 0.25, 0.75, f ) );
+  if ( uTileVar > 0.5 ) {
+    vec2 g = uv * uTileVar, id = floor( g ), c = g - id - 0.5;
+    float h2 = ntHash( id + 17.3 );
+    vec2 src = floor( vec2( h2, fract( h2 * 7.13 ) ) * uTileVar );
+    res = textureGrad( t, ( src + tvRot( c, tvK( id ) ) + 0.5 ) / uTileVar, dx, dy );
+  } else if ( uNoTile < 0.5 ) {
+    res = texture2D( t, uv );
+  } else {
+    float k = ntNoise( uv * 0.43 ) * 0.7 + ntNoise( uv * 1.31 + 17.0 ) * 0.3;
+    float l = k * 7.0; float f = fract( l ); float ia = floor( l );
+    vec2 oa = sin( vec2( 3.0, 7.0 ) * ia ), ob = sin( vec2( 3.0, 7.0 ) * ( ia + 1.0 ) );
+    res = mix( textureGrad( t, uv + oa, dx, dy ), textureGrad( t, uv + ob, dx, dy ), smoothstep( 0.25, 0.75, f ) );
+  }
+  return res;
 }
 #ifdef LAYER
 uniform sampler2D tL2c;
@@ -183,7 +208,7 @@ uniform vec3 uL2under;
 `;
 function structHook(shader) {
   const U = this.userData;
-  Object.assign(shader.uniforms, { uSat: U.uSat, uNoTile: U.uNoTile, uCavity: U.uCavity, tWear: U.tWear, uWear: U.uWear, uWear2: U.uWear2 });
+  Object.assign(shader.uniforms, { uSat: U.uSat, uNoTile: U.uNoTile, uCavity: U.uCavity, uTileVar: U.uTileVar, tWear: U.tWear, uWear: U.uWear, uWear2: U.uWear2 });
   if (U.L2) Object.assign(shader.uniforms, U.L2);
   const C = THREE.ShaderChunk;
   shader.vertexShader = shader.vertexShader
@@ -194,6 +219,7 @@ function structHook(shader) {
     .replace('#include <map_fragment>', WEAR_SETUP + `
 #ifdef USE_MAP
 	vec4 sampledDiffuseColor = ntTex( map, vMapUv );
+	sampledDiffuseColor.rgb *= tvShade( vMapUv );
 	float satL = dot( sampledDiffuseColor.rgb, vec3( 0.299, 0.587, 0.114 ) );
 	sampledDiffuseColor.rgb = max( mix( vec3( satL ), sampledDiffuseColor.rgb, uSat ), 0.0 );
 	diffuseColor *= sampledDiffuseColor;
@@ -222,6 +248,7 @@ roughnessFactor = clamp( roughnessFactor + wxRough - wxWet * 0.85, 0.04, 1.0 );`
     .replace('#include <normal_fragment_maps>', `
 #ifdef USE_NORMALMAP_TANGENTSPACE
 	vec3 mapN = ntTex( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;
+	mapN.xy = tvRotN( mapN.xy, vNormalMapUv );
 	#ifdef LAYER
 	vec3 l2n = ntTex( tL2n, l2uv ).xyz * 2.0 - 1.0;
 	mapN = mix( mapN, vec3( l2n.xy * uL2.z / max( normalScale.x, 0.05 ), l2n.z ), wxPeel );
@@ -234,7 +261,7 @@ roughnessFactor = clamp( roughnessFactor + wxRough - wxWet * 0.85, 0.04, 1.0 );`
     .replace('#include <aomap_fragment>', C.aomap_fragment.replace('texture2D( aoMap, vAoMapUv )', 'ntTex( aoMap, vAoMapUv )'));
 }
 // 有規則圖樣(磁磚、磚、石塊、棋盤、木板)的貼圖不能打亂
-const PATTERNED = new Set(['tile_ward', 'tile_lobby', 'tile_white', 'tile_wall', 'brick', 'stone_wall', 'wood_panel', 'ceiling_tile', 'metal_grate', 'paving', 'wood_floor', 'wood_old', 'concrete_wall', 'carpet', 'chainlink', 'stone',
+const PATTERNED = new Set(['ceiling_fissured', 'tile_ward', 'tile_lobby', 'tile_white', 'tile_wall', 'brick', 'stone_wall', 'wood_panel', 'ceiling_tile', 'metal_grate', 'paving', 'wood_floor', 'wood_old', 'concrete_wall', 'carpet', 'chainlink', 'stone',
   'tile_sq', 'checker_bw', 'lino_pattern', 'anti_skid', 'rubber_floor', 'ceiling_tile2', 'brick_white', 'wallpaper_old', 'plaster_damaged']);
 const DEF_WEAR = [0.8, 0.6, 0.4, 0];
 const _lc = new THREE.Color();
@@ -245,9 +272,10 @@ function wearUniforms(m, def, gen) {
   m.userData.uSat = m.userData.uSat || { value: 1 };
   m.userData.uNoTile = m.userData.uNoTile || { value: 0 };
   m.userData.uCavity = { value: def?.cav ?? (gen ? 0 : 0.25) };
+  m.userData.uTileVar = { value: def?.tv ?? 0 };
   m.userData.tWear = { value: wearTexture() };
   m.userData.uWear = { value: new THREE.Vector4(w[0], w[1], w[2], w[3]) };
-  m.userData.uWear2 = { value: new THREE.Vector4(def?.peel?.amt ?? 0, def?.peel?.scale ?? 0.4, 0, 0) };
+  m.userData.uWear2 = { value: new THREE.Vector4(def?.peel?.amt ?? 0, def?.peel?.scale ?? 0.4, def?.scuff ?? 0, 0) };
   m.onBeforeCompile = structHook;
   m.customProgramCacheKey = () => 'struct' + (m.defines?.LAYER !== undefined ? 'L' : '');
 }

@@ -94,8 +94,8 @@ export class PvpMode {
     this.place(this.spawnAt);
     this.warmup = s.late ? 0.5 : WARMUP;
     if (s.isHost) { this.endAt = s.client.serverNow() + (this.warmup + this.minutes * 60) * 1000; this.broadcast(); }
-    s.hud.picker(this.weapons(), this.primary, (id) => this.pick(id), '選擇主武器(數字鍵)· 另配手槍與 1 顆手榴彈');
-    s.hud.center(s.late ? '中途加入對戰' : `對戰死鬥 · 先拿到 ${this.limit} 殺獲勝`, 3500);
+    s.hud.picker(this.weapons(), this.primary, (id) => this.pick(id), '選擇主武器（數字鍵）· 另配手槍與 1 顆手榴彈');
+    s.hud.center(s.late ? '中途加入對戰' : `對戰死鬥 · 模擬戰（非正史） · 先拿到 ${this.limit} 殺獲勝`, 3500);
     document.body.classList.add('mp-pvp'); // 隱藏回合資訊(見 hud.css)
   }
   stopUi() { document.body.classList.remove('mp-pvp'); }
@@ -192,7 +192,7 @@ export class PvpMode {
     if (g.shopUIOpen) g.closeShop();
     g.ui.map?.close?.();
     this.onDeath(s.me, by, la?.w, la?.head);
-    s.hud.picker(this.weapons(), this.primary, (id) => this.pick(id), '重生武器(數字鍵)');
+    s.hud.picker(this.weapons(), this.primary, (id) => this.pick(id), '重生武器（數字鍵）');
     s.sendState(true);
   }
 
@@ -239,10 +239,10 @@ export class PvpMode {
     const rows = d.t.filter((r) => Array.isArray(r));
     const win = rows[0];
     s.hud.results({
-      title: win && win[0] === s.me ? '你贏了!' : '對戰結束',
-      sub: win ? `冠軍:${s.nameOf(win[0])} · ${win[1]} 殺` : '',
+      title: win && win[0] === s.me ? '你贏了！' : '對戰結束',
+      sub: win ? `冠軍：${s.nameOf(win[0])} · ${win[1]} 殺` : '',
       cols: ['名次', '玩家', '擊殺', '陣亡', 'K/D'],
-      rows: rows.map(([id, k, dd], i) => [i + 1, s.nameOf(id) + (id === s.me ? '(你)' : ''), k, dd, (k / Math.max(1, dd)).toFixed(2)]),
+      rows: rows.map(([id, k, dd], i) => [i + 1, s.nameOf(id) + (id === s.me ? '（你）' : ''), k, dd, (k / Math.max(1, dd)).toFixed(2)]),
       again: true,
     });
   }
@@ -268,7 +268,7 @@ export class PvpMode {
         s.hud.pickerClose();
         this.loadout();
         this.shieldT = 1;
-        s.hud.center('開始!', 1200);
+        s.hud.center('開始！', 1200);
         sfx.roundStart?.();
       }
     }
@@ -313,7 +313,7 @@ export class PvpMode {
     this.shieldT = SHIELD;
     g.weaponScene.visible = true;
     s.hud.pickerClose();
-    s.hud.center('重生 · 2 秒無敵(開槍即解除)', 1400);
+    s.hud.center('重生 · 2 秒無敵（開槍即解除）', 1400);
     s.sendState(true);
   }
   // 本機開火:重生保護立刻解除(不能邊無敵邊打人)

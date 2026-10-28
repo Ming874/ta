@@ -873,7 +873,7 @@ export class Pickups {
 
 // =====================================================================
 // 補給點:world.supplies = [{ kind: 'ammo' | 'health', x, y, z, level }]
-// 實體模型(彈藥補給櫃 / 醫療櫃),E 鍵使用;每回合每位玩家一次,用完亮紅燈並顯示冷卻。
+// 實體模型(彈藥補給櫃 / 醫療櫃),E 鍵使用;每次燈篙每位玩家一次,用完亮紅燈並顯示冷卻。
 // =====================================================================
 export const SUPPLY_RULES = { reach: 1.9, reachY: 1.3 };
 const SUP = {
@@ -890,7 +890,7 @@ function screenTex(kind, ready) {
   x.fillText(ready ? (kind === 'ammo' ? '彈藥 OK' : '醫療 OK') : '冷卻中', 128, 48);
   x.font = '700 22px "Microsoft JhengHei", sans-serif';
   x.fillStyle = ready ? '#cfd8cf' : '#c98a80';
-  x.fillText(ready ? '按 E 補給' : '下一回合補充', 128, 96);
+  x.fillText(ready ? '按 E 補給' : '下一次燈篙補充', 128, 96);
   for (let y = 0; y < 128; y += 3) { x.fillStyle = 'rgba(0,0,0,.3)'; x.fillRect(0, y, 256, 1); }
   return toTex(c);
 }
@@ -914,8 +914,8 @@ function supplyMats() {
     white: std({ color: 0xdedbd2, roughness: 0.42, metalness: 0.15 }),
     glass: std({ color: 0xcfe3e8, roughness: 0.05, transparent: true, opacity: 0.2, depthWrite: false }),
     inside: std({ color: 0x1a1d1c, roughness: 0.9 }),
-    ammoPlate: std({ map: stencilPlate([['彈藥 AMMO', 92, 0.42], ['每回合每人一次', 34, 0.82]], '#d6c15a'), transparent: true, depthWrite: false, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2 }),
-    medPlate: std({ map: stencilPlate([['醫療 MEDICAL', 84, 0.42], ['每回合每人一次', 34, 0.82]], '#b3121a'), transparent: true, depthWrite: false, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2 }),
+    ammoPlate: std({ map: stencilPlate([['彈藥 AMMO', 92, 0.42], ['每次燈篙每人一次', 34, 0.82]], '#d6c15a'), transparent: true, depthWrite: false, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2 }),
+    medPlate: std({ map: stencilPlate([['醫療 MEDICAL', 84, 0.42], ['每次燈篙每人一次', 34, 0.82]], '#b3121a'), transparent: true, depthWrite: false, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2 }),
   };
   return SM;
 }
@@ -1061,13 +1061,13 @@ export class Supplies {
 
   promptFor(st, p) {
     const S = SUP[st.kind];
-    return this.canUse(st, p) ? { text: `按 [E] ${S.verb}`, dim: false } : { text: `${S.name} · 已使用,下一回合補充`, dim: true };
+    return this.canUse(st, p) ? { text: `按 [E] ${S.verb}`, dim: false } : { text: `${S.name} · 已使用，下一次燈篙補充`, dim: true };
   }
 
   // 使用;回傳 { ok, msg }
   use(st, game) {
     const p = game.player, w = game.weapons, ui = game.ui, S = SUP[st.kind];
-    if (!this.canUse(st, p)) { say('pickupDeny', 'deny'); return { ok: false, msg: '這個補給點本回合已使用過' }; }
+    if (!this.canUse(st, p)) { say('pickupDeny', 'deny'); return { ok: false, msg: '這次燈篙已經用過了' }; }
     if (st.kind === 'ammo') {
       const ids = Object.keys(w.inv).filter((id) => WEAPONS[id]);
       if (ids.every((id) => w.inv[id].mag >= magOf(w, id) && w.inv[id].reserve >= WEAPONS[id].reserveCap)) {

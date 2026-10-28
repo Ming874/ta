@@ -4,6 +4,7 @@
 // sfx.tape(kind):'insert' | 'play' | 'stop' | 'eject';play 之後有磁帶嘶聲與馬達聲,stop/eject 時停止。
 import { A, emit, gain, filter, burst, tone, metal, shaper, rand, clamp } from './core.js';
 import { click, clack } from './foley.js';
+import { cassetteStop } from './folk.js';
 
 // ---------- 無線電 ----------
 const RD = { nodes: null, on: false };
@@ -101,6 +102,7 @@ function hissOff() {
   setTimeout(() => { try { H.n.stop(); H.m.stop(); } catch { /* 已停 */ } H.g.disconnect(); H.mg.disconnect(); }, 700);
 }
 export function tape(kind = 'play') {
+  if (kind === 'insert' || kind === 'play' || kind === 'eject') cassetteStop();
   const h = emit({ bus: 'sfx', prio: 5, room: 0.1, dur: 1, gain: 1.1 });
   if (!h) return;
   const t = h.t, d = h.in;

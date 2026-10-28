@@ -9,6 +9,7 @@ import { A, emit, burst, tone, metal, rand, pick, duck, muffle, baked, playBuf }
 import { voices, vocal } from './voices.js';
 import { zStep } from './steps.js';
 import * as SM from './samples.js';
+import { sting } from './tracks.js';
 
 // 各新類型的聲紋(同 voices.js TYPE 欄位)與錄音替代(移調的舊錄音)
 const TYPE = {
@@ -17,6 +18,7 @@ const TYPE = {
   surgeon: { f0: [80, 120], dur: [1.1, 2.0], vow: ['u', 'uh', 'o', 'er'], fs: 0.96, q: 6.5, breath: 0.65, fry: [14, 24], fryD: 0.7, sub: 0.1, body: 0.12, drive: 2.6, lp: 2400, gurgle: 0.65, gain: 0.48, jit: 0.06, wob: 0.04 },
   burned: { f0: [65, 95], dur: [1.0, 1.9], vow: ['a', 'uh', 'er'], fs: 0.95, q: 4.5, breath: 1.25, fry: [24, 40], fryD: 0.8, sub: 0.15, body: 0.15, drive: 5.5, lp: 2100, gurgle: 0.25, gain: 0.46, jit: 0.08, wob: 0.05 },
   hazmat: { f0: [72, 98], dur: [1.2, 2.2], vow: ['o', 'u', 'uh'], fs: 0.9, q: 7, breath: 0.5, fry: [18, 28], fryD: 0.55, sub: 0.3, body: 0.3, drive: 2.4, lp: 900, gurgle: 0.05, gain: 0.55, jit: 0.04, wob: 0.03 },
+  pursuer: { f0: [48, 66], dur: [1.2, 2.2], vow: ['o', 'u', 'uh'], fs: 0.82, q: 6, breath: 0.9, fry: [16, 26], fryD: 0.7, sub: 0.7, body: 0.5, drive: 4.5, lp: 1500, gurgle: 0.2, gain: 0.5, jit: 0.04, wob: 0.03 },
   straitjacket: { f0: [140, 210], dur: [0.6, 1.2], vow: ['a', 'ae', 'uh'], fs: 1.04, q: 5, breath: 0.6, fry: [30, 50], fryD: 0.35, sub: 0, body: 0.05, drive: 3.2, lp: 4200, gurgle: 0, gain: 0.46, jit: 0.1, wob: 0.08 },
 };
 // 合成一句:束縛病患的「尖笑」= 一串短促的 ha(音高逐漸下降);其他直接用共振峰合成
@@ -44,6 +46,7 @@ const VOX = {
   surgeon: { groan: [['zc.gurgle', 1, -1], ['zw.groan', 0.9, -1]], alert: [['z.growl', 1, -1]], attack: [['z.attack', 1, 0], ['zr.attack', 0.9, -2]], pain: [['z.pain', 1, -1]], die: [['z.die', 1, -1], ['zc.gurgle', 1, -2]] },
   burned: { groan: [['zw.groan', 0.9, -2], ['z.growl', 0.9, -3]], alert: [['z.growl', 1, -2]], attack: [['z.attack', 1, -2]], pain: [['z.pain', 1, -2], ['z.hit', 1, -1]], die: [['z.die', 1, -3]] },
   hazmat: { groan: [['z.growl', 0.8, -3]], alert: [['zx.growl', 0.9, 2]], attack: [['z.attack', 1, -3]], pain: [['z.grunt', 1, -2]], die: [['z.die', 1, -3]] },
+  pursuer: { groan: [['zx.growl', 1, -2], ['z.growl', 1, -6]], alert: [['zx.roar', 0.9, -3]], attack: [['zx.roar', 1, -1], ['z.attack', 1.1, -6]], pain: [['z.grunt', 1, -5]], die: [['zx.roar', 1, -4]] },
   straitjacket: { groan: [['z.grunt', 0.9, 2]], alert: [['zr.scream', 0.7, 0]], attack: [['z.grunt', 1.1, 1], ['z.attack', 1, 1]], pain: [['z.pain', 1, 1]], die: [['z.die', 1, 1]] },
 };
 const MIX = { groan: 0.5, alert: 0.65, attack: 0.65, pain: 0.6, die: 0.75 };
@@ -68,7 +71,7 @@ function say(type, pos, mode) {
   if (!A.ctx) return null;
   const old = pos && typeof pos === 'object' ? busy.get(pos) : null;
   if (old && !old.dead && old.end > A.ctx.currentTime + 0.1 && (old.mode === 'die' || (old.prio > PRIO[mode] && mode !== 'pain' && mode !== 'die'))) return null;
-  const o = { pos, bus: 'voice', cat: 'voice', prio: PRIO[mode], room: 0.35, ref: type === 'hazmat' ? 1.9 : 1.6 };
+  const o = { pos, bus: 'voice', zv: mode, cat: 'voice', prio: PRIO[mode], room: 0.35, ref: type === 'hazmat' ? 1.9 : 1.6 };
   let h = null;
   const list = VOX[type][mode];
   if (list && Math.random() < MIX[mode]) {
@@ -127,7 +130,7 @@ function respir(h, at = 0) {
 export function zvoices2(safe) {
   return {
     zScream: safe((pos) => {
-      const h = emit({ pos, bus: 'voice', cat: 'voice', prio: 7, dur: 2.2, room: 0.5, hall: 0.4, ref: 3.5, maxDist: 60 });
+      const h = emit({ pos, bus: 'voice', zv: 'scream', cat: 'voice', prio: 7, dur: 2.2, room: 0.5, hall: 0.4, ref: 3.5, maxDist: 60 });
       if (!h) return;
       busy.get(pos)?.kill?.();
       h.mode = 'die'; busy.set(pos, h); // 尖叫期間不被別的叫聲切掉
@@ -140,7 +143,7 @@ export function zvoices2(safe) {
       duck(0.45, 1.2, true);
     }),
     zInhale: safe((pos) => {
-      const h = emit({ pos, bus: 'voice', cat: 'voice', prio: 6, dur: 0.8, room: 0.3, ref: 2 });
+      const h = emit({ pos, bus: 'voice', zv: 'pain', cat: 'voice', prio: 6, dur: 0.8, room: 0.3, ref: 2 });
       if (h) burst(h.in, h.t, { buf: 'pink', type: 'bandpass', f: 900, f1: 3200, glide: 0.6, q: 1.6, dur: 0.5, a: 0.35, g: 0.5 });
     }),
     zDaze: safe((k = 1) => {
@@ -160,7 +163,7 @@ export function zvoices2(safe) {
       }
     }),
     zBreath: safe((pos, type) => {
-      const h = emit({ pos, bus: 'voice', cat: 'voice', prio: 2, dur: 1.4, room: 0.3, ref: 1.4 });
+      const h = emit({ pos, bus: 'voice', zv: 'breath', cat: 'voice', prio: 2, dur: 1.4, room: 0.3, ref: 1.4 });
       if (!h) return;
       for (let i = 0; i < 3; i++) burst(h.in, h.t + i * 0.42, { buf: 'pink', type: 'bandpass', f: i % 2 ? 700 : 1100, q: 1.2, dur: 0.3, a: 0.08, g: type === 'surgeon' ? 0.3 : 0.22 });
     }),
@@ -175,7 +178,7 @@ export function zvoices2(safe) {
       crackleOn(h.in, h.t, 0.3, 1.2);
     }),
     zRespirator: safe((pos) => {
-      const h = emit({ pos, bus: 'voice', cat: 'voice', prio: 2, dur: 2.2, room: 0.3, ref: 1.6, maxDist: 28 });
+      const h = emit({ pos, bus: 'voice', zv: 'breath', cat: 'voice', prio: 2, dur: 2.2, room: 0.3, ref: 1.6, maxDist: 28 });
       if (h) respir(h);
     }),
     zMaskHit: safe((pos) => {
@@ -185,7 +188,7 @@ export function zvoices2(safe) {
       burst(h.in, h.t + 0.02, { buf: 'pink', type: 'bandpass', f: 2500, q: 1, dur: 0.5, a: 0.01, g: 0.25 }); // 濾罐漏氣
     }),
     zCharge: safe((pos) => {
-      const h = emit({ pos, bus: 'voice', cat: 'voice', prio: 6, dur: 1.4, room: 0.4, hall: 0.2, ref: 2.4 });
+      const h = emit({ pos, bus: 'voice', zv: 'attack', cat: 'voice', prio: 6, dur: 1.4, room: 0.4, hall: 0.2, ref: 2.4 });
       if (!h) return;
       if (!SM.play('zr.scream', { h, semi: -1, g: 1.8 })) voc(h.in, h.t, { ...spec('straitjacket', 'attack'), laugh: 1 });
     }),
@@ -195,7 +198,7 @@ export function zvoices2(safe) {
       if (!SM.play('glass', { h, g: 1.6 })) { burst(h.in, h.t, { buf: 'white', type: 'highpass', f: 3000, q: 0.8, dur: 0.5, a: 0.002, g: 0.6 }); for (let i = 0; i < 8; i++) metal(h.in, h.t + rand(0, 0.4), rand(3000, 6000), 0.05, 0.12); }
     }),
     zHiss: safe((pos, k = 1) => {
-      const h = emit({ pos, bus: 'voice', cat: 'voice', prio: 5, dur: 1.0, room: 0.3, ref: 2 });
+      const h = emit({ pos, bus: 'voice', zv: 'pain', cat: 'voice', prio: 5, dur: 1.0, room: 0.3, ref: 2 });
       if (!h) return;
       if (!SM.play('zc.hiss', { h, semi: 3 + k * 2, g: 1.6 + k })) burst(h.in, h.t, { buf: 'white', type: 'bandpass', f: 4500, q: 0.9, dur: 0.7, a: 0.03, g: 0.4 + k * 0.3 });
       if (k) vocal(h.in, h.t + 0.05, { ...spec('stalker', 'attack'), contour: 'shriek', f0: rand(380, 480), dur: 0.5, gain: 0.25 });
@@ -205,6 +208,32 @@ export function zvoices2(safe) {
       if (!h) return;
       const n = 2 + ((Math.random() * 3) | 0);
       for (let i = 0; i < n; i++) burst(h.in, h.t + i * rand(0.03, 0.07), { buf: 'white', type: 'bandpass', f: ceil ? rand(1800, 2600) : rand(1200, 2200), q: 3, dur: 0.02, a: 0.001, g: rand(0.25, 0.5) });
+    }),
+    // ---- 追逐戰(src/zombies/chase.js) ----
+    // 開始:刺擊配樂 + 世界壓低;結束:on = false(只做淡出用的小音)
+    zChase: safe((on = true) => {
+      if (on) { sting(pick(['scare1', 'scare3']), 1.1, 6); duck(0.5, 1.5, true); }
+      else { const h = emit({ bus: 'sfx', prio: 4, dur: 2.5, nocap: true }); if (h) tone(h.in, h.t, { f: 98, f1: 55, dur: 2.2, a: 0.3, g: 0.08 }); }
+    }),
+    // 心跳(非定位;k 0..1 越大越響、越急)
+    zHeart: safe((k = 1) => {
+      const h = emit({ bus: 'sfx', prio: 6, dur: 0.8, nocap: true });
+      if (!h) return;
+      if (!SM.play('scare.heart', { h, g: 0.35 + 0.65 * k, len: 0.55, fo: 0.15 })) { tone(h.in, h.t, { f: 52, f1: 40, dur: 0.16, a: 0.008, g: 0.5 * k }); tone(h.in, h.t + 0.2, { f: 48, f1: 38, dur: 0.2, a: 0.008, g: 0.35 * k }); }
+    }),
+    // 安全點的指引音:緊急出口那種短促的雙音(定位,隔牆會悶)
+    zBeacon: safe((pos) => {
+      const h = emit({ pos, cat: 'fx', prio: 5, dur: 0.6, room: 0.3, ref: 3, maxDist: 70 });
+      if (!h) return;
+      tone(h.in, h.t, { f: 1318, dur: 0.09, a: 0.004, g: 0.22, type: 'triangle' });
+      tone(h.in, h.t + 0.13, { f: 1760, dur: 0.12, a: 0.004, g: 0.2, type: 'triangle' });
+    }),
+    // 被抓:撲擊的悶響 + 骨頭
+    zGrab: safe((pos) => {
+      const h = emit({ pos, cat: 'fx', prio: 8, dur: 1.2, room: 0.3, ref: 2 });
+      if (!h) return;
+      if (!SM.play('body.heavy', { h, g: 1.3 })) burst(h.in, h.t, { buf: 'brown', type: 'lowpass', f: 300, q: 0.7, dur: 0.4, a: 0.005, g: 0.9 });
+      SM.play('bite.bone', { h, g: 1.1, at: 0.08 });
     }),
     // 潛行者沒有一般腳步聲(由 zSkitter 處理)
     zStep: safe((type, pos, surface) => { if (type !== 'stalker') zStep(type, pos, surface); }),

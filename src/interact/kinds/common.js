@@ -3,13 +3,14 @@ import { sfx, ix as ixs } from '../../audio.js';
 import { T, mats } from '../kit.js';
 import { noteById } from '../notes.js';
 import * as LINES from '../lines.js';
+import { MATS } from '../../physics/truth.js';
 
 // 各種互動物件共用的工具(由 place.js 建一個 api 物件傳給每個種類的 build):
 //  座標:spot = { li, x, y, z, yaw, nx, nz, zone, mount };物件局部座標 +Z 朝房間內、原點在牆面/地面
 //  說話:speak(line, { filter, pos, ear }) → 優先交給 game.horror.whisper(靈異系統,有自己的字幕);沒有就用合成的電話聲 + 自己的字幕
-//  獎勵:loot(spec, pos)(金幣、彈藥、道具、紙條)、heal、give、note(閱讀器)
+//  獎勵:loot(spec, pos)(錢、彈藥、道具、紙條)、heal、give、note(閱讀器)
 const _v = new THREE.Vector3();
-const WHO_COLOR = { '院內廣播': '#b8c2c6', '錄音帶': '#d9c48a', 'AM 1207 · 小鈴': '#9fd0ff', '對講機 · 金水伯': '#ffcf8a', '？？？': '#c8b8e8' };
+const WHO_COLOR = { '院內廣播': '#b8c2c6', '院內廣播（2003 年的錄音）': '#cbbf9e', '錄音帶': '#d9c48a', 'AM 1207 · 小鈴': '#9fd0ff', '對講機 · 金水伯': '#ffcf8a', '來電 · 何啟明': '#a9b6be', '阿嬤': '#e6c6c0', '？？？': '#c8b8e8' };
 export const dur = (text) => { const s = String(text || ''); const n = s.replace(/[\s()()「」]/g, '').length; return 0.6 + n / 4.5 + (s.match(/[……，。,.?!?!]/g) || []).length * 0.12; };
 
 export function makeApi(game, ix, kit, R) {
@@ -20,12 +21,15 @@ export function makeApi(game, ix, kit, R) {
     // 局部 → 世界
     mtx(s, x = 0, y = 0, z = 0, ry = 0, rx = 0, rz = 0) { return T(s.x, s.y, s.z, 0, s.yaw, 0).multiply(T(x, y, z, rx, ry, rz)); },
     wp(s, x = 0, y = 0, z = 0) { _v.set(x, y, z).applyMatrix4(T(s.x, s.y, s.z, 0, s.yaw, 0)); return { x: _v.x, y: _v.y, z: _v.z }; },
-    reg(s, x, y, z, o) { return ix.register(api.wp(s, x, y, z), { scope: 'map', ...o }); },
+    reg(s, x, y, z, o) { return ix.register(api.wp(s, x, y, z), { scope: 'map', face: { x: s.nx || 0, z: s.nz || 0 }, ...o }); }, // face:物件正面朝向(測試/截圖用)
     // 碰撞盒:局部矩形 (x0..x1, z0..z1)、高度 h(轉成世界 AABB;yaw 是 90° 的倍數)
-    box(s, x0, z0, x1, z1, h, y0 = 0) {
+    // pm = 子彈穿透類別(physics/truth.js MATS:wood/metal/heavy/plastic/glass…)
+    box(s, x0, z0, x1, z1, h, y0 = 0, pm = 'wood') {
       const a = api.wp(s, x0, 0, z0), b = api.wp(s, x1, 0, z1);
       const cx = (a.x + b.x) / 2, cz = (a.z + b.z) / 2, sx = Math.abs(a.x - b.x), sz = Math.abs(a.z - b.z);
-      return game.world.addBox(cx, cz, Math.max(0.05, sx), Math.max(0.05, sz), h, s.y + y0);
+      const bx = game.world.addBox(cx, cz, Math.max(0.05, sx), Math.max(0.05, sz), h, s.y + y0);
+      bx.pm = MATS[pm] ? pm : 'wood'; bx.mat = MATS[bx.pm].fx; bx.tag = 'ix';
+      return bx;
     },
     lineList(key) { const v = key.split('.').reduce((o, k) => o?.[k], LINES); return Array.isArray(v) ? v : v ? [v] : []; },
     lineById(id) {
@@ -105,9 +109,9 @@ export function makeApi(game, ix, kit, R) {
       }
       if (!spec) { const l = LINES.MISC?.locker?.empty; api.toast(l ? l[(R2() * l.length) | 0] : '空的。', '#a3a39a'); return false; }
       if (spec.item) api.give(spec.item, spec.n || 1, spec.label);
-      if (spec.coins) { api.coins(spec.coins); api.toast(`${spec.coins} 金幣`, '#f2c84b'); sfx.coin(0); }
+      if (spec.coins) { api.coins(spec.coins); api.toast(`${spec.coins} 元`, '#f2c84b'); sfx.coin(0); }
       if (spec.ammo) api.ammo();
-      if (spec.heal) { const g = api.heal(spec.heal); api.toast(g > 0 ? `+${Math.round(g)} 生命` : '止痛藥(用不到)', '#7dffae'); }
+      if (spec.heal) { const g = api.heal(spec.heal); api.toast(g > 0 ? `+${Math.round(g)} 生命` : '止痛藥（用不到）', '#7dffae'); }
       if (spec.scare) { sfx.scare(R2() < 0.5 ? 'breath_close' : 'whisper', pos); const l = LINES.MISC?.locker?.scare; if (l) api.toast(l[(R2() * l.length) | 0], '#a3a39a'); }
       if (spec.flag) ix.flags.set(spec.flag, true);
       if (spec.note) api.note(spec.note);

@@ -199,7 +199,7 @@ export class ShopUI {
     root.innerHTML = `
       <div class="sh-panel">
         <div class="sh-head">
-          <div class="sh-title"><b>商店</b><small>SACRED HEART · SUPPLY STATION</small></div>
+          <div class="sh-title"><b>金水商行</b><small>KIM-SUI STORE · 臨時補給點</small></div>
           <div class="sh-rest"></div>
           <div class="sh-coins">${ICON.coin}<span>0</span></div>
         </div>
@@ -215,7 +215,7 @@ export class ShopUI {
           <span><kbd>1</kbd>–<kbd>4</kbd>分頁</span><span><kbd>↑</kbd><kbd>↓</kbd>選擇</span><span><kbd>Enter</kbd>購買</span><span><kbd>E</kbd>離開</span>
           <span class="sp"></span>
           <button class="sh-btn ghost" data-act="close">離開<kbd>E</kbd></button>
-          <button class="sh-btn ghost" id="shopNext">開始下一回合<kbd>N</kbd></button>
+          <button class="sh-btn ghost" id="shopNext">不等了，開始下一次燈篙<kbd>N</kbd></button>
         </div>
         <div class="sh-toast"></div>
       </div>`;
@@ -302,7 +302,7 @@ export class ShopUI {
     const g = this.game;
     const sp = SPECIAL[waveKind((g.round || 0) + 1)];
     this.restEl.innerHTML = g.phase === 'shop' || g.phase === 'break'
-      ? `休息剩餘<b>${Math.max(0, Math.ceil(g.restT))}</b>秒${g.net ? '' : ' · 購物時暫停'}<br />下一回合:第 ${(g.round || 0) + 1} 回合${sp ? ` · <i>${esc(sp.name)}</i>` : ''}` : '';
+      ? `燈篙再亮還有 <b>${Math.max(0, Math.ceil(g.restT))}</b> 秒${g.net ? '' : ' · 買東西時暫停'}<br />下一次：第 ${(g.round || 0) + 1} 次燈篙${sp ? ` · <i>${esc(sp.name)}</i>` : ''}` : '';
   }
 
   renderTabs() {
@@ -353,10 +353,10 @@ export class ShopUI {
     else body = this._gearInfo(it, p);
     const st = it.state;
     const LABEL = {
-      weapon: { buy: '購買', poor: '金幣不足', owned: '裝備', equipped: '使用中' },
-      mod: { buy: '升級', poor: '金幣不足', max: '已滿級' },
-      ammo: { buy: '補滿', poor: '金幣不足', max: '已滿', part: `購買 ${it.quote?.part?.mags || 0} 個彈匣` },
-      gear: { buy: it.id === 'heal' ? '治療' : it.id === 'armor_fix' ? '修補' : '購買', poor: '金幣不足', max: it.id === 'heal' ? '生命已滿' : it.id === 'armor_fix' ? '無需修補' : '已滿', na: '需要背心' },
+      weapon: { buy: '購買', poor: '錢不夠', owned: '裝備', equipped: '使用中' },
+      mod: { buy: '升級', poor: '錢不夠', max: '已滿級' },
+      ammo: { buy: '補滿', poor: '錢不夠', max: '已滿', part: `購買 ${it.quote?.part?.mags || 0} 個彈匣` },
+      gear: { buy: it.id === 'heal' ? '治療' : it.id === 'armor_fix' ? '修補' : '購買', poor: '錢不夠', max: it.id === 'heal' ? '生命已滿' : it.id === 'armor_fix' ? '無需修補' : '已滿', na: '需要背心' },
     };
     const label = LABEL[it.kind]?.[st] || (st === 'na' ? '未到貨' : '購買');
     const disabled = st === 'equipped' || st === 'max' || st === 'na';
@@ -427,14 +427,14 @@ export class ShopUI {
     if (it.id === 'ammo_all') {
       const rows = (it.quotes || []).map((q) => `<span>${esc(weaponName(q.id))}</span>${bar((q.mag + q.reserve) / (q.magCap + q.resCap), 1)}<em>${q.missing ? `+${q.missing}` : '滿'}</em><em class="pr">${q.missing ? q.price : ''}</em>`).join('');
       const save = it.full > it.price ? `<span>原價<b class="strike">${it.full}</b></span><span>省下<b class="up">${it.full - it.price}</b></span>` : '';
-      return `<div class="sh-stats ammo">${rows}</div><div class="sh-facts">${save}<span>每回合開始也會自動補 <b>2</b> 個彈匣</span></div>`;
+      return `<div class="sh-stats ammo">${rows}</div><div class="sh-facts">${save}<span>每次燈篙開始也會自動補 <b>2</b> 個彈匣</span></div>`;
     }
     const q = it.quote, part = it.state === 'part' && q.part;
     const add = part ? q.part.rounds : q.missing;
     const m2 = Math.min(q.magCap, q.mag + add), r2 = Math.min(q.resCap, q.reserve + Math.max(0, add - (q.magCap - q.mag)));
     const rows = `<span>彈匣</span>${bar(q.mag / q.magCap, m2 / q.magCap)}<em>${q.mag}</em><em class="${m2 > q.mag ? 'up' : ''}">${m2 > q.mag ? `→${m2}` : ''}</em>`
       + `<span>備彈</span>${bar(q.reserve / q.resCap, r2 / q.resCap)}<em>${q.reserve}</em><em class="${r2 > q.reserve ? 'up' : ''}">${r2 > q.reserve ? `→${r2}` : ''}</em>`;
-    const facts = `<div class="sh-facts"><span>缺少<b>${q.missing}</b> 發</span><span>單價<b>${q.per}</b>/發</span><span>補滿<b>${q.price}</b></span><span>每個彈匣<b>${q.perMag}</b></span>${part ? `<span class="warn">金幣只夠買 <b>${q.part.mags}</b> 個彈匣(+${q.part.rounds} 發)</span>` : ''}${w.current === it.weapon ? '<span><b>手上武器</b></span>' : ''}</div>`;
+    const facts = `<div class="sh-facts"><span>缺少<b>${q.missing}</b> 發</span><span>單價<b>${q.per}</b>/發</span><span>補滿<b>${q.price}</b></span><span>每個彈匣<b>${q.perMag}</b></span>${part ? `<span class="warn">錢只夠買 <b>${q.part.mags}</b> 個彈匣（+${q.part.rounds} 發）</span>` : ''}${w.current === it.weapon ? '<span><b>手上武器</b></span>' : ''}</div>`;
     return `<div class="sh-stats ammo">${rows}</div>${facts}`;
   }
 
@@ -456,7 +456,7 @@ export class ShopUI {
     }
     if (it.id === 'heal') {
       const rows = `<span>生命</span>${bar(p.hp / p.maxHp, 1)}<em>${Math.ceil(p.hp)}</em><em class="${p.hp < p.maxHp ? 'up' : ''}">${p.hp < p.maxHp ? `→${p.maxHp}` : ''}</em>`;
-      return `<div class="sh-stats ammo">${rows}</div><div class="sh-facts"><span>每點生命<b>1</b> 金幣</span><span>回合結束時也會自動回復 <b>20</b></span></div>`;
+      return `<div class="sh-stats ammo">${rows}</div><div class="sh-facts"><span>每點生命<b>1</b> 元</span><span>燈篙暗下時也會自動回復 <b>20</b></span></div>`;
     }
     return '';
   }

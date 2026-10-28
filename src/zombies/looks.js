@@ -382,3 +382,30 @@ export const LOOKS = {
   },
 };
 const V0 = (x, y, z) => new THREE.Vector3(x, y, z);
+
+// ====================== 追獵者(追逐戰專用) ======================
+// 高大、肩膀寬、弓著背的「手術者」:整顆頭纏著滲血的繃帶(只留一道眼縫)、血染的屠夫皮圍裙、右手多一把長骨鋸
+LOOKS.pursuer = {
+  ...LOOKS.surgeon,
+  body: () => ({ s: 1.17, sw: 1.12, hip: 1.02, g: 1.04, fat: 0.98, musc: 0.75, belly: 0, thin: 0.45, arm: 1.12, neck: 1.12, head: 0.98 }),
+  fem: 0, hair: 0, skins: ['rot', 'dark'],
+  skinL: (L) => { L.veins = 0.8; L.fresh = 1; L.dirt = 0.5; L.livor = 0.7; L.slip = 0.6; },
+  outfit: ['opgown'],
+  extras: (K) => {
+    LOOKS.surgeon.extras(K);
+    const { V, HC, B } = K;
+    // 繃帶頭套:頭部網格外推,挖掉眼睛那一道縫;繃帶紋 + 滲出的血
+    K.L.clothBlood.push({ c: V(HC.x + 0.02, HC.y + 0.03, HC.z + 0.09), r: 0.05, drip: 0.12, sq: 0.6, k: 9 }, { c: V(HC.x - 0.03, HC.y - 0.06, HC.z + 0.08), r: 0.04, drip: 0.2, sq: 0.6, k: 4 });
+    K.dome(0.007, (x, y, z) => y > -0.125 && !(z > 0.045 && Math.abs(y - 0.013) < 0.011 && Math.abs(x) < 0.06), 'cloth',
+      K.clothPaint({ userData: {} }, { color: '#b9ae96', dirt: 0.55, wear: 0.7, pattern: (x, y) => (Math.sin(y * 430 + x * 55) > 0.35 ? 1 : 0) }));
+    // 屠夫皮圍裙:胸前一片 + 垂到膝下
+    const apron = { color: '#2a1c14', dirt: 0.7, wear: 0.55, hem: 0.03, off: 0.034, loose: 0.004, cut: (x, y, z) => (z > 0.035 ? K.sstep(0.0, 0.02, 0.15 - Math.abs(x)) : 0) };
+    K.top({ ...apron, y0: 1.02, y1: 1.46 });
+    K.skirt({ ...apron, hem: 0.44, off: 0.04 });
+    for (let i = 0; i < 3; i++) K.L.clothBlood.push({ c: V(K.r.range(-0.1, 0.1), K.r.range(0.7, 1.3), 0.2), r: K.r.range(0.06, 0.1), drip: 0.4, sq: 0.6, k: i * 3 });
+    // 右手的長骨鋸(鋸齒刀背)
+    const hd = B('handR'), fa = B('forearmR'), dir = hd.tail.clone().sub(fa.head).normalize();
+    const a = fa.head.clone().lerp(fa.tail, 0.7).add(V(-0.02, 0, 0.02)), b = a.clone().addScaledVector(dir, 0.72);
+    K.add(bladeGeo(K, a, b, 0.032, 0.004, V(0, 0, 1)), 'metal', 'handR', metalPaint(K, STEEL, 1, a.x, a.y, a.z, 0.72));
+  },
+};

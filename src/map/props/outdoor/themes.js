@@ -136,6 +136,7 @@ function checkpoint(ctx, zone, R, P) {
   if (freeRect(ctx, li, 57.8, 87.8, 62.2, 91.2, true)) {
     canopy(ctx, 60, 0, 89.6, 0);
     foldTable(P, 60, 0, 89.4, 0, R);
+    solid(ctx, 60, 0, 89.4, 1.8, 0.78, 0.76, 'plastic'); // [interact 稽核] 桌子原本沒有碰撞
     foldChair(ctx, 59.2, 0, 90.4, Math.PI + 0.3);
     foldChair(ctx, 61.4, 0, 88.6, 0.9, true);
     P.add('po_sign', signQuad('names', 0.4, 0.6), M(58.22, 1.45, 88.13, 0, Math.PI, 0));
@@ -201,7 +202,7 @@ function dressPlaza(ctx, zone) {
   // 隔離帳篷區(東段):兩頂帳篷 + 塑膠布 + 消毒淋浴架 + 防護衣 + 廢棄物桶
   const inside = (T, L2, W2) => { const S = new Parts(); stretcher(S, 0, 0, 0, 1.9, true); T.merge(S, M(-0.6, 0, -0.3, 0, 0.1, 0)); T.add('po_bodybag', box(0.4, 0.15, 0.3), M(1.3, 0.08, -0.8)); };
   const tents = [[78.5, 'quar'], [85, 'triage']];
-  for (const [x, sg] of tents) if (freeRect(ctx, li, x - 2.2, 68.2, x + 2.2, 72.2)) tent(ctx, x, 0, 70.2, 0, { key: sg === 'quar' ? 'po_tent_white' : 'po_tent_white', L: 4, W: 3, sign: sg, rng: R, inside: sg === 'quar' ? inside : null });
+  for (const [x, sg] of tents) if (freeRect(ctx, li, x - 2.2, 68.2, x + 2.2, 72.2)) { tent(ctx, x, 0, 70.2, 0, { key: sg === 'quar' ? 'po_tent_white' : 'po_tent_white', L: 4, W: 3, sign: sg, rng: R, inside: sg === 'quar' ? inside : null }); if (sg === 'quar') solid(ctx, x - 0.6, 0, 69.9, 2.0, 0.9, 0.8, 'metal'); } // [interact 稽核] 帳篷裡的擔架
   if (freeRect(ctx, li, 89.2, 68.2, 92.4, 71.8)) { // 消毒淋浴架(管架 + 塑膠布)
     for (const [a, b] of [[89.6, 68.6], [92, 68.6], [89.6, 71.4], [92, 71.4]]) P.add('plastic_white', cyl(0.025, 0.025, 2.2, 6), M(a, 1.1, b));
     P.add('plastic_white', box(2.5, 0.05, 0.05), M(90.8, 2.2, 68.6)); P.add('plastic_white', box(2.5, 0.05, 0.05), M(90.8, 2.2, 71.4));
@@ -271,7 +272,7 @@ function dressAlley(ctx, zone) {
   for (const x of [41, 42.2]) flatDecal(P, 'hand', x, R.range(1.0, 1.5), 2.014, 0.4, 0.4, 'z+', R.range(-0.3, 0.3));
   // 垃圾堆:垃圾袋、紙箱、棧板、木箱、油桶、輪胎、床墊、瓦斯桶
   for (const [x, z, n] of [[29.5, 3.6, 7], [33, 10.6, 4], [89, 3.6, 6], [96, 10.2, 5], [9.5, 10.6, 3]]) for (let k = 0; k < n; k++) trashBag(ctx, x + R.range(-1, 1), 0, z + R.range(-0.6, 0.6), R() * TAU, R.range(0.85, 1.2), [R.range(-0.3, 0.3), R.range(-0.3, 0.3)]);
-  for (const [x, z] of [[11, 3.4], [101.6, 3.2]]) if (freeAt(ctx, li, x, z, 0.7)) pallet(P, x, 0, z, R() * 0.4, R.int(2, 5), R);
+  for (const [x, z] of [[11, 3.4], [101.6, 3.2]]) if (freeAt(ctx, li, x, z, 0.7)) { const yw = R() * 0.4, n = R.int(2, 5); pallet(P, x, 0, z, yw, n, R); solid(ctx, x, 0, z, 1.25, n * 0.145 + 0.01, 1.25, 'wood'); } // [interact 稽核] 棧板堆
   for (const [x, z] of [[85.3, 3.4], [86.6, 3.2]]) crate(ctx, x, 0, z, R.range(-0.3, 0.3));
   for (const [x, z, f] of [[98.2, 3.3, false], [99.0, 4.2, true], [37.6, 3.0, false]]) barrel(ctx, x, 0, z, { fallen: f, yaw: R() * TAU });
   for (const [x, z] of [[13.5, 10.8], [14.2, 10.2]]) tyre(ctx, x, 0, z, true, R() * TAU);
@@ -380,7 +381,8 @@ function dressCemetery(ctx, zone) {
     if (k === 'chinese') epitaph(P, epi++, xx, 0, zz, yaw, 0.6, 0.6, 0.55, -0.025);
     groundDecal(P, R.pick(['moss', 'leaves', 'mud']), xx, zz, 1.2, 1.2, R() * TAU, 0.008);
     if (R() < 0.35) for (let j = 0; j < R.int(1, 3); j++) { const cx = xx + R.range(-0.4, 0.4) + (x < 6 ? 0.45 : -0.45), cz = zz + R.range(-0.3, 0.3), h = R.range(0.04, 0.12); P.add('candle_wax', cyl(0.025, 0.028, h, 8), M(cx, h / 2, cz)); }
-    solid(ctx, xx, 0, zz, 0.7, k === 'obelisk' ? 2.0 : 1.0, 0.7, 'stone');
+    if (k === 'ledger') solid(ctx, xx, 0, zz, 2.1, 0.45, 1.0, 'stone'); // [interact 稽核] 台式墓 2m 長,原本只有中間 0.7m 有碰撞
+    else solid(ctx, xx, 0, zz, 0.7, k === 'obelisk' ? 2.0 : 1.0, 0.7, 'stone');
   }
   // 天使像、空墓穴(新挖,鐵鏟還插著)、還亮著的燭火
   angelMonument(P, 6.2, 45.2, 0, R);
@@ -425,8 +427,10 @@ function dressYard(ctx, zone) {
     solid(ctx, 4.5, 0, 14.0 - 0.3, 4.3, 2.5, 2.6, 'metal');
   }
   wheelbarrow(P, 9.6, 0, 14.6, 0.7);
+  solid(ctx, 9.4, 0, 14.6, 1.3, 0.7, 1.1, 'metal'); // [interact 稽核] 手推車
   for (let k = 0; k < 3; k++) tyre(ctx, 12.6 + R.range(-0.3, 0.3), 0.17 * k, 13.2 + R.range(-0.2, 0.2), true, R() * TAU);
   pallet(P, 12.8, 0, 19.6, 0.2, 3, R);
+  solid(ctx, 12.8, 0, 19.6, 1.25, 0.45, 1.25, 'wood'); // [interact 稽核]
   for (const [x, z] of [[2.9, 19.8], [3.6, 20.6]]) barrel(ctx, x, 0, z, { yaw: R() * TAU });
   if (freeRect(ctx, li, 6.8, 17.6, 9.4, 20.4)) { // 帆布蓋著的雜物堆
     P.add('po_tarp', new THREE.SphereGeometry(1.0, 12, 8, 0, TAU, 0, HALF).scale(1.3, 0.75, 1.0), M(8.1, 0, 19.0, 0, 0.3, 0));
@@ -477,7 +481,7 @@ function dressAmbulanceBay(ctx, zone) {
   for (const [z, st] of [[22.5, 'on'], [31, 'dead'], [57, 'on'], [63, 'flicker']]) wallLamp(ctx, 104.02, 3.1, z, HALF, st, zone);
   for (const [z, st] of [[24, 'on'], [52, 'flicker']]) if (freeAt(ctx, li, 117.3, z, 0.3)) lamp(ctx, 117.4, 0, z, Math.PI, st, { zone });
   // 檢傷分類區(南段):帳篷、屍袋一排、擔架、輪椅、點滴架、氧氣瓶、發電機 + 投光燈
-  if (freeRect(ctx, li, 106.6, 54.2, 111.4, 58.8)) tent(ctx, 109, 0, 56.6, -HALF, { L: 4, W: 3, sign: 'triage', rng: R, inside: (T) => { const S = new Parts(); stretcher(S, 0, 0, 0, 1.9, true); T.merge(S, M(-0.8, 0, 0, 0, 0, 0)); T.merge(S, M(0.9, 0, 0.2, 0, 0.05, 0)); } });
+  if (freeRect(ctx, li, 106.6, 54.2, 111.4, 58.8)) { tent(ctx, 109, 0, 56.6, -HALF, { L: 4, W: 3, sign: 'triage', rng: R, inside: (T) => { const S = new Parts(); stretcher(S, 0, 0, 0, 1.9, true); T.merge(S, M(-0.8, 0, 0, 0, 0, 0)); T.merge(S, M(0.9, 0, 0.2, 0, 0.05, 0)); } }); solid(ctx, 108.9, 0, 56.6, 0.9, 0.9, 3.6, 'metal'); } // [interact 稽核] 帳篷裡的兩副擔架
   for (let k = 0; k < 7; k++) { const z = 60.2 + k * 1.1; if (freeAt(ctx, li, 115.6, z, 0.3) || true) bodyBag(ctx, 115.7 + R.range(-0.15, 0.15), 0, z, R.range(-0.1, 0.1)); }
   groundDecal(P, 'pool', 115.2, 63.5, 1.8, 1.2, 0.3, 0.006);
   postSign(ctx, P, 117.4, 0, 59.2, -HALF, 'morgue', 0.8, 0.4, 1.7);

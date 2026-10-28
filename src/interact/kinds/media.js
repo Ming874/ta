@@ -43,7 +43,7 @@ export const radio = {
       else { sfx.loopStop('ix' + key); st.talk?.stop(); st.talk = null; ixs.switchClick(pos, false); }
     };
     const e = ix.register(pos, {
-      id: key, kind: 'radio', name: spec.label ? `收音機(${spec.label})` : '收音機', reach: 2.1, radius: 0.2, scope: 'map',
+      id: key, kind: 'radio', name: spec.label ? `收音機（${spec.label}）` : '收音機', reach: 2.1, radius: 0.2, scope: 'map',
       prompt: () => (st.on ? '調整頻率' : '打開收音機'), hold: 1.5, holdText: '轉動調頻鈕', onTap: () => set(!st.on), tapText: () => (st.on ? '關掉收音機' : '打開收音機'),
       onHoldStart: () => { if (!st.on) set(true); ixs.tuneSweep(pos); },
       onUse: () => { // 調到一個隱藏的廣播
@@ -84,7 +84,7 @@ export const carradio = {
     let talk = null, idx = 0;
     ix.after(2, () => sfx.loopStart('ix' + key, 'radio', pos)); // 一直開著(走近會越來越清楚)
     return ix.register(pos, {
-      id: key, kind: 'carradio', name: `車上的收音機${spec.label ? `(${spec.label})` : ''}`, reach: 2.2, radius: 0.5, scope: 'map', priority: 1,
+      id: key, kind: 'carradio', name: `車上的收音機${spec.label ? `（${spec.label}）` : ''}`, reach: 2.2, radius: 0.5, scope: 'map', priority: 1,
       prompt: '把收音機轉大聲',
       onUse: () => { ixs.tuneSweep(pos); talk?.stop(); const l = casts.length ? casts[idx++ % casts.length] : pickN(api.lineList('RADIO'), R); if (l) talk = api.speak(l, { filter: 'radio', pos }); ix.flags.set('h.carradio', true); },
       reset: () => { talk?.stop(); idx = 0; },
@@ -109,7 +109,7 @@ export const tv = {
     m.cyl(M.metal, 0x999999, -0.08, by + 0.62, bz - 0.04, 0.005, 0.38, 6, 0, 0, 0.5); m.cyl(M.metal, 0x999999, 0.06, by + 0.62, bz - 0.04, 0.005, 0.38, 6, 0, 0, -0.5);
     m.box(M.matte, 0x2a2724, 0, by + 0.45, bz - 0.04, 0.12, 0.03, 0.1);
     kit.static(m, api.mtx(s), s.li);
-    if (!wall) api.box(s, -0.32, 0.02, 0.32, 0.48, 1.1);
+    if (!wall) api.box(s, -0.32, 0.02, 0.32, 0.48, 1.1, 0, 'metal');
     // 螢幕(自己的畫布 + 材質;MeshBasicMaterial + map 和其他電視同一個 shader)
     const c = document.createElement('canvas'); c.width = 96; c.height = 72;
     const g2 = c.getContext('2d');
@@ -348,7 +348,7 @@ export const cassette = {
         if (st.play) { stop(); return; }
         const n = tape && api.note ? api.noteObj(tape) : null;
         sfx.tape('insert');
-        if (!n) { ix.after(0.5, () => { sfx.tape('play'); ixs.tapeLine(true); ix.after(4, () => { ixs.tapeLine(false); sfx.tape('stop'); }); }); api.say('', '(只有磁帶的嘶聲)', 3000); return; }
+        if (!n) { ix.after(0.5, () => { sfx.tape('play'); ixs.tapeLine(true); ix.after(4, () => { ixs.tapeLine(false); sfx.tape('stop'); }); }); api.say('', '（只有磁帶的嘶聲）', 3000); return; }
         const rd = api.note(n);
         ix.after(0.6, () => {
           sfx.tape('play'); ixs.tapeLine(true);

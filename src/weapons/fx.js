@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { casingGeo, shellGeos, ENV_MAP } from './models.js';
+import { fxSpatterRGBA } from '../art/stainset.js';
 
 // 武器特效(全部物件池 / InstancedMesh,更新時零配置):
 //   Debris  受光照的碎屑/血滴/木屑/磁磚碎片/玻璃碎片(InstancedMesh + instanceColor)
@@ -364,14 +365,8 @@ function decalAtlas() {
     for (let k = 0; k < 60; k++) { const a = rnd() * 6.28, r0 = 30 + rnd() * 40, r1 = r0 + 30 + rnd() * 60; x.strokeStyle = rgba(15, 13, 12, 0.35 + rnd() * 0.3); x.lineWidth = 2 + rnd() * 6; x.beginPath(); x.moveTo(Math.cos(a) * r0, Math.sin(a) * r0); x.lineTo(Math.cos(a) * r1, Math.sin(a) * r1); x.stroke(); }
     chips(40, 20, 110, () => rgba(10, 9, 8, 0.6), 5);
   });
-  // 7 血跡:噴濺 + 滴流
-  cell(7, () => {
-    const red = () => rgba(95 + rnd() * 40, 8 + rnd() * 10, 8, 0.85 + rnd() * 0.15);
-    x.fillStyle = red(); x.beginPath(); x.ellipse(0, 0, 34, 28, rnd(), 0, 6.28); x.fill();
-    chips(40, 20, 100, red, 9);
-    for (let k = 0; k < 9; k++) { const a = rnd() * 6.28, r0 = 20 + rnd() * 20, l = 30 + rnd() * 70; x.strokeStyle = red(); x.lineWidth = 3 + rnd() * 5; x.beginPath(); x.moveTo(Math.cos(a) * r0, Math.sin(a) * r0); x.lineTo(Math.cos(a) * (r0 + l), Math.sin(a) * (r0 + l)); x.stroke(); }
-    for (let k = 0; k < 4; k++) { const px = (rnd() - 0.5) * 60; x.fillStyle = red(); x.fillRect(px, 10, 4 + rnd() * 3, 50 + rnd() * 60); } // 往下流
-  });
+  // 7 血跡:寫實噴濺(src/art/stainset.js:方向性噴射、衛星滴與尾巴、霧點;新鮮血色)
+  x.putImageData(new ImageData(fxSpatterRGBA(7, S), S, S), 3 * S, S);
   const t = new THREE.CanvasTexture(c);
   t.anisotropy = 4;
   return t;

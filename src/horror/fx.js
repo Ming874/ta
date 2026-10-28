@@ -22,7 +22,7 @@ export class ColdFx {
     g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
     g.setAttribute('aSize', new THREE.BufferAttribute(this.size, 1).setUsage(THREE.DynamicDrawUsage));
     g.setAttribute('aAlpha', new THREE.BufferAttribute(this.alpha, 1).setUsage(THREE.DynamicDrawUsage));
-    this.mat = new THREE.ShaderMaterial({ uniforms: { uScale: { value: 500 } }, vertexShader: VS, fragmentShader: FS, transparent: true, depthWrite: false, fog: false });
+    this.mat = new THREE.ShaderMaterial({ name: 'ghost-cold', uniforms: { uScale: { value: 500 } }, vertexShader: VS, fragmentShader: FS, transparent: true, depthWrite: false, fog: false });
     this.pts = new THREE.Points(g, this.mat);
     this.pts.frustumCulled = false; this.pts.visible = false; this.pts.renderOrder = 7; this.pts.raycast = () => {};
     this.pts.name = 'ghost-cold';

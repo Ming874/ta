@@ -118,15 +118,23 @@ export function tideMark(x, cx, cy, rx, ry, R, col = [92, 70, 40]) {
   x.fill();
   x.restore();
 }
-// 由上往下的垂流痕
+// 由上往下的垂流痕:上寬下窄、略為左右擺動(重力流下的水/鏽/髒污),末端有一點水漬停住的深色;
+// 亂數呼叫次數與舊版相同(不影響同一張貼圖後面的內容),擺動用由位置導出的相位
 export function drips(x, w, R, n, yTop, lenMin, lenMax, col = [40, 34, 24], aMax = 0.25, wMax = 4) {
   for (let i = 0; i < n; i++) {
-    const px = R() * w, y0 = yTop + R.r(-4, 20), l = R.r(lenMin, lenMax), ww = R.r(1, wMax);
+    const px = R() * w, y0 = yTop + R.r(-4, 20), l = R.r(lenMin, lenMax), ww = R.r(1, wMax), a0 = R.r(0.08, aMax);
+    const ph = (px * 12.9898 + l * 78.233) % 6.283, amp = Math.min(3, ww * 0.6) * (0.4 + 0.6 * ((ph * 7.31) % 1));
     const g = x.createLinearGradient(0, y0, 0, y0 + l);
-    g.addColorStop(0, rgb(...col, R.r(0.08, aMax)));
-    g.addColorStop(1, rgb(...col, 0));
+    g.addColorStop(0, rgb(...col, a0)); g.addColorStop(0.55, rgb(...col, a0 * 0.6)); g.addColorStop(0.92, rgb(...col, a0 * 0.25)); g.addColorStop(1, rgb(...col, 0));
     x.fillStyle = g;
-    wrap(w, 1e9, px, 0, ww, (qx) => x.fillRect(qx, y0, ww, l), false);
+    const N = Math.max(4, Math.ceil(l / 24)), xs = (t) => Math.sin(t * 5.1 + ph) * amp * t, wd = (t) => ww * (1.15 - 0.75 * t);
+    wrap(w, 1e9, px, 0, ww + amp, (qx) => {
+      x.beginPath();
+      for (let k = 0; k <= N; k++) { const t = k / N; x.lineTo(qx + xs(t) - wd(t) / 2, y0 + t * l); }
+      for (let k = N; k >= 0; k--) { const t = k / N; x.lineTo(qx + xs(t) + wd(t) / 2, y0 + t * l); }
+      x.closePath(); x.fill();
+      if (l > 60) { x.fillStyle = rgb(...col, a0 * 0.35); x.beginPath(); x.ellipse(qx + xs(0.97), y0 + l * 0.97, ww * 0.55, ww * 0.9, 0, 0, 6.29); x.fill(); x.fillStyle = g; }
+    }, false);
   }
 }
 // 不規則多邊形

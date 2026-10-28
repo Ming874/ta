@@ -303,7 +303,7 @@ export const ZONES = [
   { id: 'f1_er', level: '1F', name: '急診室', rects: [[42, 15, 50, 16], [48, 17, 50, 24], [41, 16, 41, 16]], theme: 'er', floor: 'linoleum', wall: 'tile_wall', light: 'emergency', mood: 'emergency' },
   { id: 'f1_chapel', level: '1F', name: '禮拜堂', rects: [[9, 29, 20, 32]], theme: 'chapel', floor: 'wood_floor', wall: 'plaster', light: 'candle', mood: 'chapel' },
   { id: 'f1_lobby', level: '1F', name: '挑高大廳', rects: [[22, 28, 37, 32]], theme: 'lobby', floor: 'terrazzo', wall: 'plaster', light: 'moon', mood: 'lobby' },
-  { id: 'f1_store', level: '1F', name: '便利商店(補給站)', rects: [[39, 29, 44, 32]], theme: 'shop', floor: 'tile_lobby', wall: 'paint_white', light: 'warm', mood: 'safe' },
+  { id: 'f1_store', level: '1F', name: '便利商店（金水商行補給點）', rects: [[39, 29, 44, 32]], theme: 'shop', floor: 'tile_lobby', wall: 'paint_white', light: 'warm', mood: 'safe' },
   { id: 'f1_security', level: '1F', name: '保全室', rects: [[46, 29, 50, 32]], theme: 'security', floor: 'linoleum', wall: 'paint_gray', light: 'monitor', mood: 'office' },
   { id: 'f1_corridor', level: '1F', name: '走廊', rects: [...ring(27), [9, 26, 50, 27]], theme: 'corridor', floor: 'tile_ward', wall: 'paint_green', light: 'fluoro_dying', mood: 'corridor' },
   { id: 'f1_stair_w', level: '1F', name: '西樓梯間', rects: [[13, 16, 17, 21]], theme: 'stairwell', floor: 'concrete', wall: 'concrete_wall', light: 'emergency', mood: 'stair' },

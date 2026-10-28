@@ -38,6 +38,7 @@ export function buildHospital(world, layout, scene, opts = {}) {
   const B = new Buckets();
   const K = createShellContext(L, B);
   K.levelGroups = levelGroups;
+  K.propGroups = propGroups; // 門扇實例跟著道具群組顯示(src/map/hospital/leaves.js)
   buildRails(K);
   buildFloors(K);
   buildWalls(K);

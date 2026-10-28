@@ -7,6 +7,7 @@ import { sfx, resume as resumeAudio } from '../audio.js';
 import { settings } from '../ui/settings.js';
 import { buildInteract } from '../interact/index.js';
 import { createAmbush } from '../zombies/ambush.js';
+import { createChase } from '../zombies/chase.js'; // [zombies-w3] 追逐戰
 import { waveRoster, wavePace, waveKind, hpMul, SPECIAL, restTime, roundBonus, cleanBonus, POINTS, HOW_MUL, streakMul, streakTier, roundScore, saveBest } from './waves.js';
 
 // 回合流程:重開、開始/結束回合、出怪、休息與商店、補給、醫療包、擊殺獎勵、計分、死亡結算。以 mixin 方式掛到 Game 上
@@ -94,6 +95,7 @@ export const flowMethods = {
     }
     window.addEventListener('keydown', (e) => this.onGameplayKey(e), true); // 捕獲階段:比 input.js 先處理
     this.weaponScene.visible = false; // 標題畫面不顯示手持武器
+    this.chase = createChase(this); // [zombies-w3] 追逐戰(src/zombies/chase.js)
     this.ambush = createAmbush(this); // [ambush] 埋伏/天花板掉落(src/zombies/ambush.js;場景物件在開機預編譯前就建好)
     document.addEventListener('pointerlockchange', () => {
       if (document.pointerLockElement !== this.canvas && this.ui.map.isOpen) this.ui.map.close();
@@ -113,6 +115,7 @@ export const flowMethods = {
     this.physics?.reset(); // 物理:道具回原位、清掉布娃娃與碎片
     this.interact?.resetRun(); // 互動物件、門、旗標與道具歸零
     this.ambush?.reset(); // [ambush] 假屍體、格柵、血漬
+    this.chase?.reset(); // [zombies-w3]
     const p = this.player, st = this.world.start;
     p.hp = p.maxHp;
     p.alive = true;
@@ -183,9 +186,9 @@ export const flowMethods = {
     this.ui.setRound(n);
     const kind = waveKind(n), sp = SPECIAL[kind];
     const tail = this.queue.includes('brute') ? ` · 巨屍 ${this.queue.filter((t) => t === 'brute').length}` : '';
-    if (sp) this.ui.banner(`第 ${n} 回合`, `${sp.name} · 殭屍 ${this.toSpawn} 隻${tail}`, 3600, sp.cls);
-    else this.ui.banner(`第 ${n} 回合`, `殭屍 ${this.toSpawn} 隻${tail}`, 3000, '');
-    if (sp && kind !== 'boss') this.ui.feed(`${sp.name}:${sp.sub}`, { icon: 'skull', color: sp.cls === 'gold' ? '#e8c860' : '#ff6a5a', ms: 6500 });
+    if (sp) this.ui.banner('燈篙亮了', `第 ${n} 次 · ${sp.name} · 回來的人 ${this.toSpawn} 個${tail}`, 3600, sp.cls);
+    else this.ui.banner('燈篙亮了', `第 ${n} 次 · 回來的人 ${this.toSpawn} 個${tail}`, 3000, '');
+    if (sp && kind !== 'boss') this.ui.feed(`${sp.name}：${sp.sub}`, { icon: 'skull', color: sp.cls === 'gold' ? '#e8c860' : '#ff6a5a', ms: 6500 });
     this.ui.prompt(null);
     sfx.roundStart();
     this.updateAmmoHud();
@@ -258,8 +261,9 @@ export const flowMethods = {
   },
 
   spawnZombie(type = this.queue.shift() || 'walker') {
-    const s = this.pickSpawn(type);
-    const j = s.vent ? 0.15 : 1.1; // 出生點周圍 0.6m 內保證淨空(collision.js 檢查過)
+    const at = this._ambAt; // [ambush] 埋伏現身:指定位置(所有玩家都看不到的掩蔽點/天花板),不加隨機偏移
+    const s = at || this.pickSpawn(type);
+    const j = at ? 0 : s.vent ? 0.15 : 1.1; // 出生點周圍 0.6m 內保證淨空(collision.js 檢查過)
     const pos = { x: s.x + (Math.random() - 0.5) * j, y: s.y || 0, z: s.z + (Math.random() - 0.5) * j };
     const z = new Zombie(this.scene, pos, this.round, type);
     if (s.yaw !== undefined) z.heading = s.yaw; // 從通風口爬出來:面向房內
@@ -271,7 +275,7 @@ export const flowMethods = {
     this.zombies.push(z);
     this.toSpawn = Math.max(0, this.toSpawn - 1);
     this.ambush?.onSpawn(z); // [ambush] 部分改放到埋伏點(角落裝死 / 天花板上)
-    if (type === 'brute') this.ui.banner('巨屍出現', '牠會咆哮後衝鋒 · 引牠撞牆再攻擊頭部', 3500, 'red');
+    if (type === 'brute') this.ui.banner('巨屍出現', '他會咆哮後衝鋒 · 引他撞牆再打頭', 3500, 'red');
     return z;
   },
 
@@ -280,18 +284,20 @@ export const flowMethods = {
     // 載入後馬上開局、戰鬥 shader 還在背景預熱(main.js warmRuntime):先不出怪、不擺假屍體,最多等 12 秒
     this.spawnHeld = this.phase === 'fighting' && this.warmed === false && (this._warmHold = (this._warmHold || 0) + dt) < 12;
     this.ambush?.update(dt); // [ambush] 觸發、線索、假屍體
+    this.chase?.update(dt); // [zombies-w3] 追逐戰:導演觸發、逃脫/被抓判定、各端的畫面與聲音
     if (this.phase === 'fighting') {
       let alive = 0, near = Infinity, lurk = 0; // lurk:埋伏中的(不佔同場上限,但回合要等牠們)
       for (const z of this.zombies) if (z.alive) { if (z.amb?.dormant) { lurk++; continue; } alive++; if (z.dist < near && Math.abs(z.dy || 0) < 3) near = z.dist; }
       // 壓力:太久沒有殭屍接近玩家(12m 內)→ 出怪間隔減半、出生點挑近一點、遠處閒晃的殭屍移近(長回合不會冷場)
       this._calmT = near < 12 ? 0 : (this._calmT || 0) + dt;
       this.spawnTimer -= dt * (this._calmT > 8 ? 2 : 1);
-      if (!this.spawnHeld && this.toSpawn > 0 && alive < this.maxAlive && this.spawnTimer <= 0) {
-        this.spawnZombie();
+      const held = this.ambush?.reserved || 0; // [ambush] 預留給虛擬埋伏點的(還沒現身、仍算在 toSpawn 裡)
+      if (!this.spawnHeld && this.toSpawn > held && alive < this.maxAlive && this.spawnTimer <= 0) {
+        if (this.spawnZombie()) alive++; // 這一幀剛出的也算活著(否則最後一隻出生的那一幀會誤判清場)
         if (this.spawnBurst > 0) { this.spawnBurst--; this.spawnTimer = 0.45; } else this.spawnTimer = this.spawnEvery * (0.7 + Math.random() * 0.6);
       }
       this._relocateStragglers(dt);
-      if (this.toSpawn === 0 && alive === 0) { if (lurk && this.ambush) this.ambush.hunt(); else this.endRound(); } // 只剩埋伏的:叫醒找人,回合不會卡住
+      if (alive === 0 && this.toSpawn <= held) { if ((lurk || held) && this.ambush) this.ambush.hunt(); else this.endRound(); } // 只剩預留/裝死的:收尾(放回佇列、起身),回合不會卡住
     } else if (this.phase === 'collecting') {
       this.collectT -= dt;
       if (this.collectT <= 0 && !this.coins.collecting) this.openRest();
@@ -335,13 +341,13 @@ export const flowMethods = {
     const n = this.round, p = this.player, S = this.stats, R = this.rstats;
     // 回合小結:擊殺、爆頭、命中率、用時;整回合沒受傷 → 無傷獎勵
     this.roundClean = !!R && !(p.lastHurt >= R.t0);
-    let sub = '收集金幣中…';
+    let sub = '撿錢中…';
     if (R) {
       const k = S.kills - R.kills, h = S.headshots - R.heads, sh = S.shots - R.shots, acc = sh ? Math.round(((S.hits - R.hits) / sh) * 100) : 0;
       sub = `擊殺 ${k} · 爆頭 ${h} · 命中率 ${acc}% · 用時 ${mmss(this.time - R.t0)}`;
       R.dur = this.time - R.t0;
     }
-    this.ui.banner(`第 ${n} 回合結束`, sub, 3200, this.roundClean ? 'gold' : '');
+    this.ui.banner('燈篙暗了', sub, 3200, this.roundClean ? 'gold' : '');
     // 回合分數
     const pts = roundScore(n, this.roundClean);
     this._addScore(pts);
@@ -370,11 +376,11 @@ export const flowMethods = {
     this.ui.coinGain(bonus + clean);
     this.ui.feed(`清場獎勵 <b>+${bonus}</b>`, { icon: 'coin', color: '#f2c84b', html: true });
     if (clean) this.ui.feed(`毫髮無傷 <b>+${clean}</b>`, { icon: 'heal', color: '#7fe08f', html: true });
-    const where = [this.shop?.levelId, this.shop?.zoneName].filter(Boolean).join(' ') || '商店';
+    const where = [this.shop?.levelId, this.shop?.zoneName].filter(Boolean).join(' ') || '金水商行';
     const next = waveKind(n + 1), sp = SPECIAL[next];
-    const warn = sp ? ` · 下一回合:${sp.name}` : '';
-    this.ui.banner('商店開放', `休息 ${this.restT} 秒 · 前往 ${where} 按 [E] 開啟商店 · [N] 立即開始${warn}`, 5200, 'gold');
-    this.ui.feed('商店已開放', { icon: 'cart', color: '#ffb347' });
+    const warn = sp ? ` · 下一次燈篙：${sp.name}` : '';
+    this.ui.banner('金水商行開門了', `燈篙熄 ${this.restT} 秒 · 到 ${where} 按 [E] 買東西 · [N] 不等了${warn}`, 5200, 'gold');
+    this.ui.feed('金水商行開門了', { icon: 'cart', color: '#ffb347' });
     this.tutorial?.('shop');
   },
 
@@ -538,7 +544,7 @@ export const flowMethods = {
         if (this.interact?.press()) return; // 互動物件(看著的電話、門、開關…;與商店/補給櫃的優先順序在 interact.pick)
         const s = this.shop?.interact(this.player);
         if (s === 'open') { this.openShop(); return; }
-        if (s === 'closed') { this.ui.pickup('商店只在回合間的休息時間開放', '#a3a39a'); sfx.pickupDeny(); return; }
+        if (s === 'closed') { this.ui.pickup('金水商行只在燈篙熄的時候開門', '#a3a39a'); sfx.pickupDeny(); return; }
         const st = this.supplies?.nearest(this.player);
         if (st) this.supplies.use(st, this);
         return;
@@ -622,8 +628,8 @@ export const flowMethods = {
     if (ix) ({ text: prompt, dim } = ix);
     else if (!(this.healT > 0)) {
       const s = this.shop?.interact(p);
-      if (s === 'open') prompt = '按 [E] 開啟商店';
-      else if (s === 'closed') { prompt = '商店 · 回合結束後的休息時間才會開放'; dim = true; }
+      if (s === 'open') prompt = '按 [E] 進金水商行';
+      else if (s === 'closed') { prompt = '金水商行 · 燈篙熄了才開門'; dim = true; }
       else {
         const st = this.supplies?.nearest(p);
         if (st) ({ text: prompt, dim } = this.supplies.promptFor(st, p));
@@ -633,7 +639,7 @@ export const flowMethods = {
     // 回合資訊
     if (this.phase === 'fighting') this.ui.setZombies(this.zombiesLeft());
     else if (this.phase === 'shop' || this.phase === 'break') this.ui.setRest(this.restT, !this.net, SPECIAL[waveKind(this.round + 1)]?.name || '');
-    else if (this.phase === 'collecting') this.ui.setRoundText('收集金幣中…');
+    else if (this.phase === 'collecting') this.ui.setRoundText('撿錢中…');
     this.ui.update(this, dt);
   },
 

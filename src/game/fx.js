@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { makeBloodSplat } from '../map/textures.js';
+import { stainMaterial, stainPlane } from '../art/stainmat.js';
 
 // 粒子(血、火花、灰塵、膽汁)、曳光、地上的血池。以 mixin 方式掛到 Game 上
-let bloodMat = null;
+let poolGeo = null; // 血泊:共用的寫實血跡材質(src/art/stainmat.js,新鮮血泊格;亮面、液面邊緣的法線)
 const _gn = { x: 0, y: 1, z: 0 }, _yUp = new THREE.Vector3(0, 1, 0), _v1 = new THREE.Vector3(), _q1 = new THREE.Quaternion();
 export const fxMethods = {
   makeParticles() {
@@ -76,8 +76,10 @@ export const fxMethods = {
 
   // 地上的血池(y 為地面高度)
   addPool(x, y, z) {
-    if (!bloodMat) bloodMat = new THREE.MeshBasicMaterial({ map: makeBloodSplat(), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3, color: 0xcccccc });
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), bloodMat);
+    if (!poolGeo) poolGeo = stainPlane('pool0', 0.62); // 格內的血泊約佔 75%:舊貼圖的可見範圍較小
+    const m = new THREE.Mesh(poolGeo, stainMaterial());
+    m.renderOrder = 1;
+    m.receiveShadow = true;
     m.rotation.x = -Math.PI / 2;
     m.rotation.z = Math.random() * 6.28;
     m.position.set(x, y + 0.015 + (this.pools.length % 20) * 0.0004, z);
@@ -93,7 +95,7 @@ export const fxMethods = {
   },
 
   clearPools() {
-    for (const p of this.pools) { this.scene.remove(p.mesh); p.mesh.geometry.dispose(); }
+    for (const p of this.pools) this.scene.remove(p.mesh); // 幾何與材質共用,不釋放
     this.pools.length = 0;
   },
 };

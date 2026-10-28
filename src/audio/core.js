@@ -19,7 +19,8 @@ export const A = {
   game: null, // attachGame 後可讀畫質預設、玩家狀態(體力、蹲下)
   surface: 'tile', // 玩家目前腳下材質(彈殼落地等用)
   live: [], // 目前發聲中的聲音(全域上限)
-  stats: { emitted: 0, culled: 0, stolen: 0, capped: 0, los: 0, rays: 0, tickMs: 0, bakeMs: 0, baked: 0 },
+  stats: { emitted: 0, culled: 0, stolen: 0, capped: 0, los: 0, rays: 0, tickMs: 0, bakeMs: 0, baked: 0, zcull: 0, zcap: 0, zsteal: 0, znopos: 0, zframe: 0 },
+  zvLive: [], // 目前發聲中的殭屍語音
 };
 
 export const rand = (a, b) => a + Math.random() * (b - a);
@@ -123,6 +124,7 @@ export function attach(ctx) {
   A.recentPain = [];
   A.selfStrips = new Map();
   A.live = [];
+  A.zvLive = [];
   A.lastDuck = -1;
   A.muffleUntil = 0;
   for (const k in POOLS) POOLS[k].strips = [];
@@ -422,7 +424,7 @@ function occlusion(px, py, pz, d) {
 }
 
 // 填入 AC = { cut 低通頻率, g 直達聲增益, rv 殘響送出倍率 }(重用同一個物件,不配置)
-const AC = { cut: 20000, g: 1, rv: 1 };
+const AC = { cut: 20000, g: 1, rv: 1, occ: 0, fl: 0 };
 const OCC = new WeakMap();
 export function acoustics(px, py, pz, d, s) {
   let cut = 20000 / (1 + d * 0.17); // 空氣吸收 + 遠處繞射:10m ≈ 7kHz、30m ≈ 3.3kHz
@@ -446,10 +448,55 @@ export function acoustics(px, py, pz, d, s) {
     else if (occ < 0.9) { cut = Math.min(cut, 1800); g = 0.6; rv = 0.9; } // 薄門板/隔間
     else { cut = Math.min(cut, 1100); g = 0.46; rv = 0.85; } // 厚牆
   }
-  AC.cut = Math.max(120, cut); AC.g = g; AC.rv = rv;
+  AC.cut = Math.max(120, cut); AC.g = g; AC.rv = rv; AC.occ = occ; AC.fl = fl;
   return AC;
 }
 const revDist = (d) => (0.75 + Math.min(1.3, d / 9)) / (1 + d * 0.07); // 擴散場:殘響量和距離關係不大
+
+// ---------- 殭屍語音的距離模型 ----------
+// 殭屍叫聲只有在真的靠近時聽得到:panner 的反比衰減(ref/roll)之外,再乘一段平滑淡出,r0 公尺開始變小、r1 公尺完全無聲;
+// 隔牆/隔樓板時可聽距離縮短(× ZV_OCC)、聲音更小更悶;超出可聽距離的叫聲根本不建立節點。
+// 同時發聲的殭屍語音有上限(依畫質 3~6 個),滿了由「距離 ÷ 重要度」最小(最近)的勝出,最遠的淡出讓位。
+//            r0   r1   ref  roll  重要度 空氣吸收倍率
+export const ZV = {
+  groan: [7, 14, 1.4, 1.3, 1, 1.4], // 閒置低吼/呻吟
+  gurgle: [6, 12, 1.4, 1.3, 1, 1.4],
+  breath: [3.5, 8, 1.2, 1.4, 0.8, 1.4], // 喘息、防毒面具呼吸
+  pain: [9, 16, 1.5, 1.25, 1.2, 1.3],
+  die: [10, 18, 1.6, 1.2, 1.6, 1.3],
+  attack: [12, 24, 1.8, 1.15, 1.5, 1.2],
+  alert: [13, 25, 1.8, 1.15, 1.5, 1.2], // 發現玩家
+  shriek: [15, 30, 2, 1.1, 2, 1.6], // 奔跑者尖嘯
+  roar: [18, 34, 3, 1, 2.2, 1.5], // 巨屍咆哮
+  scream: [25, 55, 3.5, 0.9, 2.5, 2.3], // 尖叫者的召喚尖叫:傳得遠,但遠處很悶
+};
+// 遮蔽時的可聽距離倍率:隔樓板(每層)/厚牆/薄牆/繞射
+// (不同樓層但射線看似暢通 = 經由樓梯/挑空傳來:仍視為繞射)
+export const zvOcc = (occ, fl) => (fl && occ >= 0.7 ? 0.45 / fl : fl ? 0.7 : occ >= 0.9 ? 0.5 : occ >= 0.5 ? 0.62 : occ > 0 ? 0.82 : 1);
+// 淡出曲線(r0 之前 1,r1 之後 0,中間二次)
+export const zvFade = (d, r0, r1) => (d <= r0 ? 1 : d >= r1 ? 0 : (1 - (d - r0) / (r1 - r0)) ** 2);
+const ZV_CAP = { low: 3, medium: 4, high: 5, ultra: 6 };
+export const zvCap = () => ZV_CAP[preset()] || 5;
+const ZK = { key: null }; // 給 acoustics 用的快取鍵(以聲源物件為 key,和聲道條共用)
+// 殭屍語音的進場判斷:回傳 -1 = 不發聲,否則 = 排序值(距離 ÷ 重要度,遮蔽時加倍)
+function zvAdmit(Z, pos, d, now) {
+  ZK.key = pos;
+  const py = pos.y ?? 1.2, ac = acoustics(pos.x, py, pos.z, d, ZK);
+  const k = zvOcc(ac.occ, ac.fl);
+  if (d > Z[1] * k) { A.stats.zcull++; return -1; }
+  const eff = (d / Z[4]) * (k < 1 ? 1.8 : 1);
+  const L = A.zvLive;
+  for (let i = L.length - 1; i >= 0; i--) if (L[i].dead || L[i].end <= now) { L[i] = L[L.length - 1]; L.pop(); }
+  if (L.length < zvCap()) return eff;
+  let wi = 0;
+  for (let i = 1; i < L.length; i++) if (L[i].eff > L[wi].eff) wi = i;
+  if (eff >= L[wi].eff * 0.85) { A.stats.zcap++; return -1; }
+  L[wi].kill(); // 最遠的讓位
+  L[wi] = L[L.length - 1]; L.pop();
+  A.stats.zsteal++;
+  return eff;
+}
+export const zvState = () => ({ live: A.zvLive.filter((h) => !h.dead && h.end > (A.ctx ? A.ctx.currentTime : 0)).map((h) => `${h.zmode}@${h.d.toFixed(1)}m`), cap: zvCap() });
 
 // ---------- 聲道條(重用) ----------
 // 每類別預先(延遲)建立固定數量的聲道條:增益 → 低通(空氣吸收/遮蔽/背後頭影)→ panner → 遮蔽增益 → 匯流排,外加殘響/回聲送出。
@@ -539,7 +586,14 @@ function place(s, init, t0) {
   const dx = p.x - L.x, dz = p.z - L.z, d = Math.hypot(dx, py - L.y, dz);
   s.d = d;
   const ac = acoustics(p.x, py, p.z, d, s);
-  let cut = ac.cut;
+  let cut = ac.cut, og = ac.g;
+  if (s.zv) { // 殭屍語音:可聽距離外淡到無聲;隔牆/樓板更小聲、更悶;距離越遠高頻掉越多
+    const Z = s.zv, k = zvOcc(ac.occ, ac.fl);
+    og = Math.pow(ac.g, 1.6) * zvFade(d, Z[0] * k, Z[1] * k);
+    cut = Math.min(cut, 20000 / (1 + d * 0.17 * Z[5])) * (ac.occ > 0 ? 0.75 : 1);
+    if (ac.fl && ac.occ < 0.7) { og *= 0.6; cut = Math.min(cut, 2200); } // 別的樓層經由開口傳來
+    s.zg = og;
+  }
   if (s.model !== 'HRTF' && d > 0.5) { // 等功率平移沒有頭影:在背後的聲音稍微暗一點,前後才分得出來
     const back = -(dx * L.fx + dz * L.fz) / (Math.hypot(dx, dz) || 1);
     if (back > 0) cut *= 1 - 0.45 * back;
@@ -553,13 +607,13 @@ function place(s, init, t0) {
   cut = Math.max(120, cut);
   const rv = revDist(d) * ac.rv;
   if (init) {
-    pv(s.lp.frequency, cut, t); pv(s.occ.gain, ac.g, t);
+    pv(s.lp.frequency, cut, t); pv(s.occ.gain, og, t);
     pv(s.sr.gain, s.room * rv, t); pv(s.se.gain, s.echo * rv, t); pv(s.sh.gain, s.hall * rv, t);
-    s.cut = cut; s.og = ac.g; s.rvv = rv;
+    s.cut = cut; s.og = og; s.rvv = rv;
     return;
   }
   if (Math.abs(cut - s.cut) > s.cut * 0.1) { pt(s.lp.frequency, cut, t); s.cut = cut; }
-  if (Math.abs(ac.g - s.og) > 0.04) { pt(s.occ.gain, ac.g, t); s.og = ac.g; }
+  if (Math.abs(og - s.og) > 0.04 || (og === 0) !== (s.og === 0)) { pt(s.occ.gain, og, t); s.og = og; }
   if (Math.abs(rv - s.rvv) > s.rvv * 0.15 + 0.01) { pt(s.sr.gain, s.room * rv, t); pt(s.se.gain, s.echo * rv, t); pt(s.sh.gain, s.hall * rv, t); s.rvv = rv; }
 }
 
@@ -622,10 +676,13 @@ export function emit(o = {}) {
   const now = ctx.currentTime;
   const pos = o.pos && Number.isFinite(o.pos.x) && Number.isFinite(o.pos.z) ? o.pos : null;
   const delay = o.delay ?? 0, dur = o.dur ?? 1, prio = o.prio ?? (pos ? 1 : 3);
-  let d = 0;
+  let d = 0, zeff = 0;
+  const Z = o.zv ? ZV[o.zv] || ZV.groan : null;
+  if (Z && !pos) { A.stats.znopos++; return null; } // 殭屍語音一定要有位置(不可變成非定位的 2D 聲音)
   if (pos) {
     d = distTo(pos);
-    if (!(d <= (o.maxDist ?? 45))) { A.stats.culled++; return null; }
+    if (!(d <= (Z ? Z[1] : o.maxDist ?? 45))) { A.stats[Z ? 'zcull' : 'culled']++; return null; }
+    if (Z) { zeff = zvAdmit(Z, pos, d, now); if (zeff < 0) return null; }
   }
   let late = 0;
   if (!o.nocap) { late = admit(prio, d, now); if (late < 0) return null; }
@@ -665,14 +722,16 @@ export function emit(o = {}) {
   s.room = o.room ?? 0;
   s.hall = o.hall ?? 0;
   s.echo = o.echo ?? s.room * 0.7;
-  s.pan.refDistance = o.ref ?? 1.5;
-  s.pan.rolloffFactor = o.roll ?? 1.1;
+  s.pan.refDistance = Z ? Z[2] * (o.ref ? Math.max(0.8, Math.min(1.6, o.ref / 1.6)) : 1) : o.ref ?? 1.5;
+  s.pan.rolloffFactor = Z ? Z[3] : o.roll ?? 1.1;
+  s.zv = Z;
   if (model !== s.model) { s.pan.panningModel = model; s.model = model; }
   s.upd = now;
   place(s, true, now + got.late);
   vgN.connect(s.in);
   h.strip = s;
   if (!o.nocap) A.live.push(h);
+  if (Z) { h.eff = zeff; h.zmode = o.zv; A.zvLive.push(h); }
   return h;
 }
 

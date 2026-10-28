@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { stainMaterial, stainPlane } from '../art/stainmat.js';
 
 // 埋伏用的小型場景物件(全部共用幾何/材質,不配置 PointLight):
 //  - 通風格柵:天花板(散布在走廊/房間,固定種子 → 各端一致)+ 牆腳通風口(L.vents),全部一個 InstancedMesh;
 //    天花板掉落時那一格縮成 0,換成「打開的黑洞」(另一個 InstancedMesh)+ 一塊掉下來的格柵(物理碎片;沒有物理時自己做動畫)
 //  - 天花板破洞掉落時的碎板、血滴(小方塊池)與地上的小血漬(圓片池)
+//  - 屍體下的血泊(假屍體與裝死的殭屍共用,看起來一模一樣)
 const GRILLE = 0.6;
 
 function box(w, h, d, x, y, z, c, rx = 0) {
@@ -64,7 +66,8 @@ export function createAmbushProps(game, L, grilles, vents) {
   });
   inst.instanceMatrix.needsUpdate = true;
   open.instanceMatrix.needsUpdate = true;
-  inst.computeBoundingSphere(); open.computeBoundingSphere();
+  inst.computeBoundingSphere();
+  open.frustumCulled = false; // 打開的黑洞一開始全部縮成 0:包圍球會是退化的(整組被剔除、永遠畫不出來),不做剔除(一個 draw call)
   const state = new Uint8Array(Math.max(1, nG)); // 0 正常 / 1 晃動中 / 2 已打開
   let dirty = false, dirtyO = false;
 
@@ -92,8 +95,9 @@ export function createAmbushProps(game, L, grilles, vents) {
   const dripGeo = new THREE.BoxGeometry(0.009, 0.028, 0.009);
   const drips = [];
   for (let i = 0; i < 10; i++) { const m = new THREE.Mesh(dripGeo, dripMat); m.visible = false; m.raycast = () => {}; group.add(m); drips.push({ m, vy: 0, floor: 0, on: false, spot: null }); }
-  const splatMat = new THREE.MeshBasicMaterial({ color: 0x260303, transparent: true, opacity: 0.85, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-  const splatGeo = new THREE.CircleGeometry(1, 14).rotateX(-Math.PI / 2);
+  // 地上的小血漬與屍體下的血泊:共用的寫實血跡材質(src/art/stainmat.js;滴落濺開格 / 新鮮血泊格)
+  const splatMat = stainMaterial();
+  const splatGeo = stainPlane('splatF', 2).rotateX(-Math.PI / 2);
   const splats = [];
   for (let i = 0; i < 8; i++) { const m = new THREE.Mesh(splatGeo, splatMat); m.visible = false; m.raycast = () => {}; m.renderOrder = 1; group.add(m); splats.push({ m, key: null, r: 0 }); }
   let splatI = 0;
@@ -103,8 +107,12 @@ export function createAmbushProps(game, L, grilles, vents) {
     return s;
   };
 
-  // 預編譯用的原型(看不到):掉落中的格柵/碎板是一般網格 + 會投影,開機預編譯掃場景時一起編好
-  for (const m of [new THREE.Mesh(gLoose, mat), new THREE.Mesh(tileGeo, tileMat)]) { m.visible = false; m.castShadow = true; m.raycast = () => {}; group.add(m); }
+  // 屍體下的血泊(與 fx.js 的血池同一個材質;暖機時已編好)
+  const poolMat = stainMaterial();
+  const poolGeo = stainPlane('pool0', 0.75).rotateX(-Math.PI / 2);
+  const pools = [];
+  // 預編譯用的原型(看不到):掉落中的格柵/碎板是一般網格 + 會投影、血泊,開機預編譯掃場景時一起編好
+  for (const m of [new THREE.Mesh(gLoose, mat), new THREE.Mesh(tileGeo, tileMat), new THREE.Mesh(poolGeo, poolMat)]) { m.visible = false; m.castShadow = m.material !== poolMat; m.raycast = () => {}; group.add(m); }
 
   const api = {
     group, inst, open,
@@ -148,6 +156,21 @@ export function createAmbushProps(game, L, grilles, vents) {
       return true;
     },
     splat(spot, grow) { const s = splatFor(spot); s.r = Math.min(0.24, s.r + grow); s.m.scale.setScalar(s.r); },
+    // 屍體下的血泊:回傳網格(removePool 移除)
+    pool(x, y, z, size) {
+      const m = new THREE.Mesh(poolGeo, poolMat);
+      m.position.set(x, y + 0.012 + (pools.length % 12) * 0.0004, z);
+      m.rotation.y = Math.random() * Math.PI * 2;
+      m.scale.set(size, 1, size * (0.8 + Math.random() * 0.35));
+      m.renderOrder = 1;
+      m.raycast = () => {};
+      m.matrixAutoUpdate = false;
+      m.updateMatrix();
+      group.add(m);
+      pools.push(m);
+      return m;
+    },
+    removePool(m) { const i = pools.indexOf(m); if (i >= 0) pools.splice(i, 1); m?.parent?.remove(m); },
     update(dt) {
       for (let i = falling.length - 1; i >= 0; i--) {
         const f = falling[i], m = f.m;
@@ -177,12 +200,14 @@ export function createAmbushProps(game, L, grilles, vents) {
       loose.length = 0; falling.length = 0;
       for (const d of drips) { d.on = false; d.m.visible = false; }
       for (const s of splats) { s.key = null; s.m.visible = false; }
+      for (const m of pools) m.parent?.remove(m);
+      pools.length = 0;
     },
     dispose() {
       api.reset();
       game.scene.remove(group);
-      for (const g of [gFull, gOpen, gLoose, tileGeo, dripGeo, splatGeo]) g.dispose();
-      for (const m of [mat, tileMat, dripMat, splatMat]) m.dispose();
+      for (const g of [gFull, gOpen, gLoose, tileGeo, dripGeo, splatGeo, poolGeo]) g.dispose();
+      for (const m of [mat, tileMat, dripMat]) { m.map?.dispose(); m.dispose(); } // 血跡材質是共用的,不釋放
       inst.dispose(); open.dispose();
     },
   };

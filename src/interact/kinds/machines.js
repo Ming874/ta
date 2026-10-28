@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { Model, T, canvasTex, texMat, FONT } from '../kit.js';
 
-// 機關與設備:電燈開關(用光源池的燈具狀態,不新增燈)、販賣機(投 5 金幣喝一罐)、電梯呼叫鈕(現有電梯)、
-// 遺體專用貨梯(門會打開,裡面有東西)、火警拉桿(引來屍群;那一波的殭屍死了會多掉金幣)、廣播麥克風、洗手台、
-// 護理呼叫鈕、密碼鍵盤、病歷終端(HIS)、保險絲盒 / 發電機配電(目標系統可以用的旗標與道具)。
+// 機關與設備:電燈開關(用光源池的燈具狀態,不新增燈)、販賣機(投 5 元喝一罐)、電梯呼叫鈕(現有電梯)、
+// 遺體專用貨梯(門會打開,裡面有東西)、火警拉桿(引來屍群;那一波回來的人倒下會多掉錢)、廣播麥克風、洗手台、
+// 護理呼叫鈕、密碼鍵盤、病歷終端(萬嵐 HIS v4)、保險絲盒 / 發電機配電(目標系統可以用的旗標與道具)。
 const ZERO = T(0, -50, 0, 0, 0, 0, 0.0001, 0.0001, 0.0001);
 const ledPool = (api) => api.kit.pool('led', (m) => { m.box(api.M.led, 0xffffff, 0, 0, 0, 1, 1, 1); }, api.M.led);
 
@@ -106,7 +106,7 @@ export const vending = {
     kit.static(vm, api.mtx(s), s.li);
     const sign = new Model(); sign.quad(texMat('vsign', canvasTex('vsign', 256, 40, (x, w, h) => { x.fillStyle = '#f2ede0'; x.fillRect(0, 0, w, h); x.fillStyle = '#b82a26'; x.font = `bold 26px ${FONT}`; x.textAlign = 'center'; x.fillText('冷飲 · 5 元', w / 2, 29); }), { basic: true }), 0, H - 0.08, z0 + D + 0.014, 0.8, 0.12);
     kit.static(sign, api.mtx(s), s.li);
-    api.box(s, -W / 2, z0, W / 2, z0 + D, H);
+    api.box(s, -W / 2, z0, W / 2, z0 + D, H, 0, 'heavy');
     const flap = kit.pool('flap', (q) => { q.box(M.plastic, 0x2a2a2a, 0, -0.08, 0.004, 0.5, 0.16, 0.008); }, M.plastic);
     const fm = api.mtx(s, -0.05, 0.31, z0 + D + 0.014);
     const fi = flap.add(s.li, fm);
@@ -129,10 +129,10 @@ export const vending = {
     };
     return ix.register(pos, {
       id: spec.id || `vend${Math.round(pos.x)}_${Math.round(pos.z)}`, kind: 'vending', name: '自動販賣機', reach: 2.0, radius: 0.35, scope: 'map', cooldown: 2.2,
-      prompt: () => `投 ${price} 金幣買一罐飲料`,
+      prompt: () => `投 ${price} 元買一罐飲料`,
       when: () => {
-        if (st.round === game.round && st.n >= per) return '自動販賣機 · 賣完了(下一回合補貨)';
-        if ((game.player.coins || 0) < price) return `自動販賣機 · 需要 ${price} 金幣`;
+        if (st.round === game.round && st.n >= per) return '自動販賣機 · 賣完了（下一次燈篙補貨）';
+        if ((game.player.coins || 0) < price) return `自動販賣機 · 需要 ${price} 元`;
         return true;
       },
       onUse: () => {
@@ -148,7 +148,7 @@ export const vending = {
         ix.after(2.2, () => {
           ixs.canOpen(); ix.after(0.4, () => ixs.drink());
           const g = api.heal(heal);
-          if (special) { ix.flags.set('h.vend.special', true); api.toast(`${sp.name || '冬瓜茶'}${sp.label ? `「${sp.label}」` : ''}`, '#c8e0a0', '罐子裡捲著一張紙條'); if (sp.note) ix.after(1.2, () => api.note(sp.note)); }
+          if (special) { ix.flags.set('h.vend.special', true); api.toast(`${sp.name || '冬瓜茶'}${sp.label ? `「${sp.label}」` : ''}`, '#c8e0a0', '罐身貼著一張發黃的貼紙'); if (sp.note) ix.after(1.2, () => api.note(sp.note)); }
           else api.toast(g > 0 ? `+${Math.round(g)} 生命` : '冰的', '#7dffae', g > 0 ? '還冰的' : undefined);
         });
         ix.emit('vend', special);
@@ -179,7 +179,7 @@ export const elevator = {
         st.last = g.time;
         ixs.switchClick(pos, true);
         led.color(li, 0xffb040);
-        if (st.presses >= 10) { st.presses = 0; ix.after(1.2, () => { ixs.elevatorDing(pos); ixs.musicBox({ x: el.x, y: el.y + 1.2, z: el.z }, 8, true); api.feed('(井道裡,有人在轉音樂盒的發條)', '#bfb6d8'); ix.flags.set('h.lift.ten', true); }); return; }
+        if (st.presses >= 10) { st.presses = 0; ix.after(1.2, () => { ixs.elevatorDing(pos); ixs.musicBox({ x: el.x, y: el.y + 1.2, z: el.z }, 8, true); api.feed('（井道裡，有人在轉音樂盒的發條）', '#bfb6d8'); ix.flags.set('h.lift.ten', true); }); return; }
         if (st.busy) return;
         st.busy = true;
         ixs.elevatorMotor({ x: el.x, y: el.y + 1.5, z: el.z });
@@ -237,7 +237,7 @@ export const lift = {
     const lbl = spec.label || '遺體專用';
     const sg = new Model(); sg.quad(texMat('lift:' + lbl, canvasTex('lift:' + lbl, 256, 40, (x, w, h) => { x.fillStyle = '#b8a040'; x.fillRect(0, 0, w, h); x.fillStyle = '#1a1a1a'; x.font = `bold 26px ${FONT}`; x.textAlign = 'center'; x.fillText(lbl + ' · 貨梯', w / 2, 29); }), { basic: true }), 0, Hh + 0.12, 0.13 + D + 0.026, 0.88, 0.11);
     kit.static(sg, api.mtx(s), s.li);
-    api.box(s, -W / 2 - 0.22, 0.0, W / 2 + 0.22, 0.13 + D + 0.02, Hh + 0.25);
+    api.box(s, -W / 2 - 0.22, 0.0, W / 2 + 0.22, 0.13 + D + 0.02, Hh + 0.25, 0, 'heavy');
     const door = kit.pool('liftdoor', (q) => { q.box(M.metal, 0x9a9fa2, 0, Hh / 2, 0, W / 2 + 0.02, Hh - 0.02, 0.04); q.box(M.metal, 0x7a7e80, 0, 1.0, 0.022, W / 2 - 0.1, 0.02, 0.006); q.box(M.metal, 0x7a7e80, 0, 1.6, 0.022, W / 2 - 0.1, 0.02, 0.006); }, M.metal, { shadow: true });
     const dz = 0.13 + D + 0.05;
     const L0 = api.mtx(s, -W / 4, 0, dz), R0 = api.mtx(s, W / 4, 0, dz);
@@ -276,7 +276,7 @@ export const lift = {
   },
 };
 
-// ---------- 火警拉桿:按住拉下去 → 火警鈴 22 秒、紅燈閃;戰鬥中會多引來一波(那一波的殭屍死掉會多掉金幣) ----------
+// ---------- 火警拉桿:按住拉下去 → 火警鈴 22 秒、紅燈閃;戰鬥中會多引來一波(那一波回來的人倒下會多掉錢) ----------
 export const alarm = {
   build(api, s, spec = {}) {
     const { kit, M, ix, ixs, R, game } = api;
@@ -297,7 +297,7 @@ export const alarm = {
     const st = { on: false, t: 0, run: null, bonus: 0, t0: 0 };
     return ix.register(pos, {
       id: key, kind: 'alarm', name: '火警警報', reach: 1.8, radius: 0.1, scope: 'map', once: 'round', hold: 0.8, holdText: '拉下警報', prompt: '拉下火警警報',
-      usedText: '火警警報 · 拉桿卡住了(下一回合)',
+      usedText: '火警警報 · 拉桿卡住了（下一次燈篙）',
       onUse: () => {
         lev.set(li, lm.clone().multiply(T(0, -0.05, 0)));
         ixs.alarmPull(pos);
@@ -309,7 +309,7 @@ export const alarm = {
           for (let i = 0; i < n; i++) game.queue?.push(R() < 0.3 ? 'runner' : 'walker');
           game.toSpawn = (game.toSpawn || 0) + n;
           st.bonus = n; st.t0 = game.time;
-          api.feed('警報聲傳遍整層樓。牠們聽到了。', '#ff8a6a', 'skull');
+          api.feed('警報聲傳遍整層樓。他們聽到了。', '#ff8a6a', 'skull');
         } else api.feed('警報響了很久。沒有人來。', '#cfc6b0');
         ix.flags.inc('h.alarm');
         st.run ||= ix.tick((dt) => {
@@ -325,7 +325,7 @@ export const alarm = {
     });
   },
 };
-// 火警引來的殭屍:死掉時多掉金幣(每幀檢查已標記的那幾隻)
+// 火警引來的殭屍:死掉時多掉錢(每幀檢查已標記的那幾隻)
 export function alarmBonus(api) {
   const { ix, game } = api;
   ix.tick(() => { for (const z of game.zombies) if (z._ixAlarm && !z._ixPaid && !z.alive) { z._ixPaid = true; game.coins?.drop?.(z.pos.x, z.pos.y, z.pos.z, 6); } return true; });
@@ -357,7 +357,7 @@ export const pa = {
         const all = api.lineList('PA');
         const l = pool.length ? pool[idx++ % pool.length] : all[(R() * all.length) | 0];
         ix.after(2.2, () => {
-          api.say('', '(你的聲音從天花板的喇叭傳出去,在走廊盡頭繞了一圈)', 2800);
+          api.say('', '（你的聲音從天花板的喇叭傳出去，在走廊盡頭繞了一圈）', 2800);
           if (l) ix.after(3.4, () => { const h = api.speak(l, { filter: 'pa' }); ix.after(h.dur + 0.4, () => sfx.pa('down')); });
         });
         ix.flags.inc('h.pa');
@@ -382,7 +382,7 @@ export const sink = {
     m.box(M.gloss, 0xb8c4c8, 0, 1.5, 0.008, 0.46, 0.6, 0.012); // 鏡子(模糊的)
     m.box(M.matte, 0x2a2622, 0, 1.5, 0.003, 0.5, 0.64, 0.004);
     kit.static(m, api.mtx(s), s.li);
-    api.box(s, -0.28, 0.02, 0.28, 0.48, 0.9);
+    api.box(s, -0.28, 0.02, 0.28, 0.48, 0.9, 0, 'plastic');
     const stream = kit.pool('stream', (q) => { q.cyl(M.glass, 0xb8d0e0, 0, -0.5, 0, 1, 1, 8); }, M.glass);
     const sm = api.mtx(s, 0, 1.03, 0.19).multiply(T(0, 0, 0, 0, 0, 0, 0.012, 0.2, 0.012));
     const si = stream.add(s.li, ZERO);
@@ -462,20 +462,23 @@ export const keypad = {
     return ix.register(pos, {
       id: spec.id || 'keypad' + Math.round(pos.x), kind: 'keypad', name: spec.title || '密碼鎖', reach: 1.8, radius: 0.1, scope: 'map',
       prompt: () => (solved() ? { text: `${spec.title || '密碼鎖'} · 已解鎖`, dim: true } : '輸入密碼'),
+      when: () => (spec.power && !ix.flags.has(spec.power) ? `${spec.title || '密碼鎖'} · 沒有電（先到配電盤供電）` : true), // 需要某條迴路供電
       onUse: () => {
         if (solved()) return false;
+        const knew = ix.flags.has('know.code' + code); // 跨局知識:以前解開過,就記得密碼
         ix.ui.keypad({
-          title: spec.title || '密碼鎖', sub: spec.sub || `${code.length} 位數`, len: code.length,
+          title: spec.title || '密碼鎖', sub: knew ? `你記得密碼：${code}` : spec.sub || `${code.length} 位數`, len: code.length,
           check: (c) => {
             if (c === code) {
               led.color(li, 0x3aff5a); sfx.uiClick?.();
               ixs.lockerOpen(pos);
               if (flag) ix.flags.set(flag, true);
+              ix.flags.set('know.code' + code, true);
               for (const [k, v] of Object.entries(spec.onSolve?.flags || {})) ix.flags.set(k, v);
               if (spec.onSolve?.know) ix.flags.set(spec.onSolve.know, true);
               if (spec.onSolve?.item) ix.after(0.6, () => api.give(spec.onSolve.item));
               if (spec.onSolve?.note) ix.after(1, () => api.note(spec.onSolve.note));
-              if (spec.onSolve?.coins) ix.after(0.6, () => { api.coins(spec.onSolve.coins); api.toast(`${spec.onSolve.coins} 金幣`, '#f2c84b'); });
+              if (spec.onSolve?.coins) ix.after(0.6, () => { api.coins(spec.onSolve.coins); api.toast(`${spec.onSolve.coins} 元`, '#f2c84b'); });
               ix.emit('solve', spec.id, code);
               return { ok: true, text: spec.okText || '解鎖' };
             }
@@ -490,7 +493,7 @@ export const keypad = {
   },
 };
 
-// ---------- 病歷系統終端(HIS v2.3):輸入號碼查資料 ----------
+// ---------- 病歷系統終端(萬嵐 HIS v4):輸入號碼查資料 ----------
 export const terminal = {
   build(api, s, spec = {}) {
     const { kit, M, ix, game } = api;
@@ -507,8 +510,8 @@ export const terminal = {
     kit.static(m, api.mtx(s), s.li);
     kit.static(b, L, s.li);
     if (desk) api.box(s, -0.46, 0.05, 0.46, 0.63, 0.8);
-    const H = api.LINES.HIS || { title: '病歷系統 HIS v2.3', entries: {}, unknown: '查無資料' };
-    const tex = canvasTex('his', 128, 96, (x, w, h) => { x.fillStyle = '#041008'; x.fillRect(0, 0, w, h); x.fillStyle = '#5aff7a'; x.font = `bold 10px ${FONT}`; x.fillText('HIS v2.3', 8, 16); x.font = `9px ${FONT}`; x.fillText('床號 / 病歷號查詢', 8, 32); x.fillText('> _', 8, 50); for (let i = 0; i < 24; i++) { x.fillStyle = 'rgba(90,255,122,.06)'; x.fillRect(0, i * 4, w, 1); } });
+    const H = api.LINES.HIS || { title: '萬嵐 HIS v4', entries: {}, unknown: '查無資料' };
+    const tex = canvasTex('his', 128, 96, (x, w, h) => { x.fillStyle = '#041008'; x.fillRect(0, 0, w, h); x.fillStyle = '#5aff7a'; x.font = `bold 10px ${FONT}`; x.fillText('HIS v4', 8, 16); x.font = `9px ${FONT}`; x.fillText('床號 / 病歷號查詢', 8, 32); x.fillText('> _', 8, 50); for (let i = 0; i < 24; i++) { x.fillStyle = 'rgba(90,255,122,.06)'; x.fillRect(0, i * 4, w, 1); } });
     const sm = new Model(); sm.quad(texMat('his', tex, { basic: true }), 0, 0.19, 0.131, 0.28, 0.21);
     kit.static(sm, L, s.li);
     const pos = { x: 0, y: 0, z: 0 };
@@ -521,7 +524,7 @@ export const terminal = {
           check: (c) => {
             const t = H.entries?.[c] ?? H.entries?.[String(+c)] ?? null;
             ix.flags.set('h.his.' + c, true);
-            if (t) { ix.emit('his', c); if (c === '207' || c === '1024') ix.flags.set('know.code1024.his', true); }
+            if (t) { ix.emit('his', c); if (c === '207' || c === '0924') ix.flags.set('know.code0924.his', true); }
             return { ok: !!t, text: `> ${c}\n${t ? (typeof t === 'object' ? t.text : t) : H.unknown || '查無資料'}` };
           },
         });
@@ -554,7 +557,8 @@ export const fusebox = {
     const cl = circuits.map((c, i) => led.add(s.li, api.mtx(s, -0.16 + i * 0.11, 1.36, 0.152).multiply(T(0, 0, 0, 0, 0, 0, 0.02, 0.02, 0.004)), 0x1a1206));
     const pos = api.wp(s, 0, 1.45, 0.16);
     const st = { n: spec.filled || 0, on: new Set() };
-    const cap = () => (spec.capacity === 'fuses' || !spec.capacity ? st.n : Math.min(st.n, spec.capacity));
+    const initial = circuits.filter((c) => c.initial); // 開局就有電的迴路(例:207 的延長線直接接發電機)
+    const cap = () => Math.max(initial.length, spec.capacity === 'fuses' || !spec.capacity ? st.n : Math.min(st.n, spec.capacity));
     const power = (c, on) => {
       if (on) st.on.add(c.id); else st.on.delete(c.id);
       ix.flags.set(c.id, on);
@@ -563,6 +567,7 @@ export const fusebox = {
       ix.emit('power', c.id, on);
     };
     for (let i = 0; i < st.n; i++) fz.set(fi[i], fm(i));
+    for (const c of initial) power(c, true);
     const panel = () => ix.ui.panel({
       title: spec.title || '配電盤', sub: () => `保險絲 ${st.n}/${slots} · 可同時供電 ${cap()} 條迴路`,
       rows: () => circuits.map((c) => ({ label: c.label, on: st.on.has(c.id), can: st.on.has(c.id) || st.on.size < cap() })),
@@ -575,7 +580,7 @@ export const fusebox = {
     });
     return ix.register(pos, {
       id: spec.id || 'fusebox', kind: 'fusebox', name: spec.title || '配電盤', reach: 1.9, radius: 0.3, scope: 'map',
-      prompt: () => (st.n < slots && ix.inv.has(item) ? `裝上${ix.inv.name(item)}(${st.n}/${slots})` : st.n < slots && !circuits.length ? { text: `${spec.title || '配電盤'} · 缺 ${slots - st.n} 個${ix.inv.name(item)}`, dim: true } : '打開配電盤'),
+      prompt: () => (st.n < slots && ix.inv.has(item) ? `裝上${ix.inv.name(item)}（${st.n}/${slots}）` : st.n < slots && !circuits.length ? { text: `${spec.title || '配電盤'} · 缺 ${slots - st.n} 個${ix.inv.name(item)}`, dim: true } : '打開配電盤'),
       onUse: () => {
         let added = 0;
         while (st.n < slots && ix.inv.take(item)) { fz.set(fi[st.n], fm(st.n)); st.n++; added++; }
@@ -595,6 +600,7 @@ export const fusebox = {
         for (let i = 0; i < slots; i++) fz.set(fi[i], i < st.n ? fm(i) : ZERO);
         for (const c of circuits) { led.color(cl[circuits.indexOf(c)], 0x1a1206); if (c.lights) for (const z of c.zones || []) for (const f of api.fixtures(z)) { f.ov = 1; if (f.st0 !== undefined) f.state = f.st0; } }
         st.on.clear();
+        for (const c of initial) power(c, true);
       },
     });
   },

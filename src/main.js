@@ -9,9 +9,12 @@ import { backgroundTicker } from './sys/ticker.js';
 import { texStats, texturesReady } from './sys/texworker.js';
 import { prewarm, whenTypesReady, variantStats, getVariant, instantiate, VARIANT_TYPES } from './zombies/model.js';
 import { allMaterials as allZombieMaterials } from './zombies/materials.js';
+import { stainWarmMesh } from './art/stainmat.js';
 import * as audio from './audio.js';
 import { initNet } from './net/lobby.js';
 import { installHorror } from './horror/index.js';
+import { installDeduce } from './story/deduce.js';
+import { installObjectives } from './story/objectives.js';
 import { startPhysicsWorker, physicsLoad } from './physics/index.js';
 import { assets } from './sys/assets.js';
 import { installStreaming } from './sys/stream.js';
@@ -60,6 +63,8 @@ game.warmed = false; // hz:warm 之前開局:先不出怪(flow.updateRound),第�
 game.bindInput();
 initNet(game); // [net] 主選單的多人連線入口(src/net/lobby.js)
 installHorror(game); // [ghost] 靈異系統:驚嚇導演、耳語、幻影、靈異事件(src/horror)
+installDeduce(game); // [story] 線索卡、推理本(J)、擲筊、頭七(src/story)
+installObjectives(game); // [story] 目標鏈、區域解鎖、提示(src/story/objectives.js)
 window.__game = game; // 除錯用:在瀏覽器 console 操作 __game
 
 // ---- 效能基礎建設 ----
@@ -180,6 +185,9 @@ async function warmRuntime() {
   const ZM = allZombieMaterials(), its = []; // [zombies-w3] 全部殭屍材質(含新類型的眼睛、刀刃、鏡片)
   inst.mesh.material = ZM; // 只編譯、不渲染
   g.add(inst.mesh);
+  for (const o of game.deduce?.warmObjects?.() || []) g.add(o); // [story] 筊杯
+  g.add(stainWarmMesh()); // 寫實血跡材質(靜態貼花、血泊、滴落血漬共用)
+  for (const o of game.horror?.warmObjects?.() || []) g.add(o); // [ghost] 靈異材質(幻影、痕跡、字跡、寒氣)一起預編譯與離屏畫一次
   // 執行期才會建立的常見材質型態(曳光、血池/貼花、光暈與血條 sprite、粒子):program 只看功能旗標(貼圖/霧…),不看顏色數值
   const tex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -192,7 +200,9 @@ async function warmRuntime() {
     }
   }
   performance.mark('hz:warm:start');
-  const res = await precompile(game, g);
+  const own = game.interact?.warmList?.() || []; // [interact] 互動物件與門(BatchedMesh 變體與陰影深度變體):跟著 hz:warm 編好
+  const [res, resIx] = await Promise.all([precompile(game, g), own.length ? precompile(game, { traverse: (fn) => { for (const o of own) o.traverse(fn); }, updateMatrixWorld() {} }) : null]);
+  if (resIx) for (const p of resIx.programs) res.programs.add(p);
   performance.mark('hz:warm:compiled');
   warmStage = 2;
   await initPrograms(res.programs);

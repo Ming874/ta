@@ -15,7 +15,7 @@
 //  樂器   pianoNote(pos, midi, vel) musicBoxWind(pos) musicBox(pos, n, slow)(回傳秒數)mobileChime(pos)
 //  電梯   elevatorDing(pos) elevatorDoor(pos, open) elevatorMotor(pos)
 //  火警/廣播 alarmPull(pos) alarmStart(key, pos) alarmStop(key) paKey(pos) micFeedback(pos)
-//  門     doorOpen(pos, kind) doorClose(pos, kind)(kind:'fire' | 'cell' | 'ward' | 'glass' | 'wood')doorBash(pos, heavy) barricade(pos) barricadeBreak(pos)
+//  門     doorOpen(pos, kind) doorClose(pos, kind)(kind:'fire' | 'cell' | 'ward' | 'glass' | 'wood')doorBash(pos, heavy) barricade(pos) barricadeBreak(pos) doorKnock(pos, n)
 //  收納   lockerOpen/lockerClose(pos) drawerOpen/drawerClose(pos) cabinetOpen/cabinetClose(pos) rummage(pos)
 //  水     tapStart(key, pos, dirty) tapStop(key) tapSqueak(pos) pipeKnock(pos)
 //  其他   typeKey(pos) typeReturn(pos) nurseCall(pos) tuneSweep(pos) tvOn(pos) tvOff(pos) wheelSqueak(pos) gurneyRoll(pos)(這兩個會跟隨傳入的位置物件)
@@ -23,6 +23,7 @@
 import { A, emit, onTick, gain, filter, burst, tone, metal, bubble, shaper, playBuf, curve, duck, baked, rand, pick, clamp, distTo, levelOf } from './core.js';
 import { click, clack, slide, squeal } from './foley.js';
 import * as S from './samples.js';
+import { MEL as FMEL } from './folk.js';
 
 const DEV = import.meta.env?.DEV;
 const warn = (e) => { if (DEV) console.warn('[audio/ix]', e); };
@@ -265,7 +266,7 @@ function tapBuild(L, out, t) {
   return { srcs: [s], ev: dirty ? (now) => { if (now < nx) return; nx = now + rand(2, 6); bubble(out, now + 0.05, rand(120, 240), 0.12, 0.09); } : null }; // 髒水:偶爾還會咕嚕一下
 }
 const LK = {
-  ring: { r: 24, prio: 4, room: 0.6, hall: 0.2, ref: 2, roll: 1, gain: 0.45, build: ringBuild },
+  ring: { r: 42, prio: 4, room: 0.7, hall: 0.35, ref: 3, roll: 0.9, gain: 0.5, build: ringBuild }, // 響的電話要在 15~40m 外也聽得到方向(循聲找電話)
   alarm: { r: 35, prio: 5, room: 0.8, hall: 0.5, ref: 4, roll: 0.85, gain: 0.64, build: alarmBuild },
   tap: { r: 10, prio: 3, room: 0.5, hall: 0, ref: 1.2, roll: 1.1, gain: 0.5, build: tapBuild },
 };
@@ -512,7 +513,7 @@ function speak(h, segs, V, F) {
 }
 
 // ---------- 樂器 ----------
-const MEL = [[7, 1], [12, 1], [11, 1], [7, 1], [8, 1], [7, 1], [3, 1], [5, 1], [7, 1], [5, 1], [3, 1], [2, 1], [3, 1], [-1, 1], [0, 2]]; // A 小調的哀傷小曲(半音,拍)
+const MEL = FMEL.wcf.n.filter((x) => x[0] !== null).map(([st, b]) => [st - 5, b]); // 《望春風》(鄧雨賢 1933,只用旋律;半音、拍)
 const LUL = [[4, 0.5], [4, 0.5], [7, 2], [4, 0.5], [4, 0.5], [7, 2], [4, 0.5], [7, 0.5], [12, 1], [11, 1.5], [9, 0.5], [9, 1], [7, 1]]; // 布拉姆斯搖籃曲開頭
 function combNote(d, t, f, g) { // 音梳簧片:基音 + 兩個不諧和的高次振動
   tone(d, t, { f, dur: 1.1, a: 0.002, g });
@@ -1002,6 +1003,17 @@ export const ix = {
     if (set) playBuf(h.in, h.t, pick(set), { rate: rand(0.94, 1.06), g: rand(0.85, 1) });
     else bashSynth(h.in, h.t, hv);
     if (hv) duck(0.75, 0.35);
+  }),
+  doorKnock: safe((pos, n = 3) => { // 門的另一邊有人用指節敲門:悶、慢,最後一下停頓比較久
+    const h = E(pos, { prio: 4, room: 0.55, hall: 0.05, dur: 0.6 + n * 0.55, ref: 1.6, roll: 1, maxDist: 26, gain: 1.5 });
+    if (!h) return;
+    let t = h.t;
+    for (let i = 0; i < n; i++) {
+      tone(h.in, t, { f: rand(92, 120), f1: 58, dur: 0.11, g: 0.45 });
+      burst(h.in, t, { type: 'lowpass', f: 650, f1: 180, dur: 0.07, g: 0.38 });
+      burst(h.in, t, { type: 'bandpass', f: rand(380, 520), q: 2.5, dur: 0.03, g: 0.12 });
+      t += i === n - 2 ? rand(0.75, 1.05) : rand(0.34, 0.46);
+    }
   }),
   barricade: safe((pos) => { // 釘木板:木板靠上門框 → 3~4 下鐵鎚(釘子越打越深,音高變高)→ 木板受力的吱嘎
     const h = E(pos, { prio: 4, room: 0.6, dur: 3.2, ref: 2, gain: 1.05 });

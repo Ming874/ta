@@ -16,6 +16,7 @@ export class GhostSubs {
     el.className = 'gh-line' + (o.cap ? ' cap' : '');
     if (o.ear) el.dataset.ear = o.ear;
     if (o.filter) el.dataset.f = o.filter;
+    if (o.style) el.dataset.s = o.style; // 'past':回憶裡的字幕
     if (o.tag) { const s = document.createElement('small'); s.textContent = o.tag; el.appendChild(s); }
     const chars = [], text = [...String(o.text || '')];
     for (const ch of text) {
