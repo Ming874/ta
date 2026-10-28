@@ -36,8 +36,7 @@ function shadowProxies(root, renderer, lightScene) {
   root.traverse((o) => {
     if (!o.isMesh || !o.castShadow || !o.geometry) return;
     const g = o.geometry, kind = o.isSkinnedMesh ? 's' : o.isInstancedMesh ? 'i' : o.isBatchedMesh ? 'b' : 'm';
-    if (kind === 'b') return;
-    const sig = `${kind}|${g.attributes.color ? g.attributes.color.itemSize : 0}|${g.morphAttributes.position ? 1 : 0}|${o.instanceColor ? 1 : 0}`;
+    const sig = `${kind}|${g.attributes.color ? g.attributes.color.itemSize : 0}|${g.morphAttributes.position ? 1 : 0}|${o.instanceColor || o._colorsTexture ? 1 : 0}`;
     for (const m of [].concat(o.material)) {
       if (!m || !m.visible) continue;
       const key = sig + '|' + m.uuid;
@@ -48,6 +47,18 @@ function shadowProxies(root, renderer, lightScene) {
       if (point) mats.push(shadowVariant(THREE.MeshDistanceMaterial, m, vsm));
       keep.push(...mats);
       let p;
+      if (kind === 'b') { // [interact] BatchedMesh(門扇等):陰影 pass 的深度材質是 batching 變體;每個陰影材質一個只有一個三角形的代理
+        const tri = new THREE.BufferGeometry();
+        for (const [name, a] of Object.entries(g.attributes)) tri.setAttribute(name, new THREE.BufferAttribute(new a.array.constructor(3 * a.itemSize), a.itemSize));
+        for (const dm of mats) {
+          const b = new THREE.BatchedMesh(1, 3, 0, dm);
+          const id = b.addInstance(b.addGeometry(tri));
+          if (o._colorsTexture) b.setColorAt(id, new THREE.Color(1, 1, 1));
+          b.castShadow = true;
+          group.add(b);
+        }
+        continue;
+      }
       if (kind === 's') { p = new THREE.SkinnedMesh(g, mats); p.bind(o.skeleton, o.bindMatrix); }
       else if (kind === 'i') { p = new THREE.InstancedMesh(g, mats, 1); p.instanceColor = o.instanceColor; }
       else p = new THREE.Mesh(g, mats);
@@ -113,7 +124,9 @@ function representatives(root) {
   root.traverse((o) => {
     if (!(o.isMesh || o.isLine || o.isPoints || o.isSprite) || !o.material) return;
     const g = o.geometry, a = g ? g.attributes : {};
-    const sig = `${o.type}|${a.color ? a.color.itemSize : 0}|${a.normal ? 1 : 0}|${a.tangent ? 1 : 0}|${g && g.morphAttributes.position ? 1 : 0}|${o.instanceColor ? 1 : 0}`;
+    // three 的 InstancedMesh / BatchedMesh 沒有自己的 type(都是 'Mesh'):用 is* 旗標分開,否則與同材質的一般網格合併成一個代表 → 實例/batching 變體沒編到
+    const kind = o.isSkinnedMesh ? 'S' : o.isInstancedMesh ? 'I' : o.isBatchedMesh ? 'B' : o.type;
+    const sig = `${kind}|${a.color ? a.color.itemSize : 0}|${a.normal ? 1 : 0}|${a.tangent ? 1 : 0}|${g && g.morphAttributes.position ? 1 : 0}|${o.instanceColor || o._colorsTexture ? 1 : 0}`;
     let fresh = false;
     for (const m of [].concat(o.material)) if (m && !seen.has(sig + m.uuid)) { seen.add(sig + m.uuid); fresh = true; }
     if (fresh) reps.push(o);
@@ -147,8 +160,16 @@ export async function precompile(game, root, { shadows = true, target = game.sce
       const t = performance.now();
       while (i < list.length && performance.now() - t < budget) {
         const a = performance.now();
-        jobs.push(run(subset(list.slice(i, i + k)), noFog));
-        i += k;
+        // three 的 compile() 同一次呼叫裡每個材質只編「第一個用到它的物件」的變體:同一批不能有共用材質的物件
+        // (例如同一材質的 Mesh 與 BatchedMesh,第二個的 batching 變體會被跳過,之後第一次畫到才現場編)
+        const part = [], seenM = new Set();
+        while (i < list.length && part.length < k) {
+          const ms = [].concat(list[i].material || []);
+          if (part.length && ms.some((m) => seenM.has(m))) break;
+          for (const m of ms) seenM.add(m);
+          part.push(list[i++]);
+        }
+        jobs.push(run(subset(part), noFog));
         const dt = performance.now() - a;
         k = dt < budget / 3 ? Math.min(64, k * 2) : dt > budget ? Math.max(1, k >> 1) : k; // 依實際耗時調整每批數量
       }

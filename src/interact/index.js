@@ -42,6 +42,8 @@ export function buildInteract(game) {
   ix.map = { kit, doors, api: placed?.api, stats: placed?.stats, pack, nStatic };
   ix.tick(() => { if (game.state === 'playing' && game.phase === 'shop' && !ix.flags.has('h.shop.open')) ix.flags.set('h.shop.open', true); return true; }); // 本局第一次開店(補給站的電話會響)
   ix.doors = doors;
+  // hz:warm 一起預編譯:互動物件的合併網格與 BatchedMesh 池、門扇/門框/玻璃/門縫光(含 BatchedMesh 的陰影深度變體)、木板
+  ix.warmList = () => [...kit.objects(), ...(H.leaves?.meshes || []), ...(doors?.planks ? [doors.planks] : [])];
   console.log('[interact] build', JSON.stringify({ ms: Math.round(performance.now() - t0), items: ix.list.length, placed: placed?.stats?.placed, byKind: placed?.stats?.byKind, failed: placed?.stats?.failed?.length, doors: doors?.stats?.(), statics: nStatic, kit: kit.stats() }));
   return ix;
 }

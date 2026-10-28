@@ -45,6 +45,14 @@ class GB {
     }
   }
   get empty() { return !this.p.length; }
+  // 前後鏡像(z → -z;三角形反向):雙開防火門的右扇也要把推桿朝同一側
+  mirrorZ() {
+    const P = this.p, N = this.n, U = this.u;
+    for (let i = 2; i < P.length; i += 3) { P[i] = -P[i]; N[i] = -N[i]; }
+    for (let t = 0; t < P.length / 9; t++) for (let k = 0; k < 3; k++) { const a = t * 9 + 3 + k, b = t * 9 + 6 + k; [P[a], P[b]] = [P[b], P[a]]; [N[a], N[b]] = [N[b], N[a]]; }
+    for (let t = 0; t < U.length / 6; t++) for (let k = 0; k < 2; k++) { const a = t * 6 + 2 + k, b = t * 6 + 4 + k; [U[a], U[b]] = [U[b], U[a]]; }
+    return this;
+  }
   build() {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3));
@@ -65,7 +73,7 @@ const MT = (x, y, z, rx = 0, ry = 0, rz = 0) => new THREE.Matrix4().compose(new 
 const WIN = (style, lw) => ({ ward: [lw * 0.3, 1.3, lw * 0.7, 1.9], fire: [lw * 0.42, 1.2, lw * 0.58, 1.75], cell: [lw * 0.38, 1.42, lw * 0.62, 1.62], swing: [lw * 0.5 - 0.17, 1.28, lw * 0.5 + 0.17, 1.62, true] }[style] || null);
 
 // 一扇門的幾何(門扇局部:x 0..lw 從鉸鍊、y 0..lh、z 厚度置中)→ { opaque, glass }
-function leafGeo(style, lw, lh, t) {
+function leafGeo(style, lw, lh, t, mirror = false) {
   const G = new GB(), GL = new GB();
   const z0 = -t / 2, z1 = t / 2;
   const glassQuad = (a, b, c, d, k) => GL.quad([a, b, 0], [c, b, 0], [c, d, 0], [a, d, 0], [0, 0, 1], ...[[0, 0], [1, 0], [1, 1], [0, 1]].map(([s, q]) => lerp(sw(k), s, q)));
@@ -139,6 +147,7 @@ function leafGeo(style, lw, lh, t) {
     for (const yy of [0.4, 1.9]) for (const [zA, zB] of [[z1, z1 + 0.008], [z0 - 0.008, z0]]) part(G, 'iron', 0.0, yy - 0.035, zA, lw, yy + 0.035, zB);
     for (const s of [1, -1]) { const zf = s > 0 ? z1 : z0; G.geo(new THREE.CylinderGeometry(0.045, 0.045, 0.01, 14), MT(lw - 0.15, 1.08, zf + s * 0.005, Math.PI / 2), sw('iron')); G.geo(new THREE.TorusGeometry(0.06, 0.009, 6, 18), MT(lw - 0.15, 1.02, zf + s * 0.02), sw('iron')); }
   }
+  if (mirror) { G.mirrorZ(); GL.mirrorZ(); }
   return { opaque: G.build(), glass: GL.empty ? null : GL.build() };
 }
 
@@ -167,11 +176,12 @@ export function buildLeaves(K, list) {
   const fallen = K.fallenLeaves || [];
   // 1) 每種(樣式 × 尺寸)一份幾何
   const geos = new Map();
-  const keyOf = (d) => `${d.style}|${d.lw.toFixed(3)}|${d.lh.toFixed(3)}`;
+  const mirrorOf = (d) => d.style === 'fire' && d.sgn < 0; // 防火門:兩扇的推桿在同一側
+  const keyOf = (d) => `${d.style}|${d.lw.toFixed(3)}|${d.lh.toFixed(3)}${mirrorOf(d) ? '|m' : ''}`;
   for (const d of [...list, ...fallen]) {
     d.t = d.style === 'cell' || d.style === 'fire' ? 0.07 : 0.05;
     const k = keyOf(d);
-    if (!geos.has(k)) geos.set(k, leafGeo(d.style, d.lw, d.lh, d.t));
+    if (!geos.has(k)) geos.set(k, leafGeo(d.style, d.lw, d.lh, d.t, mirrorOf(d)));
   }
   // 2) 每層:門扇 + 門框 BatchedMesh、玻璃 BatchedMesh、門縫光 InstancedMesh
   const per = new Map(); // li → { leaves, fallen, frames }

@@ -344,13 +344,11 @@ function swatches(L) {
   sticker(L, S('lblWard'), '#e8e4d8', '請隨手關門', '#2a4a3a', font(16));
 }
 
-// 高度 → 法線(切線空間,OpenGL 慣例 +Y)
-function toNormal(hgt, strength = 3.2) {
-  const g = hgt.getContext('2d'), w = hgt.width, src = g.getImageData(0, 0, w, w).data;
-  const out = document.createElement('canvas'); out.width = out.height = w;
-  const o = out.getContext('2d'), img = o.createImageData(w, w), d = img.data;
+// 高度 → 法線(切線空間,OpenGL 慣例 +Y);寫進 out 的 y0..y1 列(分段做,不佔住主執行緒)
+function toNormalRows(src, img, w, y0, y1, strength = 3.2) {
+  const d = img.data;
   const hAt = (x, y) => src[(((y + w) % w) * w + ((x + w) % w)) * 4] / 255;
-  for (let y = 0; y < w; y++) for (let x = 0; x < w; x++) {
+  for (let y = y0; y < y1; y++) for (let x = 0; x < w; x++) {
     const dx = (hAt(x + 1, y - 1) + 2 * hAt(x + 1, y) + hAt(x + 1, y + 1)) - (hAt(x - 1, y - 1) + 2 * hAt(x - 1, y) + hAt(x - 1, y + 1));
     const dy = (hAt(x - 1, y + 1) + 2 * hAt(x, y + 1) + hAt(x + 1, y + 1)) - (hAt(x - 1, y - 1) + 2 * hAt(x, y - 1) + hAt(x + 1, y - 1));
     let nx = -dx * strength, ny = dy * strength, nz = 1;
@@ -358,29 +356,45 @@ function toNormal(hgt, strength = 3.2) {
     const k = (y * w + x) * 4;
     d[k] = (nx * 0.5 + 0.5) * 255; d[k + 1] = (ny * 0.5 + 0.5) * 255; d[k + 2] = (nz * 0.5 + 0.5) * 255; d[k + 3] = 255;
   }
-  o.putImageData(img, 0, 0);
-  return out;
 }
 
 let CACHE = null;
-// 建一次(整局共用):{ map, normalMap, orm, mats: { door, glass, leak }, ms }
+// 建一次(整局共用):{ map, normalMap, orm, mats: { door, glass, leak }, ready: Promise, ms }
+// 貼圖與材質立刻建好(程式、BatchedMesh 不用等);畫圖(約 0.5 秒的 canvas 工作)切成一小段一小段在閒置時段做完,
+// 最後才一次上傳。畫完之前門是素色的(開機選單期間就畫完了)。
 export function doorAtlas() {
   if (CACHE) return CACHE;
   const t0 = performance.now();
-  seed = 20261027;
-  NT = noiseTile();
   const L = layers();
-  for (const f of Object.keys(FACES)) DRAW[f](L, f);
-  FRAMES.forEach((k, i) => frameSwatch(L, k, i));
-  EDGES.forEach((k, i) => edgeStrip(L, k, i));
-  swatches(L);
+  const nc = document.createElement('canvas'); nc.width = nc.height = NR;
+  { const g = nc.getContext('2d'); g.fillStyle = 'rgb(128,128,255)'; g.fillRect(0, 0, NR, NR); }
   const map = new THREE.CanvasTexture(L.col);
   map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 8;
-  const nrm = new THREE.CanvasTexture(toNormal(L.hgt)); nrm.colorSpace = THREE.NoColorSpace; nrm.anisotropy = 8;
+  const nrm = new THREE.CanvasTexture(nc); nrm.colorSpace = THREE.NoColorSpace; nrm.anisotropy = 8;
   const orm = new THREE.CanvasTexture(L.orm); orm.colorSpace = THREE.NoColorSpace; orm.anisotropy = 8;
   const door = new THREE.MeshStandardMaterial({ name: 'door:pbr', map, normalMap: nrm, normalScale: new THREE.Vector2(1, 1), roughnessMap: orm, metalnessMap: orm, aoMap: orm, roughness: 1, metalness: 1, alphaTest: 0.5, envMapIntensity: 0.9 });
   const glass = new THREE.MeshStandardMaterial({ name: 'door:glass', map, roughnessMap: orm, metalnessMap: orm, roughness: 1, metalness: 1, transparent: true, depthWrite: false, side: THREE.DoubleSide, envMapIntensity: 1.2 });
   const leak = new THREE.MeshBasicMaterial({ name: 'door:leak', map, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: true });
-  CACHE = { map, normalMap: nrm, orm, mats: { door, glass, leak }, ms: Math.round(performance.now() - t0) };
+  CACHE = { map, normalMap: nrm, orm, mats: { door, glass, leak }, ms: 0, slices: 0, done: false };
+  // 畫圖步驟(順序固定:亂數序列與一次畫完時相同)
+  let src = null, img = null;
+  const steps = [() => { seed = 20261027; NT = noiseTile(); }];
+  for (const f of Object.keys(FACES)) steps.push(() => DRAW[f](L, f));
+  steps.push(() => FRAMES.forEach((k, i) => frameSwatch(L, k, i)), () => EDGES.forEach((k, i) => edgeStrip(L, k, i)), () => swatches(L));
+  steps.push(() => { src = L.hgt.getContext('2d').getImageData(0, 0, NR, NR).data; img = nc.getContext('2d').createImageData(NR, NR); });
+  for (let y = 0; y < NR; y += 128) steps.push(() => toNormalRows(src, img, NR, y, y + 128));
+  steps.push(() => { nc.getContext('2d').putImageData(img, 0, 0); src = img = null; map.needsUpdate = nrm.needsUpdate = orm.needsUpdate = true; });
+  const ric = typeof requestIdleCallback === 'function' ? (cb) => requestIdleCallback(cb, { timeout: 120 }) : (cb) => setTimeout(() => cb({ didTimeout: true, timeRemaining: () => 0 }), 16);
+  let i = 0, work = 0;
+  CACHE.ready = new Promise((res) => {
+    const pump = (dl) => {
+      do { const a = performance.now(); steps[i++](); work += performance.now() - a; } while (i < steps.length && !dl.didTimeout && dl.timeRemaining() > 12);
+      CACHE.slices++;
+      if (i < steps.length) ric(pump);
+      else { CACHE.ms = Math.round(work); CACHE.done = true; CACHE.wall = Math.round(performance.now() - t0); res(CACHE); }
+    };
+    ric(pump);
+  });
+  CACHE.ms = Math.round(performance.now() - t0);
   return CACHE;
 }
