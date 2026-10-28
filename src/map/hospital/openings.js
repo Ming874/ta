@@ -3,6 +3,7 @@ import { prng, hashStr } from './paint.js';
 import { DIRS, ARROW } from './shell.js';
 import { revealFor } from './style.js';
 import { buildLeaves } from './leaves.js';
+import { buildFacade } from './facade.js';
 
 // 門(門框、門楣、門扇的各種狀態)、窗(窗框、玻璃狀態、木板封窗、百葉、窗簾、鐵條)、
 // 欄杆/櫃台/矮牆/女兒牆、鐵欄杆與圍籬(含灌木)、電梯。全部放在牆格/門格內,不擋通道。
@@ -238,6 +239,7 @@ export function buildWindows(K) {
       K.windowInfo.push({ li, c, r, axis, wf, inDir, outA, outB, zone: zoneIn, x: F.X(mid, wf), z: F.Z(mid, wf), u0, u1, boarded, store, panes: glassP, boards });
     }
   }
+  try { buildFacade(K); } catch (e) { console.error('[hospital] 外牆設備失敗', e); } // [scene6] 窗型冷氣、鐵窗、落水管
 }
 
 // ======================================================================
