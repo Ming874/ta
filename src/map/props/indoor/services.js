@@ -19,7 +19,7 @@ const PATIENT = new Set(['ward', 'icu', 'peds_ward', 'nursery', 'delivery', 'sur
 // ---------------------------------------------------------------- 模板
 // 緊急照明燈:白色塑膠盒 + 左右兩個可轉的圓燈頭 + 充電指示燈;k=1 一個燈頭掉了、只剩電線垂著
 const emLight = (k = 0) => tpl(`svc:emlight:${k % 3}`, (b) => {
-  b.box('pl_white', 0.34, 0.1, 0.07, 0, 0.05, 0.035, { r: 0.012 });
+  b.box('pl_white', 0.34, 0.1, 0.07, 0, 0.05, 0.035);
   b.box('pl_gray', 0.3, 0.012, 0.004, 0, 0.026, 0.0715); // 下緣通風縫
   led(b, 0.12, 0.07, 0.071, k === 2 ? '#ff4020' : '#30ff60', 0.004);
   b.plane(L(emLabel()), 0.12, 0.03, -0.05, 0.068, 0.0712);
@@ -43,7 +43,7 @@ const sanRect = () => labRect('svc:sanit', 96, 72, (c, w, h) => {
   text(c, '感染管制委員會', w / 2, 64, { size: 8, color: '#555', weight: 'normal' });
 });
 const sanitizer = (k = 0) => tpl(`svc:sanit:${k % 2}`, (b) => {
-  b.box('pl_white', 0.12, 0.24, 0.1, 0, 0.12, 0.05, { r: 0.014 });
+  b.box('pl_white', 0.12, 0.24, 0.1, 0, 0.12, 0.05);
   b.box(k ? 'pl_gray' : 'pl_white', 0.1, 0.06, 0.03, 0, 0.06, 0.1, { rx: 0.25 }); // 按壓板
   b.box('pi_clear', 0.05, 0.08, 0.004, 0, 0.16, 0.1015); // 窗
   b.box('glass_amber', 0.044, k ? 0.012 : 0.03, 0.003, 0, k ? 0.128 : 0.137, 0.1005); // 殘餘的酒精
@@ -195,7 +195,7 @@ function corridor(R, zone) {
     }
   };
   const lv1 = Lr.levels[li].id === '1F';
-  const dk = lv1 ? ['paper', 'paper2', 'crumple', 'leaf', 'leaf', 'debris', 'butt'] : ['paper', 'paper2', 'paper3', 'crumple', 'debris', 'gauze', 'glove'];
+  const dk = lv1 ? ['paper', 'paper2', 'leaf', 'leaf', 'leaf', 'butt'] : ['paper', 'paper2', 'paper3', 'paper', 'gauze', 'glove'];
   for (const run of R.walls) {
     if (run.len < 2) continue;
     for (let t = run.t0 + 0.3; t < run.t1 - 0.3; t += rng.range(1.2, 2.6)) {
@@ -211,7 +211,7 @@ function corridor(R, zone) {
     for (let k = 0; k < 9; k++) {
       const dd = 0.8 + Math.pow(rng(), 1.6) * 5.5, o = rng.range(-1.4, 1.4);
       const x = g.horiz ? mid + o : g.plane + g.nx * dd, z = g.horiz ? g.plane + g.nz * dd : mid + o;
-      drift(x, z, rng.int(1, 3), 0.35, ['paper', 'paper2', 'paper3', 'file', 'glove', 'crumple']);
+      drift(x, z, rng.int(1, 3), 0.35, ['paper', 'paper2', 'paper3', 'file', 'glove', 'paper']);
     }
   }
   // 走廊中央的動線磨耗:沿每個長矩形的中線,一段一段的 lane 貼花
