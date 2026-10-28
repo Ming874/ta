@@ -4,7 +4,7 @@ import { TYPES } from './types.js';
 import { sfx } from '../audio.js';
 
 // 追逐戰:殺不死的「追獵者」從玩家背後的黑暗裡現身,玩家必須逃到安全點(閃著綠色緊急燈的補給點/商店)、
-// 甩開牠躲 7 秒,或撐過 50 秒。被抓到 = 重傷 + 擊倒(不會直接死),追獵者隨即退回黑暗。之後有一段喘息。
+// 甩開他躲 7 秒,或撐過 50 秒。被抓到 = 重傷 + 擊倒(不會直接死),追獵者隨即退回黑暗。之後有一段喘息。
 //
 // 觸發:
 //  - 靈異導演(src/horror/director.js 的 'chase' 種類;有冷卻、要夠安靜才給):大約每一幕一次,只在回合進行中(不在商店/休息)
@@ -91,7 +91,7 @@ class Chase {
         const d = H.director;
         if (!this.host || this.active || this.pending || !this._can(true) || (d && d.act < 2) || this.acts.has('phone')) return;
         this.acts.add('phone');
-        this.pending = { t: 7, reason: 'phone', line: '……快跑。牠在你後面。' };
+        this.pending = { t: 7, reason: 'phone', line: '……快跑。他在你後面。' };
       });
     }
   }
@@ -271,12 +271,12 @@ class Chase {
     sfx.zChase?.(true);
     if (safe) { this.beacon.position.set(safe.x, safe.y + 1.5, safe.z); this.beacon.visible = true; }
     if (me) {
-      g.ui?.banner?.('快逃!', '牠殺不死 · 跑向閃著綠光的補給點,或甩掉牠躲起來', 3200, 'red');
+      g.ui?.banner?.('快逃！', '他殺不死 · 跑向閃著綠光的金水商行，或甩掉他躲起來', 3200, 'red');
       const H = g.horror;
-      H?.subs?.show?.({ text: line || '快跑!往綠燈那邊——補給站!', tag: '無線電', cap: true, hold: 2.4 });
+      H?.subs?.show?.({ text: line || '快跑！往綠燈那邊——金水伯的店！', tag: line ? '電話' : 'AM 1207 · 小鈴', cap: true, hold: 2.4 });
       sfx.radio?.(true);
       setTimeout(() => sfx.radio?.(false), 2800);
-    } else g.ui?.feed?.('追獵者出現了 · 牠在追你的隊友', { icon: 'skull', color: '#ff6a5a', ms: 3500 });
+    } else g.ui?.feed?.('追獵者出現了 · 他在追你的隊友', { icon: 'skull', color: '#ff6a5a', ms: 3500 });
   }
   _presStop(reason, me) {
     const g = this.g, P = this.P;
@@ -285,7 +285,7 @@ class Chase {
     this.beacon.visible = false;
     if (reason !== 'reset') sfx.zChase?.(false);
     if (me && reason !== 'reset') {
-      const msg = { safe: ['安全了…暫時', '#7dffa0'], hid: ['牠跟丟你了', '#9ad0ff'], timer: ['牠退回黑暗裡了', '#d0d0c0'], caught: ['你被抓住了', '#ff5a4a'] }[reason];
+      const msg = { safe: ['安全了……暫時', '#7dffa0'], hid: ['他跟丟你了', '#9ad0ff'], timer: ['他退回黑暗裡了', '#d0d0c0'], caught: ['你被抓住了', '#ff5a4a'] }[reason];
       if (msg) g.ui?.feed?.(msg[0], { icon: reason === 'caught' ? 'skull' : 'heal', color: msg[1], ms: 3200 });
     }
   }
