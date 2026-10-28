@@ -22,14 +22,13 @@ const bannerRect = () => labRect('story:banner', 448, 49, (c, w, h) => {
   c.fillStyle = 'rgba(90,80,60,0.14)'; for (let i = 0; i < 40; i++) c.fillRect((i * 97) % w, (i * 31) % h, 18, 2);
   c.restore();
 });
-// 北口柱子上褪色的紅漆(直書)
-const paintRect = () => decalRect('story:dontrust', 64, 300, (c, w, h) => {
+const paintRectH = () => decalRect('story:dontrust_h', 300, 64, (c, w, h) => {
   c.clearRect(0, 0, w, h);
-  c.fillStyle = 'rgba(150,22,16,0.78)'; c.font = 'bold 44px serif'; c.textAlign = 'center';
-  [...'不要相信廣播'].forEach((ch, i) => c.fillText(ch, w / 2 + (i % 2 ? 2 : -2), 44 + i * 47));
-  for (let i = 0; i < 9; i++) { const x = 10 + ((i * 37) % 44), y0 = 30 + ((i * 53) % 230); c.fillStyle = 'rgba(150,22,16,0.5)'; c.fillRect(x, y0, 2, 18 + (i % 4) * 9); }
+  c.fillStyle = 'rgba(150,22,16,0.8)'; c.font = 'bold 46px serif'; c.textAlign = 'center';
+  [...'不要相信廣播'].forEach((ch, i) => c.fillText(ch, 27 + i * 49, 50 + (i % 2 ? 2 : -2)));
+  for (let i = 0; i < 7; i++) { c.fillStyle = 'rgba(150,22,16,0.5)'; c.fillRect(18 + i * 44, 52, 2, 6 + (i % 3) * 4); }
   c.globalCompositeOperation = 'destination-out';
-  for (let i = 0; i < 120; i++) { c.fillStyle = `rgba(0,0,0,${0.3 + (i % 5) * 0.12})`; c.fillRect((i * 29) % w, (i * 71) % h, 3 + (i % 4), 2 + (i % 3)); }
+  for (let i = 0; i < 110; i++) { c.fillStyle = `rgba(0,0,0,${0.3 + (i % 5) * 0.12})`; c.fillRect((i * 29) % w, (i * 17) % h, 3 + (i % 4), 2 + (i % 3)); }
   c.globalCompositeOperation = 'source-over';
 });
 const banner = () => tpl('story:banner', (b) => {
@@ -88,10 +87,9 @@ export function lobbyColdOpen(R) {
     else if (roll < 0.75 && nb < 6) { R.put(handbag(['leather_brown', 'leather_black', 'fab_red', 'vinyl_cream'][nb % 4], nb % 2), x, z, r() * 6.28, { collide: false }); nb++; }
     else if (nf < 6) { R.put(bouquet(nf), x, z, r() * 6.28, { collide: false }); nf++; }
   }
-  // 北口東側柱子(x 68–72, z 54–56)朝西那一面:褪色的紅漆直書
-  // (兩面都放:朝外那面看得到,朝柱子那面被背面剔除)
-  const dt = tpl('story:dontrust', (b) => b.plane(D(paintRect()), 0.4, 1.9, 0, 0.95, 0));
-  for (const yw of [-PI / 2, PI / 2]) R.put(dt, 67.94, 55.0, yw, { y: y + 0.45 });
+  // 服務台正面(朝南,一進大廳就看得到):橫書的紅漆
+  const ht = tpl('story:dontrust_h', (b) => b.plane(D(paintRectH()), 1.75, 0.37, 0, 0.185, 0));
+  R.put(ht, 60, 57.4 + 0.47, 0, { y: y + 0.42 });
   return { ns, nb, nf };
 }
 void G; void glowSwatch;
