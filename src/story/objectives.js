@@ -64,6 +64,7 @@ const STEPS = [
   { id: 'h.s.enter', act: 4, text: '進入 207', cond: (c) => c.D.has('hc.30') || (c.zone === 'f2_ward_207' && (c.run.in207 = (c.run.in207 || 0) + 0.25) > 1.5),
     onDone: (c) => c.page(),
     hints: { xl: '頭七那天的腳印……停在床邊。', ama: '枕頭……阿嬤囥佇枕頭內底。', glint: (c) => c.at('h.ix.pillow') } },
+  { id: 'h.s.wait', act: 5, text: '等金水伯的車', cond: (c) => c.O.has('h.truck') }, // 何董的電話(如果有)在這裡響;金水伯「車來囉」之後才往下
   { id: 'h.s.bay', act: 5, text: '到急診車道', cond: (c) => c.zone === 'f1_ambulance',
     hints: { xl: '金水伯的車在急診車道，倒車燈亮著。快。' } },
   { id: 'h.s.hold', act: 5, text: '撐 60 秒', prog: (c) => Math.min(60, Math.floor(c.run.holdT)), m: 60,
@@ -127,13 +128,13 @@ export function installObjectives(game) {
     page() {
       const t0 = game.time;
       later(1.2, () => { const q = c.at('h.ix.pillow'); if (q && !D()?.has?.('hc.30')) { run.glint = q; run.glintT = 10; } });
-      const go = () => { c.talk([[KS, '少年仔！車來囉！', 2.0], [KS, '急診車道，阿伯佇遐等你。緊上車！', 3.4]]); };
+      const go = () => { O.flag('h.truck'); c.talk([[KS, '少年仔！車來囉！', 2.0], [KS, '急診車道，阿伯佇遐等你。緊上車！', 3.4]]); };
       let out = 0;
       X()?.tick?.((dt) => {
         if (run.evac || game.state !== 'playing') return false;
         out = c.zone === 'f2_ward_207' ? 0 : out + dt;
         const ho = game.story?.climax?.run, hoBusy = !!ho && !!O.has('h.boss10') && (!ho.hoRang || ho.hoState === 'ringing' || ho.hoState === 'talk') && game.time - t0 < 120; // 何董的電話先講完
-        if (!hoBusy && (D()?.has?.('hc.30') || out > 4 || game.time - t0 > 30)) { later(D()?.has?.('hc.30') ? 5 : 1.5, go); return false; }
+        if (!hoBusy && (D()?.has?.('hc.30') || out > 4 || game.time - t0 > 30)) { later(ho?.hoRang ? 4.5 : D()?.has?.('hc.30') ? 5 : 1.5, go); return false; }
         return true;
       });
     },
