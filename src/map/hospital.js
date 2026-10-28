@@ -17,7 +17,7 @@ import { surf } from './hospital/surfaces.js';
 import { setAnisotropy, pbrState } from './hospital/pbr.js';
 import { procStats } from './hospital/proctex.js';
 import { createVis } from './hospital/vis.js';
-import { createBatcher, createBatchView, batchable, plainObj, regionSet } from './hospital/batch.js';
+import { createBatcher, createBatchView, createDynBatch, createCompactor, batchable, plainObj, regionSet } from './hospital/batch.js';
 import { applySurface, hasSurface } from '../mats/surface.js';
 
 // 聖心醫院本體:依 levels.js 的四層佈局建出結構(牆/地板/天花板/門窗/樓梯/欄杆/戶外)、材質、燈光、氛圍與腳本驚嚇。
@@ -84,7 +84,9 @@ export function buildHospital(world, layout, scene, opts = {}) {
   const dynProps = [];
   for (const g of propGroups) for (const o of g.children) if (o.userData?.dynamic && !o.isInstancedMesh) dynProps.push(o);
   // [draws] 可推動道具平常是靜止的:不必每幀重算矩陣;物理移動它時會自己 updateMatrix(src/physics/index.js)
-  for (const o of dynProps) if (/^pi_dyn_/.test(o.name)) o.traverse((c) => { c.updateMatrix(); c.matrixAutoUpdate = false; });
+  // 子網格相對群組不動 → 群組沒被移動時整棵子樹都不用走(每幀 updateMatrixWorld 少走上千個物件)
+  const lazyWorld = function (force) { if (force || this.matrixWorldNeedsUpdate) THREE.Object3D.prototype.updateMatrixWorld.call(this, force); };
+  for (const o of dynProps) if (/^pi_dyn_/.test(o.name)) { o.traverse((c) => { c.updateMatrix(); c.matrixAutoUpdate = false; }); o.updateMatrixWorld = lazyWorld; }
   let dynTick = 0;
   const tProps = performance.now();
 
@@ -133,9 +135,12 @@ export function buildHospital(world, layout, scene, opts = {}) {
 
   // ---- [draws] PVS:玩家附近的樓梯(連通的那層從樓梯格做視線)、靜態批次、依區塊開關的其他物件 ----
   L.stairs.forEach((s, i) => { const sp = stairsP[i]; sp.id = i; sp.cells = []; for (let r = s.r0 - 1; r <= s.r1 + 1; r++) for (let c = s.c0 - 1; c <= s.c1 + 1; c++) sp.cells.push([c, r]); });
+  // 其他樓層的種子格(樓梯外圍、挑空/樓梯開口)閒置時先算好(每 2×2 一格,與 vis.js 的種子去重一致)
+  for (const sp of stairsP) for (const [c, r] of sp.cells) { pvs.queueSeed(sp.lo, c, r); pvs.queueSeed(sp.hi, c, r); }
+  L.levels.forEach((lv, lj) => { for (let r = 0; r < L.H; r++) for (let c = 0; c < L.W; c++) { const ch = L.charAt(lj, c, r); if (ch === 'o' || ch === '%') { pvs.queueSeed(lj, c, r); if (lj > 0) pvs.queueSeed(lj - 1, c, r); } } });
   const nearSt = [];
   const nearStairs = (li, x, z) => { nearSt.length = 0; for (const s of stairsP) if ((s.lo === li || s.hi === li) && (s.x - x) ** 2 + (s.z - z) ** 2 < s.r * s.r) nearSt.push(s); return nearSt; };
-  let view = null, pvsSig = '', pvsTick = 0, pvsLi = 1, pvsOut = false;
+  let view = null, comp = null, pvsSig = '', pvsTick = 0, pvsLi = 1, pvsOut = false;
   const tracked = []; // { o, li, regs }:沒有烘進批次的靜態實例池(下載模型會換掉零件的那些),依區塊開關 visible
   // 某樓層某些區塊目前是否可能看得到(regs = null:不分區塊)
   const pvsTest = (oli, regs) => {
@@ -159,17 +164,32 @@ export function buildHospital(world, layout, scene, opts = {}) {
       if (!rs) { all = true; break; }
       for (const r of rs.r) set.add(r);
     }
-    tracked.push({ o, li: Math.max(0, oli), regs: all ? null : Int32Array.from(set) });
-    o.matrixAutoUpdate = false; o.updateMatrix();
+    const pool = o.userData.pool;
+    tracked.push({ o, li: Math.max(0, oli), regs: all ? null : Int32Array.from(set), dyn: pool?.dyn ? pool : null });
+    if (!pool?.dyn) { o.matrixAutoUpdate = false; o.updateMatrix(); }
+  };
+  // 會被推動的戶外實例池(frustumCulled = false,原本到哪都畫):依目前代理物件的位置判斷
+  const dynPoolVisible = (pool) => {
+    for (const px of pool.proxies) {
+      if (!px.parent || !px.visible) continue;
+      const e = px.matrixWorld.elements, oli = Math.max(0, L.levelOfY(e[13] - 0.2));
+      if (pvsTest(oli, [pvs.regionAt(oli, e[12], e[14])])) return true;
+    }
+    return false;
   };
   const applyTracked = () => {
-    for (let i = tracked.length - 1; i >= 0; i--) { const t = tracked[i]; if (!t.o.parent) { tracked.splice(i, 1); continue; } t.o.visible = pvsTest(t.li, t.regs); }
+    for (let i = tracked.length - 1; i >= 0; i--) { const t = tracked[i]; if (!t.o.parent) { tracked.splice(i, 1); continue; } t.o.visible = t.dyn ? dynPoolVisible(t.dyn) : pvsTest(t.li, t.regs); }
   };
   const dynVisible = (o) => {
     const oli = Math.max(0, L.levelOfY(o.position.y + 0.3));
     return pvsTest(oli, [pvs.regionAt(oli, o.position.x, o.position.z)]);
   };
-  ctx.lateAdd = (obj) => { if (view && obj.isInstancedMesh && obj.userData.pool?.owner && !obj.userData.pool.dyn) { track(obj); applyTracked(); } };
+  ctx.lateAdd = (obj) => {
+    if (!view || !obj.isInstancedMesh) return;
+    const pool = obj.userData.pool;
+    if (comp && pool?.owner && !pool.dyn && plainObj(obj)) { comp.drop(pool); comp.add(obj); comp.build(); comp.refresh(); } // 下載模型換掉的區塊實例池:換掉壓實清單裡的舊零件
+    else if (pool?.owner || pool?.dyn) { track(obj); applyTracked(); }
+  };
 
   const stats = {
     buildMs: Math.round(performance.now() - t0), shellMs: Math.round(tShell - t0), propsMs: Math.round(tProps - tShell),
@@ -190,6 +210,13 @@ export function buildHospital(world, layout, scene, opts = {}) {
     leaves: K.leaves, doorLeaves: K.doorLeaves || [], // 門扇實例與代理(src/map/hospital/leaves.js;互動與碰撞在 src/interact/doors.js)
     propDistance: 54, // 道具區塊的顯示距離(公尺):霧裡看不到的就不畫,setQuality 依 drawDistance 調整
     pvs, batches: null, structMeshes: meshes,
+    // [draws] 世界座標的範圍(y = 底部高度)目前是否可能看得到(其他系統的物件用,例如店面);批次建好之前一律 true
+    pvsVisibleBox(y, x0, z0, x1, z1) {
+      if (!view) return true;
+      const oli = Math.max(0, L.levelOfY(y));
+      const rs = regionSet(pvs, oli, x0, z0, x1, z1, false);
+      return pvsTest(oli, rs ? rs.r : null);
+    },
     // [draws] 靜態批次(src/map/hospital/batch.js):結構 / 道具區塊 / 靜態實例池 → 每個材質一個 BatchedMesh,實例 = 區塊。
     // 由 game.js 在互動物件與材質表面升級(upgradeWorldSurfaces)之後、預編譯之前呼叫一次
     batch(game) {
@@ -219,7 +246,7 @@ export function buildHospital(world, layout, scene, opts = {}) {
           Bt.addInstanced(o, pi ? 0.6 : o.castShadow ? 1 : 0.6, vcMat, pi);
           used.push(o);
           if (pool) pool.baked = true;
-        } else if (region) keep.push(o);
+        } else if (region || pool?.dyn || (/^po_anim_/.test(o.name) && !o.frustumCulled)) keep.push(o); // 其餘實例池:依區塊開關
       }
       const st = { ...Bt.stats };
       const t3 = performance.now();
@@ -229,9 +256,12 @@ export function buildHospital(world, layout, scene, opts = {}) {
       const left = chunks.filter((m) => m.parent);
       chunks.length = 0;
       chunks.push(...left);
-      view = createBatchView({ meshes: built.meshes, insts: built.insts, vis: pvs, moon: atmo.moon });
+      const dynB = createDynBatch({ groups: dynProps.filter((o) => /^pi_dyn_/.test(o.name)), parent: root, moon: atmo.moon });
+      comp = createCompactor({ parent: root, test: pvsTest, vis: pvs, L });
+      for (const o of keep) { const pool = o.userData.pool; if (pool?.owner && !pool.dyn && plainObj(o)) comp.add(o); else track(o); }
+      comp.build();
+      view = createBatchView({ meshes: built.meshes, insts: built.insts, vis: pvs, moon: atmo.moon, dyn: dynB, comp });
       H.batches = view;
-      for (const o of keep) track(o);
       // 主相機每次渲染前(矩陣已更新):視錐剔除 + 套用;其他相機(遮雨深度圖、離屏預熱)全部打開
       const scene0 = game?.scene || scene, cam0 = game?.camera || null;
       const prev = scene0.onBeforeRender;
@@ -243,7 +273,7 @@ export function buildHospital(world, layout, scene, opts = {}) {
       scene0.matrixAutoUpdate = false;
       scene0.updateMatrix();
       scene0.updateMatrixWorld(true);
-      stats.batch = { ms: Math.round(performance.now() - t1), struct: Math.round(t2 - t1), props: Math.round(t3 - t2), build: Math.round(t4 - t3), batched: built.meshes.length, instances: built.insts.length, fromMeshes: st.meshes, fromInstanced: st.instanced, bakedInst: st.inst, tracked: tracked.length, regions: pvs.nR };
+      stats.batch = { ms: Math.round(performance.now() - t1), struct: Math.round(t2 - t1), props: Math.round(t3 - t2), build: Math.round(t4 - t3), batched: built.meshes.length, instances: built.insts.length, dynBatches: dynB.meshes.length, dynItems: dynB.items.length, compact: comp.count(), fromMeshes: st.meshes, fromInstanced: st.instanced, bakedInst: st.inst, tracked: tracked.length, regions: pvs.nR };
       console.log('[hospital] batch', JSON.stringify(stats.batch));
       return view;
     },
@@ -280,8 +310,9 @@ export function buildHospital(world, layout, scene, opts = {}) {
         const sig = li + (outdoor ? 'o' : 'i') + vis.join('') + propVis.join('');
         const big = changed || sig !== pvsSig;
         if (big || ((pvsTick = (pvsTick + 1) & 3) === 0)) view.refresh(li, vis, propVis, outdoor, p.x, p.y + 1.6, p.z, H.propDistance);
-        if (big) { applyTracked(); dynTick = 11; }
+        if (big) { applyTracked(); comp?.refresh(); dynTick = 11; }
         pvsSig = sig;
+        if (!big) pvs.idle(0.6);
       }
       // 可推動的小道具:34m(或畫質的道具距離,取小)以外不畫;[draws] 看不到的區塊也不畫
       if ((dynTick = (dynTick + 1) % 12) === 0) { const fd = Math.min(34, H.propDistance); for (const o of dynProps) { const dx = o.position.x - p.x, dz = o.position.z - p.z; o.visible = dx * dx + dz * dz < fd * fd && (!view || dynVisible(o)); } }

@@ -181,6 +181,17 @@ function sharedTextures(n) {
   return SHARED;
 }
 
+// 陰影 pass:three 預設讓所有投影物件共用同一個深度材質,一般網格 / 實例 / 批次交錯時這個材質的 program 參數
+// (instancing、batching)來回切換 → 每次切換都重算 program 參數(getProgram)。批次改用自己的深度材質就不會來回切。
+// (three 每次仍會依來源材質設定 side / map / alphaTest,同一組鍵的值固定;program 與預熱的陰影代理相同,不會新編譯)
+const depthMats = new Map();
+function depthFor(mat) {
+  const k = (mat.side ?? 0) + '|' + (mat.shadowSide ?? '-') + '|' + (mat.map ? 'M' : '') + '|' + (mat.alphaTest > 0 ? (mat.map?.uuid || '') + (mat.alphaMap?.uuid || '') + mat.alphaTest : '');
+  let d = depthMats.get(k);
+  if (!d) depthMats.set(k, (d = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking })));
+  return d;
+}
+
 // 建構期間的快速複製(BatchedMesh.setGeometryAt 逐元素 setX/setComponent 太慢:幾百萬個索引要一秒以上)。
 // 只用在預留空間 = 幾何大小、屬性型別一致(全部 Float32、索引陣列)的情況;建完就拿掉
 function fastSetGeometryAt(geometryId, geometry) {
@@ -318,6 +329,7 @@ export function createBatcher({ L, vis }) {
         bm.layers.mask = gr.layers;
         bm.matrixAutoUpdate = false;
         bm.userData.batch = true;
+        bm.customDepthMaterial = depthFor(gr.mat);
         bm.setGeometryAt = fastSetGeometryAt;
         geos.forEach((g, k) => {
           g.computeBoundingBox();
@@ -346,7 +358,7 @@ export function createBatcher({ L, vis }) {
 }
 
 // 執行期:依可見區塊 / 樓層 / 距離 / 主相機視錐開關實例;BatchedMesh 沒有任何可見實例時整個隱藏(連 setProgram 都省掉)
-export function createBatchView({ meshes, insts, vis, moon }) {
+export function createBatchView({ meshes, insts, vis, moon, dyn = null, comp = null }) {
   const moonCam = moon ? moon.shadow.camera : null;
   const nR = vis.nR;
   const lvlOK = new Uint8Array(8), otherOK = new Uint8Array(8);
@@ -354,7 +366,11 @@ export function createBatchView({ meshes, insts, vis, moon }) {
   const byBM = new Map();
   for (const m of meshes) byBM.set(m, []);
   insts.forEach((it, i) => { it.idx = i; byBM.get(it.bm).push(it); });
-  const visCnt = new Map();
+  const bmIdx = new Map(meshes.map((m, i) => [m, i]));
+  const instBM = Int32Array.from(insts.map((it) => bmIdx.get(it.bm)));
+  const visCnt = new Int32Array(meshes.length);
+  const cand = new Int32Array(insts.length), onList = new Int32Array(insts.length);
+  let nCand = 0, nOn = 0; // cand:want = 1 的實例(refresh 時整理);onList:目前開著的實例
   let allOn = false;
   // 月光陰影:這個 pass 全部實例都要畫(其他 pass 照舊)
   for (const bm of meshes) {
@@ -400,31 +416,232 @@ export function createBatchView({ meshes, insts, vis, moon }) {
         }
         want[i] = ok ? 1 : 0;
       }
+      nCand = 0;
+      for (let i = 0; i < insts.length; i++) if (want[i]) cand[nCand++] = i;
     },
     // 每次主相機渲染前(scene.onBeforeRender):視錐剔除 + 套用
     cull(camera) {
       allOn = false;
       _pm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
       _frustum.setFromProjectionMatrix(_pm, camera.coordinateSystem, camera.reversedDepth);
-      for (const bm of meshes) visCnt.set(bm, 0);
-      for (let i = 0; i < insts.length; i++) {
-        const it = insts[i];
-        const on = want[i] === 1 && _frustum.intersectsSphere(it.sphere);
+      visCnt.fill(0);
+      // 先關掉上一幀開著、這次不在候選裡的;再對候選做視錐測試(只走可能看得到的實例,不是全部)
+      for (let k = 0; k < nOn; k++) { const i = onList[k], it = insts[i]; if (!want[i] && it.on) { it.on = false; it.bm.setVisibleAt(it.id, false); } }
+      nOn = 0;
+      for (let k = 0; k < nCand; k++) {
+        const i = cand[k], it = insts[i];
+        const on = _frustum.intersectsSphere(it.sphere);
         if (on !== it.on) { it.on = on; it.bm.setVisibleAt(it.id, on); }
-        if (on) visCnt.set(it.bm, visCnt.get(it.bm) + 1);
+        if (on) { visCnt[instBM[i]]++; onList[nOn++] = i; }
       }
       const mo = !!moon && moon.castShadow && (moon.shadow.needsUpdate || moon.shadow.autoUpdate);
-      for (const bm of meshes) bm.visible = visCnt.get(bm) > 0 || (mo && bm.castShadow);
+      for (let j = 0; j < meshes.length; j++) meshes[j].visible = visCnt[j] > 0 || (mo && meshes[j].castShadow);
+      dyn?.cull(_frustum, mo);
+      comp?.cull(_frustum, mo);
     },
     // 其他相機(遮雨深度圖、離屏預熱…):全部打開
     showAll() {
       if (allOn) return;
       allOn = true;
-      for (const it of insts) if (!it.on) { it.on = true; it.bm.setVisibleAt(it.id, true); }
+      nOn = 0;
+      for (let i = 0; i < insts.length; i++) { const it = insts[i]; if (!it.on) { it.on = true; it.bm.setVisibleAt(it.id, true); } onList[nOn++] = i; }
       for (const bm of meshes) bm.visible = true;
+      dyn?.showAll();
+      comp?.cull(null, true);
     },
     visibleCount() { let n = 0; for (const it of insts) if (it.on) n++; return n; },
     drawable() { let n = 0; for (const bm of meshes) if (bm.visible) n++; return n; },
+  };
+  return api;
+}
+
+// ---------------------------------------------------------------------------------------------
+// [draws] 可推動道具(pi_dyn_*,物理代理是 Group):外觀改由每個材質一個 BatchedMesh 畫,實例 = 每個道具的每個零件,
+// 實例矩陣 = 零件的世界矩陣(每幀比對,物理推動時才更新)。原本的網格保留但隱藏(物理用它們算包圍盒)。
+// 可見 = 道具群組可見(距離 + PVS,由 hospital.js 設定)且所在樓層群組可見 + 主相機視錐。
+// 表面細節 shader 用實例平移當亂數(batchingMatrix,和原本的 modelMatrix 一樣),物件空間的三平面貼圖照舊。
+export function createDynBatch({ groups, parent, moon }) {
+  const moonCam = moon ? moon.shadow.camera : null;
+  const byKey = new Map(); // 材質 + 投影 + 屬性 → { mat, cast, items: [{ mesh, grp }] }
+  for (const grp of groups) {
+    grp.updateMatrixWorld(true);
+    grp.traverse((m) => {
+      if (!m.isMesh || m.isInstancedMesh || m.isBatchedMesh || !m.visible || !batchable(m.material) || !plainObj(m) || !m.geometry?.attributes?.position) return;
+      const k = m.material.uuid + '|' + (m.castShadow ? 1 : 0) + '|' + m.layers.mask + '|' + Object.keys(m.geometry.attributes).sort().join(',') + '|' + (m.geometry.index ? 'i' : 'n');
+      let e = byKey.get(k);
+      if (!e) byKey.set(k, (e = { mat: m.material, cast: m.castShadow, layers: m.layers.mask, items: [] }));
+      e.items.push({ mesh: m, grp });
+    });
+  }
+  // 群組 → 樓層群組 → 場景都可見(dynTick 設 group.visible;樓層規則設 levelGroups / propGroups)
+  const shown = (g) => { for (let p = g; p; p = p.parent) { if (!p.visible) return false; if (p.isScene) return true; } return false; };
+  const meshes = [], items = [];
+  const proto = THREE.BatchedMesh.prototype;
+  for (const e of byKey.values()) {
+    const geos = new Map();
+    let nv = 0, ni = 0;
+    for (const it of e.items) {
+      const g = it.mesh.geometry;
+      if (geos.has(g)) continue;
+      geos.set(g, -1);
+      nv += g.attributes.position.count;
+      ni += g.index ? g.index.count : 0;
+    }
+    const bm = new THREE.BatchedMesh(e.items.length, nv, ni, e.mat);
+    bm.name = 'dynbatch:' + (e.mat.name || e.mat.type);
+    bm.perObjectFrustumCulled = false;
+    bm.sortObjects = false;
+    bm.frustumCulled = false;
+    bm.castShadow = e.cast;
+    bm.receiveShadow = true;
+    bm.layers.mask = e.layers;
+    bm.matrixAutoUpdate = false;
+    bm.customDepthMaterial = depthFor(e.mat);
+    for (const g of [...geos.keys()]) { if (!g.boundingSphere) g.computeBoundingSphere(); geos.set(g, bm.addGeometry(g)); }
+    const list = [];
+    for (const it of e.items) {
+      const id = bm.addInstance(geos.get(it.mesh.geometry));
+      it.mesh.updateMatrixWorld(true);
+      bm.setMatrixAt(id, it.mesh.matrixWorld);
+      const rec = { bm, id, mesh: it.mesh, grp: it.grp, last: it.mesh.matrixWorld.clone(), sphere: it.mesh.geometry.boundingSphere.clone().applyMatrix4(it.mesh.matrixWorld), r0: it.mesh.geometry.boundingSphere, on: true };
+      list.push(rec);
+      items.push(rec);
+      it.mesh.visible = false;
+    }
+    bm.userData.items = list;
+    bm.updateMatrix();
+    bm.updateMatrixWorld(true);
+    parent.add(bm);
+    meshes.push(bm);
+    // 月光(靜態陰影偶爾重畫):看得到的道具都投影(不受主相機視錐限制)
+    bm.onBeforeShadow = function (r, o, cam, shCam, geo, dm, grp) {
+      if (shCam === moonCam) {
+        const info = this._instanceInfo;
+        this._saved = this._saved || new Uint8Array(info.length);
+        for (const rec of this.userData.items) { this._saved[rec.id] = info[rec.id].visible ? 1 : 0; info[rec.id].visible = shown(rec.grp); }
+        this._visibilityChanged = true;
+        this._moon = true;
+      }
+      proto.onBeforeShadow.call(this, r, o, cam, shCam, geo, dm, grp);
+    };
+    bm.onAfterShadow = function () {
+      if (!this._moon) return;
+      this._moon = false;
+      const info = this._instanceInfo;
+      for (const rec of this.userData.items) info[rec.id].visible = this._saved[rec.id] === 1;
+      this._visibilityChanged = true;
+    };
+  }
+  const cnt = new Map();
+  return {
+    meshes, items,
+    cull(frustum, moonPending) {
+      for (const bm of meshes) cnt.set(bm, 0);
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i], mw = it.mesh.matrixWorld;
+        if (!it.last.equals(mw)) { // 被推動了:更新實例矩陣與包圍球(世界矩陣在 render 開頭已由場景更新)
+          it.last.copy(mw);
+          it.bm.setMatrixAt(it.id, mw);
+          it.sphere.copy(it.r0).applyMatrix4(mw);
+        }
+        const on = shown(it.grp) && frustum.intersectsSphere(it.sphere);
+        if (on !== it.on) { it.on = on; it.bm.setVisibleAt(it.id, on); }
+        if (on) cnt.set(it.bm, cnt.get(it.bm) + 1);
+      }
+      for (const bm of meshes) bm.visible = cnt.get(bm) > 0 || (moonPending && bm.castShadow);
+    },
+    showAll() { for (const it of items) if (!it.on) { it.on = true; it.bm.setVisibleAt(it.id, true); } for (const bm of meshes) bm.visible = true; },
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// [draws] 靜態實例池的「壓實」:戶外的區塊實例池(每 24m 一組 InstancedMesh、每組只有幾個實例 → 幾百個 draw call)
+// 不能烘成世界座標的(風吹的植物要實例原點算擺動相位;下載模型會換零件的池),同一種零件(幾何 + 材質)
+// 全部併成一個 InstancedMesh,每幀只把「看得到」(PVS × 主相機視錐)的實例矩陣依序寫進去、設 count。
+// 實例矩陣不變 → shader(風吹、濕潤、表面細節)看到的 instanceMatrix 和原本一樣。
+// 下載模型換零件時(實例池重建,舊的網格作廢)由 drop(pool) 移除那個池的實例,新網格再 add 進來。
+const _cm = new THREE.Matrix4();
+export function createCompactor({ parent, test, vis, L }) {
+  const groups = new Map(); // geo|mat|cast|color → { im, items: [] }
+  const all = [];
+  let nextPass = 0;
+  const api = {
+    groups,
+    add(src) {
+      src.updateMatrixWorld(true);
+      const g = src.geometry;
+      if (!g.boundingSphere) g.computeBoundingSphere();
+      const k = g.uuid + '|' + src.material.uuid + '|' + (src.castShadow ? 1 : 0) + (src.receiveShadow ? 1 : 0) + '|' + (src.instanceColor ? 1 : 0) + '|' + src.layers.mask;
+      let gr = groups.get(k);
+      if (!gr) {
+        gr = { src, items: [], im: null, cap: 0, list: new Int32Array(0), n: -1, dirty: true };
+        groups.set(k, gr);
+      }
+      const pool = src.userData.pool || null;
+      for (let i = 0; i < src.count; i++) {
+        src.getMatrixAt(i, _cm);
+        _cm.premultiply(src.matrixWorld);
+        const e = _cm.elements;
+        const li = Math.max(0, L.levelOfY(e[13] + 0.25));
+        const sphere = g.boundingSphere.clone().applyMatrix4(_cm);
+        const rs = regionSet(vis, li, sphere.center.x - Math.min(sphere.radius, 1), sphere.center.z - Math.min(sphere.radius, 1), sphere.center.x + Math.min(sphere.radius, 1), sphere.center.z + Math.min(sphere.radius, 1), true);
+        const it = { gr, src, m: Float32Array.from(e), c: src.instanceColor ? src.instanceColor.array.slice(i * 3, i * 3 + 3) : null, li, regs: rs ? rs.r : null, sphere, pool, want: true, dead: false };
+        gr.items.push(it);
+        all.push(it);
+      }
+      gr.dirty = true;
+      src.parent?.remove(src);
+    },
+    // 下載模型換零件:這個池原本的實例作廢
+    drop(pool) {
+      for (const it of all) if (it.pool === pool && !it.dead && !pool.meshes.includes(it.src)) { it.dead = true; it.gr.dirty = true; }
+    },
+    build() {
+      for (const gr of groups.values()) {
+        const live = gr.items.filter((it) => !it.dead);
+        if (gr.im && gr.cap >= live.length) continue;
+        if (gr.im) { gr.im.parent?.remove(gr.im); gr.im.dispose(); }
+        const s = gr.src, im = new THREE.InstancedMesh(s.geometry, s.material, Math.max(1, live.length));
+        im.name = s.name.replace(/@.*$/, '') + '@compact';
+        im.castShadow = s.castShadow; im.receiveShadow = s.receiveShadow; im.layers.mask = s.layers.mask;
+        im.frustumCulled = false; im.matrixAutoUpdate = false; im.count = 0;
+        im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        if (s.instanceColor) { im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, live.length) * 3), 3); im.instanceColor.setUsage(THREE.DynamicDrawUsage); }
+        im.updateMatrix();
+        parent.add(im);
+        gr.im = im; gr.cap = live.length; gr.list = new Int32Array(Math.max(1, live.length)); gr.n = -1;
+      }
+    },
+    // PVS 改變時:每個實例是否可能看得到
+    refresh() { for (const it of all) it.want = !it.dead && test(it.li, it.regs); },
+    // 每次主相機渲染前:視錐 + 寫入(清單沒變就不上傳);every = true(月光重畫、其他相機)時全部寫入
+    cull(frustum, every) {
+      nextPass++;
+      for (const gr of groups.values()) {
+        if (!gr.im) continue;
+        const items = gr.items, list = gr.list;
+        let n = 0, same = gr.n >= 0 && !gr.dirty;
+        for (let i = 0; i < items.length; i++) {
+          const it = items[i];
+          if (it.dead || !(every || (it.want && frustum.intersectsSphere(it.sphere)))) continue;
+          if (same && (n >= gr.n || list[n] !== i)) same = false;
+          list[n++] = i;
+        }
+        if (same && n === gr.n) continue;
+        gr.n = n; gr.dirty = false;
+        const im = gr.im, ma = im.instanceMatrix.array, ca = im.instanceColor ? im.instanceColor.array : null;
+        for (let k = 0; k < n; k++) {
+          const it = items[list[k]];
+          ma.set(it.m, k * 16);
+          if (ca && it.c) ca.set(it.c, k * 3);
+        }
+        im.count = n;
+        im.visible = n > 0;
+        im.instanceMatrix.clearUpdateRanges(); im.instanceMatrix.addUpdateRange(0, n * 16); im.instanceMatrix.needsUpdate = true;
+        if (ca) { im.instanceColor.clearUpdateRanges(); im.instanceColor.addUpdateRange(0, n * 3); im.instanceColor.needsUpdate = true; }
+      }
+    },
+    count() { let n = 0; for (const gr of groups.values()) if (gr.im) n++; return { meshes: n, items: all.filter((it) => !it.dead).length }; },
   };
   return api;
 }

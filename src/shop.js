@@ -660,6 +660,14 @@ function gunOnWall(id) {
 
 // =====================================================================
 export class Shop {
+  // [draws] 店面整組(含店招、捲門)在玩家位置看不到時(src/map/hospital/vis.js 的 PVS)不畫
+  _pvs() {
+    const H = this.game?.hospital;
+    if (!H?.pvsVisibleBox) return true;
+    if (!this._pvsBox) { this.group.updateMatrixWorld(true); this._pvsBox = new THREE.Box3().setFromObject(this.group); }
+    const b = this._pvsBox;
+    return H.pvsVisibleBox(b.min.y + 0.3, b.min.x, b.min.z, b.max.x, b.max.z);
+  }
   // opts.game:用來預先編譯 shader;opts.models = false 可關閉 GLB 載入(測試用)
   constructor(scene, world, opts = {}) {
     this.scene = scene;
@@ -1446,7 +1454,7 @@ export class Shop {
       const d = Math.hypot(p.x - this.S.x, p.z - this.S.z), dy = Math.abs((p.y || 0) - this.y);
       near = d < 42 && dy < 5;
       close = d < 22 && dy < 2;
-      this.group.visible = d < 70 && dy < 9;
+      this.group.visible = d < 70 && dy < 9 && this._pvs();
     }
     this.detail.visible = near;
     this.light.intensity = near ? 5.5 : 0;

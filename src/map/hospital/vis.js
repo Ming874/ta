@@ -40,13 +40,15 @@ export function createVis(L) {
     return a;
   });
   const nR = regions.length;
+  const levelRegs = L.levels.map((lv, li) => Int32Array.from([...new Set(cellReg[li])]));
+  const SEED_BUDGET = 3; // ms
   const clampC = (c) => (c < 0 ? 0 : c >= W ? W - 1 : c), clampR = (r) => (r < 0 ? 0 : r >= H ? H - 1 : r);
   const regionAtCell = (li, c, r) => cellReg[Math.max(0, Math.min(nL - 1, li))][clampR(r) * W + clampC(c)];
   const regionAt = (li, x, z) => regionAtCell(li, Math.floor(x / CELL), Math.floor(z / CELL));
   const opaqueAt = (li, c, r) => c < 0 || r < 0 || c >= W || r >= H ? 1 : opaque[Math.max(0, Math.min(nL - 1, li))][r * W + c];
 
   // ---- 2D 視線:從 (px,pz)(格子單位)射出 nRay 條射線,把經過的格子標到 mask ----
-  const RAYS = 360;
+  const RAYS = 256; // 1.4°:80m 外約 2m 一條,再加上外擴一格
   const cosT = new Float32Array(RAYS), sinT = new Float32Array(RAYS);
   for (let i = 0; i < RAYS; i++) { const a = ((i + 0.5) / RAYS) * Math.PI * 2; cosT[i] = Math.cos(a); sinT[i] = Math.sin(a); }
   function cast(op, mask, px, pz, maxD) {
@@ -71,7 +73,7 @@ export function createVis(L) {
     }
   }
   // 9 個取樣點(玩家在格子裡任何位置都涵蓋)或只用格心(種子)
-  const SAMPLES9 = [[0.5, 0.5], [0.04, 0.04], [0.96, 0.04], [0.04, 0.96], [0.96, 0.96], [0.5, 0.04], [0.5, 0.96], [0.04, 0.5], [0.96, 0.5]];
+  const SAMPLES9 = [[0.5, 0.5], [0.04, 0.04], [0.96, 0.04], [0.04, 0.96], [0.96, 0.96]]; // 格心 + 四角
   const SAMPLES1 = [[0.5, 0.5]];
   const raw = new Uint8Array(N), dil = new Uint8Array(N);
   const stamp = new Int32Array(nR);
@@ -119,6 +121,15 @@ export function createVis(L) {
   const own = new Uint8Array(nR), col = new Uint8Array(nR), other = new Uint8Array(nR);
   const mark = (arr, list) => { for (let i = 0; i < list.length; i++) arr[list[i]] = 1; };
   let last = '', version = 0;
+  const todo = [];
+  // 種子去重:每 2×2 格只取一格(固定挑區塊內第一個不透明以外的格子 → 閒置預算與即時查詢用同一格,快取命中)
+  const canon = (j, k) => {
+    if (j < 0 || j >= nL) return -1;
+    const bc = (k % W) & ~1, br = ((k / W) | 0) & ~1;
+    for (const [dc, dr] of [[0, 0], [1, 0], [0, 1], [1, 1]]) { const c = bc + dc, r = br + dr; if (c < W && r < H && !opaque[j][r * W + c]) return r * W + c; }
+    return -1;
+  };
+  const uniq = (j, a) => { const out = new Set(); for (const k of a) { const q = canon(j, k); if (q >= 0) out.add(q); } return [...out]; };
   const api = {
     regions, nR, regionAt, regionAtCell, opaqueAt, cellReg, TILE,
     own, col, other, // own:玩家這層看得到;col:看得到的格子位置在各層的區塊;other:經由開口/樓梯看到的其他層
@@ -131,14 +142,24 @@ export function createVis(L) {
       if (sk === last) return false;
       last = sk;
       own.fill(0); col.fill(0); other.fill(0);
+      // 其他樓層的種子還沒算過、這一幀的時間又用完了:那一層先整層當作看得到(多畫幾幀,不會缺),種子排進閒置佇列,下一幀再算
+      const t0 = performance.now();
+      const pending = new Set();
+      const seedVis = (j, k) => {
+        const key = ((j * H + ((k / W) | 0)) * W + (k % W)) * 2;
+        if (!cache.has(key) && performance.now() - t0 > SEED_BUDGET) { pending.add(j); todo.push([j, k % W, (k / W) | 0, false]); return null; }
+        return compute(j, k % W, (k / W) | 0, false);
+      };
       const me = compute(li, c, r, true);
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) if (dc || dr) api.queue(li, c + dc, r + dr, true);
       mark(own, me.own);
       for (let j = 0; j < nL; j++) mark(col, me.col[j]);
       // 經由開口往上/往下鏈(每層的種子 = 上一步看得到的開口格)
       const seedLevel = (j, seeds) => {
         const ups = [], downs = [];
         for (const k of seeds) {
-          const v = compute(j, k % W, (k / W) | 0, false);
+          const v = seedVis(j, k);
+          if (!v) continue;
           mark(other, v.own);
           for (let t = 0; t < v.up.length; t++) ups.push(v.up[t]);
           for (let t = 0; t < v.down.length; t++) downs.push(v.down[t]);
@@ -146,22 +167,32 @@ export function createVis(L) {
         return { ups, downs };
       };
       // 種子去重:每 2×2 格取一個(相鄰格看到的幾乎一樣;結果還會再外擴一格)
-      const uniq = (a) => { const seen = new Set(), out = []; for (const k of a) { const c2 = k % W, r2 = (k / W) | 0, b = (r2 >> 1) * W + (c2 >> 1); if (!seen.has(b)) { seen.add(b); out.push(k); } } return out; };
-      let seeds = uniq(me.up);
-      for (let j = li + 1; j < nL && seeds.length; j++) seeds = uniq(seedLevel(j, seeds).ups);
-      seeds = uniq(me.down);
-      for (let j = li - 1; j >= 0 && seeds.length; j--) seeds = uniq(seedLevel(j, seeds).downs);
-      // 附近的樓梯:在連通的那一層,從樓梯格(含兩端外一格)做視線
+      let seeds = uniq(li + 1, me.up);
+      for (let j = li + 1; j < nL && seeds.length; j++) seeds = uniq(j + 1, seedLevel(j, seeds).ups);
+      seeds = uniq(li - 1, me.down);
+      for (let j = li - 1; j >= 0 && seeds.length; j--) seeds = uniq(j - 1, seedLevel(j, seeds).downs);
+      // 附近的樓梯:在連通的那一層,從樓梯格(含外圍一圈;每 2×2 取一格)做視線
       for (const s of stairs) {
         const j = s.lo === li ? s.hi : s.lo;
-        for (const [sc, sr] of s.cells) {
-          if (sc < 0 || sr < 0 || sc >= W || sr >= H || opaque[j][sr * W + sc]) continue;
-          const v = compute(j, sc, sr, false);
-          mark(other, v.own);
+        for (const k of uniq(j, s.cells.filter(([sc, sr]) => sc >= 0 && sr >= 0 && sc < W && sr < H).map(([sc, sr]) => sr * W + sc))) {
+          const v = seedVis(j, k);
+          if (v) mark(other, v.own);
         }
       }
+      for (const j of pending) mark(other, levelRegs[j]);
+      if (pending.size) last = ''; // 下一幀(種子算好後)再精算一次
       version++;
       return true;
+    },
+    // 閒置時先算好:樓梯與挑空開口格(其他樓層的種子)、玩家目前格子的鄰格(走過去時就不用當場算)。每幀最多 budget ms
+    queue(li, c, r, fine) { if (c >= 0 && r >= 0 && c < W && r < H && !opaque[li][r * W + c]) todo.push([li, c, r, fine]); },
+    queueSeed(li, c, r) { if (c < 0 || r < 0 || c >= W || r >= H) return; const k = canon(li, r * W + c); if (k >= 0) todo.push([li, k % W, (k / W) | 0, false]); },
+    idle(budget = 0.8) {
+      if (!todo.length) return 0;
+      const t0 = performance.now();
+      let n = 0;
+      while (todo.length && performance.now() - t0 < budget) { const [li, c, r, fine] = todo.pop(); compute(li, c, r, fine); n++; }
+      return n;
     },
     // 開門/關門等改變阻擋時(目前門一律視為透明 → 不需要)
     invalidate() { cache.clear(); last = ''; },
