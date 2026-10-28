@@ -37,7 +37,7 @@ function billGeo(uv, lift, curl) {
   g.computeVertexNormals();
   return g;
 }
-const BILL_GEOS = BILL_UV.map((uv, i) => [billGeo(uv, 0.35 + i * 0.08, 0.05), billGeo(uv, 0.12, -0.03)]);
+const BILL_GEOS = BILL_UV.map((uv, i) => [billGeo(uv, 2.75 - i * 0.12, 0.05), billGeo(uv, 0.18 + i * 0.05, -0.03)]); // 對摺(半開)、攤開微彎
 // 銅板:十元(白銅,26mm)、五十元(黃銅,28mm);面 = 圖集裡的浮雕圓,側面 = 滾花條
 function coinGeo(r, h, cx) {
   const g = new THREE.CylinderGeometry(r, r, h, 20, 1);
@@ -50,7 +50,7 @@ function coinGeo(r, h, cx) {
 }
 const COIN_GEOS = [coinGeo(0.013, 0.0024, 636), coinGeo(0.014, 0.0026, 876)];
 const BILL_MAT = new THREE.MeshStandardMaterial({ map: ATLAS, roughness: 0.86, metalness: 0, name: 'cash:bill' });
-const COIN_MAT = new THREE.MeshStandardMaterial({ map: ATLAS, roughness: 0.42, metalness: 1, name: 'cash:coin' });
+const COIN_MAT = new THREE.MeshStandardMaterial({ map: ATLAS, roughness: 0.55, metalness: 0.85, name: 'cash:coin' }); // 舊銅板:一層手垢,不是鏡面
 
 export class Coins {
   constructor(scene) {

@@ -114,7 +114,7 @@ export function atlas(make, args = {}) {
   const [c, x] = make(1024, 512, { read: true });
   const rnd = rng(args.seed || 2003);
   x.fillStyle = '#7a7060'; x.fillRect(0, 0, 1024, 512);
-  bill(x, 4, 8, 504, 240, { c0: '#b98a7e', c1: '#d6b2a2', ink: '128,36,40', han: '壹佰圓', n: '100', serial: 'AF 384916 TW', year: '八十八年' }, rnd);
+  bill(x, 4, 8, 504, 240, { c0: '#b0625e', c1: '#d08e84', ink: '120,26,34', han: '壹佰圓', n: '100', serial: 'AF 384916 TW', year: '八十八年' }, rnd);
   bill(x, 516, 8, 504, 240, { c0: '#a98a66', c1: '#cbb08a', ink: '104,58,28', han: '伍佰圓', n: '500', serial: 'KC 027713 ZQ', year: '八十九年' }, rnd);
   bill(x, 4, 264, 504, 240, { c0: '#8d9cb2', c1: '#b3bfcd', ink: '34,58,104', han: '壹仟圓', n: '1000', serial: 'MB 590204 HW', year: '八十八年' }, rnd);
   // 銅板(反照率 = 金屬 F0:白銅偏灰、黃銅偏金;都已經舊了)

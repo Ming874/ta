@@ -1,7 +1,8 @@
 // 物品材質的細節貼圖(貼圖 Worker 畫;全部可平鋪、線性資料,不是顏色)。
-// alpha 通道存 0.5 + 0.5 × 值(畫布是預乘 alpha:alpha 太小會吃掉 RGB 精度)。
-//  surfA(一格 0.5m):R 微起伏(橘皮/毛孔/麻點)、G 刮痕、B 指紋/油污/擦拭痕、A 中頻斑駁(fbm;放大 6 倍取樣當大塊色差)
-//  surfB(一格依類別):R 木頭年輪、G 平織布紋、B 皮紋(細胞)、A 纖維(沿 u 拉長:拉絲金屬、木纖維、紙纖維)
+// 只用 RGB(alpha 固定 255):畫布 → ImageBitmap → GPU 這條路上 alpha 通道的資料會壞掉(取樣出一點一點的雜訊)
+//  surfA(1024,一格 0.5m):R 微起伏(橘皮/毛孔/麻點)、G 刮痕、B 指紋/油污/擦拭痕
+//  surfB(1024,一格依類別):R 木紋(年輪 + 纖維)、G 平織布紋、B 皮紋(細胞)
+//  surfC(512,一格 0.5m 與 ~3m 兩種尺度取樣):R 斑駁 fbm(掉漆缺口、色塊)、G 第二組 fbm(水漬、鏽色)、B 纖維(沿 u 拉長:拉絲、紙)
 
 function rng(seed) {
   let a = seed >>> 0;
@@ -43,11 +44,11 @@ function wrapDraw(S, x, y, r, fn) {
     fn(x + ox, y + oy);
   }
 }
-function pack(make, S, R, G, B, A) {
+function pack(make, S, R, G, B) {
   const [c, x] = make(S, S, { read: true });
   const img = x.createImageData(S, S), d = img.data;
   for (let i = 0, j = 0; i < S * S; i++, j += 4) {
-    d[j] = R[i] * 255 + 0.5; d[j + 1] = G[i] * 255 + 0.5; d[j + 2] = B[i] * 255 + 0.5; d[j + 3] = 128 + A[i] * 127 + 0.5;
+    d[j] = R[i] * 255 + 0.5; d[j + 1] = G[i] * 255 + 0.5; d[j + 2] = B[i] * 255 + 0.5; d[j + 3] = 255;
   }
   x.putImageData(img, 0, 0);
   return c;
@@ -127,9 +128,7 @@ export function surfA(make, args = {}) {
     const h = Math.max(0, haze[i] - 0.45) * 1.4;
     B[i] = Math.min(1, prints[i] * (0.65 + 0.7 * mott[i]) + h * 0.35);
   }
-  // A:中頻斑駁
-  const A = stretch(fbm(S, S, 6, 6, 6, 0.55, rnd), 0.01, 0.99);
-  return pack(make, S, R, G, B, A);
+  return pack(make, S, R, G, B);
 }
 
 export function surfB(make, args = {}) {
@@ -169,14 +168,29 @@ export function surfB(make, args = {}) {
     const e = (Math.sqrt(d2) - Math.sqrt(d1)) / cell; // 到細胞邊界的距離
     B[y * S + x] = Math.min(1, Math.pow(Math.min(1, e * 2.2), 0.6) * 0.85 + fineB[y * S + x] * 0.15);
   }
-  // A:纖維(沿 u 拉長)
-  const A = stretch(fbm(S, S, 4, 160, 3, 0.6, rnd), 0.01, 0.99);
+  // 木紋 = 年輪 + 纖維
+  const fib = fibers(make, S, rnd);
+  for (let i = 0; i < R.length; i++) R[i] = Math.min(1, Math.max(0, R[i] * 0.62 + fib[i] * 0.38));
+  return pack(make, S, R, G, B);
+}
+
+// 纖維(沿 u 拉長的細條紋 + 長線)
+function fibers(make, S, rnd) {
+  const A = stretch(fbm(S, S, 4, Math.max(40, S / 6.4) | 0, 3, 0.6, rnd), 0.01, 0.99);
   const longs = strokes(make, S, (x) => {
-    for (let k = 0; k < 700; k++) {
-      const px = rnd() * S, py = rnd() * S, l = 30 + rnd() * 300, v = Math.round((0.2 + rnd() * 0.8) * 255), lw = 0.6 + rnd() * 0.8, dy = (rnd() - 0.5) * 2;
+    for (let k = 0; k < S * 0.7; k++) {
+      const px = rnd() * S, py = rnd() * S, l = (30 + rnd() * 300) * S / 1024, v = Math.round((0.2 + rnd() * 0.8) * 255), lw = (0.6 + rnd() * 0.8) * Math.max(0.6, S / 1024), dy = (rnd() - 0.5) * 2;
       wrapDraw(S, px, py, l, (X, Y) => { x.strokeStyle = `rgb(${v},${v},${v})`; x.lineWidth = lw; x.beginPath(); x.moveTo(X, Y); x.lineTo(X + l, Y + dy); x.stroke(); });
     }
   });
   for (let i = 0; i < A.length; i++) A[i] = Math.min(1, A[i] * 0.75 + longs[i] * 0.35);
-  return pack(make, S, R, G, B, A);
+  return A;
+}
+
+export function surfC(make, args = {}) {
+  const S = args.size || 512, rnd = rng(args.seed || 15485863);
+  const R = stretch(fbm(S, S, 6, 6, 6, 0.55, rnd), 0.01, 0.99);
+  const G = stretch(fbm(S, S, 4, 4, 5, 0.55, rnd), 0.01, 0.99);
+  const B = fibers(make, S, rnd);
+  return pack(make, S, R, G, B);
 }
