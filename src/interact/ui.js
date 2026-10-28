@@ -1,5 +1,6 @@
 import './interact.css';
 import { withKeys } from '../ui/icons.js';
+import * as THREE from 'three';
 import { ix as ixs } from '../audio.js';
 
 // 互動系統的介面:按住進度條、字幕(電話/收音機/廣播)、紙條與錄音帶閱讀器、密碼鍵盤/病歷終端、保險絲盒、身上的道具。
@@ -8,7 +9,10 @@ import { ix as ixs } from '../audio.js';
 // 按鍵在 window 捕獲階段處理(比 flow.js / input.js 早),面板吃掉的按鍵不會切武器、不會走路。
 const mk = (cls, html = '', tag = 'div') => { const e = document.createElement(tag); e.className = cls; if (html) e.innerHTML = html; return e; };
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-const KIND = { note: '紙條', letter: '信', log: '紀錄', chart: '病歷', photo: '照片', tape: '錄音帶', drawing: '蠟筆畫', poster: '告示', whiteboard: '白板', logbook: '登記簿', polaroid: '拍立得' };
+const KIND = { note: '紙條', letter: '信', log: '紀錄', chart: '病歷', photo: '照片', tape: '錄音帶', drawing: '蠟筆畫', poster: '告示', whiteboard: '白板', logbook: '登記簿', polaroid: '拍立得', report: '通報單', video: '錄影帶' };
+const _v = new THREE.Vector3();
+// 老式電話聽筒圖示(響鈴提示用)
+const PHONE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"/></svg>';
 const MOVE = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
 export class IxUI {
@@ -80,12 +84,13 @@ export class IxUI {
     m.el.classList.remove('on');
     setTimeout(() => m.el.remove(), 220);
     const g = this.game;
-    if (m.paused && g.paused && document.pointerLockElement) g.paused = false;
+    if (m.paused && g.paused && !document.getElementById('pause')?.classList.contains('on')) g.paused = false; // 是我們暫停的(不是 Esc 叫出的暫停選單)才恢復
   }
   onKey(e) {
     const m = this.modal;
     if (!m) return;
     if (e.code === 'Escape') { this.closeModal(); return; } // 放開滑鼠鎖定 → 暫停選單照常出現
+    if (e.code === 'KeyJ' && !e.repeat && this.game.deduce) { e.stopImmediatePropagation(); e.preventDefault(); this.closeModal(false); this.game.deduce.open(); return; } // [story] 閱讀器開著也能直接翻推理本
     if (this.game.net && MOVE.has(e.code) && !m.keys?.has?.(e.code)) { this.closeModal(); return; } // 多人:一移動就收起(世界沒停)
     e.stopImmediatePropagation();
     e.preventDefault();
@@ -105,7 +110,7 @@ export class IxUI {
       : `<div class="tx">${esc(note.body).replace(/\n/g, '<br>')}</div>`;
     el.innerHTML = `<div class="sheet"><div class="kd">${esc(KIND[kind] || '文件')}${note.where ? ` · ${esc(note.where)}` : ''}</div>
       <h2>${esc(note.title)}</h2>${note.author || note.date ? `<div class="meta">${esc([note.author, note.date].filter(Boolean).join(' · '))}</div>` : ''}${body}</div>
-      <div class="ft">${withKeys(tape ? '[E] 收起(錄音帶繼續播) · [Esc] 暫停選單' : '[E] 收起 · [Esc] 暫停選單')}${this.game.net ? ' · 移動或受傷會自動收起' : ''}</div>`;
+      <div class="ft">${withKeys(tape ? '[E] 收起（錄音帶繼續播） · [J] 推理本 · [Esc] 暫停選單' : '[E] 收起 · [J] 推理本 · [Esc] 暫停選單')}${this.game.net ? ' · 移動或受傷會自動收起' : ''}</div>`;
     const m = { el, kind: 'reader', note, onClose: (s) => { if (s) ixs.paperClose(); opts.onClose?.(); } };
     if (tape) m.mark = (i) => { const li = el.querySelectorAll('.tr li'); li.forEach((x, j) => x.classList.toggle('on', j === i)); li[i]?.scrollIntoView?.({ block: 'nearest' }); };
     this.openModal(m);
@@ -168,6 +173,60 @@ export class IxUI {
     this.openModal(m);
     return m;
   }
+
+  // ---------- 響鈴方向提示(細、去飽和;看得到電話時淡出) ----------
+  // set:正在響的電話 { pos, li };最多 3 個。畫面外 → 貼著畫面邊緣、箭頭指方向;畫面內但被牆擋住 → 在電話的位置淡淡標一下
+  // 響鈴的電話:畫面外/背後 → 螢幕邊緣的徽章(電話圖示 + 「電話 · 17m」+ 指向它的箭頭);畫面內 → 電話上方的鈴聲標記
+  // (每響一聲擴散一圈;隔著牆半透明)。徽章與標記都跟著鈴聲節奏(響 1 秒、停 2 秒)放大、變亮。走到能接的距離:提示列變成琥珀色。
+  ringMarks(game, set) {
+    this._ringOn = set.size > 0;
+    this.rings ||= [];
+    const hud = this.game.ui?.hudEl || document.body, cam = game.camera, p = game.player, L = game.world.layout;
+    const Wd = window.innerWidth, Ht = window.innerHeight, t = performance.now() / 1000;
+    cam.updateMatrixWorld(); // 投影用這一幀的相機(不用上一幀渲染時的)
+    const eye = p.pos.y + (p.eyeH || 1.6);
+    let i = 0;
+    for (const P of set) {
+      if (i >= 3) break;
+      let m = this.rings[i];
+      if (!m) {
+        m = this.rings[i] = { el: hud.appendChild(mk('hd ix-ring', `<b class="rip"></b><b class="rip r2"></b><i class="badge">${PHONE_SVG}</i><i class="dir"><u></u></i><span></span>`)), los: false, losT: 0, txt: '', mode: '' };
+        [m.rip, m.rip2, m.badge, m.dir, m.lab] = m.el.children;
+      }
+      i++;
+      const dx = P.pos.x - p.pos.x, dz = P.pos.z - p.pos.z, d = Math.hypot(dx, dz);
+      if (t - m.losT > 0.25 || m.P !== P) { m.losT = t; m.P = P; m.los = game.world.hasLineOfSight(p.pos.x, eye, p.pos.z, P.pos.x, P.pos.y + 0.05, P.pos.z); }
+      _v.set(P.pos.x, P.pos.y + 0.42, P.pos.z).project(cam); // 標記在電話上方 42cm
+      const behind = _v.z > 1;
+      let x = behind ? -_v.x : _v.x, y = behind ? -_v.y : _v.y;
+      const inView = !behind && Math.abs(x) < 0.9 && Math.abs(y) < 0.86;
+      if (!inView) { const k = 0.84 / Math.max(Math.abs(x), Math.abs(y), 1e-3); x *= k; y *= k; }
+      const sx = (x * 0.5 + 0.5) * Wd, sy = (-y * 0.5 + 0.5) * Ht;
+      const dl = L ? L.levelOfY(P.pos.y - 0.6) - L.levelOfY(p.pos.y + 0.3) : 0;
+      const txt = `電話 · ${Math.max(1, Math.round(d))}m${dl > 0 ? ' ↑樓上' : dl < 0 ? ' ↓樓下' : ''}`;
+      if (txt !== m.txt) { m.txt = txt; m.lab.textContent = txt; }
+      const mode = inView ? (m.los || d < 3.5 ? 'see' : 'wall') : 'edge';
+      if (mode !== m.mode) { m.mode = mode; m.el.className = `hd ix-ring ${mode}`; }
+      // 鈴聲節奏(與 phones.js / 音效同一個 3 秒週期):u = 這一聲響了多久
+      const u = (P.t || 0) % 3, ring = u < 1.1, beat = ring ? Math.sin(Math.min(1, u / 1.1) * Math.PI) : 0;
+      const near = d < 2.8 && mode === 'see';
+      let op = mode === 'edge' ? 0.96 : mode === 'wall' ? 0.72 : near ? 0.38 : 0.95;
+      op *= 0.8 + 0.2 * beat;
+      m.el.style.opacity = op.toFixed(2);
+      m.el.style.transform = `translate(${sx.toFixed(0)}px, ${sy.toFixed(0)}px)`;
+      m.badge.style.transform = `scale(${(1 + 0.16 * beat).toFixed(3)}) rotate(${ring ? (Math.sin(u * 40) * 9 * beat).toFixed(1) : 0}deg)`; // 響的時候圖示抖動
+      const rk = Math.min(1, u / 1.3);
+      m.rip.style.transform = `scale(${(0.8 + rk * 1.9).toFixed(3)})`; m.rip.style.opacity = (u < 1.3 ? (1 - rk) * 0.9 : 0).toFixed(2);
+      const u2 = u - 0.35, rk2 = Math.min(1, Math.max(0, u2) / 1.3);
+      m.rip2.style.transform = `scale(${(0.8 + rk2 * 1.9).toFixed(3)})`; m.rip2.style.opacity = (u2 > 0 && u2 < 1.3 ? (1 - rk2) * 0.6 : 0).toFixed(2);
+      if (mode === 'edge') m.dir.style.transform = `rotate(${(Math.atan2(x, y) * 180 / Math.PI).toFixed(0)}deg)`; // 0° = 上,順時針
+    }
+    for (let j = i; j < (this.rings?.length || 0); j++) { const m = this.rings[j]; if (m.P) { m.el.style.opacity = '0'; m.P = null; m.mode = ''; } }
+    // 看著響鈴的電話(能接):提示列跟著鈴聲變琥珀色
+    const pe = this.game.ui?.hud?.promptEl, f = this.ix?.focus;
+    if (pe) { const on = !!(f && f.kind === 'phone' && [...set].some((P) => P.e === f)); if (on !== pe.classList.contains('ix-answer')) pe.classList.toggle('ix-answer', on); }
+  }
+  ringClear() { for (const m of this.rings || []) { m.el.style.opacity = '0'; m.P = null; m.mode = ''; } this.game.ui?.hud?.promptEl?.classList.remove('ix-answer'); }
 
   update() {}
 }

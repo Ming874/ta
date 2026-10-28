@@ -1217,8 +1217,8 @@ function hitboxes(rig, P, type, LK = null) {
 }
 
 // ---------- 變體快取 ----------
-const PER_TYPE = { walker: 6, runner: 4, crawler: 4, bloater: 3, brute: 3, screamer: 3, stalker: 3, surgeon: 3, burned: 3, hazmat: 2, straitjacket: 3 };
-const SEEDS = { walker: 1000, runner: 2000, crawler: 3000, bloater: 4000, brute: 5000, screamer: 7000, stalker: 8000, surgeon: 9000, burned: 10000, hazmat: 11000, straitjacket: 12000 };
+const PER_TYPE = { walker: 6, runner: 4, crawler: 4, bloater: 3, brute: 3, screamer: 3, stalker: 3, surgeon: 3, burned: 3, hazmat: 2, straitjacket: 3, pursuer: 1 };
+const SEEDS = { walker: 1000, runner: 2000, crawler: 3000, bloater: 4000, brute: 5000, screamer: 7000, stalker: 8000, surgeon: 9000, burned: 10000, hazmat: 11000, straitjacket: 12000, pursuer: 13000 };
 
 // ---------- 外觀提供者(接縫) ----------
 // 預設由 buildShape 程式生成。某類型若註冊了提供者,buildShape(type, seed, opt) 直接回傳它的結果,其餘流程
@@ -1318,7 +1318,7 @@ export function getVariant(type, k) {
 // 選單期間預建:有 Worker 時第一次呼叫就全部平行送出;沒有時每次排一個到 requestIdleCallback 同步建
 const ORDER = ['walker', 'walker', 'walker', 'runner', 'crawler', 'bloater', 'brute', 'screamer', 'surgeon', 'straitjacket', 'burned', 'stalker', 'hazmat',
   'walker', 'walker', 'walker', 'runner', 'runner', 'runner', 'crawler', 'crawler', 'crawler', 'bloater', 'bloater', 'brute', 'brute',
-  'screamer', 'screamer', 'surgeon', 'surgeon', 'straitjacket', 'straitjacket', 'burned', 'burned', 'stalker', 'stalker', 'hazmat'];
+  'screamer', 'screamer', 'surgeon', 'surgeon', 'straitjacket', 'straitjacket', 'burned', 'burned', 'stalker', 'stalker', 'hazmat', 'pursuer'];
 export const VARIANT_TYPES = Object.keys(PER_TYPE);
 // 提供者可改變數,所以每次重算;還在下載的外部模型不算(不擋暖機)
 const TOTAL = () => { let n = 0; for (const t in PER_TYPE) for (let k = 0; k < PER_TYPE[t]; k++) if (!pending(t, k)) n++; return n; };
@@ -1355,6 +1355,13 @@ export function prewarm() {
 export function whenWarm() {
   return new Promise((res) => {
     const tick = () => { prewarm(); if (readyCount() >= TOTAL()) res(variantStats()); else setTimeout(tick, 16); };
+    tick();
+  });
+}
+// 每種類型的第 0 個變體都建好時 resolve(預熱 shader 每種類型只要一個,不必等全部變體)
+export function whenTypesReady() {
+  return new Promise((res) => {
+    const tick = () => { prewarm(); if (VARIANT_TYPES.every((t) => cache[t]?.[0])) res(); else setTimeout(tick, 50); };
     tick();
   });
 }

@@ -15,7 +15,7 @@ export const HALF = Math.PI / 2;
 
 export const L = (rect) => ({ kind: 'rect', mat: 'pi_lab', rect });
 export const G = (rect) => ({ kind: 'rect', mat: 'pi_glow', rect });
-export const D = (rect) => ({ kind: 'rect', mat: 'pi_decal', rect });
+export const D = (rect) => ({ kind: 'rect', mat: rect.mat || 'pi_decal', rect }); // rect.mat:血跡圖集(pi_stain)
 export { labRect, glowRect, decalRect, surfKey };
 
 const surfCache = new Map();

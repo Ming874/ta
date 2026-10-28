@@ -20,7 +20,7 @@ const RULES = [
   [/^plastic_|^pi_pl_|^pi_dyn_gloss$/, 'plaster_paint', 1.4, 'lum', 0.22, 0.25],
   [/^pi_dyn_matte$/, 'fabric', 0.4, 'lum', 0.35, 0.6],
 ];
-const SKIP = /^(pi_lab|pi_glow|pi_decal|pi_noise|pi_clear|glass|screen|glow_|flame|water|paper)/;
+const SKIP = /^(pi_lab|pi_glow|pi_decal|pi_stain|pi_noise|pi_clear|glass|screen|glow_|flame|water|paper)/;
 const VERT_PARS = 'varying vec3 vTriP;\nvarying vec3 vTriN;\n';
 const FRAG_PARS = `
 varying vec3 vTriP;

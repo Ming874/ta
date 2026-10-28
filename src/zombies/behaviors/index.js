@@ -15,11 +15,12 @@ import * as surgeon from './surgeon.js';
 import * as burned from './burned.js';
 import * as hazmat from './hazmat.js';
 import * as straitjacket from './straitjacket.js';
+import * as pursuer from './pursuer.js';
 import { animInit, animHit, animLayer, idleThink } from './anim.js';
 import { K } from './kit.js';
 import { frenzyTick } from './screamer.js';
 
-export const BEH = { screamer, stalker, surgeon, burned, hazmat, straitjacket };
+export const BEH = { screamer, stalker, surgeon, burned, hazmat, straitjacket, pursuer };
 
 // zombie.js 載入時呼叫一次:把新類型的 think/pose 掛到 Zombie 原型上(沿用原本 '_think_' + type 的分派),並取得共用工具
 export function installBehaviors(Zombie, kit) {
@@ -68,5 +69,6 @@ function intro(z, ctx) {
   if (dx * dx + dz * dz > 15 * 15 || dy > 2.5 || dy < -2.5) return;
   s[z.type] = 1;
   const T = TYPES[z.type];
+  if (T.chaseOnly) return; // 追獵者的提示由 chase.js 自己做
   g.ui.banner?.(T.name, T.counter || '', 3800, 'red');
 }

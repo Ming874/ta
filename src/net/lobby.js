@@ -42,7 +42,7 @@ class Lobby {
   nick() {
     let n = '';
     try { n = localStorage.getItem(NICK) || ''; } catch { /* 忽略 */ }
-    return n || `倖存者${String(Math.floor(Math.random() * 900) + 100)}`;
+    return n || `阿孫${String(Math.floor(Math.random() * 900) + 100)}`;
   }
   saveNick(n) { try { localStorage.setItem(NICK, n); } catch { /* 忽略 */ } }
 
@@ -105,7 +105,7 @@ class Lobby {
     }).catch((e) => {
       this._connecting = null;
       if (/更新/.test(e.message)) this.versionMsg();
-      else this.msg(`無法連線到多人伺服器(${e.message})。請稍後再試。`);
+      else this.msg(`無法連線到多人伺服器（${e.message}）。請稍後再試。`);
       this.setStatus('離線');
       throw e;
     });
@@ -290,7 +290,7 @@ class Lobby {
   versionMsg() {
     const m = this.box.querySelector('.msg');
     if (!m) return;
-    m.innerHTML = '遊戲已更新到新版本,請重新整理頁面。 <button class="big" id="mp-reload">重新整理</button>';
+    m.innerHTML = '遊戲已更新到新版本，請重新整理頁面。 <button class="big" id="mp-reload">重新整理</button>';
     m.querySelector('#mp-reload').onclick = () => location.reload();
   }
   msg(t, ok = false) { const m = this.box.querySelector('.msg'); if (m) { m.textContent = t || ''; m.classList.toggle('ok', ok); } }
@@ -308,8 +308,8 @@ class Lobby {
       <div class="row"><label>暱稱</label><input type="text" class="nick" maxlength="16" value="${esc(this.nick())}" /></div>
       <h3>建立房間</h3>
       <div class="modes">
-        <button class="mode ${pvp ? '' : 'sel'}" data-m="coop"><b>合作生存</b><span>2~4 人 · 一起撐過殭屍潮<br />倒地 30 秒內隊友可按住 E 救援,全員倒地才結束</span></button>
-        <button class="mode ${pvp ? 'sel' : ''}" data-m="pvp"><b>對戰死鬥</b><span>2~8 人 · 各自為戰,出生時選主武器<br />先到擊殺上限或時間到結束,可加入殭屍騷擾</span></button>
+        <button class="mode ${pvp ? '' : 'sel'}" data-m="coop"><b>合作生存</b><span>2~4 人 · 一起撐過殭屍潮<br />倒地 30 秒內隊友可按住 E 救援，全員倒地才結束</span></button>
+        <button class="mode ${pvp ? 'sel' : ''}" data-m="pvp"><b>對戰死鬥</b><span>2~8 人 · 各自為戰，出生時選主武器<br />先到擊殺上限或時間到結束，可加入殭屍騷擾（非正史）</span></button>
       </div>
       <div class="opts">
         <label><input type="checkbox" id="mp-pub" checked /> 公開房間</label>
@@ -324,7 +324,7 @@ class Lobby {
       <h3>公開房間</h3>
       <div class="list"></div>
       <div class="msg"></div>
-      <div class="foot"><span class="help">Tab 計分板 · Enter 聊天 · 合作模式按 N 準備下一回合</span><button class="grey" id="mp-back">返回主選單</button></div>`;
+      <div class="foot"><span class="help">Tab 計分板 · Enter 聊天 · 合作模式按 N 準備下一次燈篙</span><button class="grey" id="mp-back">返回主選單</button></div>`;
     const q = (s) => this.box.querySelector(s);
     for (const b of this.box.querySelectorAll('.mode')) b.onclick = () => { this.readNick(); this.mode = b.dataset.m; this.renderHome(); this.renderList(); };
     q('#mp-create').onclick = () => this.connect().then(() => this.create()).catch(() => {});
@@ -362,10 +362,10 @@ class Lobby {
           <h3>設定</h3><div class="opts">${settings}<label><input type="checkbox" id="mp-s-pub" ${r.pub ? 'checked' : ''} ${host ? '' : 'disabled'} /> 公開房間</label></div>
           <h3>玩家</h3><div class="players"></div>
         </div>
-        <div><h3>聊天</h3><div class="chatbox"><div class="log"></div><input type="text" maxlength="160" placeholder="聊天(Enter 送出)" /></div></div>
+        <div><h3>聊天</h3><div class="chatbox"><div class="log"></div><input type="text" maxlength="160" placeholder="聊天（Enter 送出）" /></div></div>
       </div>
       <div class="msg"></div>
-      <div class="foot"><button class="red" id="mp-leave">離開房間</button><span class="help">${r.mode === 'pvp' ? '出生時選主武器 · Tab 計分板 · Enter 聊天' : '回合間到便利商店購物 · N 準備下一回合 · Tab 計分板'}</span><span class="row">${host ? '' : '<button id="mp-ready">準備</button>'}${host ? '<button class="big" id="mp-start">開始遊戲</button>' : ''}<button class="big" id="mp-rejoin" style="display:none">加入進行中的遊戲</button></span></div>`;
+      <div class="foot"><button class="red" id="mp-leave">離開房間</button><span class="help">${r.mode === 'pvp' ? '出生時選主武器 · Tab 計分板 · Enter 聊天' : '燈篙熄時到金水商行買東西 · N 準備下一次燈篙 · Tab 計分板'}</span><span class="row">${host ? '' : '<button id="mp-ready">準備</button>'}${host ? '<button class="big" id="mp-start">開始遊戲</button>' : ''}<button class="big" id="mp-rejoin" style="display:none">加入進行中的遊戲</button></span></div>`;
     const q = (s) => this.box.querySelector(s);
     q('#mp-copy').onclick = () => {
       const url = `${location.origin}${location.pathname}?room=${r.code}`;
@@ -399,7 +399,7 @@ class Lobby {
     for (let i = 0; i < r.max; i++) {
       const p = r.players.find((q) => q.id === i);
       if (!p) { html += `<div class="pl empty"><span class="dot" style="background:${SLOT_COLORS[i]}"></span><span class="nm">空位</span></div>`; continue; }
-      html += `<div class="pl"><span class="dot" style="background:${SLOT_COLORS[i]}"></span><span class="nm">${esc(p.name)}${p.id === this.you ? '(你)' : ''}</span>
+      html += `<div class="pl"><span class="dot" style="background:${SLOT_COLORS[i]}"></span><span class="nm">${esc(p.name)}${p.id === this.you ? '（你）' : ''}</span>
         ${p.id === r.host ? '<span class="tag host">房主</span>' : ''}${p.conn === false ? '<span class="tag off">斷線</span>' : p.ready ? '<span class="tag ready">已準備</span>' : ''}
         <span class="ping">${p.rtt ? `${p.rtt}ms` : ''}</span>${host && p.id !== this.you ? `<button class="grey kick" data-id="${p.id}">踢出</button>` : ''}</div>`;
     }
@@ -416,7 +416,7 @@ class Lobby {
       const others = r.players.filter((p) => p.id !== this.you && p.conn !== false);
       const allReady = others.every((p) => p.ready);
       sb.disabled = (r.mode === 'pvp' && others.length < 1) || r.state === 'playing';
-      sb.textContent = allReady ? '開始遊戲' : '開始遊戲(有人未準備)';
+      sb.textContent = allReady ? '開始遊戲' : '開始遊戲（有人未準備）';
     }
     const rj = this.box.querySelector('#mp-rejoin');
     if (rj) rj.style.display = r.state === 'playing' && !this.session ? '' : 'none';

@@ -7,12 +7,15 @@ import { idle } from './sys/sched.js';
 import { precompile, precompilePasses, initPrograms, warmDraw, warmDrawScene, yieldNow } from './sys/warmup.js';
 import { backgroundTicker } from './sys/ticker.js';
 import { texStats, texturesReady } from './sys/texworker.js';
-import { prewarm, whenWarm, variantStats, getVariant, instantiate, forceVariant, VARIANT_TYPES } from './zombies/model.js';
+import { prewarm, whenTypesReady, variantStats, getVariant, instantiate, forceVariant, VARIANT_TYPES } from './zombies/model.js';
 import { allMaterials as allZombieMaterials } from './zombies/materials.js';
 import { loadRealistic, realisticMaterials, realisticStats } from './zombies/realistic.js'; // 寫實殭屍(載入本模組即註冊變體數,要在 prewarm 之前)
+import { stainWarmMesh } from './art/stainmat.js';
 import * as audio from './audio.js';
 import { initNet } from './net/lobby.js';
 import { installHorror } from './horror/index.js';
+import { installDeduce } from './story/deduce.js';
+import { installObjectives } from './story/objectives.js';
 import { startPhysicsWorker, physicsLoad } from './physics/index.js';
 import { assets } from './sys/assets.js';
 import { installStreaming } from './sys/stream.js';
@@ -22,6 +25,7 @@ import { initGpuHint, gpuLabel } from './ui/gpuhint.js';
 
 performance.mark('hz:boot');
 let game = null;
+let warmStage = 0; // 戰鬥用 shader 預熱進度(0..4,4 = hz:warm)
 installPWA();
 
 // ---- 關鍵檔先下載:物理 Worker(+WASM)與殭屍建模 Worker 在建世界(數秒的同步工作)之前就開始抓;
@@ -29,13 +33,14 @@ installPWA();
 startPhysicsWorker();
 prewarm();
 // Chrome 的模組 Worker 要主執行緒有空檔才會真正開始執行;接下來建世界是好幾秒的同步工作 →
-// 先讓出主執行緒到 Worker 開機(腳本已下載並執行:物理開始抓 WASM、殭屍開始在背景建模),最多等 1.5 秒
+// 先讓出主執行緒到 Worker 開機(腳本已下載並執行:物理開始抓 WASM、殭屍開始在背景建模),最多等 2.5 秒。
+// 建模池的每一個 Worker 都要等到:只等第一個的話,其餘幾個要等建世界做完才開機,變體(與戰鬥 shader 預熱)晚 7~8 秒
 await new Promise((resolve) => {
   const t0 = performance.now();
   const tick = () => {
     const ph = physicsLoad.state, mp = pools.find((p) => p.name === 'model');
-    const physUp = ph !== 'script', modelUp = !mp || mp.failed || mp.slots.some((s) => s.ready);
-    if ((physUp && modelUp) || performance.now() - t0 > 1500) resolve(); else setTimeout(tick, 10);
+    const physUp = ph !== 'script', modelUp = !mp || mp.failed || (mp.slots.length > 0 && mp.slots.every((s) => s.ready || s.dead));
+    if ((physUp && modelUp) || performance.now() - t0 > 2500) { performance.mark(modelUp ? 'hz:workers' : 'hz:workers:timeout'); resolve(); } else setTimeout(tick, 10);
   };
   tick();
 });
@@ -48,15 +53,19 @@ const loading = loadUI(() => {
     steps: [
       ['物理', physOK, ph === 'wasm' ? '編譯中' : ph === 'main' ? '載入中' : '下載中'],
       ['殭屍', v.ready / v.total, `${v.ready}/${v.total}`],
+      ['著色器', warmStage / 4, warmStage ? '編譯中' : '等待中'],
       ['貼圖與模型', a.total ? fin / a.total : a.open ? 1 : 0, a.open ? `${fin}/${a.total}${a.bytes ? ' · ' + (a.bytes / 1048576).toFixed(1) + ' MB' : ''}` : '等待中', 3],
     ],
   };
 });
 
 game = new Game(document.getElementById('game'));
+game.warmed = false; // hz:warm 之前開局:先不出怪(flow.updateRound),第一隻殭屍出現時不會現場編譯 shader
 game.bindInput();
 initNet(game); // [net] 主選單的多人連線入口(src/net/lobby.js)
 installHorror(game); // [ghost] 靈異系統:驚嚇導演、耳語、幻影、靈異事件(src/horror)
+installDeduce(game); // [story] 線索卡、推理本(J)、擲筊、頭七(src/story)
+installObjectives(game); // [story] 目標鏈、區域解鎖、提示(src/story/objectives.js)
 window.__game = game; // 除錯用:在瀏覽器 console 操作 __game
 
 // ---- 效能基礎建設 ----
@@ -161,14 +170,16 @@ async function boot() {
     if (res) {
       game.perf.time('預編譯', performance.now() - t);
       // 選單畫面看不到的物件(背後、被擋住、隱藏中)的 program 也在閒置時先做第一次使用的初始化
-      all.then(([a, b]) => initPrograms(new Set([...a.programs, ...b.programs]))).then(() => idle(() => warmDrawScene(game), 500));
+      all.then(([a, b]) => initPrograms(new Set([...a.programs, ...b.programs]))).then(() => idle(() => { performance.mark('hz:wds'); warmDrawScene(game); performance.measure('hz:warmDrawScene', 'hz:wds'); }, 500));
     }
   } catch (e) { console.warn('[warmup]', e); }
   performance.measure('hz:precompile', { start: t });
   last = performance.now();
   if (!raf && !document.hidden) raf = requestAnimationFrame(frame);
-  // 殭屍與常見特效材質:變體建好後在閒置時段預編譯,第一隻殭屍出現/第一槍不會頓一下
-  whenWarm().then(() => idle(warmRuntime, 300)).catch((e) => console.warn('[warmup]', e));
+  // 殭屍與常見特效材質:每種殭屍的第一個變體一建好就在閒置時段預編譯(不等全部變體、也不等貼圖下載),
+  // 第一隻殭屍出現/第一槍不會頓一下
+  whenTypesReady().then(() => { performance.mark('hz:variants'); warmStage = 1; return idle(warmRuntime, 300); })
+    .catch((e) => console.warn('[warmup]', e)).finally(() => { warmStage = 4; game.warmed = true; });
 }
 boot();
 
@@ -178,6 +189,9 @@ async function warmRuntime() {
   const ZM = [...allZombieMaterials(), ...realisticMaterials()], its = []; // [zombies-w3] 全部殭屍材質(含新類型的眼睛、刀刃、鏡片、寫實殭屍)
   inst.mesh.material = ZM; // 只編譯、不渲染
   g.add(inst.mesh);
+  for (const o of game.deduce?.warmObjects?.() || []) g.add(o); // [story] 筊杯
+  g.add(stainWarmMesh()); // 寫實血跡材質(靜態貼花、血泊、滴落血漬共用)
+  for (const o of game.horror?.warmObjects?.() || []) g.add(o); // [ghost] 靈異材質(幻影、痕跡、字跡、寒氣)一起預編譯與離屏畫一次
   // 執行期才會建立的常見材質型態(曳光、血池/貼花、光暈與血條 sprite、粒子):program 只看功能旗標(貼圖/霧…),不看顏色數值
   const tex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -189,9 +203,17 @@ async function warmRuntime() {
       g.add(new THREE.Sprite(new THREE.SpriteMaterial({ fog, map, transparent: true })));
     }
   }
-  const res = await precompile(game, g);
+  performance.mark('hz:warm:start');
+  const own = game.interact?.warmList?.() || []; // [interact] 互動物件與門(BatchedMesh 變體與陰影深度變體):跟著 hz:warm 編好
+  const [res, resIx] = await Promise.all([precompile(game, g), own.length ? precompile(game, { traverse: (fn) => { for (const o of own) o.traverse(fn); }, updateMatrixWorld() {} }) : null]);
+  if (resIx) for (const p of resIx.programs) res.programs.add(p);
+  performance.mark('hz:warm:compiled');
+  warmStage = 2;
   await initPrograms(res.programs);
+  performance.mark('hz:warm:init');
+  warmStage = 3;
   await texturesReady();
+  performance.mark('hz:warm:tex');
   // 再真的畫一次(離屏):每種殭屍材質 × 蒙皮頂點格式、特效物件,連同陰影 pass
   await idle(() => {
     const v = getVariant('walker', 0), draws = new THREE.Group();

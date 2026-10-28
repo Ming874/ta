@@ -139,6 +139,16 @@ export const WEAR_ALBEDO = /* glsl */`
 			float d = smoothstep( 0.42, 0.86, wxNA.r * 0.65 + wxNB.g * 0.35 );
 			wc *= mix( vec3( 1.0 ), vec3( 0.6, 0.56, 0.48 ), d * uWear.x * ( 0.35 + 0.65 * wxW ) );
 			wxRough += d * uWear.x * 0.12;
+			// 塑膠/磁磚地板:鞋跟與推床輪子的黑色擦痕(短、斜向),走道磨亮的地方粗糙度較低
+			if ( uWear2.z > 0.0 ) {
+				vec2 sp = vec2( vWPos.x * 0.83 + vWPos.z * 0.56, vWPos.z * 0.83 - vWPos.x * 0.56 );
+				float sc = texture2D( tWear, vec2( sp.x * 0.11, sp.y * 1.6 ) + vec2( 0.4, 0.1 ) ).b;
+				float sc2 = texture2D( tWear, vec2( sp.y * 0.13, sp.x * 1.4 ) + vec2( 0.8, 0.6 ) ).b;
+				float scuff = max( smoothstep( 0.8, 0.9, sc ), smoothstep( 0.82, 0.92, sc2 ) * 0.8 ) * smoothstep( 0.35, 0.7, wxNB.a + wxNA.g * 0.5 );
+				wc *= 1.0 - scuff * 0.42 * uWear2.z;
+				float polish = smoothstep( 0.55, 0.25, wxNA.r ) * ( 1.0 - d );
+				wxRough -= polish * 0.16 * uWear2.z;
+			}
 			// 積水:暗、亮面、法線變平
 			float wet = wxNA.g * 0.7 + wxNB.r * 0.3;
 			float wt = 0.86 - 0.3 * uWear.w;
@@ -155,6 +165,20 @@ export const WEAR_ALBEDO = /* glsl */`
 			wc *= mix( vec3( 1.0 ), vec3( 0.48, 0.38, 0.26 ), rim * uWear.y );
 			float md = smoothstep( 0.72, 0.9, wxNB.g * 0.7 + wxNA.a * 0.3 ) * uWear.z * wxW;
 			wc *= mix( vec3( 1.0 ), vec3( 0.3, 0.32, 0.25 ), md );
+			// 礦纖板:水漬只在單一片板內(一片片是分開的板子,漬痕被 T-bar 切斷),好幾圈潮線
+			if ( uTileVar > 0.5 ) {
+				vec2 tg = vWPos.xz * 1.5, tid = floor( tg ), tp = tg - tid;
+				float th = ntHash( tid + 3.7 );
+				if ( th > 1.0 - 0.22 * ( 0.4 + wxW ) ) {
+					vec2 tc = 0.5 + ( vec2( ntHash( tid + 9.1 ), ntHash( tid + 5.3 ) ) - 0.5 ) * 0.55;
+					float rad = 0.2 + 0.3 * fract( th * 31.7 );
+					float tr = length( ( tp - tc ) * vec2( 1.0, 0.75 + 0.5 * fract( th * 7.0 ) ) ) / rad + ( texture2D( tWear, tg * 0.37 ).g - 0.5 ) * 0.5;
+					float tins = 1.0 - smoothstep( 0.8, 1.0, tr );
+					float trim = smoothstep( 0.9, 1.0, tr ) * ( 1.0 - smoothstep( 1.0, 1.07, tr ) ) + 0.55 * smoothstep( 0.6, 0.66, tr ) * ( 1.0 - smoothstep( 0.66, 0.72, tr ) ) + 0.35 * smoothstep( 0.36, 0.4, tr ) * ( 1.0 - smoothstep( 0.4, 0.45, tr ) );
+					wc *= mix( vec3( 1.0 ), vec3( 0.88, 0.76, 0.54 ), tins * ( 0.55 + 0.3 * fract( th * 3.3 ) ) );
+					wc *= mix( vec3( 1.0 ), vec3( 0.62, 0.5, 0.34 ), trim * 0.7 );
+				}
+			}
 		}
 		diffuseColor.rgb *= wc;
 	}

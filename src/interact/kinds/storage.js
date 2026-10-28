@@ -18,10 +18,10 @@ function container(api, s, spec, o) {
   let unlocked = !code;
   const e = api.reg(s, ...o.focus, {
     id: spec.id || `${o.kind}${Math.round(s.x * 10)}_${Math.round(s.z * 10)}`, kind: o.kind, name: o.name, reach: o.reach || 1.9, radius: o.radius || 0.25, cooldown: 0.4,
-    prompt: () => (!unlocked ? `${o.name} · 密碼鎖(輸入密碼)` : st.open ? `關上${o.short || o.name}` : st.got ? `打開${o.short || o.name}` : `翻找${o.name}`),
+    prompt: () => (!unlocked ? `${o.name} · 密碼鎖（輸入密碼）` : st.open ? `關上${o.short || o.name}` : st.got ? `打開${o.short || o.name}` : `翻找${o.name}`),
     onUse: () => {
       if (!unlocked) {
-        ix.ui.keypad({ title: `${o.name} · 密碼鎖`, sub: `${code.length} 位數`, len: code.length, check: (c) => { if (c === code) { unlocked = true; api.ixs.lockerOpen(api.wp(s, ...o.focus)); ix.flags.set(spec.flag || `h.lock.${e.id}`, true); ix.after(0.9, () => api.ix.use(e)); return { ok: true, text: '喀。' }; } api.sfx.pickupDeny(); return { ok: false, text: '鎖頭轉不開' }; } });
+        ix.ui.keypad({ title: `${o.name} · 密碼鎖`, sub: ix.flags.has('know.code' + code) ? `你記得密碼：${code}` : `${code.length} 位數`, len: code.length, check: (c) => { if (c === code) { unlocked = true; api.ixs.lockerOpen(api.wp(s, ...o.focus)); ix.flags.set(spec.flag || `h.lock.${e.id}`, true); ix.flags.set('know.code' + code, true); ix.after(0.9, () => api.ix.use(e)); return { ok: true, text: '喀。' }; } api.sfx.pickupDeny(); return { ok: false, text: '鎖頭轉不開' }; } });
         return false;
       }
       st.open = !st.open;
@@ -53,7 +53,7 @@ export const locker = {
     }
     kit.static(m, api.mtx(s), s.li);
     if (spec.label) { const t = new Model(); t.quad(nameTag(api, spec.label), x0 + pick * w, 1.74, d + 0.04, 0.12, 0.038); kit.static(t, api.mtx(s), s.li); }
-    api.box(s, -(n * w) / 2, 0.02, (n * w) / 2, d + 0.03, h);
+    api.box(s, -(n * w) / 2, 0.02, (n * w) / 2, d + 0.03, h, 0, 'metal');
     const door = kit.pool('lockdoor', (q) => {
       q.box(M.paint, 0xffffff, w / 2 - 0.01, 0, 0, w - 0.02, h - 0.24, 0.012);
       for (let k = 0; k < 4; k++) q.box(M.matte, 0x444444, w / 2 - 0.01, 0.64 - k * 0.03, 0.007, w - 0.12, 0.012, 0.004);
@@ -62,7 +62,7 @@ export const locker = {
     const hinge = api.mtx(s, x0 + pick * w - w / 2 + 0.01, 0.98, d + 0.025);
     const di = door.add(s.li, hinge, c);
     return container(api, s, spec, {
-      kind: 'locker', name: spec.label ? `置物櫃(${spec.label})` : '置物櫃', short: '置物櫃', focus: [x0 + pick * w, 1.1, d + 0.05], radius: 0.25,
+      kind: 'locker', name: spec.label ? `置物櫃（${spec.label}）` : '置物櫃', short: '置物櫃', focus: [x0 + pick * w, 1.1, d + 0.05], radius: 0.25,
       pose: (k) => door.set(di, hinge.clone().multiply(T(0, 0, 0, 0, -1.7 * k))), openSnd: ixs.lockerOpen, closeSnd: ixs.lockerClose,
     });
   },
@@ -82,7 +82,7 @@ export const drawer = { // 床頭櫃 / 抽屜櫃(上面兩個抽屜,打開的是
     m.cyl(M.gloss, 0xd8d4c4, -0.12, h + 0.06, z0 + 0.15, 0.06, 0.12, 10); // 杯子 / 藥罐
     m.box(M.matte, 0xe8e2d0, 0.1, h + 0.003, z0 + 0.2, 0.14, 0.004, 0.1, 0, 0.4);
     kit.static(m, api.mtx(s), s.li);
-    api.box(s, -w / 2, z0, w / 2, z0 + d, h + 0.02);
+    api.box(s, -w / 2, z0, w / 2, z0 + d, h + 0.02, 0, metal ? 'metal' : 'wood');
     const dr = kit.pool(metal ? 'drawerM' : 'drawerW', (q) => {
       q.box(metal ? M.paint : M.wood, 0xffffff, 0, 0, -0.18, w - 0.08, 0.1, 0.36);
       q.box(metal ? M.paint : M.wood, 0xffffff, 0, 0.0, 0.006, w - 0.04, 0.15, 0.016);
@@ -139,7 +139,7 @@ export const morgue = {
       plates.push({ i, x, y, n: nums[i] });
     }
     kit.static(m, api.mtx(s), s.li);
-    api.box(s, -(cols * cw) / 2 - 0.06, 0.02, (cols * cw) / 2 + 0.06, d + 0.03, rows * rh + 0.5);
+    api.box(s, -(cols * cw) / 2 - 0.06, 0.02, (cols * cw) / 2 + 0.06, d + 0.03, rows * rh + 0.5, 0, 'heavy');
     const tagM = (n) => texMat('mg' + n, canvasTex('mg' + n, 64, 32, (x, w, h) => { x.fillStyle = '#d8d4c4'; x.fillRect(0, 0, w, h); x.fillStyle = '#1a1a1a'; x.font = `bold 22px ${FONT}`; x.textAlign = 'center'; x.fillText(String(n).padStart(2, '0'), w / 2, 24); }), { basic: true });
     for (const p of plates) { const t = new Model(); t.quad(tagM(p.n), p.x, p.y + 0.18, d + 0.052, 0.1, 0.05); kit.static(t, api.mtx(s), s.li); }
     const door = kit.pool('mdoor', (q) => {
@@ -213,10 +213,10 @@ export const pickup = {
 
 // 看得到的文字:紙條(桌上/地上)、夾板、白板、告示、登記簿、照片、蠟筆畫。按 E 打開閱讀器。
 const PAPER = () => canvasTex('paperGeneric', 128, 160, (x, w, h) => { x.fillStyle = '#e6dcc4'; x.fillRect(0, 0, w, h); x.strokeStyle = 'rgba(60,50,40,.55)'; for (let i = 0; i < 11; i++) { x.beginPath(); x.moveTo(12, 22 + i * 12); for (let k = 12; k < w - 12 - (i % 3) * 14; k += 6) x.lineTo(k, 22 + i * 12 + Math.sin(k * 0.9 + i) * 1.4); x.stroke(); } x.fillStyle = 'rgba(120,80,40,.18)'; x.beginPath(); x.arc(96, 120, 22, 0, 6.28); x.fill(); });
-const BOARD = () => canvasTex('boardGeneric', 256, 160, (x, w, h) => { x.fillStyle = '#e8ecea'; x.fillRect(0, 0, w, h); x.font = `16px ${HAND}`; x.fillStyle = '#1a2a6a'; const L = ['201 陳 ✓', '203 林 → ?', '205 吳 ✓', '207 ——', '208 黃 → 3F', '210 王 ✓']; L.forEach((t, i) => x.fillText(t, 14, 26 + i * 22)); x.fillStyle = '#b02020'; x.fillText('夜班:不要開燈', 140, 30); x.strokeStyle = 'rgba(0,0,0,.08)'; for (let i = 0; i < 20; i++) { x.beginPath(); x.moveTo(Math.random() * w, Math.random() * h); x.lineTo(Math.random() * w, Math.random() * h); x.stroke(); } });
+const BOARD = () => canvasTex('boardGeneric', 256, 160, (x, w, h) => { x.fillStyle = '#e8ecea'; x.fillRect(0, 0, w, h); x.font = `16px ${HAND}`; x.fillStyle = '#1a2a6a'; const L = ['封院第 7 天', '207：護理長', '3F：萬嵐', '體溫 08:00・20:00']; L.forEach((t, i) => x.fillText(t, 14, 26 + i * 22)); x.fillStyle = '#b02020'; x.fillText('晚上廣播叫人　不要下樓', 14, 136); x.strokeStyle = 'rgba(0,0,0,.08)'; for (let i = 0; i < 20; i++) { x.beginPath(); x.moveTo(Math.random() * w, Math.random() * h); x.lineTo(Math.random() * w, Math.random() * h); x.stroke(); } });
 const DRAW = () => canvasTex('crayonGeneric', 128, 96, (x, w, h) => { x.fillStyle = '#f4f0e6'; x.fillRect(0, 0, w, h); x.lineWidth = 3; x.strokeStyle = '#3a2a8a'; x.beginPath(); x.arc(40, 40, 12, 0, 6.28); x.stroke(); x.strokeStyle = '#2a2a2a'; x.beginPath(); x.moveTo(28, 38); x.arc(40, 38, 13, Math.PI, 0); x.stroke(); x.strokeStyle = '#c03030'; x.beginPath(); x.moveTo(100, 12); x.lineTo(108, 40); x.lineTo(92, 40); x.closePath(); x.stroke(); x.fillStyle = '#e02020'; x.beginPath(); x.arc(100, 10, 3, 0, 6.28); x.fill(); x.strokeStyle = '#2a8a3a'; x.beginPath(); x.moveTo(0, 80); x.quadraticCurveTo(60, 50, 128, 82); x.stroke(); for (let i = 0; i < 4; i++) { x.strokeStyle = '#d08030'; x.beginPath(); x.arc(20 + i * 22, 74, 5, 0, 6.28); x.stroke(); } });
-const BOOK = () => canvasTex('bookGeneric', 256, 128, (x, w, h) => { x.fillStyle = '#efe8d4'; x.fillRect(0, 0, w, h); x.fillStyle = '#d8ccb0'; x.fillRect(w / 2 - 2, 0, 4, h); x.strokeStyle = 'rgba(60,70,120,.4)'; for (let i = 0; i < 9; i++) for (const ox of [10, w / 2 + 10]) { x.beginPath(); x.moveTo(ox, 14 + i * 12); x.lineTo(ox + w / 2 - 24, 14 + i * 12); x.stroke(); } x.fillStyle = '#2a2a3a'; x.font = `10px ${HAND}`; for (let i = 0; i < 8; i++) x.fillText(i === 0 ? '1999/10/24 207 蔡金水' : `${2000 + i * 3}/… 207 蔡金水`, 12, 12 + i * 12); });
-const POL = () => canvasTex('polGeneric', 96, 112, (x, w, h) => { x.fillStyle = '#f4f2ec'; x.fillRect(0, 0, w, h); const g = x.createLinearGradient(0, 6, 0, 86); g.addColorStop(0, '#5a6a7a'); g.addColorStop(1, '#2a2a30'); x.fillStyle = g; x.fillRect(6, 6, w - 12, 80); x.fillStyle = 'rgba(240,230,200,.5)'; x.fillRect(28, 40, 14, 40); x.fillRect(52, 46, 12, 34); x.fillStyle = '#3a3a3a'; x.font = `9px ${HAND}`; x.fillText('天空變得好吵', 14, 102); });
+const BOOK = () => canvasTex('bookGeneric', 256, 128, (x, w, h) => { x.fillStyle = '#efe8d4'; x.fillRect(0, 0, w, h); x.fillStyle = '#d8ccb0'; x.fillRect(w / 2 - 2, 0, 4, h); x.strokeStyle = 'rgba(60,70,120,.4)'; for (let i = 0; i < 9; i++) for (const ox of [10, w / 2 + 10]) { x.beginPath(); x.moveTo(ox, 14 + i * 12); x.lineTo(ox + w / 2 - 24, 14 + i * 12); x.stroke(); } x.fillStyle = '#2a2a3a'; x.font = `10px ${HAND}`; ['5/5 08:10 入：鄭', '5/5 14:00 入：鄭', '5/5 23:47 入：何（神內）', '5/5 23:55 入：鄭'].forEach((t, i) => x.fillText(t, 12, 12 + i * 12)); });
+const POL = () => canvasTex('polGeneric', 96, 112, (x, w, h) => { x.fillStyle = '#f4f2ec'; x.fillRect(0, 0, w, h); const g = x.createLinearGradient(0, 6, 0, 86); g.addColorStop(0, '#5a6a7a'); g.addColorStop(1, '#2a2a30'); x.fillStyle = g; x.fillRect(6, 6, w - 12, 80); x.fillStyle = 'rgba(240,230,200,.5)'; x.fillRect(28, 40, 14, 40); x.fillRect(52, 46, 12, 34); x.fillStyle = '#3a3a3a'; x.font = `9px ${HAND}`; x.fillText('封院第三天　頂樓', 12, 102); });
 export const note = {
   build(api, s, spec = {}) {
     const { kit, M, ix, R } = api;
@@ -243,21 +243,16 @@ export const note = {
       else if (style === 'photo' || style === 'polaroid') { mat = texMat('pol', POL()); m.quad(mat, hx, y + 0.004, hz, 0.09, 0.105, -Math.PI / 2, R() * 6); }
       else { mat = texMat('paper', PAPER()); m.quad(mat, hx, y + 0.003, hz, 0.2, 0.26, -Math.PI / 2, R() * 0.8 - 0.4); }
       focus = [hx, y + 0.02, hz];
-      if (!s.host) api.box(s, -0.2, 0.17, 0.2, 0.53, 0.47);
+      if (!s.host) api.box(s, -0.2, 0.17, 0.2, 0.53, 0.47, 0, 'metal');
     }
     kit.static(m, api.mtx(s), s.li);
     const nid = spec.note;
-    const flagSign = spec.sign?.flag;
-    const nm = { whiteboard: '白板', logbook: '探病登記簿', poster: '告示', drawing: '蠟筆畫', photo: '照片', polaroid: '拍立得', clipboard: '夾板上的紙' }[style] || '紙條';
+    const nm = { whiteboard: '白板', logbook: '進出登記', poster: '告示', drawing: '蠟筆畫', photo: '照片', polaroid: '拍立得', clipboard: '夾板上的紙' }[style] || '紙條';
     const base = {
       id: spec.id || `note:${nid || 'x'}:${Math.round(s.x)}`, kind: 'note', name: nm, reach: style === 'whiteboard' ? 2.6 : 1.9, radius: style === 'whiteboard' ? 0.5 : 0.16, scope: 'map', priority: 4,
       prompt: () => (ix.flags.has('note.' + nid) ? `再看一次${nm}` : `看${nm}`),
-      onUse: () => { if (!api.note(nid)) api.toast('(字跡糊掉了,看不清楚)', '#a3a39a'); },
+      onUse: () => { if (!api.note(nid)) api.toast('（字跡糊掉了，看不清楚）', '#a3a39a'); },
     };
-    if (style === 'logbook' && flagSign) { // 登記簿:點一下看、按住簽名
-      Object.assign(base, { hold: 2, holdText: '簽名', tapText: `看${nm}`, onTap: base.onUse, prompt: () => (ix.flags.has(flagSign) ? { text: `${nm} · 你已經簽過名了`, dim: true } : '在登記簿上簽名'),
-        onUse: () => { if (ix.flags.has(flagSign)) return false; ix.flags.set(flagSign, true); api.ixs.paper(); api.toast('你在最後一行寫下名字', '#e8d9a8', '207 · 訪客'); ix.emit('sign', nid); } });
-    }
     return api.reg(s, ...focus, base);
   },
 };
@@ -274,7 +269,7 @@ export const candle = {
     for (let i = 0; i < n; i++) { const r = i % 2, x = -0.36 + Math.floor(i / 2) * 0.144, y = 0.86 + r * 0.14, z = 0.3 - r * 0.08 + (R() - 0.5) * 0.03, hgt = 0.06 + R() * 0.07; m.cyl(M.matte, 0xe8e0c8, x, y + hgt / 2, z, 0.025, hgt, 8); pos0.push([x, y + hgt + 0.012, z]); }
     m.box(M.metal, 0x5a4a30, 0, 0.6, 0.48, 0.16, 0.12, 0.06); // 捐獻箱
     kit.static(m, api.mtx(s), s.li);
-    api.box(s, -0.46, 0.1, 0.46, 0.5, 1.05);
+    api.box(s, -0.46, 0.1, 0.46, 0.5, 1.05, 0, 'metal');
     const flame = kit.pool('flame', (q) => { q.cone(api.M.glow, 0xffc060, 0, 0, 0, 0.012, 0.03, 0.05, 6); }, api.M.glow);
     const lit = pos0.map((p) => ({ i: flame.add(s.li, ZERO), m: api.mtx(s, ...p) }));
     let k = 0;
@@ -295,7 +290,7 @@ export const candle = {
   },
 };
 
-// 噴水池的聖母像(現有道具錨點):丟一枚金幣,滿 7 次底座出現字條
+// 噴水池的聖母像(現有道具錨點):丟一枚銅板,滿 7 次底座出現字條
 export const fountain = {
   build(api, ev, spec = {}) {
     const { ix, ixs, game } = api;
@@ -304,8 +299,8 @@ export const fountain = {
     let n = 0;
     return ix.register(pos, {
       id: spec.id || 'fountain', kind: 'fountain', name: '乾涸的噴水池', reach: 3.2, radius: 1.0, scope: 'map', cooldown: 1,
-      prompt: () => (n >= need ? '看底座的字條' : `往池子裡丟一枚金幣(${n}/${need})`),
-      when: () => (n < need && (game.player.coins || 0) < 1 ? '乾涸的噴水池 · 身上沒有金幣' : true),
+      prompt: () => (n >= need ? '看底座的字條' : `往池子裡丟一枚銅板（${n}/${need}）`),
+      when: () => (n < need && (game.player.coins || 0) < 1 ? '乾涸的噴水池 · 身上沒有錢' : true),
       onUse: () => {
         if (n >= need) { api.note(spec.note); return; }
         game.player.coins -= 1; game.ui.setCoins(game.player.coins);

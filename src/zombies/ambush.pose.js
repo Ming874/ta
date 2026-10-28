@@ -4,15 +4,18 @@ import { sfx } from '../audio.js';
 // 埋伏 / 天花板掉落:殭屍這一側的狀態、姿勢與行為(以 mixin 掛到 Zombie.prototype;調度與場景物件在 src/zombies/ambush.js)。
 //
 // 狀態(沿用連線協定 ZSTATES 裡原本沒用到的名稱,不必改協定):
-//   'idle'   埋伏(LURK):靜止的「屍體」姿勢,不跑 AI/動畫/LOD,矩陣凍結(幾乎零成本)
-//   'spawn'  天花板上(PERCH):趴在天花板夾層裡(破洞處垂下一隻手),或整個藏在通風格柵上方(看不到)
-//   'scream' 衝出(BURST):從屍體姿勢猛然彈起、轉身、撲向玩家,之後變回一般殭屍
-//   'fall'   掉落(DROP):格柵/天花板碎開 → 腳先落下 → 蹲伏落地(塵土、悶響)→ 尖叫起身
+//   'idle'   裝死(LURK):只有「屍體」姿勢(靠牆癱坐/趴地/仰躺,跟假屍體一模一樣),不跑 AI/動畫/LOD,矩陣凍結(幾乎零成本)
+//   'spawn'  天花板上(PERCH):舊流程,現在不再使用(天花板掉落改成觸發當下才在夾層裡現身,見 ambush.js)
+//   'scream' 衝出(BURST):掩蔽處的埋伏是觸發當下才在「所有玩家都看不到」的位置現身,直接進這個狀態:
+//            0.14 秒內起身 → 沿導航場衝出轉角/門口(進入玩家視野)→ 撲向玩家;裝死的屍體則是猛然彈起
+//   'fall'   掉落(DROP):觸發當下才在天花板夾層裡現身(看不到)→ 格柵/天花板碎開 → 腳先落下 → 蹲伏落地 → 尖叫起身
 // z.amb = { code 姿勢代碼, quiet 安靜甦醒(不放跳嚇), dormant, ceilH 天花板高度, rise, lungeV, t1 落地時間… }
 // 連線:房主把 code / quiet 放進快照每筆的旗標位元組(bit1-3 = code、bit4 = quiet),代理殭屍用同一套姿勢函式播放。
 export const LURK = 'idle', PERCH = 'spawn', BURST = 'scream', DROP = 'fall';
 export const POSE = { slump: 1, lie: 2, crouch: 3, stand: 4, prone: 5, hidden: 6, supine: 7 };
 export const isPerch = (c) => c === POSE.prone || c === POSE.hidden;
+export const isCorpse = (c) => c === POSE.slump || c === POSE.lie || c === POSE.supine; // 看起來就是屍體的姿勢(被看到也沒關係)
+export const isCover = (c) => c === POSE.crouch || c === POSE.stand; // 掩蔽處現身的起始姿勢(只在看不到的地方出現)
 const AMB_STATES = new Set([LURK, PERCH, BURST, DROP]);
 const BREAK = 0.14; // 天花板碎開到開始掉落
 const G = 15; // 掉落的重力(比真實大一點,動作比較俐落)
@@ -36,7 +39,8 @@ export function makeAmb(z, code, world, opt = {}) {
     a.ceilH = Number.isFinite(c) && c > 2 && c < 4.5 ? c : 3.4;
   }
   a.t1 = BREAK + Math.sqrt((2 * a.ceilH) / G);
-  a.rise = code === POSE.lie || code === POSE.supine ? 0.46 : code === POSE.slump ? 0.38 : 0.26;
+  a.rise = code === POSE.lie || code === POSE.supine ? 0.46 : code === POSE.slump ? 0.38 : 0.14; // 掩蔽處的本來就是醒著蹲/站著
+  a.lungeT = isCover(code) ? 0.85 : LUNGE_T; // 掩蔽處:要先繞出轉角/門口再撲,撲得久一點(兩端都由姿勢代碼推導)
   a.lungeV = z.type === 'runner' ? 6.8 : z.type === 'crawler' ? 3.6 : 4.6;
   return a;
 }
@@ -166,13 +170,15 @@ const M = {
     let dealt = 0;
     const hd = this.dist || 1e-3, face = Math.atan2(toX, toZ);
     if (S === BURST) {
-      w.face = face;
-      this.heading += wrapA(face - this.heading) * Math.min(1, dt * (a.quiet ? 5 : 14)); // 猛然轉身
+      // 方向:update 已算好 w.x/w.z(看得到又走得到就直衝,否則沿導航場繞出轉角、穿過門口)
+      const f2 = Math.atan2(w.x, w.z);
+      w.face = f2;
+      this.heading += wrapA(f2 - this.heading) * Math.min(1, dt * (a.quiet ? 5 : 14)); // 猛然轉身
       if (a.quiet) { w.speed = st > a.rise ? this.speed * 0.8 : 0; }
       else if (st < a.rise) w.speed = 0;
-      else if (st < a.rise + LUNGE_T) { // 撲擊
-        w.x = toX / hd; w.z = toZ / hd; w.instant = true;
-        w.speed = a.lungeV * (1 - 0.45 * (st - a.rise) / LUNGE_T);
+      else if (st < a.rise + a.lungeT) { // 撲擊
+        w.instant = true;
+        w.speed = a.lungeV * (1 - 0.45 * (st - a.rise) / a.lungeT);
         if (!a.hit && dist < T.reach + 0.3 && this._canHit(ctx.world)) {
           a.hit = true;
           dealt = Math.round(T.dmg * 1.2);
@@ -180,7 +186,7 @@ const M = {
           sfx.bite(p.pos);
         }
       }
-      if (st >= a.rise + (a.quiet ? 0.3 : LUNGE_T)) this._ambDone(a.hit);
+      if (st >= a.rise + (a.quiet ? 0.3 : a.lungeT) || (a.hit && st > a.rise + 0.2)) this._ambDone(a.hit);
     } else if (S === DROP) {
       w.speed = 0;
       if (st > a.t1) { w.face = face; this.heading += wrapA(face - this.heading) * Math.min(1, dt * 8); }
@@ -203,6 +209,7 @@ const M = {
     // 狀態切換的特效(衝出:尖叫/刺擊/鏡頭;掉落:碎片/塵土)、落地(悶響/震動):兩端各自依狀態時間觸發
     if (a.fx !== S) { a.fx = S; if (S === BURST || S === DROP) ctx.game?.ambush?.fx(this, S === BURST ? 'burst' : 'drop', a); }
     if (S === DROP && !a.landed && this.st >= a.t1) { a.landed = true; ctx.game?.ambush?.fx(this, 'land', a); }
+    if (S === BURST && !a.out && !a.quiet && this.st >= a.rise + 0.08) { a.out = true; ctx.game?.ambush?.fx(this, 'out', a); } // 衝出掩蔽的瞬間:鏡頭
     if (S === LURK || S === PERCH) { this._ambStatic(a.code, this.t); return; }
     if (S === BURST) { this._ambBurst(dt, ctx, dist, toX, toZ, a); return; }
     if (S === DROP) { this._ambDrop(dt, ctx, dist, toX, toZ, a); return; }
@@ -233,7 +240,7 @@ const M = {
     if (k < 1) { this._ambStatic(a.code, this.t); this._ambSnap(a); this._resetPose(); }
     this['_pose_' + this.type](dt, ctx, dist, toX, toZ);
     if (!a.quiet && this.type !== 'crawler' && st > a.rise * 0.45) {
-      const u = clamp((st - a.rise * 0.45) / 0.18, 0, 1) * (1 - clamp((st - a.rise - LUNGE_T + 0.1) / 0.2, 0, 1));
+      const u = clamp((st - a.rise * 0.45) / 0.18, 0, 1) * (1 - clamp((st - a.rise - a.lungeT + 0.1) / 0.2, 0, 1));
       const b = this.b;
       for (let i = 0; i < 2; i++) {
         const s = i ? -1 : 1, L = i ? 'R' : 'L', ua = b['upperArm' + L].rotation;
@@ -252,6 +259,7 @@ const M = {
   _ambDrop(dt, ctx, dist, toX, toZ, a) {
     const st = this.st, b = this.b, crawl = this.type === 'crawler';
     this.rootPitch = 0; this.rootRoll = 0;
+    a.hidden = st < BREAK; // 還在夾層裡(打不到、看不到)
     if (st < BREAK) { this._ambStatic(a.code, this.t); this.rootRoll = Math.sin(this.t * 61) * 0.02; this.root.visible = a.code !== POSE.hidden; return; }
     this.root.visible = true;
     if (st < a.t1) { // 下落

@@ -65,7 +65,7 @@ export class CoopMode {
     s.hook(g, 'openRest', (orig) => function (...a) {
       const ui = g.ui, banner = ui.banner;
       ui.banner = function (title, sub = '', ...b) {
-        if (typeof sub === 'string') sub = sub.replace(/休息 \d+ 秒/, `休息 ${REST_MP} 秒`).replace(/\[N\] ?立即開始(下一回合)?/, '[N] 準備(全員準備就開始)');
+        if (typeof sub === 'string') sub = sub.replace(/燈篙熄 \d+ 秒/, `燈篙熄 ${REST_MP} 秒`).replace(/\[N\] ?不等了/, '[N] 準備（全員準備就開始）');
         return banner.call(this, title, sub, ...b);
       };
       try { return orig.apply(this, a); } finally { ui.banner = banner; }
@@ -107,7 +107,7 @@ export class CoopMode {
     const sec = ui.restEl?.querySelector('b'), t = String(Math.max(0, Math.ceil(g.restT || 0)));
     if (sec && sec.textContent !== t) sec.textContent = t;
     const btn = document.getElementById('shopNext');
-    const label = `${this.voted ? '取消準備' : '準備下一回合'} ${this.readyCount()}/${this.needed()}<kbd>N</kbd>`;
+    const label = `${this.voted ? '取消準備' : '準備下一次燈篙'} ${this.readyCount()}/${this.needed()}<kbd>N</kbd>`;
     if (btn && btn.innerHTML !== label) btn.innerHTML = label;
   }
 
@@ -134,20 +134,20 @@ export class CoopMode {
       const rp = s.remotes.get(f);
       if (!rp) return;
       rp.downed = true;
-      s.hud.feed(`${rp.name} 倒地了!靠近按住 E 救援`, 'down');
+      s.hud.feed(`${rp.name} 倒地了！靠近按住 E 救援`, 'down');
       sfx.downed?.(rp.pos);
       this.bump(f, 'downs');
     });
     s.on('up', (d, f) => {
       const rp = s.remotes.get(f);
       if (rp) rp.downed = false;
-      if (!(d?.by >= 0)) { if (rp) s.hud.feed(`${rp.name} 撐過了這一回合`, 'revive'); return; }
+      if (!(d?.by >= 0)) { if (rp) s.hud.feed(`${rp.name} 撐過了這一次燈篙`, 'revive'); return; }
       const by = d.by === s.me ? '你' : s.nameOf(d.by);
       if (rp) s.hud.feed(`${by} 救起了 ${rp.name}`, 'revive');
       if (d.by === s.me) { this.stats.revives++; s.hud.center('救援成功', 1500); sfx.revive?.(rp?.pos); }
       this.bump(d.by, 'revives');
     });
-    s.on('bleed', (d, f) => { const rp = s.remotes.get(f); if (rp) s.hud.feed(`${rp.name} 失血過多死亡,下一回合復活`, 'dead'); });
+    s.on('bleed', (d, f) => { const rp = s.remotes.get(f); if (rp) s.hud.feed(`${rp.name} 失血過多……燈篙熄的時候會被叫回來`, 'dead'); });
     s.on('rev', (d, f) => { if (this.g.player.downed && !this.dead && s.remotes.get(f)?.connected) this.revive(f); });
     s.on('go', (d, f) => { if (f === s.hostSlot && d && Array.isArray(d.t)) this.gameOver(d); });
     // 中途加入:房主送目前回合、階段、補償金幣
@@ -170,7 +170,7 @@ export class CoopMode {
       }
       if (Array.isArray(d.v)) { this.votes = new Set(d.v); this.voted = this.votes.has(s.me); }
       const coins = Math.max(0, Math.min(5000, d.coins | 0));
-      if (coins > 0) { g.player.coins += coins; g.ui.setCoins(g.player.coins); g.ui.coinGain?.(coins); s.hud.feed(`中途加入:獲得 ${coins} 金幣`, 'coin'); }
+      if (coins > 0) { g.player.coins += coins; g.ui.setCoins(g.player.coins); g.ui.coinGain?.(coins); s.hud.feed(`中途加入：獲得 ${coins} 元`, 'coin'); }
     });
   }
 
@@ -184,7 +184,7 @@ export class CoopMode {
       // 等房主的 'rs' / 'sync'(不屬於任何回合階段,本機不會自己出怪或倒數)
       g.phase = 'wait';
       g.round = 0;
-      s.hud.center(s.late ? '中途加入:同步中…' : '等待房主開始…', 3000);
+      s.hud.center(s.late ? '中途加入：同步中…' : '等待房主開始…', 3000);
     }
     this.pos0();
   }
@@ -287,7 +287,7 @@ export class CoopMode {
     g.ui.map?.close?.();
     s.send('down', 1);
     sfx.downed?.();
-    s.hud.center('你倒地了!撐住,等隊友救援', 2500);
+    s.hud.center('你倒地了！撐住，等隊友救援', 2500);
     s.sendState(true);
   }
   revive(by, hp = 35) {
@@ -311,7 +311,7 @@ export class CoopMode {
     this.dead = true;
     this.spectating = true;
     s.send('bleed', 1);
-    s.hud.center('你失血過多……下一回合開始時復活', 3500);
+    s.hud.center('你失血過多……燈篙熄的時候，阿嬤會叫你回來', 3500);
     s.sendState(true);
   }
   respawn() {
@@ -326,7 +326,7 @@ export class CoopMode {
     p.vx = p.vz = 0;
     g.weaponScene.visible = true;
     this.shieldT = 2;
-    this.s.hud.center('你復活了', 1800);
+    this.s.hud.center('你回神了', 1800);
     this.s.sendState(true);
   }
 
@@ -340,9 +340,9 @@ export class CoopMode {
     document.exitPointerLock?.();
     g.input.fireHeld = false;
     s.hud.results({
-      title: '全員陣亡', sub: `撐到了第 ${d.n} 回合`,
+      title: '全員倒下', sub: `撐到第 ${d.n} 次燈篙`,
       cols: ['玩家', '擊殺', '倒地', '救援'],
-      rows: d.t.map(([id, k, dn, rv]) => [s.nameOf(id) + (id === s.me ? '(你)' : ''), k, dn, rv]),
+      rows: d.t.map(([id, k, dn, rv]) => [s.nameOf(id) + (id === s.me ? '（你）' : ''), k, dn, rv]),
     });
   }
 

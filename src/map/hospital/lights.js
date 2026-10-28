@@ -73,6 +73,40 @@ const exitGeo = new THREE.PlaneGeometry(0.36, 0.16);
 const SHAPES = { tube: tubeGeo, disc: discGeo, bulb: bulbGeo, lens: lensGeo, pack: packGeo, small: smallGeo, sconce: sconceGeo, exit: exitGeo };
 // 緊急出口標示燈的面板(綠底白色奔跑人形 + 出口 EXIT),發光件用這張貼圖,亮度仍由每個實例的顏色控制
 let exitTex = null;
+// 日光燈的壓克力稜鏡擴散板:兩根燈管的亮帶、細小稜鏡格紋、四周暗邊、泛黃與板內的死蟲斑點
+// (box 的底面 UV:u 沿燈長、v 沿燈寬)
+let diffTex = null;
+function diffuserTexture() {
+  if (diffTex) return diffTex;
+  const W = 256, H = 64;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  const img = x.createImageData(W, H);
+  let sd = 9137; const rnd = () => ((sd = (sd * 1664525 + 1013904223) >>> 0) / 4294967296);
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+    const v = j / (H - 1), u = i / (W - 1);
+    const tube = Math.exp(-(((v - 0.33) / 0.09) ** 2)) + Math.exp(-(((v - 0.67) / 0.09) ** 2));
+    const ends = Math.min(1, Math.min(u, 1 - u) / 0.06), sides = Math.min(1, Math.min(v, 1 - v) / 0.1);
+    const prism = 0.93 + 0.07 * (((i >> 1) + (j >> 1)) & 1);
+    let k = (0.5 + 0.55 * tube) * prism * (0.55 + 0.45 * ends) * (0.6 + 0.4 * sides);
+    const o = (j * W + i) * 4;
+    img.data[o] = Math.min(255, k * 255); img.data[o + 1] = Math.min(255, k * 250); img.data[o + 2] = Math.min(255, k * 232); img.data[o + 3] = 255;
+  }
+  x.putImageData(img, 0, 0);
+  // 板內積的死蟲與灰塵(擴散板底部的黑點,集中在兩端)
+  for (let n = 0; n < 70; n++) {
+    const end = rnd() < 0.5 ? rnd() * 0.25 : 1 - rnd() * 0.25;
+    x.fillStyle = `rgba(20,16,10,${0.25 + rnd() * 0.5})`;
+    x.beginPath(); x.ellipse(end * W, (0.15 + rnd() * 0.7) * H, 0.6 + rnd() * 1.6, 0.4 + rnd() * 1.0, rnd() * 3, 0, 7); x.fill();
+  }
+  const g = x.createLinearGradient(0, 0, W, 0); // 一端泛黃
+  g.addColorStop(0, 'rgba(140,110,40,0.25)'); g.addColorStop(0.4, 'rgba(140,110,40,0)'); g.addColorStop(1, 'rgba(120,100,50,0.08)');
+  x.fillStyle = g; x.fillRect(0, 0, W, H);
+  diffTex = new THREE.CanvasTexture(c);
+  diffTex.colorSpace = THREE.SRGBColorSpace;
+  diffTex.anisotropy = 4;
+  return diffTex;
+}
 function exitTexture() {
   if (exitTex) return exitTex;
   const c = document.createElement('canvas'); c.width = 256; c.height = 112;
@@ -351,7 +385,7 @@ export function buildLights(K, { root, propLights = [], poolSize = 8 }) {
   const emissive = [];
   for (const [shape, list] of Object.entries(byShape)) {
     const n = list.length * (shape === 'disc' ? 3 : 1);
-    const im = new THREE.InstancedMesh(SHAPES[shape], new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: true, map: shape === 'exit' ? exitTexture() : null }), n);
+    const im = new THREE.InstancedMesh(SHAPES[shape], new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: true, map: shape === 'exit' ? exitTexture() : shape === 'tube' ? diffuserTexture() : null }), n);
     im.name = 'fixtures-' + shape;
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3();
     let i = 0;

@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { WRITINGS } from './lines.js';
+import { paintTexture } from '../sys/texworker.js';
+import { bloodWriting, dripPath, rng } from '../art/stainset.js';
 
 // 痕跡與「看得見的靈異」:濕腳印、玻璃上的手印、牆上的字、門縫下的光與走過的影子、隔簾後的人影、鏡子裡的臉、
 // 電視雜訊裡的臉、電梯門縫的光。腳印與手印各用一個 InstancedMesh(每個實例自己的透明度),
@@ -11,40 +13,16 @@ const FONT_SANS = '"Microsoft JhengHei", "PingFang TC", "Noto Sans TC", sans-ser
 // ---------- 貼圖(canvas;第一次用到才畫) ----------
 let footTex = null, handTex = null;
 function tex(c) { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; }
+// 濕腳印:解剖比例的赤腳(腳跟、外側足弓、前掌、五趾;足弓內側懸空),水漬邊緣較深(src/art/stainset.js;貼圖 Worker 畫)
 function footTexture() {
   if (footTex) return footTex;
-  const c = document.createElement('canvas'); c.width = 64; c.height = 128;
-  const x = c.getContext('2d');
-  x.fillStyle = '#fff';
-  const blob = (cx, cy, rx, ry, a = 1) => { x.globalAlpha = a; x.beginPath(); x.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); x.fill(); };
-  blob(32, 82, 15, 30, 0.9); blob(30, 104, 13, 16, 0.9); // 腳掌 + 腳跟
-  x.fillStyle = '#000'; x.globalAlpha = 1; x.beginPath(); x.ellipse(42, 78, 6, 18, 0.1, 0, Math.PI * 2); x.fill(); // 足弓
-  x.fillStyle = '#fff';
-  [[22, 40, 7], [32, 36, 5.5], [40, 38, 4.8], [46, 42, 4], [51, 47, 3.4]].forEach(([cx, cy, r]) => blob(cx, cy, r, r * 1.2, 0.85));
-  // 水漬:邊緣不規則
-  x.globalCompositeOperation = 'destination-out';
-  for (let i = 0; i < 160; i++) { x.globalAlpha = Math.random() * 0.5; x.beginPath(); x.arc(Math.random() * 64, Math.random() * 128, Math.random() * 2.5, 0, 6.3); x.fill(); }
-  footTex = tex(c);
+  footTex = paintTexture('art/stains:wetFoot', { seed: 3, w: 128, h: 256 }, { wrap: false, anisotropy: 4 });
   return footTex;
 }
+// 玻璃上的手印:油脂/霧氣的掌印(指節橫紋、指腹、掌丘、掌紋、壓力不均與皮紋;src/art/stainset.js;貼圖 Worker 畫)
 function handTexture() {
   if (handTex) return handTex;
-  const c = document.createElement('canvas'); c.width = 128; c.height = 128;
-  const x = c.getContext('2d');
-  x.filter = 'blur(1.6px)';
-  x.fillStyle = '#fff';
-  x.globalAlpha = 0.8;
-  x.beginPath(); x.ellipse(64, 84, 24, 28, 0, 0, Math.PI * 2); x.fill(); // 手掌
-  const fing = [[38, 52, -0.5, 26], [52, 34, -0.15, 34], [66, 30, 0, 37], [80, 34, 0.15, 33], [92, 50, 0.4, 25]];
-  for (const [fx, fy, a, len] of fing) { x.save(); x.translate(fx, fy + len / 2); x.rotate(a); x.beginPath(); x.ellipse(0, 0, 6.5, len / 2, 0, 0, Math.PI * 2); x.fill(); x.restore(); }
-  x.filter = 'none';
-  // 指紋/掌紋的細紋與往下流的水痕
-  x.globalCompositeOperation = 'destination-out';
-  for (let i = 0; i < 260; i++) { x.globalAlpha = Math.random() * 0.4; x.fillRect(Math.random() * 128, Math.random() * 128, 1, 1 + Math.random() * 2); }
-  x.globalCompositeOperation = 'source-over';
-  x.globalAlpha = 0.35;
-  for (let i = 0; i < 5; i++) { const sx = 46 + Math.random() * 36; x.fillRect(sx, 100, 2, 18 + Math.random() * 10); }
-  handTex = tex(c);
+  handTex = paintTexture('art/stains:ghostHand', { seed: 5, size: 256 }, { wrap: false, anisotropy: 4 });
   return handTex;
 }
 // 字跡貼圖:依風格畫手寫字(每個字隨機旋轉/大小/基線)
@@ -64,8 +42,9 @@ export function writingCanvas(text, style = 'marker', seed = 1) {
   const cols = Math.max(...lines.map((l) => [...l].length));
   const W = Math.ceil(cols * px * 1.05 + px * 0.6), H = Math.ceil(lines.length * px * 1.25 + px * (S.drip ? 0.9 : 0.4));
   const c = document.createElement('canvas'); c.width = Math.min(2048, W); c.height = Math.min(1024, H);
-  const x = c.getContext('2d');
+  const x = c.getContext('2d', S.smear ? { willReadFrequently: true } : undefined);
   x.textBaseline = 'middle'; x.textAlign = 'center';
+  const R = rng(seed);
   lines.forEach((ln, li) => {
     [...ln].forEach((ch, ci) => {
       if (ch === ' ' || ch === '　') return;
@@ -78,15 +57,24 @@ export function writingCanvas(text, style = 'marker', seed = 1) {
       } else if (S.scratch) {
         x.lineWidth = 1.4; x.strokeStyle = S.col;
         for (let k = 0; k < 3; k++) { x.globalAlpha = 0.55; x.strokeText(ch, (r() - 0.5) * 2.5, (r() - 0.5) * 2.5); }
+      } else if (S.smear) { // 手指沾血寫:先畫成遮罩(白),最後整張換成血(厚薄、條紋、乾刷斷裂、往下流)
+        x.globalAlpha = 1; x.fillStyle = '#fff'; x.fillText(ch, 0, 0);
+        x.globalAlpha = 0.45; x.fillText(ch, 1.5 + r() * 2.5, 1 + r() * 2);
       } else {
-        x.globalAlpha = S.smear ? 0.95 : 0.93; x.fillStyle = S.col; x.fillText(ch, 0, 0);
-        if (S.smear) { x.globalAlpha = 0.3; x.fillText(ch, 2 + r() * 3, 1 + r() * 2); }
+        x.globalAlpha = 0.93; x.fillStyle = S.col; x.fillText(ch, 0, 0);
       }
       x.restore();
-      // 往下流的痕跡
-      if (S.drip && r() < 0.45) { x.globalAlpha = 0.75; x.fillStyle = S.col; const dl = 12 + r() * px * 0.8, dw = 2 + r() * 3; x.fillRect(cx + (r() - 0.5) * sz * 0.5, cy + sz * 0.3, dw, dl); x.beginPath(); x.arc(cx + (r() - 0.5) * 2, cy + sz * 0.3 + dl, dw, 0, 6.3); x.fill(); }
+      // 油漆往下流:越流越細、末端淚滴
+      if (S.drip && !S.smear && r() < 0.45) { x.globalAlpha = 0.85; dripPath(x, cx + (r() - 0.5) * sz * 0.5, cy + sz * 0.28, 2.5 + r() * 3, 12 + r() * px * 0.8, R, S.col); }
     });
   });
+  if (S.smear) {
+    const img = x.getImageData(0, 0, c.width, c.height), d = img.data, n = c.width * c.height, m = new Float32Array(n);
+    for (let i = 0; i < n; i++) m[i] = d[i * 4 + 3] / 255;
+    img.data.set(bloodWriting(m, c.width, c.height, seed, px));
+    x.putImageData(img, 0, 0);
+    return c;
+  }
   // 磨損
   x.globalCompositeOperation = 'destination-out';
   for (let i = 0; i < c.width * c.height / 220; i++) { x.globalAlpha = r() * (S.chalk ? 0.7 : 0.35); x.fillRect(r() * c.width, r() * c.height, 1 + r() * 3, 1 + r() * 2); }
@@ -125,7 +113,7 @@ function silhouetteCanvas(kind) {
 
 // 帶「每實例透明度」的標準材質(InstancedMesh 用)
 function instMat(map, o) {
-  const m = new THREE.MeshStandardMaterial({ map, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, ...o });
+  const m = new THREE.MeshStandardMaterial({ name: 'ghost-mark', map, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, ...o });
   m.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aAlpha;\nvarying float vAlpha;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvAlpha = aAlpha;');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vAlpha;').replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.a *= vAlpha;');
@@ -146,6 +134,56 @@ function instPool(geo, mat, n, name) {
 }
 const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _s = new THREE.Vector3(), _p = new THREE.Vector3();
 
+// ---- 第三輪的痕跡:各自一個小畫家(上面那些貼圖不動;src/horror/haunts.js 用) ----
+// 一個人的影子(貼地):腳在畫布上緣、頭在下緣;手上拿著病歷板
+export function shadowTexture() {
+  const c = document.createElement('canvas'); c.width = 64; c.height = 192;
+  const g = c.getContext('2d');
+  g.filter = 'blur(5px)'; g.fillStyle = '#000';
+  for (const [x, y, rx, ry, r] of [[26, 42, 7, 32, 0.05], [38, 42, 7, 32, -0.05], [32, 100, 16, 32, 0], [32, 156, 11, 14, 0], [44, 118, 8, 20, 0.5]]) { g.beginPath(); g.ellipse(x, y, rx, ry, r, 0, 6.29); g.fill(); }
+  return c;
+}
+// 窗玻璃外的一口霧氣;text 是手指在霧上抹出來的字(mirror:從外面寫的,裡面看是反的)
+export function drawFog(c, text = '', mirror = true) {
+  const g = c.getContext('2d'), W = c.width, H = c.height;
+  g.clearRect(0, 0, W, H);
+  const gr = g.createRadialGradient(W / 2, H / 2, 6, W / 2, H / 2, W * 0.48);
+  gr.addColorStop(0, 'rgba(255,255,255,0.85)'); gr.addColorStop(0.55, 'rgba(255,255,255,0.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  for (let i = 0; i < 260; i++) { g.fillStyle = 'rgba(255,255,255,' + (Math.random() * 0.25).toFixed(2) + ')'; const r = Math.random() * 2.2, a = Math.random() * 6.28, d = Math.random() * W * 0.42; g.fillRect(W / 2 + Math.cos(a) * d, H / 2 + Math.sin(a) * d * 0.8, r, r); }
+  if (text) {
+    g.save(); g.globalCompositeOperation = 'destination-out';
+    g.translate(W / 2, H / 2); if (mirror) g.scale(-1, 1);
+    const lines = String(text).split('\n'), fs = Math.min(64, (W * 0.82) / Math.max(...lines.map((l) => [...l].length)));
+    g.font = '700 ' + fs + 'px "Noto Sans TC", "Microsoft JhengHei", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.filter = 'blur(1.2px)'; g.lineWidth = fs * 0.12; g.strokeStyle = '#000'; g.fillStyle = '#000';
+    lines.forEach((l, i) => { const y = (i - (lines.length - 1) / 2) * fs * 1.15; g.strokeText(l, 0, y); g.fillText(l, 0, y); });
+    g.restore();
+  }
+  return c;
+}
+// 金水商行的小皮球(等距柱狀貼圖)
+export function ballTexture() {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = '#b8352b'; g.fillRect(0, 0, 256, 128);
+  g.fillStyle = '#e9e2cf'; g.fillRect(0, 50, 256, 28);
+  g.fillStyle = '#b8352b'; g.font = '700 20px "Noto Sans TC", "Microsoft JhengHei", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('金水商行', 64, 64); g.fillText('金水商行', 192, 64);
+  g.fillStyle = 'rgba(0,0,0,0.18)'; for (let i = 0; i < 40; i++) g.fillRect(Math.random() * 256, Math.random() * 128, 2, 1);
+  return c;
+}
+// 地上的紅包(鬼月禁忌:紅包不要撿)
+export function envelopeTexture() {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 64;
+  const g = c.getContext('2d');
+  g.fillStyle = '#a8191c'; g.fillRect(0, 0, 128, 64);
+  g.strokeStyle = '#d9a640'; g.lineWidth = 3; g.strokeRect(5, 5, 118, 54);
+  g.fillStyle = '#d9a640'; g.beginPath(); g.arc(64, 32, 11, 0, 6.29); g.fill();
+  g.fillStyle = 'rgba(0,0,0,0.25)'; for (let i = 0; i < 30; i++) g.fillRect(Math.random() * 128, Math.random() * 64, 3, 1);
+  return c;
+}
+
 export class Marks {
   constructor(h, scene) {
     this.h = h; this.scene = scene;
@@ -158,6 +196,13 @@ export class Marks {
   }
   // 預編譯用:每種材質一個代表(可見、在畫面外)
   warmList() { return [this.feet.im, this.hands.im, this.strip, this.faceM, this.curtM, this.tv, this.lift]; }
+  // 字跡材質的代表(參數與 write() 建的完全一樣 → 同一個 shader)
+  warmWriting() {
+    const c = document.createElement('canvas'); c.width = c.height = 4;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshStandardMaterial({ name: 'ghost-writing', map: tex(c), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, roughness: 0.85 }));
+    m.frustumCulled = false;
+    return m;
+  }
   _feet() {
     if (!this.feet) {
       const g = new THREE.PlaneGeometry(0.13, 0.26); g.rotateX(-Math.PI / 2);
@@ -197,7 +242,7 @@ export class Marks {
     const t = tex(c);
     const hgt = (w.size ?? 0.2) * (c.height / 96) * 0.82, wid = hgt * c.width / c.height;
     if (!m) {
-      m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshStandardMaterial({ transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, roughness: 0.85 }));
+      m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshStandardMaterial({ name: 'ghost-writing', transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, roughness: 0.85 }));
       m.castShadow = false; m.receiveShadow = false; m.raycast = () => {};
       m.name = 'ghost-writing';
       this.root.add(m);
@@ -221,7 +266,7 @@ export class Marks {
         uniforms: { uK: { value: 0 }, uS: { value: -1 } },
         vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
         fragmentShader: 'uniform float uK; uniform float uS; varying vec2 vUv; void main(){ float edge = smoothstep(0.0,0.08,vUv.x)*smoothstep(1.0,0.92,vUv.x); float fall = pow(1.0-vUv.y, 2.2); float sh = 1.0 - smoothstep(0.16, 0.04, abs(vUv.x - uS)) * 0.95; gl_FragColor = vec4(vec3(1.0,0.78,0.5) * fall * edge * sh * uK, 1.0); }',
-        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, name: 'ghost-strip',
       }));
       this.strip.raycast = () => {}; this.strip.frustumCulled = false;
       this.root.add(this.strip);
@@ -247,8 +292,8 @@ export class Marks {
     if (!this[key]) {
       const c = silhouetteCanvas(kind);
       const mat = kind === 'face'
-        ? new THREE.MeshBasicMaterial({ map: tex(c), transparent: true, depthWrite: false, opacity: 0, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6, fog: true })
-        : new THREE.MeshBasicMaterial({ map: tex(c), transparent: true, depthWrite: false, opacity: 0, blending: THREE.AdditiveBlending, fog: true });
+        ? new THREE.MeshBasicMaterial({ name: 'ghost-face', map: tex(c), transparent: true, depthWrite: false, opacity: 0, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6, fog: true })
+        : new THREE.MeshBasicMaterial({ name: 'ghost-curtain', map: tex(c), transparent: true, depthWrite: false, opacity: 0, blending: THREE.AdditiveBlending, fog: true });
       this[key] = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
       this[key].raycast = () => {}; this[key].frustumCulled = false;
       this.root.add(this[key]);
@@ -271,7 +316,7 @@ export class Marks {
     if (!this.tv) {
       const c = document.createElement('canvas'); c.width = 96; c.height = 72;
       const t = tex(c); t.colorSpace = THREE.SRGBColorSpace;
-      this.tv = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: t, toneMapped: false, fog: true }));
+      this.tv = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ name: 'ghost-tv', map: t, toneMapped: false, fog: true }));
       this.tv.userData.c = c; this.tv.raycast = () => {};
       this.root.add(this.tv);
     }
@@ -288,7 +333,7 @@ export class Marks {
   // 電梯門縫透出的光(門中心、朝外法線)
   _lift() {
     if (!this.lift) {
-      this.lift = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xfff0d8, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: true }));
+      this.lift = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ name: 'ghost-lift', color: 0xfff0d8, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: true }));
       this.lift.raycast = () => {};
       this.root.add(this.lift);
     }

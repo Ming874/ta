@@ -5,6 +5,7 @@ import { radio, carradio, tv, piano, musicbox, mobile, cassette, typewriter } fr
 import { lightswitch, vending, elevator, lift, alarm, alarmBonus, pa, sink, nursecall, keypad, terminal, fusebox } from './kinds/machines.js';
 import { locker, drawer, medcab, morgue, pickup, note, candle, fountain, snack } from './kinds/storage.js';
 import { noteById } from './notes.js';
+import { memorial, cctv } from './kinds/memorial.js'; // [story] 2F 護理站阿嬤的遺照與筊杯、3F 監控室的錄影機(推理本 / 擲筊)
 import { Model, T, canvasTex, texMat, FONT } from './kit.js';
 
 // 擺放:全部依 world.layout 的區域(theme/zone id)用每張地圖固定的種子挑位置,新地圖只要有區域就能用。
@@ -34,8 +35,9 @@ const FP = {
   'note:whiteboard': { mount: 'wall', w: 1.3, d: 0.08, y0: 0.95, y1: 1.9 }, 'note:poster': { mount: 'wall', w: 0.46, d: 0.02, y0: 1.25, y1: 1.85 },
   'note:drawing': { mount: 'wall', w: 0.42, d: 0.02, y0: 0.82, y1: 1.18 }, 'note:clipboard': { mount: 'wall', w: 0.26, d: 0.03, y0: 1.22, y1: 1.58 },
   note: { mount: 'surface', w: 0.42, d: 0.42, y0: 0, y1: 0.5 },
+  memorial: { mount: 'surface', w: 0.6, d: 0.4, y0: 0.7, y1: 1.3 }, cctv: { mount: 'surface', w: 0.5, d: 0.4, y0: 0.7, y1: 1.2 },
 };
-const KINDS = { phone: phones, radio, carradio, tv, piano, musicbox, mobile, cassette, typewriter, switch: lightswitch, vending, lift, alarm, pa, sink, nursecall, keypad, terminal, fusebox, locker, drawer, medcab, morgue, pickup, note, logbook: note, candle, snack };
+const KINDS = { phone: phones, radio, carradio, tv, piano, musicbox, mobile, cassette, typewriter, switch: lightswitch, vending, lift, alarm, pa, sink, nursecall, keypad, terminal, fusebox, locker, drawer, medcab, morgue, pickup, note, logbook: note, candle, snack, memorial, cctv };
 // 一般補充:每個主題 [種類, 機率, 參數]
 const THEME = {
   ward: [['switch', 0.85], ['nursecall', 0.75], ['drawer', 0.55], ['sink', 0.25], ['medcab', 0.2], ['tv', 0.12]],
@@ -167,6 +169,23 @@ export function placeAll(game, ix, kit, pack, seed = 2077) {
     }
     return null;
   }
+  // 沒有合適的牆:落地的東西改放在空地中央(四周都是一般格、碰撞盒周圍留 0.6m)
+  function freeSpot(z, fp) {
+    const li = z.levelIndex, y = L.levels[li].y;
+    for (const [c, r] of shuffle(cells(z))) {
+      if (used.has(`${li},${c},${r},*`)) continue;
+      let open = true;
+      for (let dr = -1; dr <= 1 && open; dr++) for (let dc = -1; dc <= 1; dc++) if (!plain(li, c + dc, r + dr) || zoneOf(li, c + dc, r + dr) !== z) { open = false; break; }
+      if (!open) continue;
+      const side = Object.keys(SIDES)[(R() * 4) | 0], [dc, dr, yaw] = SIDES[side];
+      const cx = (c + 0.5) * 2, cz = (r + 0.5) * 2, half = Math.max(fp.w, fp.d) / 2 + 0.6;
+      if (hitBox(cx - half, cz - half, cx + half, cz + half, y + 0.05, y + Math.max(1.2, fp.y1))) continue;
+      const s = { li, c, r, side, x: cx + dc * fp.d / 2, y, z: cz + dr * fp.d / 2, yaw, nx: -dc, nz: -dr, zone: z, along: 0, free: true };
+      used.add(`${li},${c},${r},*`); for (const k of Object.keys(SIDES)) used.add(`${li},${c},${r},${k}`);
+      return s;
+    }
+    return null;
+  }
   // 台面:先找同區(或指定 near)的護理站櫃台空位
   function hostSpot(z, o) {
     for (const h of api.hosts) {
@@ -190,6 +209,7 @@ export function placeAll(game, ix, kit, pack, seed = 2077) {
     if (fp.mount === 'surface' || (kind === 'note' && !FP['note:' + spec.style]) || spec.kind === 'logbook' || kind === 'answering') s = hostSpot(z, spec);
     if (!s) s = findSpot(z, fp.mount === 'surface' ? { ...fp, mount: 'wall', y0: 0.7 } : fp, spec);
     if (!s && fp.mount === 'door') s = findSpot(z, { ...fp, mount: 'wall' }, spec);
+    if (!s && fp.mount === 'floor' && !fp.wide) s = freeSpot(z, fp);
     if (!s) { stats.failed.push(`${spec.id || spec.kind}@${spec.zone}`); return null; }
     const K = kind === 'answering' ? ANSWERING : KINDS[kind];
     if (!K) { stats.failed.push(`${spec.kind}:kind`); return null; }
@@ -242,14 +262,14 @@ function answering() {
       st.blink = ix.tick(() => { if (st.played) return false; led.color(li, (api.game.time * 1.6) % 1 < 0.5 ? 0xff2010 : 0x220404); return true; });
       return ix.register(v, {
         id: spec.id || 'voicemail', kind: 'answering', name: '答錄機', reach: 1.9, radius: 0.14, scope: 'map', cooldown: 1,
-        prompt: () => (st.talk ? '停止播放' : st.played ? '再聽一次留言' : '播放留言(紅燈在閃)'),
+        prompt: () => (st.talk ? '停止播放' : st.played ? '再聽一次留言' : '播放留言（紅燈在閃）'),
         onUse: () => {
           if (st.talk) { st.talk.stop(); st.talk = null; ixs.tapeLine(false); return; }
           st.played = true; led.color(li, 0x220404);
           ixs.switchClick(v, true);
           const l = api.lineById(spec.message) || api.lineList('PHONE.voicemail')[0];
           ixs.tapeLine(true);
-          api.say('', '(嗶——)', 1200);
+          api.say('', '（嗶——）', 1200);
           ix.after(1.2, () => { st.talk = l ? api.speak(l, { filter: 'phone', pos: v }) : null; ix.after((st.talk?.dur || 1) + 0.5, () => { ixs.tapeLine(false); st.talk = null; }); });
           ix.flags.set('h.ev.voicemail', true);
           ix.emit('voicemail', l);

@@ -1,97 +1,33 @@
 import * as THREE from 'three';
 import { surf } from './hospital/surfaces.js';
 import { sfx, _internal as AUDIO } from '../audio.js';
+import { assets } from '../sys/assets.js';
 import { ENV, WIND, LIGHT_MODS, GLOWS } from './props/outdoor/env.js';
+import { WET, OCC, makeWet, makeGlassWet } from './weather/wet.js';
+import { RainOcclusion } from './weather/occlusion.js';
+import { RL, streakMesh, curtainMesh, splashMesh, dripMesh, setDrips, updateRainLights } from './weather/rain.js';
+import { lensPass } from './weather/lens.js';
+import { materials as zombieMaterials } from '../zombies/materials.js';
+
+export { WET, OCC, makeWet, makeGlassWet }; // 戶外道具從這裡 import makeWet
 
 // 天氣與夜空(戶外):
-//  - 雨:GPU 實例化雨絲(頂點著色器在鏡頭周圍的盒子內循環;依地圖「雨停高度」遮罩剔除屋頂下的雨滴)+ 地面濺水
-//  - 濕地:戶外地板材質注入濕潤(變暗、粗糙度下降)、隨機水窪(鏡面 + 雨滴漣漪)
+//  - 雨(src/map/weather/rain.js):GPU 實例化雨絲(近層 + 中層,依相對速度動態模糊、受光源池/手電筒/閃電照亮,暗處幾乎看不見)、
+//    遠景雨幕、濺水、屋簷滴水;遮蔽用俯視烘焙的遮雨高度圖(weather/occlusion.js:屋頂、雨棚、車頂、室內都沒有雨)
+//  - 濕地(weather/wet.js):淋得到雨的表面才濕(變暗、粗糙度下降、立面流痕)、水窪(鏡面 + 漣漪 + 路燈倒影光柱)、
+//    濕度隨雨量累積/變乾、窗玻璃上的水珠與水痕
+//  - 鏡頭雨滴(weather/lens.js):露天抬頭時打在鏡頭上的水滴(高/極致畫質)
 //  - 低霧:貼地的數層霧片(依戶外遮罩淡出,不進室內)
-//  - 閃電:雲層閃光 + 偶爾的閃電形狀 + 月光平行光短暫增亮;有 sfx.thunder 時延遲播放雷聲
+//  - 閃電:雲層閃光 + 偶爾的閃電形狀 + 月光平行光短暫增亮 + sfx.thunder(距離公尺,音效模組依聲速延遲)
+//  - 雨聲:sfx.setRain(雨量, 室外程度)(遮雨圖算出頭頂有沒有遮蔽、附近多遠有露天、中間有沒有牆;低矮雨棚下雨聲較響)
 //  - 夜空:快速飄動的暴風雲(月光鑲邊)、地平線外的城市剪影(零星亮窗、閃爍航空障礙燈、遠方火光)
 // 依 game.quality 調整數量;每幀不配置新物件。game.js 只加兩行(import + new Weather(this)),
-// 每幀更新掛在 hospital.update 之後(環境光、霧色由 atmosphere 先算好,這裡再疊加閃電)。
+// 每幀更新掛在 hospital.update 之後(環境光、霧色由 atmosphere 先算好,這裡再疊加閃電);
+// 鏡頭雨滴 pass 掛在 hospital.attachRenderer 之後插進 composer(預編譯前就在,不會第一次下雨才編譯)。
 
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
 const hash = (n) => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
 const noise1 = (x) => { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return (hash(i) * (1 - u) + hash(i + 1) * u) * 2 - 1; };
-
-// ======================================================================
-// 濕地材質(共用 uniform)
-// ======================================================================
-export const WET = { uWet: { value: 0.85 }, uRainT: { value: 0 }, uRain: { value: 0.8 }, uRipple: { value: 1 } };
-const WET_PARS = /* glsl */`
-uniform float uWet; uniform float uRainT; uniform float uRain; uniform float uRipple; uniform float uPuddle; uniform float uPudMin; uniform float uDarken; uniform float uGloss;
-varying vec3 vWetPos;
-float wHash( vec2 p ) { return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 ); }
-float wNoise( vec2 p ) { vec2 i = floor( p ), f = fract( p ); f = f * f * ( 3.0 - 2.0 * f );
-  return mix( mix( wHash( i ), wHash( i + vec2( 1.0, 0.0 ) ), f.x ), mix( wHash( i + vec2( 0.0, 1.0 ) ), wHash( i + vec2( 1.0, 1.0 ) ), f.x ), f.y ); }
-// 雨滴漣漪:兩層 0.4m 格子,每格一個隨機時間擴散的圓環 → 回傳高度場梯度(世界 xz)
-vec2 wRipple( vec2 p, float t ) {
-  vec2 g = vec2( 0.0 );
-  for ( int k = 0; k < 2; k ++ ) {
-    vec2 q = p * 2.6 + float( k ) * vec2( 17.3, 5.1 );
-    vec2 i = floor( q ), f = fract( q ) - 0.5;
-    float h = wHash( i + float( k ) * 7.13 );
-    float age = fract( t * ( 0.8 + 0.4 * h ) + h );
-    vec2 d = f - ( vec2( wHash( i + 3.3 ), wHash( i + 5.7 ) ) - 0.5 ) * 0.5;
-    float r = length( d ) + 1e-4;
-    float x = ( r - age * 0.42 ) * 34.0;
-    float env = ( 1.0 - age ) * ( 1.0 - age ) * exp( - x * x * 0.08 ) * step( r, 0.5 );
-    g += d / r * cos( x ) * env;
-  }
-  return g;
-}
-`;
-const WET_ROUGH = /* glsl */`
-	float wUp = smoothstep( 0.72, 0.95, ( vec4( normalize( vNormal ), 0.0 ) * viewMatrix ).y );
-	float wN = wNoise( vWetPos.xz * 0.21 ) * 0.62 + wNoise( vWetPos.xz * 0.83 + 3.1 ) * 0.28 + wNoise( vWetPos.xz * 3.7 ) * 0.1;
-	float wPud = max( smoothstep( 0.66 - 0.1 * uWet, 0.7 - 0.1 * uWet, wN ) * uPuddle, uPudMin ) * uWet * wUp;
-	float wDamp = uWet * ( 0.65 + 0.35 * wN );
-	diffuseColor.rgb *= 1.0 - uDarken * wDamp;
-	diffuseColor.rgb = mix( diffuseColor.rgb, diffuseColor.rgb * 0.3, wPud );
-	roughnessFactor = mix( roughnessFactor, roughnessFactor * ( 1.0 - uGloss ) + 0.06, wDamp );
-	roughnessFactor = mix( roughnessFactor, 0.035, wPud );
-`;
-const WET_NORMAL = /* glsl */`
-	if ( wPud > 0.01 ) {
-		vec2 wg = uRipple > 0.5 && uRain > 0.02 ? wRipple( vWetPos.xz, uRainT ) * 0.09 * uRain : vec2( 0.0 );
-		vec3 wFlat = normalize( ( viewMatrix * vec4( - wg.x, 1.0, - wg.y, 0.0 ) ).xyz );
-		normal = normalize( mix( normal, wFlat, wPud ) );
-	}
-`;
-const WET_VERT = /* glsl */`
-	{
-		vec4 wetP = vec4( transformed, 1.0 );
-		#ifdef USE_INSTANCING
-		wetP = instanceMatrix * wetP;
-		#endif
-		vWetPos = ( modelMatrix * wetP ).xyz;
-	}
-`;
-// 把濕潤效果注入 MeshStandardMaterial(可疊在其他 onBeforeCompile 之前:先改字串、再呼叫原本的 hook)
-// puddle:水窪量(0 = 沒有水窪,只變暗變亮);darken:濕了變暗程度;gloss:粗糙度下降程度
-export function makeWet(m, { puddle = 0, darken = 0.3, gloss = 0.55, full = false } = {}) {
-  if (!m || m.userData.wet) return m;
-  m.userData.wet = { uPuddle: { value: Math.min(1, puddle) }, uPudMin: { value: full ? 1 : 0 }, uDarken: { value: darken }, uGloss: { value: gloss } };
-  const prev = m.onBeforeCompile;
-  const hasPrev = prev && prev !== THREE.Material.prototype.onBeforeCompile;
-  m.onBeforeCompile = function (s, r) {
-    Object.assign(s.uniforms, WET, this.userData.wet);
-    s.vertexShader = s.vertexShader
-      .replace('void main() {', 'varying vec3 vWetPos;\nvoid main() {')
-      .replace('#include <project_vertex>', '#include <project_vertex>\n' + WET_VERT);
-    s.fragmentShader = s.fragmentShader
-      .replace('void main() {', WET_PARS + 'void main() {')
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n' + WET_ROUGH)
-      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + WET_NORMAL);
-    if (hasPrev) prev.call(this, s, r);
-  };
-  const key = hasPrev ? (m.customProgramCacheKey !== THREE.Material.prototype.customProgramCacheKey ? m.customProgramCacheKey() : prev.toString()) : '';
-  m.customProgramCacheKey = () => 'wet|' + key;
-  m.needsUpdate = true;
-  return m;
-}
 
 // ======================================================================
 // 地圖遮罩
@@ -161,124 +97,6 @@ function buildMasks(L) {
     return out;
   });
   return { rain, rainTex: rt, fogTex: ft, xf, near, W, H, gLi, gY, topY: top.y, roofCells };
-}
-
-// ======================================================================
-// 雨絲 / 濺水
-// ======================================================================
-const RAIN_MAX = 9000, SPLASH_MAX = 800;
-function rainMesh(masks) {
-  const g = new THREE.InstancedBufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0], 3));
-  g.setIndex([0, 1, 2, 0, 2, 3]);
-  const seed = new Float32Array(RAIN_MAX * 4);
-  for (let i = 0; i < seed.length; i++) seed[i] = Math.random();
-  g.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seed, 4));
-  g.instanceCount = 6000;
-  const m = new THREE.ShaderMaterial({
-    uniforms: {
-      uTime: { value: 0 }, uCam: { value: new THREE.Vector3() }, uBox: { value: new THREE.Vector3(34, 18, 34) }, uBoxN: { value: new THREE.Vector3(11, 9, 11) },
-      uVel: { value: new THREE.Vector3(1.2, -12, 0.5) }, uRight: { value: new THREE.Vector3(1, 0, 0) }, uMask: { value: masks.rainTex }, uMaskXf: { value: masks.xf },
-      uLen: { value: 0.7 }, uWidth: { value: 0.011 }, uPx: { value: 0.0015 }, uCol: { value: new THREE.Color(0x8a96a8) }, uAlpha: { value: 0.26 }, uInt: { value: 1 },
-    },
-    vertexShader: /* glsl */`
-      attribute vec4 aSeed;
-      uniform float uTime; uniform vec3 uCam; uniform vec3 uBox; uniform vec3 uBoxN; uniform vec3 uVel; uniform vec3 uRight;
-      uniform sampler2D uMask; uniform vec4 uMaskXf; uniform float uLen; uniform float uWidth; uniform float uPx; uniform float uInt;
-      varying float vA; varying vec2 vUv;
-      void main() {
-        float nearL = step( aSeed.w, 0.3 );
-        vec3 B = mix( uBox, uBoxN, nearL );
-        float sp = 0.85 + 0.3 * fract( aSeed.w * 13.7 );
-        vec3 base = uCam - B * 0.5;
-        vec3 rel = mod( aSeed.xyz * B + uVel * ( uTime * sp ) - base, B ) / B; // 盒內 0..1(鏡頭移動時雨滴固定在世界座標)
-        vec3 p = base + rel * B;
-        vec3 vel = normalize( uVel );
-        // 雨絲寬度方向:鏡頭右向量去掉沿雨絲的分量(避免用 uCam - p,某些 D3D 編譯會把它算壞)
-        vec3 side = normalize( uRight - vel * dot( uRight, vel ) );
-        float stopY = texture2D( uMask, p.xz * uMaskXf.xy + uMaskXf.zw ).r;
-        vec4 mvp = viewMatrix * vec4( p, 1.0 );
-        float dist = max( - mvp.z, 0.001 );
-        float w = max( uWidth, uPx * dist * 1.6 );
-        float len = uLen * sp * ( 1.0 + nearL * 0.3 );
-        vec3 wp = p - vel * ( position.y * len ) + side * ( position.x * w );
-        float edge = ( 1.0 - smoothstep( 0.4, 0.5, max( abs( rel.x - 0.5 ), abs( rel.z - 0.5 ) ) ) ) * smoothstep( 0.0, 0.08, rel.y ) * ( 1.0 - smoothstep( 0.9, 1.0, rel.y ) );
-        vA = step( stopY, p.y ) * edge * smoothstep( 0.5, 1.8, dist ) * clamp( uWidth / w, 0.18, 1.0 ) * step( fract( aSeed.w * 7.31 ), uInt );
-        vUv = vec2( position.x + 0.5, position.y );
-        gl_Position = projectionMatrix * viewMatrix * vec4( wp, 1.0 );
-        if ( vA < 0.001 ) gl_Position = vec4( 0.0, 0.0, 2.0, 1.0 );
-      }`,
-    fragmentShader: /* glsl */`
-      uniform vec3 uCol; uniform float uAlpha;
-      varying float vA; varying vec2 vUv;
-      void main() {
-        float a = vA * ( 1.0 - abs( vUv.x * 2.0 - 1.0 ) ) * smoothstep( 0.0, 0.3, vUv.y ) * ( 1.0 - smoothstep( 0.75, 1.0, vUv.y ) ) * uAlpha;
-        if ( a < 0.002 ) discard;
-        gl_FragColor = vec4( uCol, a );
-      }`,
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
-  });
-  const mesh = new THREE.Mesh(g, m);
-  mesh.frustumCulled = false;
-  mesh.renderOrder = 20;
-  mesh.name = 'rain';
-  return mesh;
-}
-function splashMesh(masks) {
-  const g = new THREE.InstancedBufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0], 3));
-  g.setIndex([0, 1, 2, 0, 2, 3]);
-  const seed = new Float32Array(SPLASH_MAX * 4);
-  for (let i = 0; i < seed.length; i++) seed[i] = Math.random();
-  g.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seed, 4));
-  g.instanceCount = 400;
-  const m = new THREE.ShaderMaterial({
-    uniforms: { uTime: { value: 0 }, uCam: { value: new THREE.Vector3() }, uBox: { value: new THREE.Vector2(14, 14) }, uMask: { value: masks.rainTex }, uMaskXf: { value: masks.xf }, uInt: { value: 1 }, uCol: { value: new THREE.Color(0x9aa6b6) } },
-    vertexShader: /* glsl */`
-      attribute vec4 aSeed;
-      uniform float uTime; uniform vec3 uCam; uniform vec2 uBox; uniform sampler2D uMask; uniform vec4 uMaskXf; uniform float uInt;
-      varying vec2 vUv; varying float vA; varying float vAge;
-      float h1( float n ) { return fract( sin( n ) * 43758.5453 ); }
-      void main() {
-        float tt = uTime / ( 0.3 + 0.2 * aSeed.w ) + aSeed.z;
-        float cyc = floor( tt ), age = fract( tt );
-        vec2 p = ( aSeed.xy + vec2( h1( cyc * 12.9898 + aSeed.x * 78.2 ), h1( cyc * 39.35 + aSeed.y * 11.1 ) ) ) * uBox;
-        vec2 base = uCam.xz - uBox * 0.5;
-        p = base + mod( p - base, uBox );
-        float y = texture2D( uMask, p * uMaskXf.xy + uMaskXf.zw ).r;
-        float vis = step( abs( y - uCam.y + 1.2 ), 4.0 ) * step( h1( cyc * 3.7 + aSeed.w * 91.0 ), uInt );
-        float s = ( 0.07 + 0.09 * aSeed.w ) * ( 0.5 + age );
-        vec4 mv = viewMatrix * vec4( p.x, y + s * 0.45, p.y, 1.0 );
-        mv.xy += position.xy * s;
-        float d = length( mv.xyz );
-        vA = vis * ( 1.0 - smoothstep( 6.0, 9.0, d ) ) * smoothstep( 0.6, 1.5, d );
-        vUv = position.xy + 0.5; vAge = age;
-        gl_Position = projectionMatrix * mv;
-        if ( vA < 0.001 ) gl_Position = vec4( 0.0, 0.0, 2.0, 1.0 );
-      }`,
-    fragmentShader: /* glsl */`
-      uniform vec3 uCol;
-      varying vec2 vUv; varying float vA; varying float vAge;
-      void main() {
-        vec2 q = vUv - vec2( 0.5, 0.12 );
-        float ring = exp( - pow( ( length( q * vec2( 1.0, 3.2 ) ) - vAge * 0.38 ) * 16.0, 2.0 ) ) * step( q.y, 0.12 );
-        float crown = 0.0;
-        for ( int i = 0; i < 5; i ++ ) {
-          float a = ( float( i ) - 2.0 ) * 0.42;
-          vec2 dp = vec2( sin( a ) * 0.32 * vAge, 0.18 + 0.55 * vAge * cos( a ) - 0.6 * vAge * vAge );
-          crown += smoothstep( 0.05, 0.0, length( q - dp ) );
-        }
-        float a = ( ring * 0.7 + crown ) * vA * ( 1.0 - vAge ) * 0.55;
-        if ( a < 0.003 ) discard;
-        gl_FragColor = vec4( uCol, a );
-      }`,
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
-  });
-  const mesh = new THREE.Mesh(g, m);
-  mesh.frustumCulled = false;
-  mesh.renderOrder = 21;
-  mesh.name = 'rain-splash';
-  return mesh;
 }
 
 // ======================================================================
@@ -461,7 +279,7 @@ function fogSheet(masks, y, channel, i) {
 export const WEATHER_DEFAULT = {
   rain: 0.78, // 基本雨量 0..1(0 = 不下雨)
   rainVar: 0.28, // 雨量隨時間起伏
-  wet: 0.85, // 地面濕度(雨小時慢慢降到 wet × 0.6)
+  wet: 0.85, // 地面濕度上限(依雨量累積、停雨後慢慢變乾)
   wind: 0.6,
   fog: 1, // 低霧強度倍率(0 = 關)
   fogH: [0.18, 0.55, 0.95], // 地面層霧片高度(公尺,相對地面層)
@@ -471,7 +289,13 @@ export const WEATHER_DEFAULT = {
   lightning: [14, 40], // 閃電間隔秒數(null = 不打雷)
 };
 const QLEVEL = { low: 0, medium: 1, high: 2, ultra: 3 };
-const RAIN_N = [1800, 3600, 6000, 9000], SPLASH_N = [0, 220, 420, 760], SHEETS_N = [0, 2, 3, 3];
+// 各畫質:雨絲數、近層比例、遠景雨幕層數、濺水數、滴水點數、漣漪層數、燈光倒影、鏡頭雨滴、低霧片數
+const Q = {
+  streaks: [2500, 6000, 11000, 16000], nearF: [0.25, 0.3, 0.32, 0.32], curtain: [0, 1, 2, 2],
+  splash: [0, 300, 600, 1000], drips: [0, 180, 380, 650], ripple: [0, 1, 2, 3], refl: [0, 1, 1, 1], lens: [0, 0, 1, 1], sheets: [0, 2, 3, 3],
+};
+const DRIFT_WRAP = 60; // 雨絲盒(12m / 30m)的公倍數:風的累積位移在這裡歸零不會跳
+const _f = new THREE.Vector3();
 export class Weather {
   constructor(game, cfg = null) {
     this.game = game;
@@ -486,18 +310,24 @@ export class Weather {
     this.root.name = 'weather';
     scene.add(this.root);
     const masks = (this.masks = buildMasks(L));
-    this.rain = rainMesh(masks);
-    this.splash = splashMesh(masks);
+    this.occ = new RainOcclusion(game, L, masks);
+    this.rain = streakMesh();
+    this.curtain = curtainMesh();
+    this.splash = splashMesh();
+    this.drips = dripMesh();
     this.clouds = cloudMesh();
     this.skyline = skylineMesh();
     this.bolt = boltMesh();
     const fh = this.cfg.fogH, sheetA = [0.16, 0.12, 0.08];
     this.sheets = [...fh.map((h, i) => fogSheet(masks, masks.gY + h, 'g', i)), fogSheet(masks, masks.topY + 0.3, 'b', 9)];
     this.sheets.forEach((sh, i) => (sh.userData.a = i < fh.length ? sheetA[Math.min(i, 2)] : 0.1));
-    this.root.add(this.rain, this.splash, this.clouds, this.skyline, this.bolt, ...this.sheets);
-    // 戶外地板變濕(結構材質:先注入再交給原本的 hook)
+    this.root.add(this.rain, this.curtain, this.splash, this.drips, this.clouds, this.skyline, this.bolt, ...this.sheets);
+    // 戶外地板變濕(結構材質:先注入再交給原本的 hook);窗玻璃的水珠/水痕
     const WETS = { asphalt: [0.85, 0.42, 0.6], paving: [0.6, 0.36, 0.55], gravel: [0.25, 0.3, 0.45], grass: [0.0, 0.18, 0.3], roof_gravel: [0.55, 0.3, 0.5], metal_grate: [0, 0.15, 0.5], soil: [0.8, 0.35, 0.45] };
     for (const [k, [pd, d, gl]] of Object.entries(WETS)) { try { makeWet(surf(k), { puddle: pd, darken: d, gloss: gl }); } catch { /* 沒有這個材質 */ } }
+    try { makeGlassWet(surf('glass')); } catch { /* 沒有玻璃 */ }
+    // 殭屍淋到雨時皮膚/衣服/頭髮變濕亮(同一套逐像素淋雨判定:室內、屋簷下的不會濕;開機預編譯前就注入,不會遊戲中途重編)
+    try { const ZM = zombieMaterials(); makeWet(ZM.skin, { darken: 0.08, gloss: 0.6 }); makeWet(ZM.cloth, { darken: 0.3, gloss: 0.42 }); makeWet(ZM.hair, { darken: 0.25, gloss: 0.5 }); } catch (e) { console.warn('[weather] 殭屍濕潤材質失敗', e); }
     // 燈具調整(閃爍路燈、跟著亮度的燈罩)
     this.mods = [];
     const fx = game.hospital?.lights?.fixtures || [];
@@ -517,12 +347,21 @@ export class Weather {
     this.moonCol = this.atmo ? this.atmo.moon.color.clone() : new THREE.Color();
     this.flashCol = new THREE.Color(0xc8d8ff);
     this.nextStrike = 6 + Math.random() * 10;
-    this.strikeT = -99; this.strikeK = 1; this.thunderAt = -1; this.thunderPow = 1;
+    this.strikeT = -99; this.strikeK = 1; this.thunderAt = -1; this.thunderDist = 1500;
     this.flash = 0;
     this.rainK = this.cfg.rain;
+    this.wet = this.cfg.rain > 0 ? this.cfg.wet : 0; // 開場時已經下了好一陣子
+    this.pud = this.wet;
     this.zoneK = { rain: 1, fog: 1 };
+    this.drift = new THREE.Vector2();
+    this.camPrev = new THREE.Vector3(); this.camV = new THREE.Vector3(); this.camInit = false;
+    this.lensAmt = 0;
+    this.audioT = 0; this.audioOut = 0; this.drum = 0;
     this.q = -1;
     this.t = 0;
+    // 遮雨高度圖:先烘一次(之後下載的模型進場景時節流重烘);完成後重新取屋簷滴水點
+    this.occ.onBake = () => this.placeDrips();
+    try { this.occ.bake([this.root]); this.occ.lastBake = 0; } catch (e) { console.warn('[weather] 遮雨圖烘焙失敗', e); }
     this.applyConfig();
     // 每幀更新:接在 hospital.update 之後(atmosphere 已先設好霧色/環境光)
     const H = (this.H = game.hospital);
@@ -531,7 +370,27 @@ export class Weather {
       this.hook = (time, dt, player) => { base.call(H, time, dt, player); this.update(time, dt, player); };
       H.update = this.hook;
     }
+    // 後處理建好時(post.js 會呼叫 hospital.attachRenderer)插入鏡頭雨滴 pass
+    if (H && typeof H.attachRenderer === 'function') {
+      const baseA = (this.baseAttach = H.attachRenderer);
+      this.attachHook = (r, g) => { const res = baseA.call(H, r, g); this.attachPost(g || game); return res; };
+      H.attachRenderer = this.attachHook;
+    } else if (game.composer) this.attachPost(game);
   }
+  attachPost(game) {
+    const c = game.composer;
+    if (!c || this.lens) return;
+    try {
+      this.lens = lensPass();
+      let i = c.passes.indexOf(game.bloom);
+      if (i < 0) i = c.passes.indexOf(game.post);
+      if (i < 0) i = Math.max(0, c.passes.length - 1);
+      c.insertPass(this.lens, i);
+      this.lens.enabled = true; // 開著讓 boot 的 precompilePasses 編好;第一次 update 再依狀態關掉
+    } catch (e) { console.warn('[weather] 鏡頭雨滴 pass 失敗', e); this.lens = null; }
+  }
+  // 遮雨圖讀回後重新找屋簷滴水點(分幀掃描,見 update)
+  placeDrips() { this.occ.edgesStart(800, 7); }
 
   // 執行期改設定(換地圖、劇情雨變大…):只覆蓋給的欄位
   setConfig(cfg) { Object.assign(this.cfg, cfg || {}); if (this.ok) this.applyConfig(); }
@@ -552,11 +411,19 @@ export class Weather {
     this.q = lv;
     ENV.q = lv;
     const rainy = this.cfg.rain > 0;
-    this.rain.geometry.instanceCount = rainy ? RAIN_N[lv] : 0;
-    this.splash.geometry.instanceCount = rainy ? SPLASH_N[lv] : 0;
-    const ns = fogQ === 'low' || !this.cfg.fog ? 0 : SHEETS_N[lv], nG = this.cfg.fogH.length;
+    this.rain.geometry.instanceCount = rainy ? Q.streaks[lv] : 0;
+    this.rain.material.uniforms.uNearF.value = Q.nearF[lv];
+    this.splash.geometry.instanceCount = rainy ? Q.splash[lv] : 0;
+    this.drips.geometry.instanceCount = rainy ? Math.min(Q.drips[lv], this.drips.userData.n || 0) : 0;
+    const cg = this.curtain.geometry, per = cg.userData.perLayer, nc = rainy ? Q.curtain[lv] : 0;
+    cg.setDrawRange(nc >= 2 ? 0 : per, nc >= 2 ? per * 2 : nc === 1 ? per : 0);
+    this.curtain.userData.on = nc > 0;
+    this.lensOn = !!Q.lens[lv];
+    const ns = fogQ === 'low' || !this.cfg.fog ? 0 : Q.sheets[lv], nG = this.cfg.fogH.length;
     this.sheets.forEach((s, i) => { s.userData.on = i < nG ? i < Math.min(nG, ns) : this.cfg.roofFog && ns >= 2 && this.masks.roofCells > 8; });
-    WET.uRipple.value = lv >= 1 ? 1 : 0;
+    WET.uRipple.value = Q.ripple[lv];
+    WET.uWRefl.value = Q.refl[lv];
+    WET.uExpT.value = lv >= 1 ? 4 : 1;
   }
 
   update(time, dt, player) {
@@ -576,42 +443,89 @@ export class Weather {
     const zw = this.H?.zone?.weather, zk = Math.min(1, dt * 1.5);
     this.zoneK.rain += ((zw?.rain ?? 1) - this.zoneK.rain) * zk;
     this.zoneK.fog += ((zw?.fog ?? 1) - this.zoneK.fog) * zk;
-    // 雨量:緩慢變化(毛毛雨 ↔ 大雨),地面濕度跟著
+    // 雨量:緩慢變化(毛毛雨 ↔ 大雨)
     const base = cfg.rain;
     const target = base > 0 ? clamp(base + cfg.rainVar * noise1(t * 0.011 + 1.3) + cfg.rainVar * 0.5 * Math.max(0, noise1(t * 0.037)), 0.15, 1) : 0;
     this.rainK += (target - this.rainK) * Math.min(1, dt * 0.2);
     const rk = this.rainK * this.zoneK.rain;
     ENV.rain = rk;
-    ENV.wet = WET.uWet.value = clamp(cfg.wet * (0.6 + 0.4 * Math.min(1, this.rainK / Math.max(0.05, base || 1))), 0, 1);
+    // 濕度:下雨時累積(雨越大越快),停雨後慢慢變乾;水窪水位跟得更慢
+    const wetT = cfg.wet * clamp(rk * 1.8, 0, 1);
+    this.wet += wetT > this.wet ? (wetT - this.wet) * Math.min(1, dt * (0.015 + 0.08 * rk)) : (wetT - this.wet) * Math.min(1, dt * 0.006);
+    this.pud += (this.wet - this.pud) * Math.min(1, dt * (this.wet > this.pud ? 0.02 : 0.004));
+    ENV.wet = WET.uWet.value = clamp(this.wet, 0, 1);
+    WET.uPudLv.value = clamp(this.pud, 0, 1);
     WET.uRain.value = rk;
     WET.uRainT.value = t % 1000;
     const out = this.atmo ? this.atmo.current.out : 1;
     ENV.out = out;
+    // ---- 遮雨高度圖:下載的模型進場景後重烘;屋簷滴水點分幀掃描 ----
+    this.occ.maybeRebake(t, assets, [this.root]);
+    if (this.occ.edgeJob) { const list = this.occ.edgesStep(1.5); if (list) { setDrips(this.drips, list); this.applyQuality(); } }
     // ---- 玩家附近有沒有露天 ----
     const L = this.L;
     const li = Math.max(0, L.levelOfY(p.y + 0.3));
     const c = Math.floor(p.x / L.CELL), r = Math.floor(p.z / L.CELL);
     const nearOpen = c < 0 || r < 0 || c >= L.W || r >= L.H || this.masks.near[li][r * L.W + c] === 1;
     const under = li < this.masks.gLi; // 地下室
+    // ---- 鏡頭速度(動態模糊用;瞬移時歸零)----
+    if (!this.camInit) { this.camPrev.copy(cam.position); this.camInit = true; }
+    _f.copy(cam.position).sub(this.camPrev).divideScalar(Math.max(dt, 1e-3));
+    if (_f.lengthSq() > 15 * 15) _f.set(0, 0, 0);
+    this.camV.lerp(_f, Math.min(1, dt * 12));
+    this.camPrev.copy(cam.position);
     // ---- 雨 ----
+    const raining = nearOpen && rk > 0.01 && !under;
+    const windX = 0.5 + 1.5 * ENV.wind + gust * 2.2, windZ = 0.25 + 0.7 * gust;
+    this.drift.x = (this.drift.x + windX * dt) % DRIFT_WRAP;
+    this.drift.y = (this.drift.y + windZ * dt) % DRIFT_WRAP;
+    const fogD = g.scene.fog ? g.scene.fog.density : 0.03;
+    RL.uCam.value.copy(cam.position);
+    RL.uTime.value = t % 2000;
+    RL.uFogD.value = fogD;
+    if (rk > 0.01 && !under) updateRainLights(g, this.occ, this.flash, this.moonBase, this.masks.gY); // 濕地倒影也用(室內看得到窗外)
+    cam.getWorldDirection(_f);
+    _f.y = 0;
+    if (_f.lengthSq() < 1e-6) _f.set(0, 0, -1);
+    _f.normalize();
     const ru = this.rain.material.uniforms;
-    this.rain.visible = nearOpen && rk > 0.01 && this.rain.geometry.instanceCount > 0;
-    this.splash.visible = this.rain.visible && this.splash.geometry.instanceCount > 0;
-    ru.uTime.value = t % 2000;
-    ru.uCam.value.copy(cam.position);
-    ru.uRight.value.setFromMatrixColumn(cam.matrixWorld, 0);
-    ru.uInt.value = Math.min(1, 0.3 + 0.75 * rk);
-    ru.uVel.value.set(0.6 + 1.6 * ENV.wind + gust * 1.5, -11.5, 0.3 + 0.6 * gust);
+    this.rain.visible = raining && this.rain.geometry.instanceCount > 0;
+    ru.uCtr.value.copy(cam.position).addScaledVector(_f, 10);
+    ru.uDrift.value.copy(this.drift);
+    ru.uWindV.value.set(windX, 0, windZ);
+    ru.uCamV.value.copy(this.camV);
+    ru.uInt.value = Math.min(1, 0.25 + 0.8 * rk);
     const h = g.renderer.domElement.height || 720;
     ru.uPx.value = 2 / (h * cam.projectionMatrix.elements[5]);
-    const fogC = g.scene.fog ? g.scene.fog.color : this.moonCol;
-    ru.uCol.value.setRGB(0.5 + fogC.r * 2.5, 0.55 + fogC.g * 2.5, 0.64 + fogC.b * 2.5).multiplyScalar(0.75 + this.flash * 3);
+    const cu2 = this.curtain.material.uniforms;
+    this.curtain.visible = raining && !!this.curtain.userData.on;
+    cu2.uWindV.value.set(windX, 0, windZ); cu2.uInt.value = rk;
     const su = this.splash.material.uniforms;
-    su.uTime.value = t % 2000; su.uCam.value.copy(cam.position); su.uInt.value = rk;
+    this.splash.visible = raining && this.splash.geometry.instanceCount > 0;
+    su.uCtr.value.copy(cam.position).addScaledVector(_f, 5); su.uInt.value = Math.min(1, 0.2 + rk);
+    const du = this.drips.material.uniforms;
+    this.drips.visible = raining && this.drips.geometry.instanceCount > 0;
+    du.uRain.value = rk; du.uPx.value = ru.uPx.value;
+    // ---- 鏡頭雨滴:露天 × 抬頭 → 累積;否則慢慢蒸發 ----
+    if (this.lens) {
+      const exposedCam = raining && this.occ.exposed(cam.position.x, cam.position.y, cam.position.z);
+      const pitch = player?.pitch ?? 0;
+      const hit = exposedCam && this.lensOn ? rk * Math.pow(clamp((pitch + 0.1) / 0.9, 0, 1), 1.5) : 0;
+      this.lensAmt = clamp(this.lensAmt + hit * dt * 0.2 - dt * (hit > 0 ? 0.015 : 0.05), 0, 0.32);
+      if (!this.lensOn) this.lensAmt = 0;
+      this.lens.enabled = this.lensAmt > 0.01;
+      const lu = this.lens.uniforms;
+      lu.uAmt.value = this.lensAmt; lu.uTime.value = t % 1000;
+      lu.uAspect.value = cam.aspect || 1.7;
+    }
+    // ---- 雨聲(10Hz)----
+    this.audioT -= dt;
+    if (this.audioT <= 0) { this.audioT = 0.1; this.updateAudio(p, li, rk, under); }
     // ---- 天空層跟著鏡頭 ----
     this.clouds.position.copy(cam.position);
     this.skyline.position.copy(cam.position);
     const cu = this.clouds.material.uniforms, ku = this.skyline.material.uniforms;
+    const fogC = g.scene.fog ? g.scene.fog.color : this.moonCol;
     cu.uTime.value = t % 5000; ku.uTime.value = t % 5000;
     cu.uFog.value.copy(fogC); ku.uFog.value.copy(fogC);
     cu.uWind.value.set(0.006 + 0.01 * ENV.wind, 0.003);
@@ -619,13 +533,13 @@ export class Weather {
     this.clouds.visible = !under;
     this.skyline.visible = !under && !!this.skyline.userData.on;
     // ---- 霧片 ----
-    const fd = g.scene.fog ? g.scene.fog.density : 0.03, nG = cfg.fogH.length;
+    const nG = cfg.fogH.length;
     for (let i = 0; i < this.sheets.length; i++) {
       const s = this.sheets[i];
       s.visible = !!s.userData.on && !under && (i < nG ? li <= this.masks.gLi + 1 || out > 0.5 : li >= L.levels.length - 2);
       if (!s.visible) continue;
       const u = s.material.uniforms;
-      u.uTime.value = t % 5000; u.uFog.value = fd; u.uFlash.value = this.flash * out;
+      u.uTime.value = t % 5000; u.uFog.value = fogD; u.uFlash.value = this.flash * out;
       u.uA.value = s.userData.a * cfg.fog * this.zoneK.fog;
       u.uCol.value.copy(fogC).multiplyScalar(1.6).addScalar(0.015);
     }
@@ -636,6 +550,51 @@ export class Weather {
     for (let i = 0; i < this.glows.length; i++) { const gl = this.glows[i]; gl.m.emissiveIntensity = gl.ei * gl.fn(t); }
     // 下雨時能見度稍差
     if (g.scene.fog && out > 0.01) g.scene.fog.density *= 1 + 0.18 * rk * out;
+  }
+
+  // 雨聲:頭頂露天 = 1;否則找附近(1.2~8m)淋得到雨的點,中間的牆擋住、窗戶削弱 → 室外程度;
+  // 低矮的遮蔽(雨棚、屋簷、車庫)下雨打在頂上更響(雨量略增)
+  updateAudio(p, li, rk, under) {
+    const occ = this.occ, L = this.L, eye = p.y + 1.6;
+    let o = 0, drum = 0;
+    if (!under && rk > 0.005) {
+      if (occ.exposed(p.x, eye, p.z)) o = 1;
+      else {
+        const roof = occ.heightAt(p.x, p.z) - eye;
+        for (let ri = 0; ri < 5 && o < 0.95; ri++) {
+          const rr = [1.2, 2.5, 4, 6, 8.5][ri];
+          for (let k = 0; k < 12; k++) {
+            const a = (k / 12) * Math.PI * 2 + ri * 0.3;
+            const x = p.x + Math.cos(a) * rr, z = p.z + Math.sin(a) * rr;
+            if (!occ.exposed(x, p.y + 0.3, z)) continue;
+            const tr = this.losTrans(li, p.x, p.z, x, z);
+            if (tr > 0) o = Math.max(o, tr * (1 - rr / 11));
+          }
+        }
+        o *= 0.9;
+        if (o > 0.3 && roof < 3.5) drum = clamp(1 - roof / 3.5, 0, 1) * clamp((o - 0.3) / 0.4, 0, 1);
+      }
+    }
+    this.audioOut += (o - this.audioOut) * 0.35;
+    this.drum = drum;
+    try { sfx.setRain(rk > 0.005 && !under ? Math.min(1, rk * (1 + 0.35 * drum)) : 0, this.audioOut); } catch { /* 音效失敗不影響遊戲 */ }
+  }
+  // 玩家層的格子視線:牆擋住、窗戶剩 35%、門 80%
+  losTrans(li, x0, z0, x1, z1) {
+    const L = this.L, d = Math.hypot(x1 - x0, z1 - z0), n = Math.max(1, Math.ceil(d / 0.5));
+    let tr = 1, pc = -999, pr = -999;
+    for (let i = 1; i <= n; i++) {
+      const x = x0 + ((x1 - x0) * i) / n, z = z0 + ((z1 - z0) * i) / n;
+      const c = Math.floor(x / L.CELL), r = Math.floor(z / L.CELL);
+      if (c === pc && r === pr) continue;
+      pc = c; pr = r;
+      if (c < 0 || r < 0 || c >= L.W || r >= L.H) continue;
+      const ch = L.charAt(li, c, r);
+      if (ch === '#' || ch === 'E') return 0;
+      if (ch === 'W') tr *= 0.35;
+      else if (ch === '+') tr *= 0.8;
+    }
+    return tr;
   }
 
   updateLightning(t, dt, out, under) {
@@ -666,13 +625,10 @@ export class Weather {
         this._flashOn = f > 0.001;
       }
     }
-    // 雷聲(距離越遠越晚、越小)
+    // 沒有 sfx.thunder 時的備援:環境音事件(延遲到聲音抵達才播)
     if (this.thunderAt > 0 && t >= this.thunderAt) {
       this.thunderAt = -1;
-      try {
-        if (typeof sfx.thunder === 'function') sfx.thunder(this.thunderPow);
-        else AUDIO?.AMB?.EVENTS?.thunder?.(); // 音效模組還沒有公開的 thunder:暫用環境音事件
-      } catch { /* 音效失敗不影響遊戲 */ }
+      try { AUDIO?.AMB?.EVENTS?.thunder?.(); } catch { /* 音效失敗不影響遊戲 */ }
     }
   }
   // 打一道閃電(劇情/除錯也可呼叫:game.weather.strike())
@@ -682,11 +638,15 @@ export class Weather {
     this.nextStrike = t + a0 + Math.random() * (a1 - a0);
     const a = Math.random() * Math.PI * 2;
     this.clouds.material.uniforms.uFlashDir.value.set(Math.cos(a), Math.sin(a));
-    this.strikeK = 0.55 + Math.random() * 0.45;
-    const dist = 0.3 + Math.random() * 0.7; // 0 近 .. 1 遠
-    this.thunderAt = t + 0.6 + dist * 4.5;
-    this.thunderPow = 1.15 - dist * 0.6;
-    this.boltShow = Math.random() < 0.65;
+    const dist = Math.random() ** 0.7; // 0 近 .. 1 遠
+    this.strikeK = 1.05 - dist * 0.5;
+    this.thunderDist = 300 + dist * 5200; // 公尺
+    // 雷聲:閃電亮起的當下呼叫,音效模組依聲速(343m/s,最多 8 秒)延遲
+    try {
+      if (typeof sfx.thunder === 'function') sfx.thunder(this.thunderDist);
+      else this.thunderAt = t + Math.min(8, this.thunderDist / 343);
+    } catch { /* 音效失敗不影響遊戲 */ }
+    this.boltShow = Math.random() < 0.65 - dist * 0.25;
     this.bolt.position.set(Math.cos(a) * 78, 14 + Math.random() * 4, Math.sin(a) * 78);
     this.bolt.lookAt(0, this.bolt.position.y, 0);
     this.bolt.scale.set(Math.random() < 0.5 ? -1 : 1, 1, 1);
@@ -696,8 +656,16 @@ export class Weather {
   // 換地圖 / 關閉時呼叫:拆掉每幀掛勾、移除網格、釋放 GPU 資源、恢復月光與乾地面
   dispose() {
     if (this.H && this.H.update === this.hook) this.H.update = this.baseUpdate;
+    if (this.H && this.H.attachRenderer === this.attachHook) this.H.attachRenderer = this.baseAttach;
     if (this.qOff) { this.qOff(); this.qOff = null; }
     if (this.atmo) { this.atmo.moon.intensity = this.moonBase; this.atmo.moon.color.copy(this.moonCol); }
+    if (this.lens) {
+      const c = this.game.composer;
+      if (c) { const i = c.passes.indexOf(this.lens); if (i >= 0) c.passes.splice(i, 1); }
+      this.lens.dispose?.();
+      this.lens = null;
+    }
+    try { sfx.setRain(0, 0); } catch { /* 忽略 */ }
     if (this.root) {
       this.root.parent?.remove(this.root);
       const seen = new Set();
@@ -706,13 +674,16 @@ export class Weather {
         const m = o.material;
         if (m && !seen.has(m)) {
           seen.add(m);
-          for (const v of Object.values(m.uniforms || {})) { const tx = v?.value; if (tx?.isTexture && !seen.has(tx)) { seen.add(tx); tx.dispose(); } }
+          for (const v of Object.values(m.uniforms || {})) { const tx = v?.value; if (tx?.isTexture && !seen.has(tx) && tx !== OCC.uOcc.value) { seen.add(tx); tx.dispose(); } }
           m.dispose();
         }
       });
     }
+    this.occ?.dispose();
     this.masks?.rainTex.dispose(); this.masks?.fogTex.dispose();
-    WET.uWet.value = 0; WET.uRain.value = 0; ENV.flash = 0; ENV.rain = 0;
+    OCC.uOcc.value = null; OCC.uOccOn.value = 0;
+    WET.uWet.value = 0; WET.uRain.value = 0; WET.uPudLv.value = 0; ENV.flash = 0; ENV.rain = 0;
+    RL.uRLN.value = 0;
     this.mods = []; this.glows = [];
     this.ok = false;
   }

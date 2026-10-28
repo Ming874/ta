@@ -278,7 +278,7 @@ export class ZombieSync {
     this.byId.set(id, z);
     const info = this.info.get(id);
     if (info) this.applyInfo(z, info);
-    if (type === 'brute') g.ui.banner('巨屍出現', '牠會咆哮後衝鋒 · 引牠撞牆再攻擊頭部', 3500, 'red');
+    if (type === 'brute') g.ui.banner('巨屍出現', '他會咆哮後衝鋒 · 引他撞牆再打頭', 3500, 'red');
     return z;
   }
   toProxy(z) {
@@ -363,6 +363,8 @@ export class ZombieSync {
     const v = this.tmp;
     const rt = s.client.serverNow() - DELAY;
     const res = z.buf.sample(rt, v);
+    if (res < 0 && !z._drawn) { z.root.visible = false; return 0; } // [ambush] 第一筆插值資料到之前不畫(不會先在出生點/埋伏點站著冒出來)
+    if (!z._drawn) { z._drawn = true; z.root.visible = true; }
     if (res >= 0) {
       z.pos.set(v[0], v[1], v[2]);
       z.heading = v[3];
