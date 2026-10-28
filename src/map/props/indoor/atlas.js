@@ -180,7 +180,8 @@ export function initAtlas() {
   if (ready) return;
   ready = true;
   buildNoise();
-  LAB = makeAtlas(2048, 2048, 'pi_lab', (t) => new THREE.MeshStandardMaterial({ map: t, roughness: 0.8, metalness: 0 }));
+  LAB = makeAtlas(2048, 2304, 'pi_lab', // [scene r4] 2048→2304 高:故事道具的告示/家書/布條
+    (t) => new THREE.MeshStandardMaterial({ map: t, roughness: 0.8, metalness: 0 }));
   GLOW = makeAtlas(2048, 1024, 'pi_glow', (t) => new THREE.MeshStandardMaterial({ color: 0x050505, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 1.1, roughness: 0.2 }));
   DECAL = makeAtlas(2048, 1024, 'pi_decal', (t) => {
     t.premultiplyAlpha = false;

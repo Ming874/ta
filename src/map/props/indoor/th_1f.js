@@ -1,4 +1,5 @@
 import { tpl, L, G, THREE } from './parts.js';
+import { lobbyColdOpen } from './story.js';
 import { gurney, wheelchair, ivPole, oxygenCart, supplyCart, crashCart, monitorCart, monitorWall as monArm, headwall, curtainSet, hospitalBed, bedTags } from './medical.js';
 import {
   chairShell, chairOffice, chairWood, stool, tableLong, deskSteel, fileCabinet, lockers, shelfRack, glassCabinet, counter, beamSeats, sofa, bin, deadPlant,
@@ -399,6 +400,7 @@ export function dressLobby(R) {
   floorDecal(R, 'water', st.x, st.z, 3.0, { v: 2 });
   floorDecal(R, 'drag', 66, 60, 2.2, { yaw: 2.4 });
   floorDecal(R, 'feet', 52, 61, 1.4, { yaw: -1.2 });
+  lobbyColdOpen(R); // [scene r4] 冷開場:歡迎回家布條、天窗下的氣球、拖鞋包包花束、柱上的「不要相信廣播」
 }
 function tableLow() {
   return tpl('lowtable', (b) => {

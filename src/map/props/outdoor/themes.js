@@ -14,6 +14,7 @@ import { tent, canopy, sandbagWall, jersey, heras, foldTable, foldChair, bodyBag
 import { bench, bollard, hydrant, busStop, utilityBox, trashCan, barrel, crate, propane, wetSign, tyre, lamp, wallLamp, secLight, neonSign, flagPole, planter, payStation, cart, pallet } from './furniture.js';
 import { stretcher } from './cars.js';
 import { BASEMENT } from './basement.js';
+import { alley207 } from './alley207.js';
 import { GENERIC, zrng, freeRect, freeAt, edgeDress, scatter, finish } from './generic.js';
 import { windify } from './env.js';
 
@@ -177,6 +178,8 @@ function checkpoint(ctx, zone, R, P) {
 // 前廣場
 // ======================================================================
 function dressPlaza(ctx, zone) {
+  // [scene r4] 立面識別:屋頂女兒牆上的「聖心醫院」霓虹(心不亮、醫在閃),從停車場一眼認得出這棟醫院
+  neonSign(ctx, 60, 10.45, 67.55, 0, '聖心醫院', { size: 1.75, modes: ['on', 'dead', 'flicker', 'on'], zone });
   const R = zrng(zone), P = new Parts(), li = zone.levelIndex;
   // 醫院霓虹招牌(大門上方):心字熄滅、醫字閃爍
   neonSign(ctx, 60, 3.55, 68.02, 0, '聖心醫院', { color: '#ff3020', hex: 0xff3020, size: 0.85, modes: ['on', 'dead', 'flicker', 'on'], zone });
@@ -250,7 +253,9 @@ function dressAlley(ctx, zone) {
     P.add('cast_iron', box(0.3, 0.4, 0.15), M(b.x, b.y - 0.1, 11.9));
   }
   // 建築外牆:工業壁燈、落水管、牆掛冷氣、配電箱
-  for (const [x, st] of [[19, 'on'], [43, 'flicker'], [71, 'on'], [75, 'dead'], [93, 'on']]) wallLamp(ctx, x, 3.0, 11.98, Math.PI, st, zone);
+  // [scene r4] 207 窗下那一段不點燈(71 原本亮著):後巷裡只剩那扇窗
+  for (const [x, st] of [[19, 'on'], [43, 'flicker'], [93, 'on']]) wallLamp(ctx, x, 3.0, 11.98, Math.PI, st, zone); // 71、75 拆掉了(燈殼的玻璃是共用發光材質,關不掉)
+  P.merge(alley207(ctx, zone)); // [scene r4] 家屬的鐵網、207 專用發電機的電纜、結局錨點
   for (const x of [17.2, 59, 95.2]) {
     P.add('cast_iron', cyl(0.06, 0.06, 12.2, 8), M(x, 6.1, 11.88));
     for (let yy = 1; yy < 12; yy += 2.2) P.add('cast_iron', box(0.18, 0.04, 0.08), M(x, yy, 11.94));
@@ -277,7 +282,7 @@ function dressAlley(ctx, zone) {
   for (const [x, z, f] of [[98.2, 3.3, false], [99.0, 4.2, true], [37.6, 3.0, false]]) barrel(ctx, x, 0, z, { fallen: f, yaw: R() * TAU });
   for (const [x, z] of [[13.5, 10.8], [14.2, 10.2]]) tyre(ctx, x, 0, z, true, R() * TAU);
   tyre(ctx, 15, 0, 10.9, false, 0.3);
-  for (const x of [77.5, 78.3]) propane(ctx, x, 0, 3.0, x > 78);
+  for (const x of [65.6, 66.4]) propane(ctx, x, 0, 3.0, x > 66); // [scene r4] 從 77.5 移開:207 鐵網後面要留給結局的視角
   if (freeRect(ctx, li, 47.8, 2.2, 50.6, 4.6)) { // 沾血的床墊靠牆
     P.add('po_mattress', rbox(1.9, 0.2, 0.9, 0.08), M(49.2, 0.95, 2.45, -HALF + 0.25, 0, 0.03));
     flatDecal(P, 'blood1', 49.2, 1.0, 2.62, 0.8, 0.8, 'z+');

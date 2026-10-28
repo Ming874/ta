@@ -199,7 +199,8 @@ export function buildWindows(K) {
       }
       const Uv = F.U, Nv = F.W;
       // 木板封窗(室內側)
-      const boarded = !store && R() < (lv.id === '1F' && (outA || outB) ? 0.32 : lv.id === 'B1' ? 0.5 : 0.14);
+      const w207 = zoneIn?.id === 'f2_ward_207'; // [scene r4] 207 的窗:不封木板,兩側窗簾半拉(從後巷看是唯一亮著的窗)
+      const boarded = !store && !w207 && R() < (lv.id === '1F' && (outA || outB) ? 0.32 : lv.id === 'B1' ? 0.5 : 0.14);
       const boards = [];
       if (boarded) {
         const n = R.i(2, 4), wb = wf + inDir * 0.075;
@@ -212,14 +213,14 @@ export function buildWindows(K) {
       }
       // 百葉窗或窗簾(室內側)
       if (!store && !boarded) {
-        const roll = R();
+        const roll = w207 ? 0.3 : R();
         if (roll < 0.22) {
           const drop = R.r(0.5, 1.45), a = R.r(-0.12, 0.12), cu = mid, wbl = wf + inDir * 0.09;
           const L2 = [Uv[0] * Math.cos(a), Math.sin(a), Uv[2] * Math.cos(a)], V2 = [-Uv[0] * Math.sin(a), Math.cos(a), -Uv[2] * Math.sin(a)];
           basisPlane(B, li, 'blinds', plane1, F.X(cu, wbl), s1 - 0.06 - drop / 2, F.Z(cu, wbl), L2, V2, Nv, 1.86, drop, 1);
         } else if (roll < 0.42 && !['machine', 'boiler', 'supply', 'dock', 'tunnel'].includes(theme)) {
-          for (const side of R() < 0.5 ? [-1] : [-1, 1]) {
-            const wcur = R.r(0.5, 0.9), hcur = R.r(1.2, 1.9), cu = side < 0 ? u0 + 0.1 + wcur / 2 : u1 - 0.1 - wcur / 2, wc = wf + inDir * (0.16 + R() * 0.05);
+          for (const side of w207 || R() >= 0.5 ? [-1, 1] : [-1]) {
+            const wcur = w207 ? (side < 0 ? 0.46 : 0.36) : R.r(0.5, 0.9), hcur = w207 ? 1.62 : R.r(1.2, 1.9), cu = side < 0 ? u0 + 0.1 + wcur / 2 : u1 - 0.1 - wcur / 2, wc = wf + inDir * (0.16 + R() * 0.05);
             basisPlane(B, li, 'curtain', plane1, F.X(cu, wc), s1 + 0.05 - hcur / 2, F.Z(cu, wc), Uv, [0, 1, 0], Nv, wcur, hcur, 1);
           }
         }

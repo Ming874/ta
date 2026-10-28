@@ -4,6 +4,7 @@
 import { Room } from './indoor/place.js';
 import { THEMES } from './indoor/themes.js';
 import { dressVignette } from './indoor/vignettes.js';
+import { stairMark } from './indoor/story.js';
 import { dressSars } from './indoor/sars.js';
 
 export const INDOOR_THEMES = new Set([
@@ -21,6 +22,7 @@ export function dressIndoor(ctx, zone) {
     fn(R, zone);
     dressVignette(R, zone); // 環境敘事小場景(路障、檢傷、隔離、血跡…)
     dressSars(R, zone); // 2003 SARS 封院:量體溫站、口罩/防護衣、隔離告示、封鎖膠帶、塑膠布
+    if (zone.theme === 'stairwell') stairMark(R, zone); // [scene r4] 樓梯間的大樓層數字
   } catch (e) {
     console.warn('[props-in] 擺設失敗', zone.id, e && e.stack ? e.stack.split('\n').slice(0, 4).join(' | ') : e);
   }

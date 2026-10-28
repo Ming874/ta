@@ -251,6 +251,7 @@ export const MOODS = {
   lobby: { fog: 0x0a0d14, density: 0.02, ambient: 0.3, tint: 0x8090b8 }, // 月光柱
   chapel: { fog: 0x120c08, density: 0.03, ambient: 0.22, tint: 0xd09060 }, // 燭光
   safe: { fog: 0x14100a, density: 0.012, ambient: 0.6, tint: 0xffd8a0 }, // 暖光安全屋(前景-庇護)
+  lamp207: { fog: 0x0d0906, density: 0.03, ambient: 0.1, tint: 0xd8a070 }, // [scene r4] 207:只有檯燈
   emergency: { fog: 0x140606, density: 0.032, ambient: 0.24, tint: 0xc04040 }, // 緊急紅燈
   basement: { fog: 0x040505, density: 0.05, ambient: 0.1, tint: 0x6a7068 }, // 幾乎全黑
   flooded: { fog: 0x050a0c, density: 0.05, ambient: 0.12, tint: 0x507a80 },
@@ -272,7 +273,7 @@ export const MOODS = {
 //  candle 燭光 / moon 無燈(月光) / warm 暖色(安全屋) / monitor 螢幕光 / bare_bulb 裸燈泡
 //  sodium 鈉燈(橘) / nightlight 夜燈 / lamp 檯燈 / fire 爐火 / none
 // ======================================================================
-const ward = (n, c0, c1) => ({ id: `f2_ward_${n}`, level: '2F', name: `病房 ${n}`, rects: [[c0, 7, c1, 10]], theme: 'ward', floor: 'linoleum', wall: 'paint_green', light: n === 207 ? 'fluoro' : 'fluoro_dying', mood: 'ward' });
+const ward = (n, c0, c1) => ({ id: `f2_ward_${n}`, level: '2F', name: `病房 ${n}`, rects: [[c0, 7, c1, 10]], theme: 'ward', floor: 'linoleum', wall: 'paint_green', light: n === 207 ? 'fluoro' : 'fluoro_dying', mood: n === 207 ? 'lamp207' : 'ward' });
 const cell = (n, c0) => ({ id: `f3_cell_${n}`, level: '3F', name: `隔離房 ${n}`, rects: [[c0, 7, c0 + 1, 10]], theme: 'psych_cell', floor: 'padded', wall: 'padded', light: 'fluoro_cold', mood: 'psych' });
 const ring = (r1) => [[9, 12, 50, 13], [19, 12, 20, r1], [39, 12, 40, r1]];
 export const ZONES = [

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { rng as mkRng } from '../ctx.js';
 import { Parts, M, box, rbox, cyl, sph, tor, rod, tube, pool, put, solid, V3, HALF, TAU } from './kit.js';
+import { surf } from '../../hospital/surfaces.js';
 import { groundDecal, labelQuad } from './cars.js';
 import { flatDecal, trashBag, bagFallback } from './industrial.js';
 import { BAND, litter, leafPatch, puddle, wallStrip, drain } from './ground.js';
@@ -206,8 +207,7 @@ function dressDock(ctx, zone) {
   for (const [x, z] of [[113.4, 31.2], [114.6, 32.4]]) crate(ctx, x, y, z, R.range(-0.3, 0.3));
   for (const [x, z] of [[110.2, 36.6], [111.1, 37.0]]) barrel(ctx, x, y, z, { yaw: R() * TAU, fallen: x > 111 });
   tyre(ctx, 108.4, y, 29.5, true);
-  bodyBag(ctx, 112.2, y, 28.4, 0.3);
-  groundDecal(P, 'pool', 112.6, 28.9, 1.4, 1.0, 0.3, y + 0.006);
+  dockHandoff(ctx, P, y, zone); // [scene r4] 2003:金水伯每晚在坡道口的鐵網外送便當,隔著網跟鄭玉蘭講話
   litter(P, R, 110, 30, 4, 18, ['card', 'news', 'form', 'glove', 'bag'], y + 0.009);
   finish(ctx, P);
 }
@@ -314,3 +314,36 @@ function dressStairExt(ctx, zone) {
 
 const wrap = (fn) => (ctx, zone) => { curZone = zone; try { fn(ctx, zone); } finally { curZone = null; } };
 export const BASEMENT = { tunnel: wrap(dressTunnel), boiler: wrap(dressBoiler), dock: wrap(dressDock), ramp: wrap(dressRamp), incinerator: wrap(dressIncinerator), pump: wrap(dressPump), machine: wrap(dressMachine), ossuary: wrap(dressOssuary), stair_ext: wrap(dressStairExt) };
+
+// [scene r4] B1 裝卸平台 → 救護車坡道口:封院時拉上的鐵網門(現在敞開靠牆)、網邊一張摺疊桌(一疊沒人拿的便當、保溫瓶)、
+// 網上方一盞暖色籠燈(安全的語言:金水伯);不擋坡道動線(坡道 x 108–112)
+function dockHandoff(ctx, P, y, zone) {
+  const cl = surf('chainlink'), Z = 39.7;
+  // 鐵網門:兩片,打開貼在坡道口兩側牆邊
+  for (const [x, ry] of [[107.55, HALF], [112.45, -HALF]]) {
+    const g = new THREE.PlaneGeometry(1.9, 1.95); const uv = g.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 1.9, uv.getY(i) * 1.95);
+    P.add(cl, g, M(x, y + 1.02, Z - 0.95, 0, ry, 0));
+    P.add('steel', box(0.04, 2.0, 0.04), M(x, y + 1.0, Z - 1.9)); P.add('steel', box(0.04, 2.0, 0.04), M(x, y + 1.0, Z));
+    P.add('steel', box(0.03, 0.03, 1.9), M(x, y + 1.99, Z - 0.95));
+  }
+  // 摺疊桌 + 便當(免洗紙盒疊起來,橡皮筋)+ 保溫瓶 + 便當單(夾板)
+  const tx = 106.4, tz = Z - 1.2;
+  P.add('plastic_white', rbox(1.2, 0.04, 0.6, 0.012), M(tx, y + 0.72, tz));
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) P.add('steel', rod(new V3(tx + sx * 0.52, y, tz + sz * 0.24), new V3(tx + sx * 0.5, y + 0.7, tz + sz * 0.22), 0.012, 6));
+  for (let k = 0; k < 2; k++) for (let i = 0; i < 4 - k; i++) {
+    const bx = tx - 0.3 + k * 0.28, bz = tz - 0.05 + k * 0.06, by = y + 0.765 + i * 0.05;
+    P.add('paper', box(0.21, 0.048, 0.16), M(bx, by, bz, 0, (i % 2 ? 0.08 : -0.05) + k * 0.2, 0));
+    P.add('plastic_red', box(0.006, 0.05, 0.165), M(bx + 0.03, by, bz, 0, (i % 2 ? 0.08 : -0.05) + k * 0.2, 0));
+  }
+  P.add('plastic_red', cyl(0.05, 0.05, 0.27, 12), M(tx + 0.35, y + 0.875, tz + 0.05));
+  P.add('plastic_white', cyl(0.04, 0.04, 0.05, 10), M(tx + 0.35, y + 1.035, tz + 0.05));
+  P.add('wood_light', box(0.23, 0.01, 0.31), M(tx + 0.05, y + 0.745, tz + 0.12, 0, 0.3, 0));
+  P.add('paper', box(0.21, 0.004, 0.28), M(tx + 0.05, y + 0.752, tz + 0.12, 0, 0.3, 0));
+  solid(ctx, tx, y, tz, 1.25, 0.75, 0.65, 'wood');
+  // 暖色籠燈(網上方牆上)
+  P.add('cast_iron', box(0.12, 0.1, 0.08), M(107.3, y + 2.55, Z - 0.04));
+  P.add('steel', tor(0.07, 0.006, 4, 12), M(107.3, y + 2.43, Z - 0.13, HALF, 0, 0));
+  P.add('glow_warm', sph(0.04, 8, 6), M(107.3, y + 2.42, Z - 0.13));
+  ctx.light({ x: 107.3, y: y + 2.3, z: Z - 0.4, color: 0xffb468, intensity: 4.5, distance: 7, kind: 'bare_bulb', flicker: 0, zone: zone?.id, glow: 0.55 });
+}

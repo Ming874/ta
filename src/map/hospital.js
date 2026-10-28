@@ -85,6 +85,7 @@ export function buildHospital(world, layout, scene, opts = {}) {
   const lights = buildLights(K, { root, propLights, poolSize: opts.poolSize ?? 8 });
   const atmo = buildAtmosphere(K, { root, scene, groundMat: surf('soil') });
   atmo.moon.shadow.camera.layers.enable(NO_FLASH_SHADOW_LAYER);
+  K.atmo = atmo;
   onGlowFog(setGlowFog);
   const meshes = B.build(levelGroups);
   const tris = B.tris;
@@ -134,6 +135,9 @@ export function buildHospital(world, layout, scene, opts = {}) {
   let cullTick = 0;
   const H = {
     group: root, stats, layout: L, lights, atmo, K, levelGroups, propGroups, propEvents, propLights, vis, propVis, events, game: null, chunks,
+    // [scene r4] 給體驗導演(結局)的錨點與天亮控制:anchors.w207 { lamp, chair, bed, window, door, view, hub, setDawn }、anchors.alleyView
+    anchors: buildAnchors(propEvents, lights),
+    setDawn: (t) => lights.setDawn(t),
     leaves: K.leaves, doorLeaves: K.doorLeaves || [], // 門扇實例與代理(src/map/hospital/leaves.js;互動與碰撞在 src/interact/doors.js)
     propDistance: 54, // 道具區塊的顯示距離(公尺):霧裡看不到的就不畫,setQuality 依 drawDistance 調整
     // post.js 會呼叫:提供 renderer(環境貼圖、各向異性)與品質設定
@@ -280,4 +284,23 @@ function mergeStatics(statics, groups, chunks) {
     }
   });
   return count;
+}
+
+// [scene r4] 道具登記的錨點(kind 'anchor', name 'w207.chair' …)→ 結構化
+function buildAnchors(propEvents, lights) {
+  const A = { w207: {} };
+  for (const e of propEvents) {
+    if (e.kind !== 'anchor' || !e.name) continue;
+    const [grp, key] = e.name.split('.');
+    const o = { x: e.x, y: e.y, z: e.z };
+    if (e.yaw != null) o.yaw = e.yaw;
+    if (e.pitch != null) o.pitch = e.pitch;
+    if (key) (A[grp] ||= {})[key] = o; else A[grp] = o;
+  }
+  const st = lights.story || {};
+  if (A.w207.lamp && st.lamp) A.w207.lamp.fixture = st.lamp;
+  const w = st.window;
+  if (w) A.w207.window = { x: w.x, y: 4.2 + 1.66, z: w.z, nx: w.axis === 'z' ? 0 : -w.inDir, nz: w.axis === 'z' ? -w.inDir : 0 };
+  A.w207.setDawn = (t) => lights.setDawn(t);
+  return A;
 }
