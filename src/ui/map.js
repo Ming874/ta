@@ -74,7 +74,7 @@ export class MapUI {
       () => { if (!this.sheet) this._makeSheet(); },
       () => { const c = canvas(8, 8).getContext('2d'); for (const f of ['"DFKai-SB", "BiauKai", "標楷體", "KaiTi", serif', '"Noto Serif TC", "Source Han Serif TC", "PMingLiU", serif', '"Microsoft JhengHei", sans-serif', '"Bahnschrift", sans-serif']) { c.font = `700 14px ${f}`; c.fillText('聖心醫院避難逃生路線圖燈不能熄第七暝', 0, 8); } },
       () => this._floor(this.L.start?.level ?? 0),
-      () => { this.li = this.L.start?.level ?? 0; this.game = g; this._compose(true); this.comp = null; }, // 第一次合成(字型、濾鏡、圖樣初始化)
+      () => { this.li = this.L.start?.level ?? 0; this.game = g; this._compose(); this.comp = null; }, // 第一次合成(字型、濾鏡、圖樣初始化)
       ...this.L.levels.map((l) => () => this._floor(l.index)),
     ];
     const run = () => {
@@ -202,7 +202,7 @@ export class MapUI {
     if (!this.sheet) this._makeSheet();
     this._tabs();
     this._fit();
-    this._compose(true);
+    this._compose();
     this.isOpen = true;
     const root = this.root;
     root.classList.remove('closing');
@@ -240,7 +240,7 @@ export class MapUI {
     this._flip(d);
     this.li = li;
     this._tabs();
-    this._compose(true);
+    this._compose();
     this.update(this.game);
     (ixs.pageTurn || ixs.paper)?.();
   }
@@ -311,10 +311,9 @@ export class MapUI {
   _sig(st) { return `${this.li}|${this.fog.n[this.li]}|${this.marksN}|${st.locks.map((k) => `${k.open ? 1 : 0}${k.seen ? 1 : 0}`).join('')}|${this._team() ? 1 : 0}`; }
   _team() { return (this.game?.players?.length || 1) > 1; }
 
-  _compose(force) {
+  _compose() {
     const st = this._state(), sig = this._sig(st);
-    if (this.comp?.sig === sig) return false; // 內容沒變(同一層、迷霧與記號都一樣)
-    void force;
+    if (this.comp?.sig === sig) return false; // 內容沒變(同一層、迷霧與記號都一樣):畫布上已經是這一張
     const t0 = performance.now();
     const L = this.L, G = this.G, li = this.li, x = this.bx, f = this._floor(li);
     x.setTransform(1, 0, 0, 1, 0, 0);
@@ -365,7 +364,7 @@ export class MapUI {
     const now = performance.now(), t = now / 1000, p = game.player;
     // 邊走邊看:新揭開的格子夠多(或隔一陣子)才重畫
     const n = this.fog.n[this.li], cn = this.comp?.n ?? 0;
-    if (now - (this.comp?.t || 0) > 600 && (n - cn >= 6 || now - (this.comp?.t || 0) > 2500)) this._compose(false);
+    if (now - (this.comp?.t || 0) > 600 && (n - cn >= 6 || now - (this.comp?.t || 0) > 2500)) this._compose();
     // 手晃 + 轉頭時紙跟著偏一點
     const sw = this.sway, yaw = p.yaw || 0;
     if (sw.yaw == null) sw.yaw = yaw;
@@ -379,7 +378,8 @@ export class MapUI {
     const on = p.flashOn !== false;
     const pin = this._pinScreen(game);
     const lx = Math.sin(t * 0.37) * 44 + Math.sin(t * 1.3) * 8 - sw.x * 3 + pin[0] * 0.3, ly = Math.sin(t * 0.29 + 1.2) * 30 + Math.sin(t * 1.1) * 6 - 20 + pin[1] * 0.3;
-    const s = on ? 1 : 0.66;
+    this._ls = (this._ls ?? 1) + ((on ? 1 : 0.8) - (this._ls ?? 1)) * 0.12; // 開關手電筒時光圈慢慢縮放
+    const s = this._ls;
     const lt = `translate(${lx.toFixed(1)}px, ${ly.toFixed(1)}px) scale(${s})`;
     this.lightT.style.transform = lt; this.lightD.style.transform = lt;
     this.root.classList.toggle('dim', !on);

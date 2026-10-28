@@ -3,7 +3,7 @@
   background: rgba(2, 2, 2, .8); color: #e6e0d2; font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", system-ui, sans-serif; }
 #mapui.on { display: block; animation: mp-in .25s ease-out; }
 #mapui.closing { animation: mp-out .36s ease-in forwards; }
-@keyframes mp-in { from { background-color: rgba(2, 2, 2, 0); } }
+@keyframes mp-in { from { background-color: rgba(2, 2, 2, .5); } }
 @keyframes mp-out { 0%, 55% { opacity: 1; } 100% { opacity: 0; } }
 
 /* 整疊紙(手晃只改這一層的 transform) */
@@ -46,8 +46,8 @@
 
 /* 圖釘(俯視):紅色是自己;鉛筆短線是面向 */
 .pin { position: absolute; left: 0; top: 0; width: 0; height: 0; }
-.pin .tick { position: absolute; left: -2px; top: -30px; width: 4px; height: 22px; transform-origin: 2px 30px;
-  background: linear-gradient(to top, rgba(50, 50, 56, .15), rgba(50, 50, 56, .9)); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.pin .tick { position: absolute; left: -3px; top: -38px; width: 6px; height: 27px; transform-origin: 3px 38px;
+  background: linear-gradient(to top, rgba(45, 45, 52, .25), rgba(40, 40, 46, .95)); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
 .pin .sh { position: absolute; left: -7px; top: -5px; width: 18px; height: 13px; border-radius: 50%; background: rgba(0, 0, 0, .38); filter: blur(2.5px); transform: translate(6px, 7px); }
 .pin .hd { position: absolute; left: -10px; top: -10px; width: 20px; height: 20px; border-radius: 50%;
   background: radial-gradient(circle at 34% 30%, rgba(255, 255, 255, .92) 0, rgba(255, 255, 255, 0) 30%), radial-gradient(circle at 50% 50%, var(--pc) 42%, #1e0604 104%);
@@ -81,7 +81,7 @@
 /* 手電筒:暖色光圈(multiply)+ 四周暗角;只移動 transform */
 /* 不能有 z-index(會變成獨立的堆疊環境,multiply 就混不到底下的紙) */
 .mp-light { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-.mp-light i { position: absolute; left: 50%; top: 50%; width: 240vmax; height: 240vmax; margin: -120vmax 0 0 -120vmax; will-change: transform; transition: scale .4s; }
+.mp-light i { position: absolute; left: 50%; top: 50%; width: 240vmax; height: 240vmax; margin: -120vmax 0 0 -120vmax; will-change: transform; }
 .mp-light .tint { mix-blend-mode: multiply; background: radial-gradient(closest-side, #fff9ef 0%, #fcefd6 15%, #ead4ae 25%, #c4a276 33%, #6e543a 44%, #2a1f17 57%); }
 .mp-light .dark { background: radial-gradient(closest-side, rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) 19%, rgba(0, 0, 0, .2) 27%, rgba(0, 0, 0, .5) 36%, rgba(0, 0, 0, .86) 49%); }
 #mapui.dim .mp-light .dark { background: radial-gradient(closest-side, rgba(0, 0, 0, .12) 0, rgba(0, 0, 0, .2) 14%, rgba(0, 0, 0, .5) 24%, rgba(0, 0, 0, .78) 33%, rgba(0, 0, 0, .95) 44%); }
