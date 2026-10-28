@@ -163,6 +163,11 @@ export function installClimax(game, S) {
     const w = door207();
     if (!run.alarm && has('h.207.unlock') && w && !X.doors.allClosed(w)) alarm();
     if (run.alarmPend && silent && isHost()) { run.alarmPend = false; X.after(6, () => startGuardWave()); }
+    // 第 5 次燈篙的巨屍 = 萬嵐照護員 夜班組長(正典 §4 首領;身上有門禁卡):給他一個名字,等門禁卡的那幾分鐘才有對象
+    if (!run.lead5 && game.round === 5 && game.phase === 'fighting' && !has('h.badge')) {
+      const z = game.zombies.find((q) => q.alive && q.type === 'brute' && (q.dist ?? 99) < 30);
+      if (z) { run.lead5 = true; game.ui?.banner?.('萬嵐照護員　夜班組長', '他還在巡房 · 門禁卡在他身上', 3800, 'red'); X.after(1.5, () => line(game, 'xl', '那個穿萬嵐制服的……他胸口有一張卡。')); }
+    }
     // 守燈員:那一波第一隻巨屍
     if (run.wave && isHost()) {
       if (!run.guard && game.round === run.wave) { const z = game.zombies.find((q) => q.alive && q.type === 'brute'); if (z) { run.guard = z; z._guard = true; } }
