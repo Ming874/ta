@@ -33,9 +33,11 @@ const alive = (p) => p && p.alive !== false && !p.downed && (p.hp == null || p.h
 function glowTex() {
   const c = document.createElement('canvas');
   c.width = 64; c.height = 128;
-  const x = c.getContext('2d'), g = x.createRadialGradient(32, 64, 2, 32, 64, 60);
+  const x = c.getContext('2d');
+  x.setTransform(1, 0, 0, 2, 0, 0); // 橢圓:漸層剛好在貼圖邊緣淡到 0(放大後不會看到方形的邊)
+  const g = x.createRadialGradient(32, 32, 1, 32, 32, 31);
   g.addColorStop(0, 'rgba(210,255,215,1)'); g.addColorStop(0.18, 'rgba(70,255,120,0.75)'); g.addColorStop(0.55, 'rgba(20,200,70,0.18)'); g.addColorStop(1, 'rgba(0,120,40,0)');
-  x.fillStyle = g; x.fillRect(0, 0, 64, 128);
+  x.fillStyle = g; x.fillRect(0, 0, 64, 64);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
@@ -231,7 +233,7 @@ class Chase {
       this.fade -= dt;
       this.endT += dt;
       // 保險:牠看得到玩家時 AI 會把 spawn 狀態搶回追逐 → 結束 5 秒後一定移除(在畫面裡就讓燈閃一下蓋過去),回合不會被卡住
-      if (this.endT > (this.bangWait ? 8 : 5)) { if (z.los && z.dist < 25) g.horror?.flicker?.(z.pos, 0.5); this._remove(); return; }
+      if (this.endT > (this.bangWait ? 9 : 5)) { if (z.los && z.dist < 25) g.horror?.flicker?.(z.pos, 0.5); this._remove(); return; }
       if (z._bangT > 0 || (z.state === 'attack' && z._retreat)) return; // 正走去店門口/正在捶門
       if (z.state !== 'spawn' && (this.fade <= 0 || !z.los || z.dist > 14)) { if (z.los && z.dist < 20) g.horror?.flicker?.(z.pos, 0.4); z.go('spawn'); }
       else if (z.state === 'spawn' && z.st > 0.4) this._remove();
@@ -259,7 +261,7 @@ class Chase {
   bang(z, quiet = false) {
     const g = this.g, at = quiet || !z ? null : { x: z.pos.x, y: z.pos.y + 1.2, z: z.pos.z };
     if (!this.bangWait) return;
-    this.fade = 2.2; this.bangWait = false;
+    this.fade = 2.2; this.bangWait = false; this.endT = Math.min(this.endT || 0, 1.5); // 捶完:轉身退開,最多再 3.5 秒就收回
     this.log.push(`${(g.time || 0).toFixed(1)}:bang${at ? '' : ':quiet'}`);
     const s = g.net;
     if (s && s.isHost && s.send) try { s.send('zch', at ? [2, +at.x.toFixed(2), +at.y.toFixed(2), +at.z.toFixed(2)] : [2]); } catch { /* 連線中斷 */ }
@@ -292,8 +294,9 @@ class Chase {
     if (z.alive) {
       z._retreat = true;
       const S = this.safe;
-      if (reason === 'safe' && S?.kind === 'shop' && Math.hypot(z.pos.x - S.x, z.pos.z - S.z) < 30 && Math.abs(z.pos.y - S.y) < 2) {
-        z._stopZone = SHOP_ZONE; z._bangT = 3.5; this.bangWait = true; // 追到店門口(不進店)捶一下再走
+      const zd = S ? Math.hypot(z.pos.x - S.x, z.pos.z - S.z) : 99;
+      if (reason === 'safe' && S?.kind === 'shop' && zd < 28 && Math.abs(z.pos.y - S.y) < 2) {
+        z._stopZone = SHOP_ZONE; z._bangT = Math.min(6.5, 1.5 + zd / (z.speed || 4)); this.bangWait = true; // 追到店門口(不進店)捶一下再走
         if (z.state !== 'chase' && z.state !== 'attack') z.go('chase');
       } else z.go('recover');
     }
@@ -330,10 +333,10 @@ class Chase {
     if (safe) { this.beacon.position.set(safe.x, safe.y + 1.7, safe.z); this.beacon.visible = true; }
     const shop = safe?.kind === 'shop', name = KIND_NAME[safe?.kind] || KIND_NAME.cabinet;
     this.bangDone = false;
+    if (this.mark) this.mark.losT = this.mark.fdT = -99; // 新的安全處:距離與視線馬上重算
     if (shop) { // 金水伯把捲門拉起一半,用對講機喊你進去
       this._shutter(0.55);
-      clearTimeout(this.icT);
-      if (me) this.icT = setTimeout(() => { if (this.P.on) g.horror?.subs?.show?.({ text: '快進來！門我拉起來了——快！', tag: '對講機 · 金水伯', cap: true, hold: 2.6 }); }, 3000);
+      P.icT = me ? 2.8 : 0; // 小美說完之後,金水伯用對講機喊(_present 倒數)
     }
     if (me) {
       g.motion?.beat('chase'); // [motion] 邊緣一口紅 + 暗角收緊(追逐結束時放開)
@@ -353,7 +356,7 @@ class Chase {
     P.on = false; P.safe = null;
     this.beacon.visible = false;
     if (this.mark) { this.mark.el.style.opacity = '0'; this.mark.mode = ''; }
-    clearTimeout(this.icT);
+    P.icT = 0;
     if (wasShop && reason !== 'safe') this._shutter(0); // 沒逃進店裡:捲門慢慢放下(逃進來的:等追獵者在門口捶那一下時猛力拉下)
     if (reason !== 'reset') sfx.zChase?.(false);
     g.motion?.beat('chase-end');
@@ -388,10 +391,10 @@ class Chase {
       const [rip, rip2, badge, dir, lab] = el.children;
       m = this.mark = { el, rip, rip2, badge, dir, lab, txt: '', mode: '', los: false, losT: -9, fd: 0, fdT: -9 };
     }
-    const t = performance.now() / 1000, eye = p.pos.y + (p.eyeH || 1.6);
-    if (t - m.losT > 0.25) { m.losT = t; m.los = g.world.hasLineOfSight(p.pos.x, eye, p.pos.z, S.x, S.y + 1.5, S.z); }
-    if (t - m.fdT > 0.5) {
-      m.fdT = t;
+    const t = performance.now() / 1000, gt = g.time || 0, eye = p.pos.y + (p.eyeH || 1.6);
+    if (Math.abs(gt - m.losT) > 0.25) { m.losT = gt; m.los = g.world.hasLineOfSight(p.pos.x, eye, p.pos.z, S.x, S.y + 1.5, S.z); }
+    if (Math.abs(gt - m.fdT) > 0.5) {
+      m.fdT = gt;
       const fd = g.world.flowDistance ? g.world.flowDistance(S.x, S.y, S.z) : NaN, d = Math.hypot(S.x - p.pos.x, S.z - p.pos.z);
       m.fd = Number.isFinite(fd) && fd >= d - 0.5 ? fd : d;
     }
@@ -439,6 +442,7 @@ class Chase {
       g.baseFov = P.fov0 + 6 * k;
       if (!P.on && k < 0.01) { g.baseFov = P.fov0; P.fov0 = null; }
     }
+    if (P.icT > 0 && (P.icT -= dt) <= 0 && P.on && P.me) g.horror?.subs?.show?.({ text: '快進來！門我拉起來了——快！', tag: '對講機 · 金水伯', cap: true, hold: 2.6 });
     if (k > 0.05 && (P.heartT -= dt) <= 0) { P.heartT = 1.0 - 0.55 * k; sfx.zHeart?.(k); }
     if (P.on && P.safe) {
       if ((P.beaconT -= dt) <= 0) { P.beaconT = 1.5; sfx.zBeacon?.(P.safe); }
