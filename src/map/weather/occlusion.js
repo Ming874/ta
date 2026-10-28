@@ -99,6 +99,18 @@ export class RainOcclusion {
     return false;
   }
 
+  // [perf] 覆寫材質的各種變體(代理物件)先非同步編好:載入時與場景預編譯一起做,之後第一次烘焙不必同步等編譯。
+  // 編譯時跟烘焙一樣:外層場景(沒有燈)+ 畫進 this.rt
+  precompile() {
+    const r = this.game.renderer;
+    if (!r?.compileAsync) return Promise.resolve();
+    const W = this.wrap, prev = r.getRenderTarget();
+    for (const o of this.warm) W.add(o);
+    let p;
+    try { r.setRenderTarget(this.rt); p = r.compileAsync(W, this.cam); } finally { r.setRenderTarget(prev); for (const o of this.warm) W.remove(o); }
+    return p.catch(() => {});
+  }
+
   bake(hide = []) {
     const g = this.game, r = g.renderer, scene = g.scene, H = g.hospital;
     if (!r || !scene || this.busy) return false;

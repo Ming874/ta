@@ -26,6 +26,7 @@ export class Game {
   // opts.deferred:只建最基本的欄位,其餘由 buildSteps() 分段建構(main.js 分時執行,載入時主執行緒不會被佔住好幾秒)
   constructor(canvas, opts = {}) {
     this.canvas = canvas;
+    this.deferredBuild = !!opts.deferred;
     this.ui = new UI();
     this.state = 'menu'; // menu | playing | dead
     this.phase = 'fighting'; // fighting | collecting | break | shop
@@ -81,6 +82,7 @@ export class Game {
     this.hospital = built && built.group ? built : buildBlockout(this.world, this.world.layout, this.scene);
     this.scene.add(this.hospital.group);
     yield;
+    this.deferRainBake = !!this.deferredBuild; // [perf] 分時載入:遮雨圖等 main.js 開始畫面前再烘
     this.weather = new Weather(this); // 雨、濕地、低霧、閃電、暴風雲與城市剪影(src/map/weather.js;每幀掛在 hospital.update 之後)
     yield;
     // 室內環境反射(src/mats/surface.js)與大氣環境貼圖會在建構中就地做 PMREM:先在背景把它的 shader 編好

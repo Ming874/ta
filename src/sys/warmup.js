@@ -349,6 +349,33 @@ export async function warmPMREM(game, roots, { sizes: extra = [] } = {}) {
   return progs.size;
 }
 
+// 等距柱狀貼圖 → 立方體貼圖(非 PBR 材質或背景用到 equirect 時,three 在 compile/第一次畫時就地轉換):
+// 轉換用的 ShaderMaterial 每次新建、第一次會同步等編譯(~0.5 秒)。用假的 renderer 跑一次轉換拿到它的 shader 原始碼,
+// 自己建一份同樣的材質非同步編好並留著(program 依原始碼共用,真的轉換時直接用編好的)
+export function warmCubeFromEquirect(game) {
+  const r = game.renderer;
+  let cap = null;
+  const fake = {
+    isWebGLRenderer: true, coordinateSystem: r.coordinateSystem, reversedDepthBuffer: r.reversedDepthBuffer, autoClear: false, xr: { enabled: false, isPresenting: false },
+    state: { buffers: { depth: { getReversed: () => false } } },
+    getRenderTarget: () => null, getActiveCubeFace: () => 0, getActiveMipmapLevel: () => 0, setRenderTarget() {}, clearDepth() {}, clear() {},
+    render(s) { cap ??= s; },
+  };
+  const tex = new THREE.DataTexture(new Uint8Array(8 * 4 * 4), 8, 4);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  const crt = new THREE.WebGLCubeRenderTarget(16);
+  try { crt.fromEquirectangularTexture(fake, tex); } catch { cap = null; }
+  const src = cap?.material;
+  if (!src?.vertexShader || !r.compileAsync) { crt.dispose(); tex.dispose(); return Promise.resolve(0); }
+  const mat = new THREE.ShaderMaterial({ name: 'CubemapFromEquirect', uniforms: { tEquirect: { value: tex } }, vertexShader: src.vertexShader, fragmentShader: src.fragmentShader, side: THREE.BackSide, blending: THREE.NoBlending });
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(5, 5, 5), mat);
+  keep.push(mat);
+  const prev = r.getRenderTarget();
+  let p;
+  try { r.setRenderTarget(crt); p = r.compileAsync(mesh, new THREE.PerspectiveCamera()); } finally { r.setRenderTarget(prev); }
+  return p.then(() => { crt.dispose(); return 1; }, () => 0);
+}
+
 // 真的畫一次(畫進 4x4 的離屏 target,玩家看不到):有些成本要到「第一次繪製」才發生——
 // ANGLE(Windows/D3D11)依頂點格式產生的 shader 變體、骨骼貼圖、VAO、陰影貼圖裡的第一次繪製。
 // objects 會暫時加進場景(不受視錐剔除、會投影)畫一幀後移除。
@@ -370,13 +397,35 @@ export function warmDraw(game, objects) {
 // 分批:每批只畫 batch 個(其餘物件用圖層暫時排除),批與批之間讓出主執行緒並等 GPU 行程追上 → 不會變成一個數秒的長任務。
 // 陰影 pass 不畫(陰影深度 program 已預編譯;每批都重畫手電筒陰影太浪費)
 const WARM_LAYER = 30;
+// 陰影圖先各畫一次(相機只看 WARM_LAYER:主 pass 什麼都不畫,只有陰影 pass)。要在 warmDrawScene 之前:
+// 陰影圖還沒建立時,陰影取樣器綁到的是格式不合的貼圖,離屏繪製會被 ANGLE 擋掉(Mismatch between texture format and sampler type),
+// 等於沒暖到 → 開始畫面第一幀透明物件/玻璃各頓 60~200ms
+export async function warmShadows(game) {
+  const r = game.renderer, scene = game.scene, cam = game.camera, sm = r.shadowMap, lights = [];
+  if (!sm.enabled) return;
+  scene.traverse((o) => { if (o.isLight) lights.push(o); });
+  warmRT = warmRT || new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType });
+  const mask = cam.layers.mask, prev = r.getRenderTarget();
+  for (const l of lights) l.layers.enable(WARM_LAYER);
+  cam.layers.set(WARM_LAYER);
+  sm.needsUpdate = true;
+  try { r.setRenderTarget(warmRT); r.render(scene, cam); } finally {
+    r.setRenderTarget(prev);
+    cam.layers.mask = mask;
+    for (const l of lights) l.layers.disable(WARM_LAYER);
+  }
+  await gpuDrain(r, 3000);
+}
 export async function warmDrawScene(game, { batch = 12, all = false } = {}) {
   const r = game.renderer, scene = game.scene, cam = game.camera, sm = r.shadowMap;
   // all:每個物件都畫一次(上傳全部幾何緩衝 / VAO;開始畫面前做,第一幀與走進新區域時就不會一次上傳一大堆)
   const reps = all ? [] : representatives(scene), lights = [];
   if (all) scene.traverse((o) => { if ((o.isMesh || o.isLine || o.isPoints || o.isSprite) && o.material && o.geometry) reps.push(o); });
   scene.traverse((o) => { if (o.isLight) lights.push(o); });
-  warmRT = warmRT || new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType });
+  // 跟主畫面的合成 target 一樣用 MSAA(ANGLE/D3D11 對多重取樣 target 另有一份 shader 變體:沒畫過的話第一次看到透明物件會頓 60~130ms)
+  const ns = game.composer?.renderTarget1?.samples || 0;
+  if (warmRT && warmRT.samples !== ns) { warmRT.dispose(); warmRT = null; }
+  warmRT = warmRT || new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: ns });
   for (let i = 0; i < reps.length; i += batch) {
     await gpuDrain(r, 1000);
     const list = reps.slice(i, i + batch), saved = [];

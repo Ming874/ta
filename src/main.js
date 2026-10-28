@@ -4,7 +4,7 @@ import { Quality } from './sys/quality.js';
 import { Perf } from './sys/perf.js';
 import { caps } from './sys/caps.js';
 import { idle } from './sys/sched.js';
-import { precompile, precompilePasses, initPrograms, warmDraw, warmDrawScene, warmPMREM, uploadSceneTextures, yieldNow, runSliced } from './sys/warmup.js';
+import { precompile, precompilePasses, initPrograms, warmDraw, warmDrawScene, warmPMREM, uploadSceneTextures, yieldNow, runSliced, gpuDrain, warmCubeFromEquirect, warmShadows } from './sys/warmup.js';
 import { backgroundTicker } from './sys/ticker.js';
 import { texStats, texturesReady } from './sys/texworker.js';
 import { prewarm, whenTypesReady, variantStats, getVariant, instantiate, forceVariant, VARIANT_TYPES } from './zombies/model.js';
@@ -196,12 +196,13 @@ async function boot() {
   const t = performance.now();
   try {
     // 等距柱狀環境貼圖的 PMREM shader 先在背景編好(否則預編譯途中 three 就地轉換 → 同步等編譯 1~2 秒)
-    await warmPMREM(game, [game.scene, game.weaponScene]);
+    await Promise.all([warmPMREM(game, [game.scene, game.weaponScene]), warmCubeFromEquirect(game)]);
     performance.mark('hz:pmrem');
     const all = Promise.all([
       precompile(game, game.scene),
       precompile(game, game.weaponScene, { target: game.weaponScene, camera: game.weaponCamera, shadows: false }),
       precompilePasses(game),
+      game.weather?.occ?.precompile?.(), // 遮雨圖覆寫材質的變體(烘焙延到下面幾何上傳完之後)
     ]);
     // 等全部 program 編好才開始畫(不再用 4 秒逾時:先畫的話第一幀會在主執行緒上同步等還沒編完的 shader,數秒凍結);
     // 編譯期間選單與載入條照常可用。最多等 60 秒
@@ -217,7 +218,11 @@ async function boot() {
   try {
     const t2 = performance.now();
     await uploadSceneTextures(game);
+    await warmShadows(game);
     await warmDrawScene(game, { all: true, batch: 16 });
+    // 先等 GPU 把離屏繪製做完(不然烘焙的讀回會在主執行緒上等整串繪製),烘焙後再等一次才開始畫面
+    if (game.deferRainBake) { game.deferRainBake = false; await gpuDrain(game.renderer, 3000); game.weather?.bakeNow?.(); }
+    await gpuDrain(game.renderer, 3000);
     performance.measure('hz:prewarm', { start: t2 });
   } catch (e) { console.warn('[warmup]', e); }
   performance.measure('hz:precompile', { start: t });
@@ -270,6 +275,9 @@ async function warmRuntime() {
     for (const m of ZM) {
       const sm = new THREE.SkinnedMesh(v.geometry, m);
       sm.bind(inst.mesh.skeleton, inst.mesh.bindMatrix);
+      // 排序也要包圍球:沒給的話 three 會逐頂點蒙皮算一次(每個代理 ~40k 頂點,合計 ~170ms 長任務)
+      if (!v.geometry.boundingSphere) v.geometry.computeBoundingSphere();
+      sm.boundingSphere = (inst.mesh.boundingSphere || v.geometry.boundingSphere).clone();
       draws.add(sm);
     }
     for (const o of [...g.children]) if (o !== inst.mesh) draws.add(o);

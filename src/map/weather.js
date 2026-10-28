@@ -361,7 +361,9 @@ export class Weather {
     this.t = 0;
     // 遮雨高度圖:先烘一次(之後下載的模型進場景時節流重烘);完成後重新取屋簷滴水點
     this.occ.onBake = () => this.placeDrips();
-    try { this.occ.bake([this.root]); this.occ.lastBake = 0; } catch (e) { console.warn('[weather] 遮雨圖烘焙失敗', e); }
+    // [perf] game.deferRainBake:分時載入時先不烘(第一次烘焙要上傳全部幾何,~0.3-0.5 秒長任務);main.js 在幾何分批上傳完後才烘
+    this.bakeNow = () => { try { this.occ.bake([this.root]); this.occ.lastBake = 0; } catch (e) { console.warn('[weather] 遮雨圖烘焙失敗', e); } };
+    if (!game.deferRainBake) this.bakeNow();
     this.applyConfig();
     // 每幀更新:接在 hospital.update 之後(atmosphere 已先設好霧色/環境光)
     const H = (this.H = game.hospital);

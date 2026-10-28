@@ -7,7 +7,7 @@ import { initCamp } from './outdoor/camp.js';
 import { initFurniture } from './outdoor/furniture.js';
 import { buildObstacle } from './outdoor/obstacles.js';
 import { THEMES } from './outdoor/themes.js';
-import { dressEdges } from './outdoor/edges.js';
+import { dressEdgesSteps } from './outdoor/edges.js';
 import { resetEnv } from './outdoor/env.js';
 import { resetCars } from './outdoor/cars.js';
 import { resetVehicles } from './outdoor/vehicles.js';
@@ -28,19 +28,24 @@ export const OUTDOOR_THEMES = new Set([
 function initAll() { initMats(); initGround(); initNature(); initPlay(); initCamp(); initFurniture(); }
 // [perf] 分段版(載入時由 hospital 建構呼叫):程式貼圖一張一步、各模組的材質初始化各一步(全部都有「做過就略過」)
 export function* prepareOutdoorSteps() {
-  for (const f of prepaint()) { f(); yield; }
+  for (const f of prepaint()) { if (f.step) while (!f.step()) yield; else f(); yield; }
   for (const f of [initMats, initGround, initNature, initPlay, initCamp, initFurniture]) { f(); yield; }
 }
 // 每個新的擺設 ctx(= 每次建世界/換地圖)只做一次:歸零模組計數器(同地圖、同種子 → 每個客戶端結果相同)、外圍景
 const begun = new WeakSet(), spent = new WeakMap(); // 每個 ctx 的戶外擺設耗時(ms)
-function begin(ctx) {
+function begin(ctx) { for (const _ of beginSteps(ctx)) { /* 同步跑完 */ } }
+// [perf] 分段版:dressWorldSteps 在第一個戶外區域/障礙物之前先 yield* 這個(順序與同步版相同)
+export function* beginSteps(ctx) {
   if (begun.has(ctx)) return;
   begun.add(ctx);
   initAll();
   resetEnv(); resetCars(); resetVehicles(); resetFurniture();
-  const t0 = performance.now();
-  try { dressEdges(ctx); } catch (e) { console.error('[props-out] 外圍景失敗', e); }
-  spent.set(ctx, performance.now() - t0);
+  let ms = 0, t0 = performance.now();
+  try {
+    const it = dressEdgesSteps(ctx);
+    while (!it.next().done) { ms += performance.now() - t0; yield; t0 = performance.now(); }
+  } catch (e) { console.error('[props-out] 外圍景失敗', e); }
+  spent.set(ctx, ms + performance.now() - t0);
 }
 export function dressOutdoor(ctx, zone) {
   begin(ctx);
