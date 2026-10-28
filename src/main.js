@@ -98,6 +98,7 @@ game.renderer.info.autoReset = false; // 一幀內多個 pass 的 draw call 合�
 game.renderer.debug.checkShaderErrors = !import.meta.env.PROD; // 正式版不查 shader 錯誤日誌(那些查詢會同步等編譯完成)
 game.quality = new Quality(game); // 畫質預設檔 + 動態解析度(src/sys/quality.js)
 game.perf = new Perf(game); // F3 效能面板(src/sys/perf.js)
+if (caps.flags.has('gpuprof')) game.quality.gpu.detail = true; // ?gpuprof:逐 pass 計 GPU 時間(src/gfx/gpuprof.js)
 prewarm(); // 殭屍變體:有 Worker 時立刻全部平行送到 Worker 池建模
 performance.mark('hz:game');
 window.__perfVariants = variantStats; // 測試用
@@ -162,7 +163,7 @@ function frame(now) {
   game.quality.endGpu();
   const t2 = performance.now();
   game.perf.frame(dtMs, t0, t1 - t0, t2 - t1);
-  game.quality.sample(dtMs, t2 - t0);
+  game.quality.sample(dtMs, t2 - t0, t2 - t1);
 }
 
 // ---- 分頁隱藏:單人暫停(停止渲染、暫停音訊);連線中改由 Worker 計時器在背景繼續模擬(不渲染) ----

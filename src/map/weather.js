@@ -384,6 +384,7 @@ export class Weather {
     if (!c || this.lens) return;
     try {
       this.lens = lensPass();
+      this.lens.hzName = 'lens'; // GPU 分段計時的名稱(src/gfx/gpuprof.js)
       let i = c.passes.indexOf(game.bloom);
       if (i < 0) i = c.passes.indexOf(game.post);
       if (i < 0) i = Math.max(0, c.passes.length - 1);

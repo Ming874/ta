@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { stageConfig, warmMaterials } from './warmup.js';
+import { GpuProfiler } from '../gfx/gpuprof.js';
 
 // ===== 畫質管理 → game.quality =====
 // 預設檔 low / medium / high / ultra(首次自動依 GPU 挑選,之後記在 localStorage)。
@@ -8,17 +9,20 @@ import { stageConfig, warmMaterials } from './warmup.js';
 //   game.quality.get('lights')              讀值(光源池數量建議、粒子上限…)
 //   const off = game.quality.on('change', (keys, q) => { if (keys.has('lights')) … })   回傳取消訂閱函式
 //   game.quality.presets → [{ id, label }];game.quality.preset → 目前預設檔;game.quality.stats → 幀時間統計
-// 由這裡直接套用:陰影開關/類型/解析度倍率、Bloom、MSAA、貼圖異向過濾、動態解析度(pixelRatio 0.6~1.5)。
+// 由這裡直接套用:陰影開關/類型/解析度倍率、Bloom、MSAA、貼圖異向過濾、動態解析度(pixelRatio 0.6~1.5)、
+//   GPU 效果(game.gfx:AO/SSR/體積光/TAA)與自動調整(CPU 瓶頸時加 GPU 效果與超取樣、GPU 瓶頸時減)。
 // 其他系統自行讀取的建議值:lights(光源池 PointLight 數)、shadowLights(可投影的光源數)、particles(粒子上限)、
 //   fog('low'|'medium'|'high' 霧/體積光品質)、decals(貼花密度 0..1)、drawDistance(公尺)。
 
 export const PRESETS = {
   // 陰影類型一律 pcf(低畫質只是關掉陰影):類型是所有 program 的參數,換預設檔時不要連類型也換
-  low: { label: '低', shadows: false, shadowType: 'pcf', shadowScale: 0.5, shadowLights: 0, bloom: false, msaa: 0, pixelMin: 0.6, pixelMax: 0.85, lights: 4, particles: 100, fog: 'low', decals: 0.4, anisotropy: 2, drawDistance: 70, flashFar: 12 },
-  medium: { label: '中', shadows: true, shadowType: 'pcf', shadowScale: 0.5, shadowLights: 1, bloom: true, msaa: 2, pixelMin: 0.6, pixelMax: 1.0, lights: 6, particles: 160, fog: 'medium', decals: 0.7, anisotropy: 4, drawDistance: 90, flashFar: 14 },
-  high: { label: '高', shadows: true, shadowType: 'pcf', shadowScale: 1, shadowLights: 2, bloom: true, msaa: 4, pixelMin: 0.7, pixelMax: 1.25, lights: 8, particles: 240, fog: 'high', decals: 1, anisotropy: 8, drawDistance: 120, flashFar: 18 },
-  ultra: { label: '極致', shadows: true, shadowType: 'pcf', shadowScale: 2, shadowLights: 4, bloom: true, msaa: 4, pixelMin: 0.85, pixelMax: 1.5, lights: 12, particles: 400, fog: 'high', decals: 1, anisotropy: 16, drawDistance: 150, flashFar: 28 },
+  low: { label: '低', shadows: false, shadowType: 'pcf', shadowScale: 0.5, shadowLights: 0, bloom: false, msaa: 0, pixelMin: 0.6, pixelMax: 0.85, lights: 4, particles: 100, fog: 'low', decals: 0.4, anisotropy: 2, drawDistance: 70, flashFar: 12, ao: 0, ssr: 0, vol: 0, taa: false, pcss: false, boostMax: 1 },
+  medium: { label: '中', shadows: true, shadowType: 'pcf', shadowScale: 0.5, shadowLights: 1, bloom: true, msaa: 2, pixelMin: 0.6, pixelMax: 1.0, lights: 6, particles: 160, fog: 'medium', decals: 0.7, anisotropy: 4, drawDistance: 90, flashFar: 14, ao: 1, ssr: 1, vol: 1, taa: false, pcss: false, boostMax: 1.1 },
+  high: { label: '高', shadows: true, shadowType: 'pcf', shadowScale: 1, shadowLights: 2, bloom: true, msaa: 4, pixelMin: 0.7, pixelMax: 1.25, lights: 8, particles: 240, fog: 'high', decals: 1, anisotropy: 8, drawDistance: 120, flashFar: 18, ao: 2, ssr: 2, vol: 2, taa: true, pcss: false, boostMax: 1.25 },
+  ultra: { label: '極致', shadows: true, shadowType: 'pcf', shadowScale: 2, shadowLights: 4, bloom: true, msaa: 4, pixelMin: 0.85, pixelMax: 1.5, lights: 12, particles: 400, fog: 'high', decals: 1, anisotropy: 16, drawDistance: 150, flashFar: 28, ao: 3, ssr: 3, vol: 3, taa: true, pcss: true, boostMax: 1.5 },
 };
+// [gpu] ao/ssr/vol:0 關、1~3 等級(src/gfx/pipeline.js LEVELS);taa:時間反鋸齒;pcss:手電筒/月光的柔和半影;
+//   boostMax:CPU 是瓶頸、GPU 有餘裕時渲染倍率最多拉到 dpr × boostMax(超取樣)。全部只改 uniform / RT 尺寸,不重編 shader
 const COMMON = { dynamicRes: true, targetFps: 60 };
 // 會改變 shader program 參數的設定:先在背景依新設定編好全部材質,編完才真正套用(見 syncProgramKeys)
 const PROGRAM_KEYS = ['shadows', 'shadowType', 'lights'];
@@ -64,42 +68,7 @@ export function detectPreset(gl) {
   return { preset: (nav.hardwareConcurrency || 4) >= 8 && (nav.deviceMemory || 8) >= 8 ? 'high' : 'medium', gpu: s };
 }
 
-// GPU 計時:EXT_disjoint_timer_query_webgl2(沒有時 gpuMs = null)
-class GpuTimer {
-  constructor(gl) {
-    this.gl = gl;
-    this.ext = gl.getExtension && gl.getExtension('EXT_disjoint_timer_query_webgl2');
-    this.free = [];
-    this.wait = [];
-    this.active = null;
-    this.ms = null;
-  }
-  begin() {
-    if (!this.ext || this.active) return;
-    const q = this.free.pop() || this.gl.createQuery();
-    this.gl.beginQuery(this.ext.TIME_ELAPSED_EXT, q);
-    this.active = q;
-  }
-  end() {
-    if (!this.active) return;
-    this.gl.endQuery(this.ext.TIME_ELAPSED_EXT);
-    this.wait.push(this.active);
-    this.active = null;
-    this.poll();
-  }
-  poll() {
-    const gl = this.gl;
-    const disjoint = gl.getParameter(this.ext.GPU_DISJOINT_EXT);
-    while (this.wait.length) {
-      const q = this.wait[0];
-      if (!gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE)) break;
-      const ns = gl.getQueryParameter(q, gl.QUERY_RESULT);
-      this.free.push(this.wait.shift());
-      if (!disjoint && ns > 0) this.ms = ns / 1e6;
-    }
-    while (this.wait.length > 8) this.free.push(this.wait.shift()); // GPU 落後太多就丟掉舊的
-  }
-}
+// GPU 計時:src/gfx/gpuprof.js(EXT_disjoint_timer_query_webgl2;沒有時 gpuMs = null;F3 面板開著時逐 pass 分段)
 
 // 固定長度的幀時間統計
 class Ring {
@@ -121,7 +90,7 @@ export class Quality {
   constructor(game) {
     this.game = game;
     const gl = game.renderer.getContext();
-    this.gpu = new GpuTimer(gl);
+    this.gpu = new GpuProfiler(gl);
     this.detected = detectPreset(gl);
     const saved = load();
     this.preset = saved && PRESETS[saved.preset] ? saved.preset : this.detected.preset;
@@ -132,7 +101,14 @@ export class Quality {
     this.listeners = new Set();
     this.frame = new Ring(240); // rAF 間隔
     this.cpu = new Ring(240); // update + render 的 JS 時間
+    this.cpuR = new Ring(240); // 其中 render(送出 draw call)的 JS 時間
     this.gpuMs = new Ring(240);
+    this.gpuA = new Ring(240); // 場景繪製段的 GPU 計時(CPU 送 draw call 慢時會含 GPU 等待的空檔)
+    this.gpuB = new Ring(240); // 場景之後的全螢幕 pass(準確的 GPU 工作量)
+    this.sub = new Ring(240); // 場景繪製的 JS 時間(送出 draw call)
+    this.level = 0; // 自動調整的階:<0 降解析度(最低再降效果),0 預設,1 效果 +1,2.. 超取樣
+    this.probe = null;
+    this.bound = '';
     this.dpr = window.devicePixelRatio || 1;
     this.scale = this.startScale();
     this.lastChange = now();
@@ -157,8 +133,11 @@ export class Quality {
     const before = this.snapshot();
     this.preset = name;
     this.over = {};
+    this.level = 0;
+    this.probe = null;
     this.scale = this.startScale();
     this.commit(before);
+    this.applyGfx(); // 同一個預設檔再選一次也要清掉自動調整加上去的效果等級
     return true;
   }
   set(key, value) {
@@ -206,8 +185,10 @@ export class Quality {
   }
 
   minScale() { return this.get('pixelMin'); }
-  maxScale() { return Math.max(this.minScale(), Math.min(this.get('pixelMax'), Math.max(1, this.dpr) * (this.preset === 'ultra' ? 1.5 : 1))); }
-  startScale() { return clamp(Math.min(this.dpr, this.get('pixelMax')), this.get('pixelMin'), this.maxScale()); }
+  maxScale() { return Math.max(this.baseMax(), this.boostCap()); }
+  baseMax() { return Math.max(this.minScale(), Math.min(this.get('pixelMax'), Math.max(1, this.dpr) * (this.preset === 'ultra' ? 1.5 : 1))); }
+  boostCap() { return Math.min(2, Math.max(this.baseMax(), Math.max(1, this.dpr) * (this.get('boostMax') || 1))); }
+  startScale() { return clamp(Math.min(this.dpr, this.get('pixelMax')), this.get('pixelMin'), this.baseMax()); }
 
   setScale(s, force = false) {
     s = clamp(Math.round(s * 20) / 20, this.minScale(), this.maxScale());
@@ -267,10 +248,11 @@ export class Quality {
       }
     }
     if (has('bloom') && g.bloom) g.bloom.enabled = !!this.get('bloom');
-    if (has('msaa') && g.composer) {
+    if (has('msaa') && g.composer && !g.gfx) {
       const n = this.get('msaa');
       for (const rt of [g.composer.renderTarget1, g.composer.renderTarget2]) if (rt && rt.samples !== n) { rt.samples = n; rt.dispose(); }
     }
+    if (g.gfx && (first || ['ao', 'ssr', 'vol', 'taa', 'msaa', 'pcss'].some(has))) this.applyGfx();
     if (has('anisotropy')) {
       const a = Math.min(this.get('anisotropy'), r.capabilities.getMaxAnisotropy());
       const seen = new Set(), todo = [];
@@ -296,6 +278,7 @@ export class Quality {
         tp.__currentAnisotropy = a;
       }
     }
+    if (!first && has('dynamicRes') && !this.get('dynamicRes') && this.level !== 0) { this.level = 0; this.probe = null; this.applyGfx(); } // 關掉自動調整:回到預設檔的效果等級
     if (first || has('pixelMin') || has('pixelMax') || has('dynamicRes')) this.setScale(this.get('dynamicRes') ? this.scale : this.startScale(), true);
   }
 
@@ -309,41 +292,85 @@ export class Quality {
   // ---- 每幀:由主迴圈呼叫 ----
   beginGpu() { this.gpu.begin(); }
   endGpu() { this.gpu.end(); }
-  // frameMs = rAF 間隔,cpuMs = 本幀 update + render 的 JS 時間
-  sample(frameMs, cpuMs) {
+  // frameMs = rAF 間隔,cpuMs = 本幀 update + render 的 JS 時間,renderMs = 其中 render 的部分
+  sample(frameMs, cpuMs, renderMs = 0) {
     this.frame.push(frameMs);
     this.cpu.push(cpuMs);
-    if (this.gpu.ms != null) this.gpuMs.push(this.gpu.ms);
+    this.cpuR.push(renderMs);
+    this.sub.push(this.game.gfx?.submitMs ?? renderMs);
+    if (this.gpu.ms != null) { this.gpuMs.push(this.gpu.ms); this.gpuA.push(this.gpu.msA); this.gpuB.push(this.gpu.ms - this.gpu.msA); }
     if (this.get('dynamicRes')) this.control();
   }
 
-  // 動態解析度:有 GPU 計時就看 GPU 時間;沒有就看幀間隔(並排除 CPU 瓶頸)。下修快、上修慢,並有冷卻避免抖動
+  // GPU 效果:預設檔的等級 + 自動調整的 boost(src/gfx/pipeline.js)
+  applyGfx() {
+    const g = this.game;
+    if (!g.gfx) return;
+    const boost = this.level >= 1 ? 1 : this.level <= -3 ? -1 : 0;
+    g.gfx.configure({ ao: this.get('ao') | 0, ssr: this.get('ssr') | 0, vol: this.get('vol') | 0, taa: !!this.get('taa'), msaa: this.get('msaa') | 0, boost });
+    // composer 緩衝:GfxPass 有效果時手持武器在它的多重取樣輸出裡畫 → 之後的全螢幕 pass 不需要 MSAA
+    const n = g.gfx.any ? 0 : this.get('msaa') | 0;
+    if (g.composer) for (const rt of [g.composer.renderTarget1, g.composer.renderTarget2]) if (rt && rt.samples !== n) { rt.samples = n; rt.dispose(); }
+    g.pcss?.(!!this.get('pcss'));
+  }
+
+  // 自動調整(取代舊的只看 GPU 計時的動態解析度)。先分辨瓶頸:
+  //   GPU 計時在 CPU 送 draw call 很慢時會把「GPU 等 CPU」的空檔也算進去(實測 scene 段 ≈ CPU render 時間,GPU 引擎只忙 10~30%)
+  //   → 只有「場景段明顯比 JS 送出時間長」(GPU 真的追不上)且 GPU 總時間 ≈ 幀時間,才算 GPU 瓶頸;
+  //   幀時間 > 目標但不是 GPU 瓶頸 = CPU 瓶頸:GPU 有空 → 往上加(效果等級 → 超取樣),加完觀察 2.5 秒,幀時間變差就退回並延長冷卻;
+  //   GPU 瓶頸 → 往下減(先收回超取樣與效果,再降解析度)。背景編譯中(staging)不動。
   control() {
     const t = now(), budget = 1000 / this.get('targetFps');
-    if (this.frame.n < 30 || t - this.lastChange < 700) return;
-    const hasGpu = this.gpu.ms != null && this.gpuMs.n >= 20;
-    const cpu = this.cpu.avg(30);
-    const load = hasGpu ? this.gpuMs.avg(30) : this.frame.avg(30);
-    const cpuBound = !hasGpu && cpu > budget * 0.8;
-    const over = hasGpu ? load > budget * 0.92 : load > budget * 1.18 && !cpuBound;
-    if (over) {
+    if (this.staging || this.frame.n < 40 || t - this.lastChange < 900) return;
+    const frame = this.frame.avg(40), cpu = this.cpu.avg(40);
+    const hasGpu = this.gpu.ms != null && this.gpuA.n >= 30;
+    const A = hasGpu ? this.gpuA.avg(40) : null, B = hasGpu ? this.gpuB.avg(40) : null, sub = this.sub.avg(40);
+    const gpuBound = hasGpu ? A + B > frame * 0.86 && A > sub * 1.3 + 1.2 : frame > budget * 1.18 && cpu < frame * 0.62;
+    const cpuBound = !gpuBound && frame > budget * 1.05;
+    this.bound = gpuBound ? 'gpu' : cpuBound ? 'cpu' : 'ok';
+    const P = this.probe;
+    if (P) {
+      const worse = t - P.t > 2500 && frame > P.frame * 1.06 + 0.6 && cpu < P.cpu * 1.05 + 0.4;
+      if (gpuBound || worse) { // 加了反而變慢:退回、延長冷卻
+        this.probe = null;
+        this.upBlock = Math.min(60000, this.upBlock * 2);
+        this.step(-1);
+      } else if (t - P.t > 2500) { this.probe = null; this.upBlock = Math.max(5000, this.upBlock * 0.8); }
+      return;
+    }
+    if (gpuBound) {
       if (!this.overT) this.overT = t;
-      if (t - this.overT > 350 && this.scale > this.minScale()) {
-        const f = clamp(Math.sqrt((budget * (hasGpu ? 0.8 : 0.95)) / load), 0.72, 0.95);
-        this.setScale(this.scale * f);
-        this.upBlock = Math.min(30000, this.upBlock * 2);
-        this.overT = 0;
-      }
+      if (t - this.overT > 400) { this.overT = 0; this.upBlock = Math.min(60000, this.upBlock * 2); this.step(-1); }
       return;
     }
     this.overT = 0;
-    if (this.scale >= this.maxScale() || t - this.lastChange < this.upBlock) return;
-    const next = Math.min(this.maxScale(), this.scale + 0.05);
-    const ok = hasGpu ? load * (next / this.scale) ** 2 < budget * 0.75 : this.frame.max(60) < budget * 1.3 && this.frame.avg(60) < budget * 1.06;
-    if (ok) {
-      this.setScale(next);
-      this.upBlock = Math.max(4000, this.upBlock * 0.75);
-    }
+    if (t - this.lastChange < this.upBlock) return;
+    // 往上:CPU 瓶頸(GPU 在等)或有明確的 GPU 餘裕
+    const room = cpuBound || (hasGpu ? A + B < budget * 0.6 : frame < budget * 1.04 && this.frame.max(60) < budget * 1.3);
+    if (room && this.step(+1)) this.probe = { t, frame, cpu };
+  }
+
+  // 自動調整的階 → { 渲染倍率, 效果 boost };level < 0 降解析度(≤ -3 時效果也降一級),1 效果 +1,之後每階 +0.125 倍率到 boostCap
+  levelState(lv) {
+    const min = this.minScale(), base = this.startScale(), cap = this.boostCap();
+    const fx = this.get('ao') > 0 || this.get('ssr') > 0 || this.get('vol') > 0;
+    if (lv < 0) return { scale: Math.max(min, base * Math.pow(0.88, -lv)) };
+    if (lv === 0 || (lv === 1 && fx)) return { scale: base };
+    return { scale: Math.min(cap, base + 0.125 * (lv - (fx ? 1 : 0))) };
+  }
+  // 自動調整走一階;回傳是否真的有變(到頂/到底就不動)
+  step(d) {
+    const lv = this.level + d;
+    if (lv < -5 || lv > 8) return false;
+    const fx = this.get('ao') > 0 || this.get('ssr') > 0 || this.get('vol') > 0;
+    const s = this.levelState(lv).scale;
+    const fxChange = fx && ((this.level < 1) !== (lv < 1) || (this.level <= -3) !== (lv <= -3));
+    if (!fxChange && Math.abs(s - this.scale) < 0.01) return false;
+    this.level = lv;
+    this.setScale(s, true);
+    this.applyGfx();
+    this.lastChange = now();
+    return true;
   }
 
   get stats() {
@@ -351,9 +378,11 @@ export class Quality {
     const avg = f.avg(120) || 16.7;
     return {
       fps: 1000 / avg, frameMs: avg, frameP99: f.pct(0.99, 240), frameMax: f.max(240),
-      cpuMs: this.cpu.avg(60), gpuMs: this.gpu.ext ? (this.gpuMs.n ? this.gpuMs.avg(60) : null) : null, gpuTimer: !!this.gpu.ext,
+      cpuMs: this.cpu.avg(60), cpuRenderMs: this.cpuR.avg(60), gpuMs: this.gpu.ext ? (this.gpuMs.n ? this.gpuMs.avg(60) : null) : null, gpuTimer: !!this.gpu.ext,
       pixelRatio: this.scale, width: this.game.renderer.domElement.width, height: this.game.renderer.domElement.height,
       preset: this.preset, dynamicRes: !!this.get('dynamicRes'),
+      gpuSceneMs: this.gpuA.n ? this.gpuA.avg(60) : null, gpuPostMs: this.gpuB.n ? this.gpuB.avg(60) : null, submitMs: this.sub.avg(60),
+      bound: this.bound, level: this.level, gfx: this.game.gfx?.stats || null,
     };
   }
 }
