@@ -4,27 +4,42 @@ import { ambushSfx } from '../audio/ambush.js';
 import { settings } from '../ui/settings.js';
 import { Zombie } from './zombie.js';
 import { forceVariant } from './model.js';
-import { LURK, PERCH, POSE, isPerch, makeAmb } from './ambush.pose.js';
+import { LURK, BURST, DROP, POSE, isCorpse, makeAmb } from './ambush.pose.js';
 import { createAmbushProps } from './ambush.props.js';
 import { precompile } from '../sys/warmup.js';
 
-// 埋伏(殭屍躲在角落/門後/家具旁裝死,玩家經過時衝出來)與天花板掉落(趴在天花板夾層、通風格柵上方,玩家經過時破板掉下來)。
-// game.ambush(flow.js 第一次 updateRound 時建立):
-//  - 出怪時(flow.spawnZombie → onSpawn)把部分殭屍改放到埋伏點(仍算在回合數量裡);只有房主決定,連線時代理殭屍照狀態播放
-//  - 埋伏點:導航圖驗證過、玩家「可能經過」(路徑距離 8~34m、前進方向加權、暗處加權)而且當下沒有任何玩家看得到
-//  - 觸發(每 0.25 秒檢查一次:距離 + 一條視線):靠近 3~5m 且沒有正眼盯著(或轉身背對)、在附近開槍、被打到;天花板:從下方經過
-//  - 節奏:有靈異導演(game.horror.director)就先 request 再放;沒有時自己的冷卻(約 40~60 秒一次、第一回合開場 45 秒內不放);
-//    驚嚇強度(設定 scare:off/low/normal/high)調整數量與冷卻;不允許時維持裝死,玩家硬是貼上來才「安靜地」起身
-//  - 回合不會卡住:場上只剩埋伏的殭屍時,2.5 秒後全部醒來找人(flow.updateRound 呼叫 hunt());埋伏太久也會自己醒
-//  - 假屍體:每回合散布幾具真的不會動的屍體(同樣的模型與姿勢,可以被射中、只會抽搐),讓玩家不敢相信任何一具屍體
-// 除錯:__game.ambush.stats、.debug()、.force('lurk'|'drop', dist)、.wakeAll()
+// 埋伏(殭屍從轉角/門口/櫃子後面衝出來)、天花板掉落、裝死的屍體(game.ambush,flow.initGameplay 建立)。
+//
+// 原則:玩家永遠不會看到「在那邊等著嚇人」的殭屍。
+//  - 掩蔽處的埋伏與天花板掉落是「虛擬」的:只從出怪佇列預留一隻(仍算在 toSpawn、回合數量裡),場上沒有實體。
+//    觸發當下才在「所有玩家都看不到」的位置現身,而且只有方向對了才觸發:
+//      掩蔽點 H(凸牆角/門洞旁/高櫃後;往掩蔽深處再退 0.3m)整個身體範圍(每人 19 條視線)對每個玩家都看不到、
+//      沿導航場從 H 走向玩家的路線上 3m 內有一點 E 是觸發的玩家看得到的(繞出轉角/門口就進入視野)、路線總長在觸發距離內
+//      → 殭屍在 H 現身,0.14 秒內起身,沿路線衝出來撲向玩家(玩家看到牠從轉角/門口衝出來)。
+//    從錯的方向接近(H 被任何玩家看到、近距離)= 這個點作廢,稍後改到別的點(本來就沒有實體,所以什麼都看不到)。
+//    天花板:觸發當下才在夾層裡現身(看不到)→ 格柵/天花板碎開 → 落下。
+//  - 唯一會先擺在場上的是「裝死的屍體」:只用屍體姿勢(靠牆癱坐/趴地/仰躺)+ 血泊,跟假屍體一模一樣,被看到也只是一具屍體;
+//    玩家經過、轉身背對、在旁邊開槍或打到牠時才起身。
+//  - 節奏:有靈異導演(game.horror.director)就先 request 再放、放了 notify;沒有時自己的冷卻(約 40~60 秒一次、
+//    第一回合開場 45 秒內不放、兩次至少隔 8 秒);驚嚇強度(設定 scare:off/low/normal/high)調整數量與冷卻。
+//  - 回合不會卡住:場上沒有活動的殭屍、剩下的都是預留/裝死的 → 2.5 秒後預留的放回佇列照常出怪、裝死的起身(flow 呼叫 hunt())。
+//  - 連線:只有房主決定;現身後就是一般的殭屍(快照 + 旗標);天花板的虛擬點用 'amb' 訊息廣播給隊友,各端自己放滴血/抓刮的線索。
+//  - 假屍體:每回合散布幾具真的不會動的屍體(同樣的模型、姿勢與血泊,可以被射中、只會抽搐)。
+// 除錯:__game.ambush.stats / .debug() / .log / .force('cover'|'drop'|'corpse', opt) / .wakeAll()
 const INT = { off: { n: 0, cd: 99 }, low: { n: 0.5, cd: 1.8 }, normal: { n: 1, cd: 1 }, high: { n: 1.5, cd: 0.65 } };
 const NO_THEME = new Set(['shop', 'lobby', 'rooftop', 'fire_escape', 'courtyard', 'cemetery', 'plaza', 'parking', 'alley', 'yard', 'playground', 'ambulance_bay', 'ramp']);
-const KIND_W = { corner: 1, door: 1.45, tall: 1.15, bed: 1.05, floor: 0.6 };
+const KIND_W = { edge: 1.3, door: 1.45, tall: 1.1, corner: 1, bed: 1.1, floor: 0.8 };
 const CORNERS = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
-const POSE_H = { [POSE.slump]: 0.75, [POSE.lie]: 0.3, [POSE.supine]: 0.3, [POSE.crouch]: 0.9, [POSE.stand]: 1.5 };
+const COVER_TYPES = new Set(['walker', 'runner', 'surgeon', 'straitjacket', 'burned']);
+const DROP_TYPES = new Set(['runner', 'crawler', 'walker', 'surgeon', 'straitjacket']);
+const CORPSE_TYPES = new Set(['walker', 'runner', 'crawler']);
+const POSE_H = { [POSE.slump]: 0.75, [POSE.lie]: 0.3, [POSE.supine]: 0.3 };
+// 掩蔽點 H 的可見性測試點(相對 H 的 x / 高度 / z):身體中線三個高度 + 半徑 0.45m 的兩圈(伸出的手、肩膀、膝蓋)
+const HPTS = [[0, 0.45, 0], [0, 1.1, 0], [0, 1.75, 0]];
+for (const h of [0.85, 1.45]) for (let k = 0; k < 8; k++) HPTS.push([Math.cos((k * Math.PI) / 4) * 0.45, h, Math.sin((k * Math.PI) / 4) * 0.45]);
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
 const rand = (a, b) => a + Math.random() * (b - a);
+const r2 = (x) => Math.round(x * 100) / 100;
 const _v = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0), _down = new THREE.Vector3(0, -1, 0);
 const _snap = { x: 0, y: 0, z: 0 };
 
@@ -34,14 +49,16 @@ function rng(seed) {
 }
 
 // ======================================================================
-// 埋伏點(建一次;只看格子、碰撞盒與導航圖,不打射線)
-//  corner 房間/走廊的牆角、door 門洞旁的牆後、bed/tall 家具旁(矮的:病床/推床/桌子;高的:櫃子)、floor 房間地上
-//  ceil:天花板破洞(K.ceilings 的 hole/sag)+ 散布的通風格柵(固定種子,各端位置一致)
+// 位置(建一次;只看格子、碰撞盒與導航圖,不打射線)
+//  cover(掩蔽處,虛擬埋伏用):edge 凸牆角(轉角另一側)、door 門洞旁的牆後、tall 高櫃/置物櫃旁
+//  corpse(屍體,裝死與假屍體用):corner 房間的牆角(靠牆癱坐)、bed 矮家具旁(趴/仰躺)、floor 房間地上
+//  ceil:天花板破洞 / 下垂的板(K.ceilings)+ 散布的通風格柵(固定種子,各端位置一致)
 // ======================================================================
 function buildSpots(W, K, fixtures) {
-  const L = W.layout, out = [], ceil = [], grilles = [];
+  const L = W.layout, cover = [], corpse = [], ceil = [], grilles = [];
   const ch = (li, c, r) => L.charAt(li, c, r);
   const solid = (li, c, r) => { const x = ch(li, c, r); return x === '#' || x === 'E'; };
+  const walk = (li, c, r) => (L.flagsAt(li, c, r) & L.F.WALK) !== 0;
   const plain = (li, c, r) => { const x = ch(li, c, r); return x === '.' || x === 'Z' || x === 'a' || x === 'h'; };
   const zoneOk = (li, c, r) => { const z = L.zoneAt(li, c, r); return z && !NO_THEME.has(z.theme) && !/outdoor/.test(z.mood) ? z : null; };
   const fixNear = (li, x, z, r) => { for (const f of fixtures) if (f.li === li && Math.abs(f.x - x) < r && Math.abs(f.z - z) < r) return true; return false; };
@@ -51,24 +68,23 @@ function buildSpots(W, K, fixtures) {
     if (W.isNode(x, y, z)) return true;
     return !!W.navSnap(x, y, z, _snap) && Math.hypot(_snap.x - x, _snap.z - z) < 0.65 && Math.abs(_snap.y - y) < 0.3;
   };
-  const add = (li, x, z, yaw, kind, zn) => {
-    if (!nodeOk(li, x, z)) return;
-    out.push({ li, x, y: L.levels[li].y, z, yaw, kind, zone: zn.id, dark: lit(li, x, z) < 0.55, busy: null, usedT: -1e9, decoy: null });
+  const add = (list, li, x, z, yaw, kind) => {
+    const c = Math.floor(x / 2), r = Math.floor(z / 2);
+    if (!plain(li, c, r)) return;
+    const zn = zoneOk(li, c, r);
+    if (!zn || !nodeOk(li, x, z)) return;
+    for (const q of list) if (q.li === li && Math.abs(q.x - x) + Math.abs(q.z - z) < 0.4) return; // 重複(門框也是凸牆角)
+    list.push({ li, x, y: L.levels[li].y, z, yaw, kind, zone: zn.id, corridor: zn.theme === 'corridor', dark: lit(li, x, z) < 0.55, busy: null, usedT: -1e9, decoy: null });
   };
   const R = rng(4417);
   for (let li = 0; li < L.levels.length; li++) {
     for (let r = 0; r < L.H; r++) for (let c = 0; c < L.W; c++) {
       const x = ch(li, c, r);
-      if (x === '+') { // 門洞兩側、牆後的位置(進門的人背後/身旁)
+      if (x === '+') { // 門洞兩側、牆後(門外的人看不到;從門口衝出來)
         const hz = solid(li, c - 1, r) && solid(li, c + 1, r), vt = solid(li, c, r - 1) && solid(li, c, r + 1);
         for (const s of [-1, 1]) for (const l of [-1, 1]) {
-          if (hz) {
-            const cc = c + l, rr = r + s, zn = plain(li, cc, rr) && solid(li, cc, r) ? zoneOk(li, cc, rr) : null;
-            if (zn) add(li, l > 0 ? (c + 1) * 2 + 0.55 : c * 2 - 0.55, s > 0 ? (r + 1) * 2 + 0.55 : r * 2 - 0.55, Math.atan2(-l, s * 0.35), 'door', zn);
-          } else if (vt) {
-            const cc = c + s, rr = r + l, zn = plain(li, cc, rr) && solid(li, c, rr) ? zoneOk(li, cc, rr) : null;
-            if (zn) add(li, s > 0 ? (c + 1) * 2 + 0.55 : c * 2 - 0.55, l > 0 ? (r + 1) * 2 + 0.55 : r * 2 - 0.55, Math.atan2(s * 0.35, -l), 'door', zn);
-          }
+          if (hz && solid(li, c + l, r)) add(cover, li, l > 0 ? (c + 1) * 2 + 0.55 : c * 2 - 0.55, s > 0 ? (r + 1) * 2 + 0.55 : r * 2 - 0.55, Math.atan2(-l, 0), 'door');
+          else if (vt && solid(li, c, r + l)) add(cover, li, s > 0 ? (c + 1) * 2 + 0.55 : c * 2 - 0.55, l > 0 ? (r + 1) * 2 + 0.55 : r * 2 - 0.55, Math.atan2(0, -l), 'door');
         }
         continue;
       }
@@ -76,26 +92,40 @@ function buildSpots(W, K, fixtures) {
       const zn = zoneOk(li, c, r);
       if (!zn) continue;
       const cx = (c + 0.5) * 2, cz = (r + 0.5) * 2;
-      for (const [dc, dr] of CORNERS) if (solid(li, c + dc, r) && solid(li, c, r + dr)) add(li, cx + dc * 0.5, cz + dr * 0.5, Math.atan2(-dc, -dr), 'corner', zn);
-      if (zn.theme !== 'corridor' && R() < 0.12) add(li, cx + (R() - 0.5) * 0.8, cz + (R() - 0.5) * 0.8, R() * Math.PI * 2, 'floor', zn);
+      for (const [dc, dr] of CORNERS) if (solid(li, c + dc, r) && solid(li, c, r + dr)) add(corpse, li, cx + dc * 0.5, cz + dr * 0.5, Math.atan2(-dc, -dr), 'corner'); // 靠牆癱坐的屍體
+      if (zn.theme !== 'corridor' && R() < 0.12) add(corpse, li, cx + (R() - 0.5) * 0.8, cz + (R() - 0.5) * 0.8, R() * Math.PI * 2, 'floor');
+    }
+    // 凸牆角:格點四周剛好一格是牆、其他三格可走 → 牆兩側各一個躲藏點(緊貼牆面、離轉角 0.7m),面向轉角
+    for (let vr = 1; vr < L.H; vr++) for (let vc = 1; vc < L.W; vc++) {
+      let ns = 0, si = -1;
+      for (let k = 0; k < 4; k++) {
+        const c = vc - 1 + (k & 1), r = vr - 1 + (k >> 1);
+        if (solid(li, c, r)) { ns++; si = k; } else if (!walk(li, c, r)) ns = 9;
+      }
+      if (ns !== 1) continue;
+      const qx = si & 1 ? 1 : -1, qz = si >> 1 ? 1 : -1, vx = vc * 2, vz = vr * 2;
+      add(cover, li, vx - qx * 0.5, vz + qz * 0.7, Math.atan2(0, -qz), 'edge');
+      add(cover, li, vx + qx * 0.7, vz - qz * 0.5, Math.atan2(-qx, 0), 'edge');
     }
   }
-  // 家具旁:每個碰撞盒挑一面(盒子在地上、0.4~2.4m 高、不是超大件)
+  // 家具旁:每個碰撞盒挑一面(盒子在地上、不是超大件);矮的(病床/推床/桌子)旁邊躺屍體,高的(櫃子)後面躲人
   for (const b of W.boxes) {
     const h = b.maxY - b.minY, sx = b.maxX - b.minX, sz = b.maxZ - b.minZ;
     if (h < 0.4 || h > 2.4 || sx * sz < 0.25 || sx > 3.2 || sz > 3.2) continue;
     const li = L.levelOfY(b.minY + 0.2), fy = L.levels[li].y;
     if (b.minY - fy > 0.35 || b.minY < fy - 0.2) continue;
-    const side = (R() * 4) | 0, nx = side === 0 ? 1 : side === 1 ? -1 : 0, nz = side === 2 ? 1 : side === 3 ? -1 : 0;
+    let side = (R() * 4) | 0;
+    if (h > 1.45) { // 高櫃:要夠寬(那一面 ≥ 1.1m)才藏得住整個人;挑最寬的一面
+      if (Math.max(sx, sz) < 1.1) continue;
+      side = sz >= sx ? (R() < 0.5 ? 0 : 1) : (R() < 0.5 ? 2 : 3);
+    }
+    const nx = side === 0 ? 1 : side === 1 ? -1 : 0, nz = side === 2 ? 1 : side === 3 ? -1 : 0;
     const x = nx ? (nx > 0 ? b.maxX + 0.5 : b.minX - 0.5) : (b.minX + b.maxX) / 2, z = nz ? (nz > 0 ? b.maxZ + 0.5 : b.minZ - 0.5) : (b.minZ + b.maxZ) / 2;
-    const c = Math.floor(x / 2), r = Math.floor(z / 2);
-    if (!plain(li, c, r)) continue;
-    const zn = zoneOk(li, c, r);
-    if (!zn || zn.theme === 'corridor') continue;
-    const low = h < 1.15;
-    add(li, x, z, low ? Math.atan2(-nz, nx) + (R() < 0.5 ? Math.PI : 0) : Math.atan2(nx, nz), low ? 'bed' : 'tall', zn);
+    if (h < 1.15) add(corpse, li, x, z, Math.atan2(-nz, nx) + (R() < 0.5 ? Math.PI : 0), 'bed');
+    else if (h > 1.45) add(cover, li, x, z, Math.atan2(nx, nz), 'tall');
   }
-  // 天花板:破洞 / 下垂的板(夾層是黑的,看得到垂下來的手)
+  for (const list of [cover, corpse]) for (let i = list.length - 1; i >= 0; i--) if (list[i].corridor && list[i].kind === 'bed') list.splice(i, 1);
+  // 天花板:破洞 / 下垂的板(夾層是黑的)
   const ceilOk = (li, x, z) => {
     const c = Math.floor(x / 2), r = Math.floor(z / 2);
     if (!plain(li, c, r)) return null;
@@ -109,7 +139,7 @@ function buildSpots(W, K, fixtures) {
     if (k.kind !== 'hole' && k.kind !== 'sag') continue;
     const q = ceilOk(k.li, k.x, k.z);
     if (!q || Math.abs(k.y - L.levels[k.li].y - q.h) > 0.1) continue;
-    ceil.push({ li: k.li, x: k.x, y: L.levels[k.li].y, z: k.z, ceilH: q.h, kind: k.kind, code: k.kind === 'hole' ? POSE.prone : POSE.hidden, gi: -1, busy: null, usedT: -1e9, dark: lit(k.li, k.x, k.z) < 0.55, yaw: R() * Math.PI * 2 });
+    ceil.push({ li: k.li, x: k.x, y: L.levels[k.li].y, z: k.z, ceilH: q.h, kind: k.kind, gi: -1, busy: null, usedT: -1e9, dark: lit(k.li, k.x, k.z) < 0.55, yaw: R() * Math.PI * 2 });
   }
   // 通風格柵:走廊每段、房間偶爾一個;對齊天花板分格中心,避開燈具、破洞
   const T3 = 2 / 3;
@@ -128,49 +158,45 @@ function buildSpots(W, K, fixtures) {
     if (!q) continue;
     const gi = grilles.length;
     grilles.push({ li, x, y: L.levels[li].y + q.h, z, rot: ((R() * 2) | 0) * (Math.PI / 2) });
-    ceil.push({ li, x, y: L.levels[li].y, z, ceilH: q.h, kind: 'grille', code: POSE.hidden, gi, busy: null, usedT: -1e9, dark: lit(li, x, z) < 0.55, yaw: R() * Math.PI * 2 });
+    ceil.push({ li, x, y: L.levels[li].y, z, ceilH: q.h, kind: 'grille', gi, busy: null, usedT: -1e9, dark: lit(li, x, z) < 0.55, yaw: R() * Math.PI * 2 });
   }
-  return { spots: out, ceil, grilles };
+  return { cover, corpse, ceil, grilles };
 }
 
-// 姿勢:依位置種類與殭屍種類
-function poseFor(kind, type) {
-  if (type === 'crawler') return POSE.lie;
-  const r = Math.random();
-  switch (kind) {
-    case 'corner': return r < 0.55 ? POSE.slump : r < 0.8 ? POSE.stand : POSE.crouch;
-    case 'door': return r < 0.5 ? POSE.stand : POSE.crouch;
-    case 'tall': return r < 0.7 ? POSE.crouch : POSE.stand;
-    default: return r < 0.55 ? POSE.lie : POSE.supine;
-  }
-}
+// 屍體姿勢:牆角癱坐,其他趴/仰躺;爬行者一律趴
+const corpsePose = (kind, type) => (type === 'crawler' ? POSE.lie : kind === 'corner' ? POSE.slump : Math.random() < 0.55 ? POSE.lie : POSE.supine);
 
 class Ambush {
   constructor(g) {
     this.g = g;
     this.world = null;
     this.ready = false;
-    this.stats = { lurk: 0, drop: 0, scares: 0, quiet: 0, hunts: 0, denied: 0, timeouts: 0, relocated: 0, decoys: 0, spots: 0, ceil: 0, grilles: 0 };
-    this.lastTrig = -1e9; this.blockT = -1e9; this.round = -1; this.roundT0 = 0; this.per = { lurk: 0, drop: 0 };
-    this.acc = 0; this.hintAcc = 0; this.relT = 0; this._huntAt = 0; this._huntReq = -9;
+    this.stats = { cover: 0, drop: 0, corpse: 0, fired: 0, scares: 0, quiet: 0, spoiled: 0, wrongDir: 0, hunts: 0, released: 0, denied: 0, timeouts: 0, relocated: 0, decoys: 0, spots: 0, corpseSpots: 0, ceil: 0, grilles: 0 };
+    this.slots = []; // 虛擬埋伏(房主):{ id, kind:'cover'|'drop', type, spot, t0, maxT, R, seenT, spoiled, relT }
+    this.log = []; // 現身紀錄(測試/除錯)
+    this.lastTrig = -1e9; this.blockT = -1e9; this.round = -1; this.roundT0 = 0; this.per = { cover: 0, drop: 0, corpse: 0 }; this.nextRes = 0;
+    this.acc = 0; this.hintAcc = 0; this.relT = 0; this._huntAt = 0; this._huntReq = -9; this._sid = 1;
     this.shot = { t: -9, o: new THREE.Vector3(), d: new THREE.Vector3() };
     this.mv = { x: 0, z: 0 };
-    this.decoys = []; this.flick = []; this._tl = []; this._cand = []; this._pl = []; this.nPerch = 0;
+    this.decoys = []; this.flick = []; this._tl = []; this._pl = []; this.nHidden = 0; this.cpools = [];
+    this.rHints = []; this.hints = new Map(); this._net = null; this._sendT = 0; this._sentKey = '';
+    this._mat = null;
     this._hookCombat();
     try { this._build(); } catch (e) { console.warn('[ambush] 埋伏點建立失敗', e); }
   }
+  get reserved() { return this.slots.length; } // 預留中(還沒現身)的數量:flow 出怪時扣掉,回合結束要等牠們
 
-  // ---- 射線目標:藏在天花板上的不算(打不到、刀也砍不到),假屍體算(會流血、抽搐);開槍記下來(槍聲/彈道驚醒) ----
+  // ---- 射線目標:還在天花板夾層裡的不算(打不到、刀也砍不到),假屍體算(會流血、抽搐);開槍記下來(槍聲/彈道驚醒) ----
   _hookCombat() {
     const g = this.g, A = this, tg = g._targets;
     if (typeof tg === 'function' && !g._ambTargets) {
       g._ambTargets = true;
       g._targets = function () {
         const base = tg.call(this);
-        if (!A.decoys.length && !A.nPerch) return base;
+        if (!A.decoys.length && !A.nHidden) return base;
         const out = A._tl;
         out.length = 0;
-        for (let i = 0; i < base.length; i++) { const z = base[i]; if (!(z.amb && z.state === PERCH)) out.push(z); }
+        for (let i = 0; i < base.length; i++) { const z = base[i]; if (!(z.amb && z.amb.hidden)) out.push(z); }
         for (let i = 0; i < A.decoys.length; i++) out.push(A.decoys[i]);
         return out;
       };
@@ -196,10 +222,10 @@ class Ambush {
     const fixtures = g.hospital?.lights?.fixtures || [];
     this.fixtures = fixtures;
     const r = buildSpots(W, g.hospital?.K, fixtures);
-    this.spots = r.spots; this.ceil = r.ceil; this.grilles = r.grilles;
+    this.cover = r.cover; this.corpse = r.corpse; this.ceil = r.ceil; this.grilles = r.grilles;
     this.props = createAmbushProps(g, W.layout, r.grilles, W.layout.vents || []);
     this.props.onDrip = (key, p) => { this.props.splat(key, 0.014); const lp = g.player.pos; if (Math.abs(lp.x - p.x) + Math.abs(lp.z - p.z) < 9) ambushSfx('drip', p); };
-    Object.assign(this.stats, { spots: r.spots.length, ceil: r.ceil.length, grilles: r.grilles.length });
+    Object.assign(this.stats, { spots: r.cover.length, corpseSpots: r.corpse.length, ceil: r.ceil.length, grilles: r.grilles.length });
     // 第一次在建構時就加進場景(開機預編譯會一起編);之後換地圖重建時自己在背景預編譯
     if (this._built) precompile(g, this.props.group).catch(() => {});
     this._built = true;
@@ -229,102 +255,156 @@ class Ambush {
     const g = this.g;
     if (g.world !== this.world || !this.ready) { if (this.ready) this.dispose(); try { this._build(); } catch (e) { console.warn('[ambush]', e); return; } }
     if (g.round !== this.round) this._newRound();
+    this._netHook();
     const p = g.player, k = Math.min(1, dt * 0.9);
     this.mv.x += ((p.vx || 0) - this.mv.x) * k; this.mv.z += ((p.vz || 0) - this.mv.z) * k; // 玩家最近的前進方向(「可能經過」)
     this.props.update(dt);
-    this._tickFlick(dt);
+    this._tickFlick();
     this._tickDecoys(dt);
     if (this.decoys.length < (this.decoyWant || 0) && !g.spawnHeld && (this._dT -= dt) <= 0) {
       this._dT = 0.35;
       const s = this._decoySpot();
       if (s) this._addDecoy(s); else if (++this._dFail > 8) this.decoyWant = this.decoys.length;
     }
+    let nh = 0;
+    for (const z of g.zombies) if (z.amb && z.amb.hidden) nh++;
+    this.nHidden = nh;
     this.hintAcc += dt;
     if (this.hintAcc >= 0.08) { this._hints(this.hintAcc); this.hintAcc = 0; }
     if (!this._host()) return;
+    // 玩家就在附近的虛擬點每幀檢查(觸發窗口可能只有零點幾秒:從轉角/門口經過)
+    if (this.slots.length && g.phase === 'fighting' && g.state === 'playing') {
+      let pl = null;
+      for (let i = this.slots.length - 1; i >= 0; i--) { const s = this.slots[i]; if (s && s.hot) this._tickSlot(s, pl || (pl = this._players()), g.time); }
+    }
     this.acc += dt;
     if (this.acc < 0.25) return;
     const step = this.acc;
     this.acc = 0;
     this._tick(step);
+    this._broadcast(step);
   }
 
-  // 房主:每 0.25 秒檢查觸發、回合收尾、逾時、搬家
+  // 房主:每 0.25 秒 — 預留、觸發(掩蔽處/天花板/屍體)、回合收尾、逾時、搬家
   _tick(step) {
-    const g = this.g, W = g.world, t = g.time;
-    let nPerch = 0;
-    const list = this._cand;
-    list.length = 0;
-    for (const z of g.zombies) if (z.alive && z.amb && z.amb.dormant && !z._proxy && !z.amb.decoy) { list.push(z); if (isPerch(z.amb.code)) nPerch++; }
-    this.nPerch = nPerch;
-    if (!list.length) { this._huntAt = 0; return; }
+    const g = this.g, t = g.time;
+    const corpses = [];
+    for (const z of g.zombies) if (z.alive && z.amb && z.amb.dormant && !z._proxy && !z.amb.decoy) corpses.push(z);
+    if (!this.slots.length && !corpses.length) this._huntAt = 0;
     if (g.phase !== 'fighting' || g.state !== 'playing') return;
-    // 場上只剩埋伏的(flow 呼叫 hunt()):全部醒來找人,回合不會卡住
+    // 場上沒有活動的殭屍、只剩預留/裝死的(flow 呼叫 hunt()):預留的放回佇列照常出怪、裝死的起身 → 回合不會卡住
     if (this._huntAt && t - this._huntReq > 0.4) this._huntAt = 0;
     if (this._huntAt && t >= this._huntAt) {
-      for (const z of list) z._ambWake(true);
-      this.stats.hunts++;
       this._huntAt = 0;
+      this.stats.hunts++;
+      this.releaseAll();
+      for (const z of corpses) z._ambWake(true);
       return;
     }
-    const pl = this._players(), sh = this.shot, shot = t - sh.t < 0.35 ? sh : null;
-    for (const z of list) {
-      const a = z.amb;
-      if (!a || !a.dormant) continue;
-      if (a.hurt) { this._fire(z, true, null); continue; }
-      if (t - a.t0 > a.maxT) { z._ambWake(true); this.stats.timeouts++; continue; }
-      const perch = isPerch(a.code), hy = perch ? a.ceilH - 0.25 : POSE_H[a.code] || 0.8;
-      const cx = z.pos.x, cy = z.pos.y + hy, cz = z.pos.z;
-      // 槍聲 / 子彈從旁邊飛過
-      if (shot) {
-        const ox = cx - sh.o.x, oy = cy - sh.o.y, oz = cz - sh.o.z, along = ox * sh.d.x + oy * sh.d.y + oz * sh.d.z;
-        const near = ox * ox + oy * oy + oz * oz < 4.5 * 4.5;
-        const miss = along > 0 && along < 45 ? Math.sqrt(Math.max(0, ox * ox + oy * oy + oz * oz - along * along)) : 99;
-        if ((near || miss < 1.5) && W.hasLineOfSight(sh.o.x, sh.o.y, sh.o.z, cx, cy, cz)) { this._fire(z, true, g.player); continue; }
-      }
-      // 最近的玩家(同一層)
-      let best = null, bd = 1e9;
-      for (const p of pl) {
-        if (Math.abs(p.pos.y - z.pos.y) > 1.8) continue;
-        const d = Math.hypot(p.pos.x - cx, p.pos.z - cz);
-        if (d < bd) { bd = d; best = p; }
-      }
-      if (!best || bd > a.R + 0.8) { a.stare = Math.max(0, a.stare - step); continue; }
-      const p = best, ey = p.pos.y + (p.eyeH || 1.6);
-      if (perch) {
-        if (bd > a.R || !W.hasLineOfSight(cx, cy, cz, p.pos.x, p.pos.y + 1.2, p.pos.z)) continue;
-        this._fire(z, bd < 0.9, p);
-        continue;
-      }
-      if (!W.hasLineOfSight(p.pos.x, ey, p.pos.z, cx, cy, cz)) continue; // 互相看不到(隔著牆):繼續等
-      if (bd < 1.35) { this._fire(z, true, p); continue; } // 貼上來了:不管節奏都得起來
-      const dx = cx - p.pos.x, dz = cz - p.pos.z, dl = Math.hypot(dx, dz) || 1;
-      const look = (-dx * Math.sin(p.yaw || 0) - dz * Math.cos(p.yaw || 0)) / dl; // 1 = 正眼看著牠
-      if (look > 0.9 && bd > 2) { a.stare += step; if (a.stare < 4) continue; } // 被盯著:繼續裝死(盯太久也會撲過來)
-      if (bd <= a.R || (look < -0.2 && bd <= a.R + 0.8)) this._fire(z, false, p); // 經過、轉身背對
-    }
-    // 離戰場太遠的埋伏:沒人看得到時搬到玩家前方(每秒最多一隻)
+    this._reserve(t);
+    const pl = this._players();
+    for (let i = this.slots.length - 1; i >= 0; i--) { const s = this.slots[i]; if (s) this._tickSlot(s, pl, t); }
+    const sh = this.shot, shot = t - sh.t < 0.35 ? sh : null;
+    for (const z of corpses) this._tickCorpse(z, pl, t, step, shot);
     this.relT += step;
-    if (this.relT >= 1) { this.relT = 0; this._relocate(list); }
+    if (this.relT >= 1) { this.relT = 0; this._relocate(corpses); }
   }
 
-  // 觸發:節奏允許 → 跳嚇版本;不允許時 force 才安靜地醒來,否則繼續裝死
-  _fire(z, force, p) {
-    const loud = this._allow(z, p);
-    if (!loud && !force) return false;
-    z._ambWake(!loud);
-    if (loud) { this.lastTrig = this.g.time; this.stats.scares++; } else this.stats.quiet++;
-    this.blockT = this.g.time + 8; // 不會兩隻同時衝出來
-    return true;
+  // ---- 虛擬埋伏:現身條件 ----
+  _tickSlot(s, pl, t) {
+    const g = this.g, W = g.world, sp = s.spot;
+    if (t - s.t0 > s.maxT) { this._release(s); this.stats.timeouts++; return; }
+    let best = null, bd = 1e9;
+    for (const p of pl) {
+      if (Math.abs(p.pos.y - sp.y) > 1.8) continue;
+      const d = Math.hypot(p.pos.x - sp.x, p.pos.z - sp.z);
+      if (d < bd) { bd = d; best = p; }
+    }
+    if (s.kind === 'drop') {
+      s.hot = !!best && bd <= s.R + 1.5;
+      if (!best || bd > s.R) return;
+      if (!W.hasLineOfSight(sp.x, sp.y + sp.ceilH - 0.25, sp.z, best.pos.x, best.pos.y + 1.2, best.pos.z)) return;
+      if (this._allow('ceilingDrop', best, sp)) this._fire(s, null, best);
+      return;
+    }
+    s.hot = !!best && bd <= s.R + 1.5;
+    if (!best || bd > s.R + 3) return;
+    const hs = this._coverPos(sp);
+    if (!hs) return;
+    // 掩蔽點有人看得到:絕不在那裡現身;近距離被看到(從錯的方向繞過來)= 這個點作廢,稍後搬家
+    if (this._hSeen(hs, sp.y, pl)) {
+      s.seenT = t;
+      if (bd < s.R + 2.5 && !s.spoiled) { s.spoiled = true; this.stats.spoiled++; }
+      return;
+    }
+    if (s.spoiled || bd > s.R || bd < 1.2 || t - s.seenT < 4) return;
+    const E = this._emerge(hs, sp.y, best, s.R);
+    if (!E) { s.wrong = (s.wrong || 0) + 1; if (s.wrong === 1) this.stats.wrongDir++; return; }
+    if (this._allow('ambush', best, sp)) this._fire(s, E, best, hs);
   }
-  _allow(z, p) {
+  // 現身位置:從 H 往「離開路線」的反方向再退 0.3m(更深的掩蔽),退不了就用 H;順便記下路線方向(現身時面向)
+  _coverPos(sp) {
+    const W = this.g.world, y = sp.y, o = this._fo || (this._fo = { x: 0, z: 0 }), c = this._cp || (this._cp = { x: 0, z: 0, fx: 0, fz: 1 });
+    const f = W.flowDir(sp.x, y + 0.1, sp.z, o, 1);
+    if (!f) return null;
+    c.fx = f.x; c.fz = f.z; c.x = sp.x; c.z = sp.z;
+    const bx = sp.x - f.x * 0.3, bz = sp.z - f.z * 0.3;
+    if (W._navFree ? W._navFree(bx, bz, y, 0.3) : W.isNode(bx, y, bz)) { c.x = bx; c.z = bz; }
+    return c;
+  }
+  // 掩蔽點(c = {x, z},地面 y)整個身體範圍是否有任何玩家看得到(每人 19 條視線;霧外 35m 不算)
+  _hSeen(c, y, pl) {
+    const W = this.g.world;
+    for (const p of pl) {
+      const ex = p.pos.x, ey = p.pos.y + (p.eyeH || 1.6), ez = p.pos.z;
+      if (Math.abs(c.x - ex) + Math.abs(c.z - ez) > 50 || Math.hypot(c.x - ex, y - p.pos.y, c.z - ez) > 35) continue;
+      for (const q of HPTS) if (W.hasLineOfSight(ex, ey, ez, c.x + q[0], y + q[1], c.z + q[2])) return p;
+    }
+    return null;
+  }
+  // 現身點 E:沿導航場從掩蔽點走向玩家(繞出轉角、穿過門口),3m 內第一個觸發的玩家看得到的點;路線總長要在觸發距離內。沒有 = 方向不對
+  _emerge(c, y, p, R) {
+    const W = this.g.world, px = p.pos.x, pz = p.pos.z, ey = p.pos.y + (p.eyeH || 1.6);
+    const fd = W.flowDistance(c.x, y + 0.1, c.z);
+    if (!Number.isFinite(fd) || fd > R + 2.5) return null;
+    const o = this._fo2 || (this._fo2 = { x: 0, z: 0 });
+    let x = c.x, z = c.z;
+    for (let i = 1; i <= 12; i++) {
+      const f = W.flowDir(x, y + 0.1, z, o, 1);
+      if (!f) break;
+      x += f.x * 0.25; z += f.z * 0.25;
+      if (i >= 2 && W.hasLineOfSight(px, ey, pz, x, y + 1.2, z)) return { x, z, d: i * 0.25 };
+    }
+    return null;
+  }
+
+  // 現身:在 H(或天花板夾層)生成一隻殭屍(flow.spawnZombie,扣掉預留的 toSpawn、套用回合血量、連線照常同步)
+  _fire(s, E, p, hs) {
+    const g = this.g, sp = s.spot;
+    const i = this.slots.indexOf(s);
+    if (i >= 0) this.slots.splice(i, 1);
+    if (sp.busy === s) sp.busy = null;
+    sp.usedT = g.time;
+    g._ambAt = hs ? { x: hs.x, y: sp.y, z: hs.z, yaw: Math.atan2(hs.fx, hs.fz) } : { x: sp.x, y: sp.y, z: sp.z, yaw: sp.yaw };
+    this._mat = { s, E, p };
+    let z = null;
+    try { z = g.spawnZombie(s.type); } catch (e) { console.warn('[ambush]', e); } finally { g._ambAt = null; this._mat = null; }
+    if (!z || !z.amb) return null;
+    this.lastTrig = g.time;
+    this.blockT = g.time + 8; // 不會兩隻同時衝出來
+    this.stats.fired++; this.stats.scares++;
+    this.log.push({ t: +g.time.toFixed(2), kind: s.kind, spot: sp.kind, type: z.type, x: r2(z.pos.x), y: sp.y, z: r2(z.pos.z), E: E ? [r2(E.x), r2(E.z), E.d] : null, by: p === g.player ? 'local' : p?.id ?? '?', d: r2(Math.hypot(p.pos.x - sp.x, p.pos.z - sp.z)) });
+    if (this.log.length > 60) this.log.shift();
+    return z;
+  }
+  _allow(kind, p, pos) {
     const g = this.g, t = g.time, I = this.I();
     if (!I.n || t < this.blockT) return false;
     if ((g.round | 0) <= 1 && t - this.roundT0 < 45) return false;
     const D = g.horror?.director;
     if (D && typeof D.request === 'function' && (!p || p === g.player || !g.net)) {
       let ok = false;
-      try { ok = D.request(isPerch(z.amb.code) ? 'ceilingDrop' : 'ambush', { weight: 1, pos: z.pos }) === true; } catch { ok = false; }
+      try { ok = D.request(kind, { weight: 1, pos }) === true; } catch { ok = false; }
       if (!ok) this.stats.denied++;
       return ok;
     }
@@ -332,85 +412,183 @@ class Ambush {
     return true;
   }
 
-  // flow.updateRound:這一回合已經沒有要出的、場上只剩埋伏的 → 2.5 秒後全部醒來
+  // flow.updateRound:場上沒有活動的殭屍、剩下的都是預留/裝死的 → 2.5 秒後收尾
   hunt() {
     if (!this._host()) return;
     const t = this.g.time;
     if (!this._huntAt || t - this._huntReq > 0.4) this._huntAt = t + 2.5;
     this._huntReq = t;
   }
+  // 預留的全部放回出怪佇列(照常在出生點出現,不是埋伏)
+  releaseAll() {
+    for (let i = this.slots.length - 1; i >= 0; i--) this._release(this.slots[i]);
+    if (this.g.spawnTimer > 0.5) this.g.spawnTimer = 0.5;
+  }
+  _release(s) {
+    const i = this.slots.indexOf(s);
+    if (i < 0) return;
+    this.slots.splice(i, 1);
+    if (s.spot.busy === s) s.spot.busy = null;
+    this.g.queue.unshift(s.type);
+    this.stats.released++;
+  }
   wakeAll(quiet = true) { for (const z of this.g.zombies) if (z.alive && z.amb && z.amb.dormant && !z._proxy) z._ambWake(quiet); }
 
-  // ======================= 出怪時改放到埋伏點(flow.spawnZombie) =======================
-  onSpawn(z) {
-    if (!z || !this.ready || z._proxy || !this._host()) return;
+  // ---- 預留:從出怪佇列拿一隻(仍算在 toSpawn 裡)放到虛擬的掩蔽點 / 天花板點 ----
+  _reserve(t) {
     const g = this.g;
-    if (g.net?.pvp || g.phase !== 'fighting' || g.state !== 'playing') return;
-    if (z.type === 'brute' || z.type === 'bloater') return;
+    if (g.spawnHeld || t < this.nextRes || g.net?.pvp) return;
+    this.nextRes = t + rand(3, 7);
     const I = this.I();
     if (!I.n) return;
-    const n = Math.max(1, g.round | 0), t = g.time;
+    const n = Math.max(1, g.round | 0);
     if (n === 1 && t - this.roundT0 < 20) return;
     if (t - this.lastTrig < this.cd() * 0.3) return;
-    let armed = 0;
+    if ((g.queue?.length || 0) < 2) return;
+    let armed = this.slots.length;
+    for (const z of g.zombies) if (z.alive && z.amb && z.amb.dormant) armed++;
+    if (armed >= Math.min(5, (n <= 3 ? 2 : n <= 8 ? 3 : 4) + (I.n > 1.2 ? 1 : 0))) return;
+    const cb = Math.round(I.n * (n <= 1 ? 1 : n <= 3 ? 2 : n <= 6 ? 3 : 4)), db = Math.round(I.n * (n <= 1 ? 0.4 : n <= 4 ? 1 : n <= 8 ? 2 : 3));
+    const canC = this.per.cover < cb, canD = this.per.drop < db;
+    if (!canC && !canD) return;
+    const kinds = canD && (!canC || Math.random() < 0.45) ? ['drop', 'cover'] : ['cover', 'drop'];
+    for (const kind of kinds) {
+      if (kind === 'drop' ? !canD : !canC) continue;
+      const qi = this._queuePick(kind);
+      if (qi < 0) continue;
+      const spot = this._pick(kind === 'drop' ? this.ceil : this.cover, kind === 'drop');
+      if (!spot) continue;
+      this._addSlot(kind, g.queue.splice(qi, 1)[0], spot, t);
+      return;
+    }
+  }
+  // 佇列前段挑一隻適合的類型(天花板優先狂奔者/爬行者)
+  _queuePick(kind) {
+    const q = this.g.queue || [];
+    const n = Math.min(q.length, 12);
+    if (kind === 'drop') { for (let i = 0; i < Math.min(n, 8); i++) if (q[i] === 'runner' || q[i] === 'crawler') return i; }
+    const ok = kind === 'drop' ? DROP_TYPES : COVER_TYPES;
+    for (let i = 0; i < n; i++) if (ok.has(q[i])) return i;
+    return -1;
+  }
+  _addSlot(kind, type, spot, t, opt = {}) {
+    const s = { id: this._sid++, kind, type, spot, t0: t, maxT: opt.maxT ?? rand(90, 140), R: opt.R ?? (kind === 'drop' ? rand(1.7, 3.0) : rand(3.0, 4.6)), seenT: -9, spoiled: false, relT: t, wrong: 0 };
+    spot.busy = s;
+    this.slots.push(s);
+    this.per[kind]++;
+    this.stats[kind]++;
+    return s;
+  }
+
+  // ======================= 出怪時(flow.spawnZombie):現身中的設定,或把一般出怪改成「裝死的屍體」 =======================
+  onSpawn(z) {
+    if (!z || !this.ready || z._proxy) return;
+    if (this._mat) { this._setupFired(z, this._mat); return; }
+    if (!this._host()) return;
+    const g = this.g;
+    if (g.net?.pvp || g.phase !== 'fighting' || g.state !== 'playing' || !CORPSE_TYPES.has(z.type)) return;
+    const I = this.I();
+    if (!I.n) return;
+    const n = Math.max(1, g.round | 0);
+    if (n < 2 || g.time - this.lastTrig < this.cd() * 0.3) return;
+    let armed = this.slots.length;
     for (const o of g.zombies) if (o.alive && o.amb && o.amb.dormant) armed++;
     if (armed >= Math.min(5, (n <= 3 ? 2 : n <= 8 ? 3 : 4) + (I.n > 1.2 ? 1 : 0))) return;
-    const lb = Math.round(I.n * (n <= 1 ? 1 : n <= 3 ? 2 : n <= 6 ? 3 : 4)), db = Math.round(I.n * (n <= 1 ? 0.4 : n <= 4 ? 1 : n <= 8 ? 2 : 3));
-    const canL = this.per.lurk < lb, canD = this.per.drop < db;
-    if ((!canL && !canD) || Math.random() > 0.45 + 0.02 * Math.min(10, n)) return;
-    const dropFirst = canD && Math.random() < (z.type !== 'walker' ? 0.65 : 0.25);
-    let ok = dropFirst && this._armPerch(z);
-    if (!ok && canL) ok = this._armLurk(z);
-    if (!ok && canD && !dropFirst) this._armPerch(z);
+    if (this.per.corpse >= Math.round(I.n * Math.min(3, 1 + Math.floor(n / 4))) || Math.random() > 0.35) return;
+    this._armCorpse(z);
   }
-  _armLurk(z, opt) {
-    const s = this._pick(this.spots, false, opt);
+  _setupFired(z, m) {
+    const g = this.g, s = m.s, cover = s.kind === 'cover';
+    const code = cover ? (Math.random() < 0.55 ? POSE.crouch : POSE.stand) : POSE.hidden;
+    z.vel.set(0, 0, 0);
+    z.amb = makeAmb(z, code, g.world, { spot: s.spot, t0: g.time, R: s.R, fx: null });
+    z.amb.g = g;
+    z.amb.dormant = false;
+    z.amb.via = cover ? m.E : null;
+    if (!cover) z.amb.hidden = true;
+    z.go(cover ? BURST : DROP);
+    z.alerted = true; z.spotted = true; // 牠自己會叫,不再補「發現玩家」的叫聲
+    z.vp.x = z.pos.x; z.vp.y = z.pos.y + (cover ? 1 : s.spot.ceilH); z.vp.z = z.pos.z;
+  }
+  _armCorpse(z, opt) {
+    const s = opt?.spot || this._pick(this.corpse, false, opt);
     if (!s) return false;
-    const code = poseFor(s.kind, z.type);
-    this._place(z, s, code, code === POSE.stand && s.kind === 'corner' ? s.yaw + Math.PI : s.yaw);
-    this.per.lurk++; this.stats.lurk++;
+    this._place(z, s, corpsePose(s.kind, z.type), s.yaw);
+    this.per.corpse++; this.stats.corpse++;
     return true;
   }
-  _armPerch(z, opt) {
-    const s = this._pick(this.ceil, true, opt);
-    if (!s) return false;
-    this._place(z, s, s.code, s.yaw);
-    this.per.drop++; this.stats.drop++;
-    return true;
-  }
+  // 裝死:擺成屍體(凍結),下面一灘血
   _place(z, s, code, yaw) {
     const g = this.g, old = z.amb;
-    if (old) { if (old.frozen) z._ambThaw(); if (old.spot && old.spot.busy === z) old.spot.busy = null; }
+    if (old) { if (old.frozen) z._ambThaw(); if (old.spot && old.spot.busy === z) old.spot.busy = null; if (old.pool) { this.props.removePool(old.pool); this.cpools = this.cpools.filter((q) => q !== old.pool); } }
     z.pos.set(s.x, s.y, s.z);
     z.vel.set(0, 0, 0);
     z.heading = yaw;
     z.root.position.copy(z.pos);
-    const perch = isPerch(code);
-    z.amb = makeAmb(z, code, g.world, { spot: s, t0: old ? old.t0 : g.time, R: perch ? rand(1.7, 3.0) : rand(3.0, 4.8), fx: perch ? PERCH : LURK });
+    z.amb = makeAmb(z, code, g.world, { spot: s, t0: old ? old.t0 : g.time, R: rand(3.0, 4.8), fx: LURK });
     z.amb.g = g;
     z.amb.maxT = rand(100, 150);
+    z.amb.pool = this.props.pool(s.x, s.y, s.z, rand(1.1, 1.6));
+    this.cpools.push(z.amb.pool);
     s.busy = z;
-    z.go(perch ? PERCH : LURK);
+    z.go(LURK);
     z._ambFreeze();
-    z.vp.x = s.x; z.vp.y = s.y + (perch ? s.ceilH : 0.6); z.vp.z = s.z;
+    z.vp.x = s.x; z.vp.y = s.y + 0.6; z.vp.z = s.z;
     z._sx = s.x; z._sy = s.y; z._sz = s.z; z._noProg = 0; z._farT = 0;
   }
 
-  // 挑埋伏點:路徑距離 8~34m、同層優先、玩家前進方向、暗處、門後;前幾名裡第一個沒人看得到的
+  // ---- 裝死的屍體:被打到 / 旁邊開槍 / 經過、轉身背對 → 起身(節奏不允許時維持裝死,貼身才安靜起身) ----
+  _tickCorpse(z, pl, t, step, shot) {
+    const g = this.g, W = g.world, a = z.amb, sh = this.shot;
+    if (!a || !a.dormant) return;
+    if (a.hurt) { this._wakeCorpse(z, true, null); return; }
+    if (t - a.t0 > a.maxT) { z._ambWake(true); this.stats.timeouts++; return; }
+    const cx = z.pos.x, cy = z.pos.y + (POSE_H[a.code] || 0.6), cz = z.pos.z;
+    if (shot) {
+      const ox = cx - sh.o.x, oy = cy - sh.o.y, oz = cz - sh.o.z, along = ox * sh.d.x + oy * sh.d.y + oz * sh.d.z;
+      const near = ox * ox + oy * oy + oz * oz < 4.5 * 4.5;
+      const miss = along > 0 && along < 45 ? Math.sqrt(Math.max(0, ox * ox + oy * oy + oz * oz - along * along)) : 99;
+      if ((near || miss < 1.5) && W.hasLineOfSight(sh.o.x, sh.o.y, sh.o.z, cx, cy, cz)) { this._wakeCorpse(z, true, g.player); return; }
+    }
+    let best = null, bd = 1e9;
+    for (const p of pl) {
+      if (Math.abs(p.pos.y - z.pos.y) > 1.8) continue;
+      const d = Math.hypot(p.pos.x - cx, p.pos.z - cz);
+      if (d < bd) { bd = d; best = p; }
+    }
+    if (!best || bd > a.R + 0.8) { a.stare = Math.max(0, a.stare - step); return; }
+    const p = best, ey = p.pos.y + (p.eyeH || 1.6);
+    if (!W.hasLineOfSight(p.pos.x, ey, p.pos.z, cx, cy, cz)) return;
+    if (bd < 1.35) { this._wakeCorpse(z, true, p); return; } // 貼上來了:不管節奏都得起來
+    const dx = cx - p.pos.x, dz = cz - p.pos.z, dl = Math.hypot(dx, dz) || 1;
+    const look = (-dx * Math.sin(p.yaw || 0) - dz * Math.cos(p.yaw || 0)) / dl; // 1 = 正眼看著牠
+    if (look > 0.9 && bd > 2) { a.stare += step; if (a.stare < 4) return; } // 被盯著:繼續當屍體(盯太久也會撲)
+    if (bd <= a.R || (look < -0.2 && bd <= a.R + 0.8)) this._wakeCorpse(z, false, p);
+  }
+  _wakeCorpse(z, force, p) {
+    const loud = this._allow('ambush', p, z.pos);
+    if (!loud && !force) return false;
+    z._ambWake(!loud);
+    if (loud) { this.lastTrig = this.g.time; this.stats.scares++; } else this.stats.quiet++;
+    this.blockT = this.g.time + 8;
+    return true;
+  }
+
+  // 挑位置:路徑距離 8~34m、同層優先、玩家前進方向、暗處;前幾名裡第一個沒人看得到的
   _pick(list, perch, opt = {}) {
     const g = this.g, W = g.world, L = W.layout, pl = this._players(), lp = g.player, mv = this.mv, ml = Math.hypot(mv.x, mv.z);
     const lo = opt.lo ?? 8, hi = opt.hi ?? 34;
     const cand = [];
     const pli = pl.map((p) => L.levelOfY(p.pos.y + 0.3));
     for (const s of list) {
-      if (s.busy || s.decoy || g.time - s.usedT < 75 || (opt.kind && s.kind !== opt.kind)) continue;
+      if (s.busy || s.decoy || g.time - s.usedT < 75 || (opt.kind && s.kind !== opt.kind) || s === opt.not) continue;
       let ed = Infinity, dl = 9;
       for (let i = 0; i < pl.length; i++) { const p = pl[i], d = Math.hypot(s.x - p.pos.x, s.z - p.pos.z); if (d < ed) ed = d; const q = Math.abs(s.li - pli[i]); if (q < dl) dl = q; }
       if (dl > 1 || ed < (opt.minE ?? 6) || ed > hi + 4) continue;
       if (this._nearArmed(s, 9)) continue;
       const fd = W.flowDistance(s.x, s.y + 0.1, s.z);
       if (!Number.isFinite(fd) || fd < lo || fd > hi) continue;
-      let w = (dl === 0 ? 3 : 0.5) * (perch ? (s.kind === 'hole' ? 1.3 : 1) : KIND_W[s.kind] || 1) * (s.dark ? 1.6 : 1);
+      let w = (dl === 0 ? 3 : 0.5) * (perch ? (s.kind === 'grille' ? 1 : 1.2) : KIND_W[s.kind] || 1) * (s.dark ? 1.6 : 1);
       w *= fd < 12 ? 0.8 : fd > 26 ? 0.6 : 1.2;
       if (ml > 0.3) { const dx = s.x - lp.pos.x, dz = s.z - lp.pos.z, d = Math.hypot(dx, dz) || 1, f = (dx * mv.x + dz * mv.z) / (d * ml); w *= 0.35 + 0.65 * Math.max(0, f) + (f > 0.7 ? 0.5 : 0); }
       s._w = w * (0.6 + Math.random() * 0.8);
@@ -431,38 +609,75 @@ class Ambush {
     return false;
   }
   _nearArmed(s, r) {
+    for (const q of this.slots) { const o = q.spot; if (o !== s && o.li === s.li && Math.abs(o.x - s.x) + Math.abs(o.z - s.z) < r) return true; }
     for (const z of this.g.zombies) {
       const a = z.amb;
       if (!z.alive || !a || !a.dormant || !a.spot || a.spot === s) continue;
-      if (Math.abs(a.spot.li - s.li) <= 0 && Math.abs(z.pos.x - s.x) + Math.abs(z.pos.z - s.z) < r) return true;
+      if (a.spot.li === s.li && Math.abs(z.pos.x - s.x) + Math.abs(z.pos.z - s.z) < r) return true;
     }
     for (const d of this.decoys) if (Math.abs(d.pos.x - s.x) + Math.abs(d.pos.z - s.z) < 1.5 && Math.abs(d.pos.y - s.y) < 1) return true;
     return false;
   }
-  // 搬家:埋伏超過 20 秒、離所有玩家路徑 40m 以上、原地與新位置都沒人看得到
-  _relocate(list) {
-    const g = this.g, W = g.world;
-    for (const z of list) {
+
+  // 搬家(每秒):作廢的點(被看過)、離所有玩家路徑 40m 以上超過 20 秒的 → 換到玩家前方新的點;屍體只在原地與新位置都沒人看得到時才搬
+  _relocate(corpses) {
+    const g = this.g, W = g.world, t = g.time;
+    for (const s of this.slots) {
+      const far = t - s.relT > 20 && !(W.flowDistance(s.spot.x, s.spot.y + 0.1, s.spot.z) < 40);
+      if (!(s.spoiled && t - s.seenT > 1.2) && !far) continue;
+      s.relT = t;
+      const n = this._pick(s.kind === 'drop' ? this.ceil : this.cover, s.kind === 'drop', { not: s.spot });
+      if (!n) { if (s.spoiled) this._release(s); return; }
+      if (s.spot.busy === s) s.spot.busy = null;
+      s.spot.usedT = t;
+      s.spot = n; n.busy = s; s.spoiled = false; s.seenT = -9; s.wrong = 0;
+      this.stats.relocated++;
+      return;
+    }
+    for (const z of corpses) {
       const a = z.amb;
-      if (g.time - (a.relT || a.t0) < 20) continue;
+      if (t - (a.relT || a.t0) < 20) continue;
       const fd = W.flowDistance(z.pos.x, z.pos.y + 0.1, z.pos.z);
       if (Number.isFinite(fd) && fd < 40) continue;
-      a.relT = g.time;
-      const perch = isPerch(a.code);
-      if (this._seen(a.spot || { x: z.pos.x, y: z.pos.y, z: z.pos.z, ceilH: a.ceilH }, perch)) continue;
-      const s = this._pick(perch ? this.ceil : this.spots, perch);
+      a.relT = t;
+      if (this._seen(a.spot || { x: z.pos.x, y: z.pos.y, z: z.pos.z }, false)) continue;
+      const s = this._pick(this.corpse, false);
       if (!s) continue;
       const t0 = a.t0;
-      this._place(z, s, perch ? s.code : poseFor(s.kind, z.type), s.yaw);
-      z.amb.t0 = t0; z.amb.relT = g.time;
+      this._place(z, s, corpsePose(s.kind, z.type), s.yaw);
+      z.amb.t0 = t0; z.amb.relT = t;
       this.stats.relocated++;
       return;
     }
   }
 
+  // ======================= 連線:房主把虛擬點(位置)廣播給隊友,隊友只用來放線索 =======================
+  _netHook() {
+    const s = this.g.net;
+    if (s === this._net) return;
+    this._net = s;
+    this.rHints = [];
+    if (s && typeof s.on === 'function') {
+      s.on('amb', (d, f) => {
+        if (s.isHost || f !== s.hostSlot || !Array.isArray(d)) return;
+        this.rHints = d.filter((q) => Array.isArray(q) && q.length >= 5 && q.slice(1).every(Number.isFinite)).slice(0, 12).map((q) => ({ kind: q[0] === 1 ? 'drop' : 'cover', x: q[1], y: q[2], z: q[3], ceilH: q[4] }));
+      });
+    }
+  }
+  _broadcast(step) {
+    const s = this.g.net;
+    if (!s || !s.isHost || !s.remotes?.size) return;
+    this._sendT -= step;
+    const list = this.slots.map((q) => [q.kind === 'drop' ? 1 : 0, r2(q.spot.x), r2(q.spot.y), r2(q.spot.z), r2(q.spot.ceilH || 0)]);
+    const key = list.join(';');
+    if (key === this._sentKey && this._sendT > 0) return;
+    this._sentKey = key; this._sendT = 4; // 有變化就送,沒變化每 4 秒補一次(新加入的隊友)
+    s.send('amb', list);
+  }
+
   // ======================= 狀態切換的特效(兩端都跑;只影響本機玩家的畫面/聲音) =======================
   fx(z, kind, a) {
-    const g = this.g, lp = g.player, W = g.world;
+    const g = this.g, lp = g.player;
     if (!a || !lp) return;
     const x = z.pos.x, fy = z.pos.y, zz = z.pos.z, ceilY = fy + a.ceilH;
     const d = Math.hypot(lp.pos.x - x, lp.pos.z - zz), same = Math.abs(lp.pos.y - fy) < 2.6;
@@ -471,15 +686,16 @@ class Ambush {
     vp.x = x; vp.z = zz;
     const loudVoice = (pos) => { if (z.type === 'runner' || z.type === 'crawler') sfx.shriek(pos); else sfx.zAttack(z.type, pos); };
     const notify = (kd) => { try { g.horror?.director?.notify?.(kd, { weight: 1, pos: z.pos }); } catch { /* 導演可有可無 */ } };
-    if (kind === 'burst') {
+    if (kind === 'burst') { // 現身/彈起的瞬間:尖叫(在轉角後面也聽得到)+ 刺擊
       vp.y = fy + 0.9;
       if (a.quiet) { sfx.zAlert(z.type, vp); return; }
       loudVoice(vp);
       if (!near) return;
       ambushSfx('sting', null, k);
-      if (d < 8 && W.hasLineOfSight(lp.pos.x, lp.pos.y + 1.6, lp.pos.z, x, fy + 1, zz)) { lp.kick?.(0.025 + 0.03 * k, 0.06); lp.addShake?.(0.22 + 0.22 * k); }
       this._flicker(x, fy, zz, 0.7);
       notify('ambush');
+    } else if (kind === 'out') { // 衝出掩蔽:鏡頭一震
+      if (same && d < 8) { lp.kick?.(0.025 + 0.03 * k, 0.06); lp.addShake?.(0.22 + 0.22 * k); }
     } else if (kind === 'drop') {
       vp.y = ceilY;
       const gi = a.gi ?? (a.gi = this._grilleAt(x, ceilY, zz));
@@ -504,7 +720,7 @@ class Ambush {
     for (let i = 0; i < G.length; i++) { const q = G[i]; if (Math.abs(q.x - x) < 0.3 && Math.abs(q.z - z) < 0.3 && Math.abs(q.y - y) < 0.6) return i; }
     return -1;
   }
-  // 附近的燈一陣狂閃(燈具的 ov 倍率,結束時還原)
+  // 附近的燈一陣狂閃(燈具的 ov 倍率,結束時還原;不動燈的 visible/投影)
   _flicker(x, y, z, dur) {
     let best = null, bd = 49;
     for (const f of this.fixtures || []) {
@@ -523,36 +739,41 @@ class Ambush {
     }
   }
 
-  // ======================= 線索(本機):天花板上的滴血、抓刮、格柵晃動、垂下的手在晃;屍體的呼吸 =======================
+  // ======================= 線索(本機):天花板上的滴血、抓刮、格柵晃動;轉角後的喘息;屍體的呼吸 =======================
   _hints(dt) {
     const g = this.g, lp = g.player.pos;
+    const src = this._host() ? this.slots : this.rHints, live = this._hintLive || (this._hintLive = new Set());
+    live.clear();
+    for (const q of src) {
+      const sp = q.spot || q, kind = q.kind, key = `${kind}:${sp.x},${sp.y},${sp.z}`;
+      live.add(key);
+      let h = this.hints.get(key);
+      if (!h) this.hints.set(key, (h = { x: sp.x, y: sp.y, z: sp.z, ceilH: sp.ceilH || 3.4, gi: kind === 'drop' ? this._grilleAt(sp.x, sp.y + (sp.ceilH || 3.4), sp.z) : -1, dripT: rand(0.2, 1), scrT: rand(1.5, 4), jig: 0, brT: rand(2, 5) }));
+      const dx = sp.x - lp.x, dz = sp.z - lp.z, d = Math.hypot(dx, dz);
+      if (Math.abs(sp.y - lp.y) > 2.5 || d > 16) { if (h.jig > 0) { h.jig = 0; this.props.jiggle(h.gi, 0); } continue; }
+      if (kind === 'drop') {
+        const cy = sp.y + h.ceilH;
+        if ((h.dripT -= dt) <= 0) { h.dripT = rand(0.7, 1.7); this.props.drip(h, sp.x + rand(-0.12, 0.12), cy - 0.04, sp.z + rand(-0.12, 0.12)); }
+        if ((h.scrT -= dt) <= 0 && d < 12) {
+          h.scrT = rand(4, 9);
+          ambushSfx(h.gi >= 0 && Math.random() < 0.5 ? 'rattle' : 'scratch', { x: sp.x + rand(-0.5, 0.5), y: cy + 0.25, z: sp.z + rand(-0.5, 0.5) });
+          if (h.gi >= 0) h.jig = 0.5;
+          if (Math.random() < 0.5) g.burst?.(_v.set(sp.x, cy - 0.04, sp.z), _down, 'dust', 3, sp.y);
+        }
+        if (h.jig > 0) { h.jig -= dt; this.props.jiggle(h.gi, h.jig > 0 ? 1 : 0); }
+      } else if (d < 7 && d > 1.5 && (h.brT -= dt) <= 0) { // 轉角/門後傳來的喘息(隔牆會被悶住)
+        h.brT = rand(5, 9);
+        ambushSfx('breath', { x: sp.x, y: sp.y + 1.2, z: sp.z });
+      }
+    }
+    for (const [k, h] of this.hints) if (!live.has(k)) { if (h.jig > 0) this.props.jiggle(h.gi, 0); this.hints.delete(k); }
     for (const z of g.zombies) {
       const a = z.amb;
-      if (!a || !a.dormant || !z.alive || a.decoy) continue;
-      const dx = z.pos.x - lp.x, dz = z.pos.z - lp.z, d = Math.hypot(dx, dz);
-      if (Math.abs(z.pos.y - lp.y) > 2.5 || d > 16) { if (a.jig > 0) { a.jig = 0; this.props.jiggle(a.gi ?? -1, 0); } continue; }
-      if (isPerch(a.code)) {
-        const cy = z.pos.y + a.ceilH;
-        if (a.gi === undefined) a.gi = this._grilleAt(z.pos.x, cy, z.pos.z);
-        a.dripT = (a.dripT ?? rand(0.2, 1)) - dt;
-        if (a.dripT <= 0) {
-          a.dripT = rand(0.7, 1.7);
-          const key = a.key || (a.key = { x: z.pos.x, y: z.pos.y, z: z.pos.z });
-          this.props.drip(key, z.pos.x + rand(-0.12, 0.12), cy - 0.04, z.pos.z + rand(-0.12, 0.12));
-        }
-        a.scrT = (a.scrT ?? rand(1.5, 4)) - dt;
-        if (a.scrT <= 0 && d < 12) {
-          a.scrT = rand(4, 9);
-          ambushSfx(a.gi >= 0 && Math.random() < 0.5 ? 'rattle' : 'scratch', { x: z.pos.x + rand(-0.5, 0.5), y: cy + 0.25, z: z.pos.z + rand(-0.5, 0.5) });
-          if (a.gi >= 0) a.jig = 0.5;
-          if (Math.random() < 0.5) g.burst?.(_v.set(z.pos.x, cy - 0.04, z.pos.z), _down, 'dust', 3, z.pos.y);
-        }
-        if (a.jig > 0) { a.jig -= dt; this.props.jiggle(a.gi, a.jig > 0 ? 1 : 0); }
-        if (a.code === POSE.prone && d < 14 && a.frozen) { z._resetPose(); z._ambStatic(a.code, z.t); z._ambBake(); } // 垂下的手慢慢晃
-      } else if (d < 4.2) {
-        a.brT = (a.brT ?? rand(0.5, 2.5)) - dt;
-        if (a.brT <= 0) { a.brT = rand(3.5, 6.5); ambushSfx('breath', { x: z.pos.x, y: z.pos.y + 0.5, z: z.pos.z }); }
-      }
+      if (!a || !a.dormant || !z.alive || a.decoy || !isCorpse(a.code)) continue;
+      const d = Math.hypot(z.pos.x - lp.x, z.pos.z - lp.z);
+      if (Math.abs(z.pos.y - lp.y) > 2.5 || d > 4.2) continue;
+      a.brT = (a.brT ?? rand(0.5, 2.5)) - dt;
+      if (a.brT <= 0) { a.brT = rand(3.5, 6.5); ambushSfx('breath', { x: z.pos.x, y: z.pos.y + 0.5, z: z.pos.z }); }
     }
   }
 
@@ -562,18 +783,23 @@ class Ambush {
     const prev = this.round;
     this.round = g.round;
     this.roundT0 = g.time;
-    this.per.lurk = 0; this.per.drop = 0;
+    this.per.cover = 0; this.per.drop = 0; this.per.corpse = 0;
     this._huntAt = 0;
+    this.nextRes = g.time + rand(4, 8);
+    for (let i = this.slots.length - 1; i >= 0; i--) { const s = this.slots[i]; if (s.spot.busy === s) s.spot.busy = null; } // 新回合的佇列是新的:舊的預留直接作廢
+    this.slots.length = 0;
+    for (const m of this.cpools) this.props.removePool(m); // 裝死屍體留下的血泊(假屍體的血泊跟著假屍體)
+    this.cpools.length = 0;
     if (!(g.round > 0) || g.net?.pvp) return;
     if (prev > g.round || prev <= 0) this._clearDecoys();
     this.decoyWant = Math.min(6, 1 + Math.ceil(g.round / 2)); // 一幀最多建一具(每具約 3~4ms),分散在回合開始的前幾秒
     this._dT = 0; this._dFail = 0;
   }
   _decoySpot() {
-    const S = this.spots, pl = this._players();
+    const S = this.corpse, pl = this._players();
     for (let tries = 0; tries < 40; tries++) {
       const s = S[(Math.random() * S.length) | 0];
-      if (!s || s.busy || s.decoy || s.kind === 'door') continue;
+      if (!s || s.busy || s.decoy) continue;
       let ok = true;
       for (const p of pl) if (Math.hypot(s.x - p.pos.x, s.z - p.pos.z) < 15 && Math.abs(s.y - p.pos.y) < 3) ok = false;
       for (const d of this.decoys) if (Math.abs(d.pos.x - s.x) + Math.abs(d.pos.z - s.z) < 12 && Math.abs(d.pos.y - s.y) < 1) ok = false;
@@ -582,15 +808,15 @@ class Ambush {
     return null;
   }
   _addDecoy(s) {
-    const g = this.g, A = this;
-    const type = Math.random() < 0.8 ? 'walker' : 'runner';
+    const g = this.g;
+    const r = Math.random(), type = r < 0.65 ? 'walker' : r < 0.85 ? 'runner' : 'crawler'; // 與裝死的殭屍同樣的類型組成
     forceVariant(type, (Math.random() * 8) | 0);
     let d;
     try { d = new Zombie(g.scene, { x: s.x, y: s.y, z: s.z }, 1, type); } catch { return; }
-    const code = s.kind === 'corner' ? (Math.random() < 0.75 ? POSE.slump : POSE.crouch) : s.kind === 'tall' ? POSE.slump : Math.random() < 0.55 ? POSE.lie : POSE.supine;
     d.heading = s.yaw;
-    d.amb = makeAmb(d, code, g.world, { spot: s });
+    d.amb = makeAmb(d, corpsePose(s.kind, type), g.world, { spot: s });
     d.amb.decoy = true;
+    d.amb.pool = this.props.pool(s.x, s.y, s.z, rand(1.1, 1.6));
     d._ambFreeze();
     d._decoy = true;
     d._tw = 0;
@@ -601,7 +827,6 @@ class Ambush {
       this.rollV += (Math.random() - 0.5) * 6 * k;
       if (part === 'head') this.headKick = Math.min(1.2, this.headKick + 0.5);
       this._tw = 0.7;
-      if (!A.decoys.includes(this)) return false;
       return false;
     };
     s.decoy = d;
@@ -621,7 +846,7 @@ class Ambush {
     }
   }
   _clearDecoys() {
-    for (const d of this.decoys) { if (d.amb?.spot) d.amb.spot.decoy = null; d.dispose(); }
+    for (const d of this.decoys) { if (d.amb?.spot) d.amb.spot.decoy = null; if (d.amb?.pool) this.props.removePool(d.amb.pool); d.dispose(); }
     this.decoys.length = 0;
   }
 
@@ -629,12 +854,15 @@ class Ambush {
   reset() {
     this._clearDecoys();
     this.props?.reset();
-    for (const s of this.spots || []) { s.busy = null; s.usedT = -1e9; }
-    for (const s of this.ceil || []) { s.busy = null; s.usedT = -1e9; }
+    for (const list of [this.cover, this.corpse, this.ceil]) for (const s of list || []) { s.busy = null; s.usedT = -1e9; }
+    this.slots.length = 0;
+    this.cpools.length = 0;
+    for (const [, h] of this.hints) h.jig = 0;
+    this.hints.clear();
     for (const q of this.flick) q.f.ov = 1;
     this.flick.length = 0;
     this.decoyWant = 0;
-    this.round = -1; this.lastTrig = -1e9; this.blockT = -1e9; this._huntAt = 0; this.nPerch = 0;
+    this.round = -1; this.lastTrig = -1e9; this.blockT = -1e9; this._huntAt = 0; this.nHidden = 0;
   }
   dispose() {
     this.reset();
@@ -646,21 +874,30 @@ class Ambush {
   // ======================= 除錯 / 測試 =======================
   debug() {
     const g = this.g, out = [];
-    for (const z of g.zombies) if (z.alive && z.amb) out.push({ type: z.type, state: z.state, code: z.amb.code, dormant: z.amb.dormant, x: +z.pos.x.toFixed(1), y: +z.pos.y.toFixed(1), z: +z.pos.z.toFixed(1), R: +z.amb.R.toFixed(1) });
-    return { level: this.level(), cd: +this.cd().toFixed(0), per: { ...this.per }, stats: { ...this.stats }, armed: out, decoys: this.decoys.map((d) => [+d.pos.x.toFixed(1), +d.pos.y.toFixed(1), +d.pos.z.toFixed(1), d.amb.code]) };
+    for (const z of g.zombies) if (z.alive && z.amb) out.push({ type: z.type, state: z.state, code: z.amb.code, dormant: z.amb.dormant, x: +z.pos.x.toFixed(1), y: +z.pos.y.toFixed(1), z: +z.pos.z.toFixed(1) });
+    return {
+      level: this.level(), cd: +this.cd().toFixed(0), per: { ...this.per }, stats: { ...this.stats }, reserved: this.reserved,
+      slots: this.slots.map((s) => ({ kind: s.kind, type: s.type, spot: s.spot.kind, x: r2(s.spot.x), y: s.spot.y, z: r2(s.spot.z), spoiled: s.spoiled })),
+      zombies: out, decoys: this.decoys.map((d) => [+d.pos.x.toFixed(1), +d.pos.y.toFixed(1), +d.pos.z.toFixed(1), d.amb.code]),
+    };
   }
-  // 強制把一隻新的殭屍放到埋伏點(測試用):kind 'lurk' | 'drop';opt { type, lo, hi, minE }
-  force(kind = 'lurk', opt = {}) {
+  // 測試:kind 'cover'(舊名 'lurk')| 'drop' 放一個虛擬點(預留算進 toSpawn);'corpse' 生一隻殭屍擺成屍體。
+  // opt { spot 指定位置, kind 位置種類, type, lo, hi, minE, R }
+  force(kind = 'cover', opt = {}) {
     const g = this.g;
     if (!this.ready) this._build();
-    const type = opt.type || (kind === 'drop' ? 'runner' : 'walker');
-    const before = g.toSpawn;
-    const z = g.spawnZombie(type);
-    g.toSpawn = before;
-    if (!z) return null;
-    if (z.amb) return z;
-    if (kind === 'drop') this._armPerch(z, opt); else this._armLurk(z, opt);
-    return z;
+    if (kind === 'lurk') kind = 'cover';
+    if (kind === 'corpse') {
+      const before = g.toSpawn;
+      const z = g.spawnZombie(opt.type || 'walker');
+      g.toSpawn = before;
+      if (z && !z.amb) this._armCorpse(z, opt);
+      return z;
+    }
+    const spot = opt.spot || this._pick(kind === 'drop' ? this.ceil : this.cover, kind === 'drop', opt);
+    if (!spot) return null;
+    g.toSpawn = (g.toSpawn | 0) + 1; // 預留的仍算在 toSpawn 裡
+    return this._addSlot(kind, opt.type || (kind === 'drop' ? 'runner' : 'walker'), spot, g.time, opt);
   }
 }
 

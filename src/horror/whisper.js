@@ -3,9 +3,10 @@ import { ghost, _internal } from '../audio.js';
 import { syllabify } from '../audio/ghost.js';
 
 // 耳邊低語:從文字表挑一句(每局不重複)、播放雙耳合成語音、同步顯示靈異字幕。
-// say(lineId | text, { ear, subtitle, filter, priority, pos, mode, g }) → handle | null
+// say(lineId | text, { ear, subtitle, filter, priority, pos, mode, g, orbit }) → handle { id, ear, end, dur, line, kill(), stop() } | null
+// filter 'pa' = 院內廣播(萬嵐系統的合成女聲,從天花板喇叭);orbit = 繞著頭轉 { r, w(弧度/秒), a(起始角,0 = 正後方) }
 const A = _internal.A;
-const TAG = { phone: '電話', radio: '收音機' };
+const TAG = { phone: '電話', radio: '收音機', pa: '院內廣播' }; // STORY.md §11.1 的字幕標籤
 // 玩家暱稱(大廳設定的;沒有就用「接單員」)
 const nick = () => { try { const n = localStorage.getItem('hz.nick'); return n && n.trim() ? n.trim().slice(0, 12) : '接單員'; } catch { return '接單員'; } };
 export class Whispers {
@@ -53,29 +54,37 @@ export class Whispers {
     const filter = o.filter ?? L.filter ?? null;
     let ear = o.ear ?? L.ear ?? 'auto';
     if (filter === 'phone' && (ear === 'auto' || ear === 'both')) ear = 'right'; // 聽筒貼在右耳
-    if (ear === 'auto') ear = o.pos ? 'world' : ['left', 'right', 'left', 'right', 'behind'][(Math.random() * 5) | 0];
+    const pa = filter === 'pa';
+    let pos = o.pos;
+    if (pa && !pos) { const p = this.h.game.player, fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw); pos = { x: p.pos.x + fx * 3, y: p.pos.y + 2.8, z: p.pos.z + fz * 3 }; } // 前上方的天花板喇叭
+    if (pa) ear = 'world';
+    if (ear === 'auto') ear = pos ? 'world' : ['left', 'right', 'left', 'right', 'behind'][(Math.random() * 5) | 0];
     const mode = o.mode ?? L.mode ?? 'syllabic';
-    const g = o.g ?? 0.55;
-    let hnd = null;
+    const g = o.g ?? (pa ? 0.42 : 0.55);
+    const voice = pa ? { voiced: 1, voiceGain: 0.5, noise: 0.25, f0: 228, pitch: 1.16, rate: 4.4, breath: false, clicks: false } : {}; // 合成、甜美、制式(§11.1)
+    let hnd = null, h2 = null;
     if (ear === 'both') {
       hnd = ghost.whisper({ text: L.text, ear: 'left', filter, mode, g: g * 0.85, prio: 7, pitch: 1.12 });
-      ghost.whisper({ text: L.text, ear: 'right', filter, mode, g: g * 0.8, prio: 7, delay: 0.13, pitch: 1.04 });
-    } else hnd = ghost.whisper({ text: L.text, ear: ear === 'world' ? 'near' : ear, filter, mode, g, prio: 7, pos: ear === 'world' ? o.pos : null });
-    const sy = hnd ? null : syllabify(L.text, mode === 'murmur' ? 4.2 : 3.3);
+      h2 = ghost.whisper({ text: L.text, ear: 'right', filter, mode, g: g * 0.8, prio: 7, delay: 0.13, pitch: 1.04 });
+    } else hnd = ghost.whisper({ text: L.text, ear: ear === 'world' ? 'near' : ear, filter, mode, g, prio: pa ? 8 : 7, pos: ear === 'world' ? pos : null, orbit: o.orbit, ...voice });
+    const sy = hnd ? null : syllabify(L.text, pa ? 4.4 : mode === 'murmur' ? 4.2 : 3.3);
     const dur = hnd ? hnd.dur : 0.55 + sy.dur + 0.9;
-    this.cur = { prio, end: t + dur, kill: hnd?.kill, id: L.id };
+    const kill = () => { hnd?.kill?.(); h2?.kill?.(); };
+    this.cur = { prio, end: t + dur, kill, id: L.id };
     if (L.id) this.used.add(L.id);
     // 字幕標籤:電話/收音機 → 來源;鬼 → 「？？？」,認出之後才顯示名字(STORY.md §11.1)
-    const tag = filter ? TAG[filter] : o.tag ?? (L.ghost && this.h.known.has(L.ghost) && GHOSTS[L.ghost]?.name ? GHOSTS[L.ghost].name : '？？？');
+    const tag = o.tag ?? (filter ? TAG[filter] : (L.ghost && this.h.known.has(L.ghost) && GHOSTS[L.ghost]?.name ? GHOSTS[L.ghost].name : '？？？'));
     this.count++;
     this.log.push(`${L.id || 'text'}@${ear}${filter ? '/' + filter : ''}`);
     if (this.log.length > 30) this.log.shift();
     if (o.subtitle !== false) {
       const clock = hnd && A.ctx ? () => A.ctx.currentTime : undefined;
-      this.h.subs.show({ text: L.text, ear: ear === 'world' ? 'both' : ear, filter, times: hnd ? hnd.times : timesByIndex(sy, 0.55), t0: hnd ? hnd.t0 : undefined, clock, hold: 1.8, tag });
+      this.h.subs.show({ text: L.text, ear: ear === 'world' ? 'both' : ear, filter, times: hnd ? hnd.times : timesByIndex(sy, 0.55), t0: hnd ? hnd.t0 : undefined, clock, hold: 1.8, tag, cap: pa });
     }
     this.h.emit('whisper', { id: L.id, text: L.text, ear, filter, ghost: L.ghost || null, hint: L.hint || null });
-    return { id: L.id, ear, end: t + dur, line: L };
+    const me = this.cur;
+    const stop = () => { kill(); if (this.cur === me) { this.cur = null; this.h.subs.clear(); } }; // 掛電話/關收音機:聲音與字幕一起停
+    return { id: L.id, ear, end: t + dur, dur, line: L, kill: stop, stop };
   }
 }
 function timesByIndex(sy, lead) { const a = []; for (const s of sy.list) a[s.i] = s.t + lead; return a; }

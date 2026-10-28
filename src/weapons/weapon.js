@@ -7,14 +7,14 @@ import { sfx } from '../audio.js';
 // 價格依實測經濟(購物 bot:第 1~8 回合每回合收入約 124/153/207/246/363/331/459/595,爆頭率高;一般玩家約少兩成,累計約 100/220/390/585/875/1140):
 // 存錢的話第 2 回合後買得起左輪/霰彈槍、第 3 回合 AK、第 4 回合 M4A1、第 5~6 回合巴雷特;
 // 邊買彈藥/改裝邊升級時,bot 在第 3/4/5/7/10 回合依序買到左輪/霰彈槍/AK/M4A1/巴雷特(約每 1.5 回合一把)
-// ads:{ zoom 視野倍率, spread 開鏡散布, time 開鏡秒數, scope 全螢幕狙擊鏡 } | null;pellets 霰彈彈丸數;penetrate 可穿透隻數(每穿一隻 ×penMul)
+// ads:{ zoom 視野倍率, spread 開鏡散布(弧度;光學鏡 ≤ 1mrad:10m 內 1cm), time 開鏡秒數, optic 'iron' 機械瞄具 | 'reddot' 紅點反射鏡 | 'acog' 放大光學鏡 | 'sniper' 狙擊鏡, scope 全螢幕狙擊鏡 } | null;pellets 霰彈彈丸數;penetrate 可穿透隻數(每穿一隻 ×penMul)
 // falloff:[近, 遠] 公尺(近距離以內全傷害,遠距離以外為 minDmg 倍);recoil:連發時的水平後座圖樣(×pitch)與隨機量;bloom 每發增加的散布
 // stats:商店顯示用 0..1;flash/casing:槍口火光與拋殼樣式;move:持槍移速倍率(重武器較慢)
 export const WEAPONS = {
   pistol: {
     name: '手槍', desc: 'Glock 17 · 9mm 半自動', price: 0, damage: 25, rpm: 380, auto: false,
     mag: 17, reserveStart: 85, reserveCap: 136, reload: 1.5, spread: 0.008, kick: 0.035, pitch: 0.011,
-    hold: [0.1, -0.1, -0.4], slot: 1, ads: { zoom: 1.2, spread: 0.0024, time: 0.15 },
+    hold: [0.1, -0.1, -0.4], slot: 1, ads: { zoom: 1.2, spread: 0.0024, time: 0.15, optic: 'iron' },
     falloff: [18, 45], minDmg: 0.55, bloom: 0.004, moveSpread: 1.2, recoil: { yaw: [0], rand: 0.5 },
     flash: 'pistol', casing: 'pistol', casingSize: [0.0099, 0.019],
     stats: { damage: 0.2, rate: 0.55, accuracy: 0.62, range: 0.38, mobility: 0.95 },
@@ -31,24 +31,24 @@ export const WEAPONS = {
     name: '霰彈槍', desc: 'Remington 870 · 12 號泵動', price: 180, damage: 22, pellets: 8, rpm: 70, auto: false,
     mag: 7, reserveStart: 28, reserveCap: 56, reload: 0.5, reloadOpen: 0.3, reloadClose: 0.32,
     spread: 0.062, kick: 0.085, pitch: 0.045, hold: [0.15, -0.16, -0.58], slot: 3,
-    ads: { zoom: 1.15, spread: 0.046, time: 0.2 }, pump: true, shellReload: true,
+    ads: { zoom: 1.15, spread: 0.046, time: 0.2, optic: 'iron' }, pump: true, shellReload: true,
     falloff: [6, 18], minDmg: 0.18, bloom: 0, moveSpread: 0.3, recoil: { yaw: [0], rand: 0.5 },
     flash: 'shotgun', casing: 'shell', move: 0.96,
     stats: { damage: 0.82, rate: 0.16, accuracy: 0.22, range: 0.2, mobility: 0.72 },
   },
   ak47: {
-    name: 'AK-47', desc: '7.62×39mm · 全自動', price: 300, damage: 35, rpm: 600, auto: true,
+    name: 'AK-47', desc: '7.62×39mm · 全自動 · Kobra 紅點鏡', price: 300, damage: 35, rpm: 600, auto: true,
     mag: 30, reserveStart: 90, reserveCap: 180, reload: 2.5, spread: 0.014, kick: 0.05, pitch: 0.016,
-    hold: [0.17, -0.17, -0.66], slot: 4, ads: { zoom: 1.4, spread: 0.0034, time: 0.22 }, penetrate: 1, penMul: 0.65,
+    hold: [0.17, -0.17, -0.66], slot: 4, ads: { zoom: 1.5, spread: 0.0009, time: 0.22, optic: 'reddot' }, penetrate: 1, penMul: 0.65,
     falloff: [30, 70], minDmg: 0.65, bloom: 0.0035, moveSpread: 1.6,
     recoil: { yaw: [0, 0.15, 0.3, 0.35, 0.2, -0.15, -0.45, -0.55, -0.35, 0.05, 0.45, 0.6, 0.4, 0, -0.4, -0.6, -0.45, -0.05, 0.4, 0.55], rand: 0.25 },
     flash: 'rifle', casing: 'rifle', casingSize: [0.0113, 0.039], move: 0.97,
     stats: { damage: 0.5, rate: 0.75, accuracy: 0.5, range: 0.7, mobility: 0.6 },
   },
   m4a1: {
-    name: 'M4A1', desc: '5.56×45mm · 全自動', price: 450, damage: 30, rpm: 780, auto: true,
+    name: 'M4A1', desc: '5.56×45mm · 全自動 · 3× ACOG 光學鏡', price: 450, damage: 30, rpm: 780, auto: true,
     mag: 30, reserveStart: 90, reserveCap: 180, reload: 2.1, spread: 0.01, kick: 0.036, pitch: 0.011,
-    hold: [0.17, -0.17, -0.62], slot: 5, ads: { zoom: 1.6, spread: 0.0022, time: 0.2 }, penetrate: 1, penMul: 0.6,
+    hold: [0.17, -0.17, -0.62], slot: 5, ads: { zoom: 3, spread: 0.0007, time: 0.28, optic: 'acog' }, penetrate: 1, penMul: 0.6,
     falloff: [35, 80], minDmg: 0.65, bloom: 0.0025, moveSpread: 1.5,
     recoil: { yaw: [0, 0.1, 0.18, 0.12, -0.05, -0.15, -0.1, 0.05, 0.15, 0.12], rand: 0.18 },
     flash: 'carbine', casing: 'rifle', casingSize: [0.0096, 0.045], move: 0.98,
@@ -57,7 +57,7 @@ export const WEAPONS = {
   barrett: {
     name: '巴雷特', desc: 'Barrett M82A1 · .50 BMG 半自動狙擊', price: 650, damage: 260, rpm: 70, auto: false,
     mag: 10, reserveStart: 20, reserveCap: 50, reload: 3.6, spread: 0.06, kick: 0.15, pitch: 0.075,
-    hold: [0.22, -0.225, -0.74], slot: 6, ads: { zoom: 6, spread: 0.0015, time: 0.36, scope: true }, penetrate: 3, penMul: 0.7,
+    hold: [0.22, -0.225, -0.74], slot: 6, ads: { zoom: 6, spread: 0.0005, time: 0.42, scope: true, optic: 'sniper' }, penetrate: 3, penMul: 0.7,
     falloff: null, minDmg: 1, bloom: 0, moveSpread: 1.0, recoil: { yaw: [0], rand: 0.35 },
     flash: 'brake', casing: 'rifle', casingSize: [0.0204, 0.099], move: 0.88,
     stats: { damage: 1, rate: 0.12, accuracy: 0.97, range: 1, mobility: 0.28 },
@@ -129,7 +129,10 @@ export class WeaponSystem {
     this.aiming = false; // 目前是否處於開鏡(含過渡)
     this.ads = 0; // 0..1 開鏡過渡
     this.zoom = 1; // 目前視野倍率
-    this.scoped = false; // 巴雷特全螢幕狙擊鏡
+    this.scoped = false; // 狙擊鏡/放大光學鏡:鏡內畫面已接手(手持模型隱藏)
+    this.scopeAmt = 0; // 0..1 鏡內畫面(HUD)淡入程度
+    this.dotAmt = 0; // 0..1 紅點反射鏡光點亮度
+    this.optic = null; // 目前武器的瞄具種類(WEAPONS[id].ads.optic)
     this.bloom = 0; // 連射累積的額外散布
     this.shotIdx = 0; // 後座圖樣索引
     this.pump = 0; // 霰彈泵動行程 0..1
@@ -218,6 +221,8 @@ export class WeaponSystem {
     this.ads = 0;
     this.zoom = 1;
     this.scoped = false;
+    this.scopeAmt = 0;
+    this.dotAmt = 0;
     this.aiming = false;
     this.bloom = 0;
     this.pump = 0;
@@ -335,13 +340,17 @@ export class WeaponSystem {
     this.ads = clamp01(this.ads + (want ? dt : -dt * 1.3) / (d.ads ? d.ads.time : 0.2));
     if (want !== this.aiming) { this.aiming = want; (want ? sfx.adsIn : sfx.adsOut)(this.current); }
     const e = ease(this.ads);
-    if (d.ads && d.ads.scope) {
-      this.scoped = this.ads >= 0.999 && want;
-      this.zoom = this.scoped ? d.ads.zoom : 1 + 0.3 * e;
-    } else {
-      this.scoped = false;
-      this.zoom = 1 + ((d.ads ? d.ads.zoom : 1) - 1) * e;
-    }
+    const optic = d.ads ? d.ads.optic || (d.ads.scope ? 'sniper' : 'iron') : null;
+    const overlay = optic === 'acog' || optic === 'sniper';
+    this.optic = optic;
+    // 放大光學鏡/狙擊鏡:開鏡行程的後 45%(槍身貼近眼睛)鏡內畫面(HUD)逐漸淡入,與 3D 槍身交叉溶接;過 0.6 換掉手持模型(HUD 用短暫黑幕遮住切換)
+    this.scopeAmt = overlay ? ease(clamp01((this.ads - 0.55) / 0.45)) : 0;
+    this.scoped = this.scopeAmt >= 0.6;
+    // 紅點反射鏡:準直光點,鏡窗來到眼前才看得到
+    this.dotAmt = optic === 'reddot' ? ease(clamp01((this.ads - 0.6) / 0.35)) : 0;
+    // 視野倍率在對數空間內插(視覺上等速放大,6× 也不會在最後幾幀暴衝);離開時同一條曲線反向
+    const Z = d.ads ? d.ads.zoom : 1;
+    this.zoom = Math.pow(Z, e);
 
     // ---- 開火 ----
     const canShoot = this.reloading <= 0 && this.raise < 0.4 && !sprinting && !this.action && (!d.pump || this.pumped);
@@ -392,7 +401,8 @@ export class WeaponSystem {
       } else if (!this.shell) this.pump = 0;
     }
 
-    this._animate(dt, d, a, m, speedNorm, sprinting, look, e);
+    // 放大光學鏡:槍身在開鏡行程 80% 時就貼到眼前,鏡內畫面淡入時目鏡已在正中央(交叉溶接時兩個圓重合)
+    this._animate(dt, d, a, m, speedNorm, sprinting, look, overlay ? ease(clamp01(this.ads / 0.8)) : e);
   }
 
   // 霰彈逐發裝填:open → shell × n → close(空膛時含泵動)

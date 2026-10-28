@@ -21,7 +21,8 @@
 //  多人  playerJoin() playerLeave() chat() revive(pos?) downed(pos?) killConfirm() remoteShot(id, pos) remoteStep(pos, surface, sprint)
 //  其他  listener(x, y, z, yaw) setMood(m) setTension(x) setHealth(r) ambient() attachGame(game) attachWorld(world)
 //        setVolume(bus, v) getVolume(bus)(bus:'master' | 'music' | 'sfx' | 'voice',v 0..1,記在 localStorage)stats()
-import { A, ensure, setListener, attach, setVolume, getVolume, muffle, hurtFilter, tick, poolInfo, liveCount, bakeStats, voiceCap, emit, stopPositional, setSpace } from './audio/core.js';
+import { A, ensure, setListener, attach, setVolume, getVolume, muffle, hurtFilter, tick, poolInfo, liveCount, bakeStats, voiceCap, emit, stopPositional, setSpace, ZV, zvState, zvOcc, zvFade, acoustics, tone } from './audio/core.js';
+import { zq, zflush } from './audio/zgate.js';
 import { foley, prebakeFoley } from './audio/foley.js';
 import { voices, prebakeVoices } from './audio/voices.js';
 import { zvoices2 } from './audio/zvoices2.js';
@@ -33,8 +34,9 @@ import { scare, SCARE_KINDS } from './audio/scares.js';
 import { setZone, loopStart, loopStop, startAmbience, ambState, LOOP_KINDS, resetAmbience, defineMood } from './audio/ambience.js';
 import { radio, pa, tape, storyState } from './audio/story.js';
 import * as AMB from './audio/ambience.js';
-import { thunder, setRain, rainState } from './audio/weather.js';
-import { trackState, resumeTracks, preloadStings } from './audio/tracks.js';
+import { thunder, setRain, rainState, rainGains, rainContext, rainReset, preloadRain } from './audio/weather.js';
+import { folkCue, folkReset, folkState, folkPrebake, _folk, FS as folkFS } from './audio/folk.js';
+import { trackState, resumeTracks, preloadStings, _trackX } from './audio/tracks.js';
 import { roomInfo, resetRooms } from './audio/rooms.js';
 import * as SM from './audio/samples.js';
 
@@ -49,6 +51,11 @@ function boot() {
   preloadStings();
   // 閒置時間預先烘焙常用的合成層(不在遊戲當下建圖)
   setTimeout(() => { prebakeFoley(); prebakeSteps(); prebakeVoices(); prebakeBody(); }, 600);
+  // 雨聲錄音在選單時就閒置載入(開始下雨時不會先聽到合成噪音或空白太久)
+  const idle = typeof requestIdleCallback === 'function' ? requestIdleCallback : (f) => setTimeout(f, 1500);
+  idle(() => preloadRain(), { timeout: 4000 });
+  // 民謠/配樂床:選單時閒置烘焙最常用的幾個(其他第一次用到時才烘焙)
+  setTimeout(() => folkPrebake(['bed_chase', 'box_wcf', 'radio_ssk', 'hum_wcf', 'bed_dread', 'bed_safe']), 9000);
 }
 export function resume() {
   const c = ensure();
@@ -136,14 +143,15 @@ export const sfx = {
   roundEnd: safe(() => { ui.roundEnd(); autoMood('break'); }),
 
   // ---- 殭屍語音(3D;位置物件會被即時跟隨;同一隻殭屍同時只發一個聲音) ----
-  groan: safe((type, pos) => voices.groan(type, pos)),
-  zAlert: safe((type, pos) => voices.alert(type, pos)), // 發現玩家
-  zAttack: safe((type, pos) => voices.attack(type, pos)),
-  zPain: safe((type, pos) => voices.pain(type, pos)),
-  zDie: safe((type, pos) => voices.die(type, pos)),
-  shriek: safe((pos) => voices.shriek(pos)),
-  roar: safe((pos) => voices.roar(pos)),
-  gurgle: safe((pos) => voices.gurgle(pos)),
+  // 只有真的靠近才聽得到(可聽距離見 audio/core.js 的 ZV 表;隔牆/樓板更短),每幀最近的先發聲,同時發聲數有上限
+  groan: safe((type, pos) => zq('groan', pos, () => voices.groan(type, pos))),
+  zAlert: safe((type, pos) => zq('alert', pos, () => voices.alert(type, pos))), // 發現玩家
+  zAttack: safe((type, pos) => zq('attack', pos, () => voices.attack(type, pos))),
+  zPain: safe((type, pos) => zq('pain', pos, () => voices.pain(type, pos))),
+  zDie: safe((type, pos) => zq('die', pos, () => voices.die(type, pos))),
+  shriek: safe((pos) => zq('shriek', pos, () => voices.shriek(pos))),
+  roar: safe((pos) => zq('roar', pos, () => voices.roar(pos))),
+  gurgle: safe((pos) => zq('gurgle', pos, () => voices.gurgle(pos))),
 
   // ---- 殭屍動作(3D) ----
   crawl: safe((pos) => foley.crawl(pos)),
@@ -181,7 +189,7 @@ export const sfx = {
   remoteStep: safe((pos, surface, sprint) => remoteStep(pos, surface, sprint)),
 
   // ---- 聆聽者 / 配樂 / 設定 ----
-  listener: always((x, y, z, yaw) => setListener(x, y, z, yaw)),
+  listener: always((x, y, z, yaw) => { zflush(); setListener(x, y, z, yaw); }), // 新的一幀:先結算上一幀的殭屍語音請求
   setMood: always((m) => {
     if (m === 'dead' && lastMood && lastMood !== 'dead' && lastMood !== 'menu' && A.ctx) { // 死亡:最後一口氣 + 世界變悶
       const h = emit({ bus: 'sfx', prio: 9, room: 0.2, dur: 3 });
@@ -200,14 +208,25 @@ export const sfx = {
   attachWorld: always((world) => { if (A.world && world && world !== A.world) resetMap(world); A.world = world || null; }),
   // 建好 Game 後呼叫一次(含 attachWorld):另外讀畫質預設(發聲上限/HRTF)、玩家狀態(蹲下、體力喘息)
   attachGame: always((game) => { A.game = game || null; const w = game && game.world; if (A.world && w && w !== A.world) resetMap(w); A.world = w || A.world; }),
-  resetMap: always((world) => resetMap(world)),
+  resetMap: always((world) => { rainReset(); folkReset(); resetMap(world); }),
+  folk: safe((kind, pos) => folkCue(kind, pos)),
   defineMood: always((name, bed) => defineMood(name, bed)),
-  ...zvoices2(safe), // [zombies-w3] 第三波新殭屍的語音與音效(src/audio/zvoices2.js;含潛行者的 zStep)
+  ...gateZ(zvoices2(safe)), // [zombies-w3] 第三波新殭屍的語音與音效(src/audio/zvoices2.js;含潛行者的 zStep);叫聲類經過殭屍語音閘門
   // 除錯/效能面板用
-  stats: () => (A.ctx ? { state: A.ctx.state, voices: liveCount(), cap: voiceCap(), pools: poolInfo(), bake: bakeStats(), samples: SM.stats(), stats: A.stats, music: musicState(), amb: ambState(), rain: rainState(), story: storyState() } : { state: 'none' }),
+  stats: () => (A.ctx ? { state: A.ctx.state, voices: liveCount(), cap: voiceCap(), zv: zvState(), pools: poolInfo(), bake: bakeStats(), samples: SM.stats(), stats: A.stats, music: musicState(), amb: ambState(), rain: rainState(), story: storyState() } : { state: 'none' }),
 };
 
+// 第三波新殭屍的叫聲(尖叫者、潛行者、束縛病患…)也走殭屍語音閘門:每幀最近的先發聲、超出可聽距離不排
+function gateZ(o) {
+  const M = { zScream: 'scream', zInhale: 'pain', zHiss: 'pain', zCharge: 'attack', zBreath: 'breath', zRespirator: 'breath' };
+  for (const k in M) { const f = o[k]; if (typeof f === 'function') o[k] = (pos, ...a) => zq(M[k], pos, () => f(pos, ...a)); }
+  return o;
+}
+
 // 除錯/測試用(OfflineAudioContext 量測)
-export const _internal = { A, attach, foley, voices, ui, body, step, zStep, remoteStep, jump, land, scare, startMusic, startAmbience, tick, poolInfo, SM, ambState, trackState, AMB, musicState, roomInfo, SCARE_KINDS, LOOP_KINDS, thunder, setRain };
+export const _internal = { ZV, zvState, zflush, core: { emit, tone, acoustics, zvOcc, zvFade, setListener }, rain: { setRain, rainState, rainGains, rainContext, rainReset, thunder }, folk: { ..._folk, folkCue, folkReset, folkState, FS: folkFS }, trackX: _trackX, A, attach, foley, voices, ui, body, step, zStep, remoteStep, jump, land, scare, startMusic, startAmbience, tick, poolInfo, SM, ambState, trackState, AMB, musicState, roomInfo, SCARE_KINDS, LOOP_KINDS, thunder, setRain };
 export { ix } from './audio/interact.js'; // 互動物件的機械音效(電話、開關、販賣機、鋼琴、門…;src/audio/interact.js)
 export { ghost } from './audio/ghost.js'; // [ghost] 耳邊低語(雙耳)、頸後呼吸、刺擊、寂靜、天花板爬行等靈異音效(src/audio/ghost.js)
+
+// 除錯/測試用(正式版也可在 console 操作;和 window.__game 一樣):window.__sfx.sfx.stats()、window.__sfx._internal
+if (typeof window !== 'undefined') window.__sfx = { sfx, _internal };

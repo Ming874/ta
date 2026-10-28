@@ -1,5 +1,6 @@
 // 靈異音效:耳邊低語(雙耳 HRTF,離耳朵約 0.3m、跟著頭轉)、頸後呼吸、刺擊、突然的寂靜、天花板裡爬行、
 // 玻璃上的手印吱聲、濕腳步、牆上刮字、鬼護士推車的輪子、電梯「叮」、燈管一盞盞斷電、搖籃曲哼唱、子彈穿過鬼魂的寒氣。
+// 第二輪:院內廣播(PA)的合成女聲與濾波、繞著頭轉的低語(orbit)、敲牆/敲抽屜、隔簾吊環、護理呼叫鈴、手電筒接觸不良、病歷板夾子、擦身而過的風聲、廣播故障尖嘯。
 // 低語是程式合成:噪音經共振峰塑形成「音節」(依字元決定子音/母音 → 同一個字聽起來一樣,像真的語言),加吸氣、唇齒音;
 // 可以聽不清(murmur)或一字一音(syllabic)。另疊 public/audio/world/whispers_*.mp3(CC-BY,見 credits/audio.md)當底層氣聲。
 // 濾波:'phone'(電話聽筒:窄頻、失真、劈啪)、'radio'(收音機:窄頻、雜訊床、斷訊)。
@@ -8,6 +9,7 @@
 import { A, gain, filter, rand, pick, clamp, emit, burst, tone, metal, duck, shaper, curve } from './core.js';
 import { vocal } from './voices.js';
 import { knockAt, musicBox } from './ambience.js';
+import { boxAt } from './folk.js';
 import { squeal } from './foley.js';
 import * as SM from './samples.js';
 import { scare } from './scares.js';
@@ -61,7 +63,8 @@ const CONS = ['s', 'sh', 'sh', 'h', 'h', 'f', 't', 'k', 'ts', 'x', 'n', 'l', '',
 const sylOf = (c) => ({ v: VK[(c * 7 + (c >> 3)) % VK.length], c: CONS[(c * 13 + (c >> 5)) % CONS.length], tone: (c >> 2) % 4 });
 
 // ---------- 低語合成(任何 context)----------
-// o:text、mode 'syllabic'|'murmur'、g 音量、voiced 0..1(微弱的聲帶音:鬼魂「快要」說得出話)、f0、breath、clicks、rate、pitch(共振峰倍率)
+// o:text、mode 'syllabic'|'murmur'、g 音量、voiced 0..1(微弱的聲帶音:鬼魂「快要」說得出話)、f0、breath、clicks、rate、pitch(共振峰倍率)、
+//    noise(元音裡的氣聲量,預設 1)、voiceGain(聲帶音增益,預設 0.05;院內廣播的合成女聲用 0.5)
 export function whisperVoice(ctx, dest, t0, o = {}) {
   const murmur = o.mode === 'murmur';
   const syl = syllabify(o.text || '……', o.rate ?? (murmur ? 4.2 : 3.3));
@@ -73,7 +76,7 @@ export function whisperVoice(ctx, dest, t0, o = {}) {
   const env = G(ctx, 0, out);
   const nz = noiseSrc(ctx, 'white', t0, end);
   const pre = F(ctx, 'lowpass', murmur ? 3200 : 6500, 0.5);
-  nz.connect(pre);
+  const nzg = G(ctx, o.noise ?? 1); nz.connect(nzg); nzg.connect(pre);
   const fq = murmur ? [5, 7, 8] : [7, 11, 13], fg = [1, 0.75, 0.42];
   const bps = [0, 1, 2].map((k) => { const b = F(ctx, 'bandpass', 900, fq[k]); pre.connect(b); b.connect(G(ctx, fg[k] * 3.2, env)); return b; });
   // 聲帶音(很弱):鋸齒 → 同一組共振峰
@@ -81,7 +84,7 @@ export function whisperVoice(ctx, dest, t0, o = {}) {
   const voiced = o.voiced ?? (murmur ? 0 : 0.18);
   if (voiced > 0) {
     osc = ctx.createOscillator(); osc.type = 'sawtooth'; osc.frequency.value = o.f0 ?? 205;
-    const og = G(ctx, voiced * 0.05);
+    const og = G(ctx, voiced * (o.voiceGain ?? 0.05));
     osc.connect(og);
     for (const b of bps) og.connect(b);
     osc.start(T); osc.stop(end);
@@ -166,7 +169,17 @@ export function ghostChain(ctx, dest, o = {}) {
   const input = G(ctx, 1);
   let x = input;
   const extra = [];
-  if (o.filter === 'phone' || o.filter === 'radio') {
+  if (o.filter === 'pa') { // 院內廣播:天花板喇叭(窄頻、推得有點破)+ 走廊另一頭的第二支喇叭(晚 65ms、更悶)
+    const hp = F(ctx, 'highpass', 330, 0.8), pk = F(ctx, 'peaking', 2300, 1.1), lp = F(ctx, 'lowpass', 4200, 0.8);
+    pk.gain.value = 5;
+    x.connect(hp); hp.connect(pk); pk.connect(lp);
+    const sat = ctx.createWaveShaper(), n = 512, c = new Float32Array(n);
+    for (let i = 0; i < n; i++) c[i] = Math.tanh(1.8 * (i / (n - 1) * 2 - 1)) / Math.tanh(1.8);
+    sat.curve = c; lp.connect(sat);
+    const far = ctx.createDelay(0.2); far.delayTime.value = 0.065;
+    sat.connect(far); far.connect(F(ctx, 'lowpass', 1800, 0.7, G(ctx, 0.5, dest)));
+    x = sat;
+  } else if (o.filter === 'phone' || o.filter === 'radio') {
     const ph = o.filter === 'phone';
     const hp = F(ctx, 'highpass', ph ? 420 : 320, 0.8), lp = F(ctx, 'lowpass', ph ? 3100 : 3600, 0.9), pk = F(ctx, 'peaking', ph ? 1700 : 1300, 1.2);
     pk.gain.value = 7;
@@ -242,6 +255,7 @@ export function track() {
     const v = LIVE[i];
     if (n > v.end) { LIVE.splice(i, 1); continue; }
     if (v.drift) { v.off[0] += v.drift[0] / 60; v.off[2] += v.drift[2] / 60; }
+    if (v.orbit) { const O = v.orbit, a = O.a + O.w * (n - O.t0), r = O.r + (O.dr || 0) * (n - O.t0); v.off[0] = Math.sin(a) * r; v.off[1] = O.y ?? 0.03; v.off[2] = Math.cos(a) * r; } // a = 0 在正後方
     headToWorld(v.off, _p);
     v.chain.setPos(_p.x, _p.y, _p.z);
   }
@@ -259,21 +273,22 @@ function slot(prio, dur) {
 export function whisper(o = {}) {
   if (!A.ctx) return null;
   const ctx = A.ctx;
-  const sy = syllabify(o.text || '……', o.mode === 'murmur' ? 4.2 : 3.3);
+  const sy = syllabify(o.text || '……', o.rate ?? (o.mode === 'murmur' ? 4.2 : 3.3));
   const dur = 0.55 + sy.dur + 0.9;
   const h = slot(o.prio ?? 7, dur);
   if (!h) return null;
   const t0 = h.t + (o.delay ?? 0), end = t0 + dur + 0.3;
   const world = o.pos && Number.isFinite(o.pos.x);
   const off = (EAR[o.ear] || EAR.left).slice();
-  const ch = ghostChain(ctx, bus(), { t: t0, end, filter: o.filter, ref: world ? 1.2 : 0.3, roll: world ? 1.1 : 1, wetDest: A.bus.ghostWet, wet: world ? 0.25 : 0.06, hrtf: o.hrtf, ild: world ? 0 : off[0] / 0.3 });
+  const pa = o.filter === 'pa';
+  const ch = ghostChain(ctx, bus(), { t: t0, end, filter: o.filter, ref: world ? (pa ? 3 : 1.2) : 0.3, roll: world ? (pa ? 0.6 : 1.1) : 1, wetDest: pa ? A.send.sfx.hall : A.bus.ghostWet, wet: pa ? 0.55 : world ? 0.25 : 0.06, hrtf: pa ? false : o.hrtf, ild: world || o.orbit ? 0 : off[0] / 0.3 });
   h.in.connect(ch.in);
-  const v = whisperVoice(ctx, h.in, t0, { text: o.text, mode: o.mode, g: (o.g ?? 0.55) * (o.filter ? 1.6 : 1), voiced: o.voiced, f0: o.f0, pitch: o.pitch, breath: o.breath });
+  const v = whisperVoice(ctx, h.in, t0, { text: o.text, mode: o.mode, g: (o.g ?? 0.55) * (o.filter ? 1.6 : 1), voiced: o.voiced, f0: o.f0, pitch: o.pitch, breath: o.breath, noise: o.noise, voiceGain: o.voiceGain, rate: o.rate, clicks: o.clicks });
   // 錄音的氣聲底層(輕;scare 類別第一次用到才載入,沒載好就只有合成)
   if (!o.filter && o.layer !== false) SM.play('scare.whisper', { h: { in: h.in, t: t0 }, g: 0.16, off: rand(0, 0.8), len: Math.min(dur, 3), fi: 0.4, fo: 0.8 });
   if (world) ch.setPos(o.pos.x, o.pos.y ?? A.L.y, o.pos.z);
   else {
-    LIVE.push({ chain: ch, off, end, drift: o.drift || null });
+    LIVE.push({ chain: ch, off, end, drift: o.drift || null, orbit: o.orbit ? { r: 0.5, w: 1.8, a: 0, ...o.orbit, t0 } : null });
     headToWorld(off, _p); ch.setPos(_p.x, _p.y, _p.z);
   }
   return { t0, end, dur, times: v.times, lead: 0.55, ear: o.ear, kill: () => h.kill() };
@@ -282,7 +297,7 @@ export function whisper(o = {}) {
 // ---------- 其他靈異音效(即時;全部安全:沒有 context 時不做事)----------
 const out = (pos, o) => emit({ pos, cat: 'scare', bus: 'scare', prio: 5, room: 0.6, hall: 0.3, ref: 1.5, maxDist: 60, ...o });
 // 頸後呼吸:冰冷的吸吐兩三次,跟著頭(在身後)
-export function breathNeck(g = 1) {
+export function breathNeck(g = 1, ear = 'behind') { // ear:'behind'(頸後)| 'left' | 'right'(貼著那一側的耳朵)
   if (!A.ctx) return;
   const ctx = A.ctx, dur = 4.2, h = slot(7, dur);
   if (!h) return;
@@ -290,7 +305,7 @@ export function breathNeck(g = 1) {
   h.in.connect(ch.in);
   let t = h.t;
   for (let i = 0; i < pick([2, 3]); i++) { breathIn(ctx, h.in, t, 0.7, 0.28 * g); breathOut(ctx, h.in, t + 0.8, 0.9, 0.34 * g); t += rand(1.5, 1.8); }
-  const off = EAR.behind.slice(); off[0] = rand(-0.12, 0.12);
+  const off = (EAR[ear] || EAR.behind).slice(); if (!EAR[ear] || ear === 'behind') off[0] = rand(-0.12, 0.12);
   LIVE.push({ chain: ch, off, end: h.t + dur + 0.3 });
   headToWorld(off, _p); ch.setPos(_p.x, _p.y, _p.z);
 }
@@ -404,8 +419,9 @@ export function tubeOff(pos) {
   burst(h.in, h.t, { type: 'bandpass', f: 1800, q: 1, dur: 0.03, g: 0.18 });
   metal(h.in, h.t + rand(0.05, 0.2), rand(3200, 4300), 0.01, 0.2, [1, 2.4]);
 }
-// 搖籃曲:音樂盒 + 很輕的女聲哼唱(閉口「嗯」)
+// 搖籃曲:音樂盒《望春風》(阿嬤在 207 病房哼給病人聽的那首;走近 3 公尺就發條鬆掉停下);還沒烘焙好時用合成的小曲 + 很輕的女聲哼唱
 export function lullaby(pos) {
+  if (pos && boxAt(pos)) return;
   const h = out(pos, { room: 0.8, hall: 0.6, ref: 2, dur: 12, gain: 1.3, prio: 5 });
   if (!h) return;
   const end = musicBox(h.in, h.t, 10, 0.045, 0.993);
@@ -443,6 +459,64 @@ export function creakLong(pos, dur = 3.5) {
   squeal(h.in, h.t, rand(300, 420), rand(220, 300), dur, 0.1, 30, [8, 16]);
 }
 export const giggle = (pos) => scare('child_laugh', pos);
+// ---- 第二輪 ----
+// 敲牆(指節敲在灰泥/門板)或敲冰櫃抽屜(metal:悶的金屬聲);n 下
+export function knock(pos, n = 3, o = {}) {
+  const h = out(pos, { room: 0.6, hall: 0.2, ref: 1.6, dur: n * 0.45 + 1, gain: (o.g ?? 1) * 1.5, prio: 5 });
+  if (!h) return;
+  const d = o.metal ? filter('lowpass', 900, 0.8, h.in) : h.in;
+  let t = h.t;
+  for (let i = 0; i < n; i++) {
+    knockAt(d, t, 0.55 * (i === n - 1 ? 1.15 : 1));
+    if (o.metal) metal(d, t + 0.005, rand(260, 380), 0.05, 0.5, [1, 1.8, 2.9]);
+    t += (o.gap ?? 0.32) * rand(0.85, 1.2);
+  }
+}
+// 隔簾吊環在軌道上滑過去(有人拉了簾子)
+export function rings(pos) {
+  const h = out(pos, { room: 0.5, ref: 1.5, dur: 1.6, gain: 1.4, prio: 4 });
+  if (!h) return;
+  const dur = rand(0.6, 0.9);
+  for (let i = 0; i < 9; i++) metal(h.in, h.t + (i / 9) * dur + rand(0, 0.03), rand(2600, 4200), 0.012, 0.12, [1, 1.5, 2.6]);
+  burst(h.in, h.t, { buf: 'pink', type: 'bandpass', f: 1800, q: 0.8, dur: dur * 0.6, a: dur * 0.4, g: 0.05 }); // 布料
+}
+// 護理呼叫鈴(病床的叫人鈴):叮—咚 兩次
+export function callBell(pos) {
+  const h = out(pos, { room: 0.8, hall: 0.5, ref: 2.5, dur: 4, gain: 1.2, prio: 5 });
+  if (!h) return;
+  for (let r = 0; r < 2; r++) {
+    const t = h.t + r * 1.4;
+    tone(h.in, t, { f: 659.3, dur: 0.9, a: 0.004, g: 0.05 }); tone(h.in, t, { f: 1318.5, dur: 0.3, a: 0.003, g: 0.012 });
+    tone(h.in, t + 0.45, { f: 523.3, dur: 1.1, a: 0.004, g: 0.05 }); tone(h.in, t + 0.45, { f: 1046.5, dur: 0.35, a: 0.003, g: 0.012 });
+  }
+}
+// 手電筒接觸不良:手邊(非定位)的劈啪 + 嗡
+export function flashBuzz(dur = 0.7) {
+  const h = emit({ bus: 'sfx', prio: 4, dur: dur + 0.3 });
+  if (!h) return;
+  for (let i = 0; i < 6; i++) burst(h.in, h.t + rand(0, dur), { type: 'highpass', f: 3000, dur: 0.012, g: 0.05 });
+  tone(filter('bandpass', 900, 2, h.in), h.t, { type: 'square', f: 120, dur: dur * 0.5, hold: dur * 0.5, a: 0.01, g: 0.004 });
+}
+// 病歷板的夾子「喀」(鄭玉蘭出現時的聲音,STORY.md §2.10)
+export function clip(pos) {
+  const h = out(pos, { room: 0.6, ref: 1.4, dur: 0.8, gain: 1.3, prio: 3 });
+  if (!h) return;
+  burst(h.in, h.t, { type: 'bandpass', f: 2600, q: 2, dur: 0.02, g: 0.25 });
+  metal(h.in, h.t + 0.004, rand(1900, 2600), 0.03, 0.15, [1, 2.3]);
+}
+// 有東西擦身而過的風聲(pos 物件會被跟隨)
+export function whoosh(pos, g = 1) {
+  const h = out(pos, { room: 0.3, ref: 1.2, dur: 1.2, gain: 1.5 * g, prio: 5 });
+  if (!h) return;
+  burst(h.in, h.t, { buf: 'pink', type: 'bandpass', f: 500, f1: 1600, q: 0.9, dur: 0.35, a: 0.25, g: 0.14 });
+}
+// 院內廣播故障:回授尖嘯 → 「喀」一聲斷掉
+export function paGlitch() {
+  const h = emit({ bus: 'scare', prio: 6, dur: 2, room: 0.6, hall: 0.9 });
+  if (!h) return;
+  tone(filter('bandpass', 2800, 3, h.in), h.t, { f: 2750, f1: 3150, glide: 0.7, dur: 0.25, hold: 0.5, a: 0.15, g: 0.03 });
+  burst(h.in, h.t + 0.9, { type: 'lowpass', f: 900, f1: 200, dur: 0.05, g: 0.2 });
+}
 
 // ---------- 離線量測:耳邊低語的左右聲道 ----------
 export async function renderBinaural(ear = 'left', text = '二〇七的燈……還亮著嗎？', o = {}) {
@@ -457,5 +531,64 @@ export async function renderBinaural(ear = 'left', text = '二〇七的燈……
   const L = rms(buf.getChannelData(0)), R = rms(buf.getChannelData(1));
   return { ear, L: +L.toFixed(5), R: +R.toFixed(5), dB: +(20 * Math.log10((L + 1e-9) / (R + 1e-9))).toFixed(1) };
 }
+// ---------- 第三輪(src/horror/haunts.js)----------
+// 總開關跳脫:「喀——咚」,燈管的嗡聲被抽掉
+export function breaker(pos) {
+  const h = out(pos, { room: 0.7, hall: 0.6, ref: 3, dur: 2.5, gain: 1.6, prio: 7, maxDist: 80 });
+  if (!h) return;
+  burst(h.in, h.t, { type: 'bandpass', f: 1400, q: 1.5, dur: 0.03, g: 0.5 });
+  metal(h.in, h.t + 0.004, rand(500, 700), 0.12, 0.25, [1, 2.2, 3.1]);
+  tone(h.in, h.t + 0.02, { f: 70, f1: 32, dur: 0.6, g: 0.5 });
+  tone(h.in, h.t, { type: 'sawtooth', f: 120, f1: 40, dur: 0.5, a: 0.002, g: 0.03 });
+}
+// 生理監視器:嗶聲越來越慢(n 聲,間隔 i0 → i1);回傳總長(秒)
+export function beeps(pos, n = 7, i0 = 0.8, i1 = 1.6) {
+  let total = 0; for (let i = 0; i < n; i++) total += i0 + (i1 - i0) * (i / Math.max(1, n - 1));
+  const h = out(pos, { room: 0.6, hall: 0.3, ref: 2, dur: total + 1, gain: 1.1, prio: 4 });
+  if (!h) return total;
+  let t = h.t;
+  for (let i = 0; i < n; i++) { tone(h.in, t, { f: 980, dur: 0.11, a: 0.004, g: 0.1 }); t += i0 + (i1 - i0) * (i / Math.max(1, n - 1)); }
+  return total;
+}
+// 收音機自己轉台:掃頻雜訊 + 外差口哨
+export function tune(pos, dur = 2.4) {
+  const h = out(pos, { room: 0.5, ref: 1.8, dur: dur + 0.5, gain: 1.3, prio: 5 });
+  if (!h) return;
+  burst(h.in, h.t, { type: 'bandpass', f: 600, f1: 2600, q: 2.5, dur: dur * 0.4, a: dur * 0.3, g: 0.08 });
+  for (let i = 0; i < 4; i++) tone(h.in, h.t + rand(0, dur * 0.8), { f: rand(900, 2400), f1: rand(400, 3000), dur: rand(0.15, 0.4), a: 0.03, g: 0.02 });
+}
+// 球滾過地板(pos 物件會被跟隨)/ 彈跳 / 輕拍
+export function roll(pos, dur = 3) {
+  const h = out(pos, { room: 0.4, ref: 1.4, dur: dur + 0.4, gain: 1.4, prio: 4 });
+  if (!h) return;
+  burst(h.in, h.t, { buf: 'brown', type: 'lowpass', f: 380, f1: 160, dur: dur * 0.85, a: 0.15, g: 0.16 });
+}
+export function bounce(pos, g = 1) {
+  const h = out(pos, { room: 0.5, ref: 1.6, dur: 0.6, gain: 1.4 * g, prio: 4 });
+  if (!h) return;
+  tone(h.in, h.t, { f: 190, f1: 120, dur: 0.09, g: 0.3 });
+  burst(h.in, h.t, { type: 'bandpass', f: 900, q: 1.2, dur: 0.04, g: 0.12 });
+}
+// 吊燈的電線/鍊子晃到盡頭(吱)
+export function chain(pos, g = 1) {
+  const h = out(pos, { room: 0.4, ref: 1.4, dur: 0.8, gain: 1.2 * g, prio: 3 });
+  if (!h) return;
+  squeal(h.in, h.t, rand(820, 980), rand(600, 720), rand(0.25, 0.4), 0.035, 16, [25, 45]);
+  metal(h.in, h.t + 0.02, rand(2400, 3200), 0.01, 0.1, [1, 1.6]);
+}
+// 玻璃外的人呼了一口氣
+export function exhale(pos, g = 1) {
+  const h = out(pos, { room: 0.3, ref: 1.2, dur: 1.8, gain: 1.4 * g, prio: 4 });
+  if (!h) return;
+  burst(h.in, h.t, { buf: 'pink', type: 'bandpass', f: 700, f1: 420, q: 0.8, dur: 1.1, a: 0.25, g: 0.1 });
+}
+// 遠處有人在吹口哨(鬼月禁忌:暗暝莫吹口哨),五聲音階、走音
+export function whistle(pos, dur = 3.2) {
+  const h = out(pos, { room: 0.8, hall: 0.7, ref: 3, dur: dur + 1.2, gain: 1.2, prio: 4, maxDist: 70 });
+  if (!h) return;
+  const notes = [1175, 1047, 880, 1047, 784, 880], n = notes.length;
+  for (let i = 0; i < n; i++) { const t = h.t + (i / n) * dur, f = notes[i] * rand(0.985, 1.01); tone(h.in, t, { f, f1: f * rand(0.97, 1.0), dur: dur / n * 0.9, a: 0.05, g: 0.045 }); }
+  burst(h.in, h.t, { buf: 'pink', type: 'bandpass', f: 1000, q: 3, dur, a: 0.2, g: 0.012 }); // 氣聲
+}
 export const ghostState = () => ({ live: LIVE.length });
-export const ghost = { whisper, track, breathNeck, stinger, silence, crawl, squeak, wetStep, scrawl, cart, elevator, tubeOff, lullaby, gust, mist, vanish, creakLong, giggle, renderBinaural, syllabify, state: ghostState, EAR };
+export const ghost = { whisper, track, breathNeck, stinger, silence, crawl, squeak, wetStep, scrawl, cart, elevator, tubeOff, lullaby, gust, mist, vanish, creakLong, giggle, knock, rings, callBell, flashBuzz, clip, whoosh, paGlitch, breaker, beeps, tune, roll, bounce, chain, exhale, whistle, renderBinaural, syllabify, state: ghostState, EAR };
