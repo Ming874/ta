@@ -24,6 +24,7 @@ import { installOpening } from './opening.js';
 import { installClimax } from './climax.js';
 import { installEnding } from './ending.js';
 import { installRevive } from './revive.js';
+import { installNotes } from './notes.js';
 import { voiceLock } from './voice.js';
 import * as THREE from 'three';
 
@@ -244,6 +245,7 @@ export function installObjectives(game) {
   const whyOf = (s) => { try { return typeof s.why === 'function' ? s.why(c) : s.why || ''; } catch { return ''; } };
   const hud = makeHud(game, () => { const s = BY[run.cur]; if (!s) return ''; const n = progOf(s); return [s.prog ? `${s.text}（${n}／${s.m}）` : s.text, whyOf(s)]; });
   O.line = () => { const s = BY[run.cur]; if (!s) return null; const n = progOf(s); return { goal: s.prog ? `${s.text}（${n}／${s.m}）` : s.text, why: whyOf(s) }; }; // 給筆記本〈到目前為止〉的「下一步」
+  game.objectives.line = O.line;
 
   // ---------- 每幀(互動系統的 tick;只在遊戲中、沒暫停) ----------
   const X0 = X();
@@ -297,6 +299,7 @@ export function installObjectives(game) {
   try { installClimax(game, S); } catch (e) { console.warn('[story] climax', e); }
   try { installEnding(game, S); } catch (e) { console.warn('[story] ending', e); }
   try { installRevive(game, S); } catch (e) { console.warn('[story] revive', e); }
+  try { installNotes(game, S); } catch (e) { console.warn('[story] notes', e); }
   return O;
 }
 

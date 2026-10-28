@@ -128,6 +128,7 @@ export function installDeduce(game) {
   game.objectives = Object.assign(game.objectives || {}, { clue: (id, o) => D.addCard(id, o) });
   const book = new Book(game, D);
   const badge = makeBadge(game, D);
+  D.noteFlash = () => badge.set(Math.max(1, S().fresh.length), true, '＋筆記'); // 〈到目前為止〉多了一條
   badge.set(S().fresh.length);
 
   // ---------- 說出口的台詞(對講機、廣播):依序播,播完 cb ----------
@@ -263,10 +264,12 @@ function makeBadge(game, D) {
   const el = document.createElement('div');
   el.className = 'hd dd-badge';
   el.innerHTML = '<b>＋線索</b><span><kbd>J</kbd> 筆記本</span><i></i>';
+  const lab = el.querySelector('b');
   hud.appendChild(el);
   let t = 0;
   return {
-    set(n, flash) {
+    set(n, flash, label = '＋線索') {
+      lab.textContent = label;
       el.classList.toggle('has', n > 0);
       el.querySelector('i').textContent = n > 0 ? String(n) : '';
       if (flash) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); clearTimeout(t); t = setTimeout(() => el.classList.remove('flash'), 3200); try { sfx.pickupItem?.(); } catch { /* 略 */ } }
