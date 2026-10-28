@@ -4,7 +4,7 @@ import { Quality } from './sys/quality.js';
 import { Perf } from './sys/perf.js';
 import { caps } from './sys/caps.js';
 import { idle } from './sys/sched.js';
-import { precompile, precompilePasses, initPrograms, warmDraw, warmDrawScene, warmPMREM, uploadSceneTextures, yieldNow } from './sys/warmup.js';
+import { precompile, precompilePasses, initPrograms, warmDraw, warmDrawScene, warmPMREM, uploadSceneTextures, yieldNow, runSliced, gpuDrain, warmCubeFromEquirect, warmShadows } from './sys/warmup.js';
 import { backgroundTicker } from './sys/ticker.js';
 import { texStats, texturesReady } from './sys/texworker.js';
 import { prewarm, whenTypesReady, variantStats, getVariant, instantiate, forceVariant, VARIANT_TYPES } from './zombies/model.js';
@@ -46,6 +46,7 @@ await new Promise((resolve) => {
   };
   tick();
 });
+let buildSteps = 0, built = false; // 世界分段建構的進度(載入條用)
 const loading = loadUI(() => {
   const p = game?.physics, v = variantStats(), a = assets.progress, ph = physicsLoad.state;
   const physOK = !p ? 0 : p.ready || p.failed || ph === 'off' || ph === 'failed' ? 1 : ph === 'wasm' || ph === 'main' ? 0.55 : 0.15;
@@ -53,6 +54,7 @@ const loading = loadUI(() => {
   return {
     playing: game?.state === 'playing',
     steps: [
+      ['世界', built ? 1 : Math.min(0.95, buildSteps / 260), built ? '' : '建構中', 2],
       ['物理', physOK, ph === 'wasm' ? '編譯中' : ph === 'main' ? '載入中' : '下載中'],
       ['殭屍', v.ready / v.total, `${v.ready}/${v.total}`],
       ['著色器', warmStage / 4, warmStage ? '編譯中' : '等待中'],
@@ -61,7 +63,15 @@ const loading = loadUI(() => {
   };
 });
 
-game = new Game(document.getElementById('game'));
+// 世界分段建構(src/game.js buildSteps):每段之後讓出主執行緒 → 建構期間選單可操作、載入條會動、Worker 結果照常處理。
+// 建構中按「開始」:先記下,建好後再開始(spawn 仍等 hz:warm)
+game = new Game(document.getElementById('game'), { deferred: true });
+let earlyStart = false;
+const onEarlyStart = (e) => { if (!built && e.target?.closest?.('#startBtn')) { earlyStart = true; e.stopPropagation(); const b = e.target.closest('#startBtn'); b.classList.add('loading'); b.dataset.label ||= b.firstChild?.textContent || ''; if (b.firstChild) b.firstChild.textContent = '載入中…'; } };
+document.addEventListener('click', onEarlyStart, true);
+await runSliced(game.buildSteps(), { budget: 12, onStep: (n) => { buildSteps = n; } });
+built = true;
+document.removeEventListener('click', onEarlyStart, true);
 game.warmed = false; // hz:warm 之前開局:先不出怪(flow.updateRound),第一隻殭屍出現時不會現場編譯 shader
 game.bindInput();
 initNet(game); // [net] 主選單的多人連線入口(src/net/lobby.js)
@@ -70,6 +80,18 @@ installDeduce(game); // [story] 線索卡、推理本(J)、擲筊、頭七(src/s
 installObjectives(game); // [story] 目標鏈、區域解鎖、提示(src/story/objectives.js)
 installMotion(game); // [motion] 轉場與手感:開機、開場、燈篙節拍、受傷、倒下、暫停(src/ui/motion.js;全部是 post 的 uniform)
 window.__game = game; // 除錯用:在瀏覽器 console 操作 __game
+if (earlyStart) { // 建構途中按過開始:現在照常開始(按鈕的處理在 bindInput 才綁上)
+  const b = document.getElementById('startBtn');
+  if (b) { b.classList.remove('loading'); if (b.firstChild && b.dataset.label) b.firstChild.textContent = b.dataset.label; setTimeout(() => b.onclick?.(), 0); }
+  // 不是在使用者手勢裡開局 → 瀏覽器不給滑鼠鎖定:開局後(開場演出結束)還沒鎖定就顯示暫停層,玩家點一下即鎖定繼續
+  let tries = 0;
+  const iv = setInterval(() => {
+    if (++tries > 240) { clearInterval(iv); return; }
+    if (game.state !== 'playing' || game.motion?.busy) return;
+    clearInterval(iv);
+    if (document.pointerLockElement !== game.canvas && !game.paused) { game.paused = true; game.ui.overlay('pause', true); }
+  }, 250);
+}
 
 // ---- 效能基礎建設 ----
 game.renderer.info.autoReset = false; // 一幀內多個 pass 的 draw call 合計(主迴圈每幀歸零)
@@ -183,12 +205,13 @@ async function boot() {
   const t = performance.now();
   try {
     // 等距柱狀環境貼圖的 PMREM shader 先在背景編好(否則預編譯途中 three 就地轉換 → 同步等編譯 1~2 秒)
-    await warmPMREM(game, [game.scene, game.weaponScene]);
+    await Promise.all([warmPMREM(game, [game.scene, game.weaponScene]), warmCubeFromEquirect(game)]);
     performance.mark('hz:pmrem');
     const all = Promise.all([
       precompile(game, game.scene),
       precompile(game, game.weaponScene, { target: game.weaponScene, camera: game.weaponCamera, shadows: false }),
       precompilePasses(game),
+      game.weather?.occ?.precompile?.(), // 遮雨圖覆寫材質的變體(烘焙延到下面幾何上傳完之後)
     ]);
     // 等全部 program 編好才開始畫(不再用 4 秒逾時:先畫的話第一幀會在主執行緒上同步等還沒編完的 shader,數秒凍結);
     // 編譯期間選單與載入條照常可用。最多等 60 秒
@@ -204,7 +227,11 @@ async function boot() {
   try {
     const t2 = performance.now();
     await uploadSceneTextures(game);
+    await warmShadows(game);
     await warmDrawScene(game, { all: true, batch: 16 });
+    // 先等 GPU 把離屏繪製做完(不然烘焙的讀回會在主執行緒上等整串繪製),烘焙後再等一次才開始畫面
+    if (game.deferRainBake) { game.deferRainBake = false; await gpuDrain(game.renderer, 3000); game.weather?.bakeNow?.(); }
+    await gpuDrain(game.renderer, 3000);
     performance.measure('hz:prewarm', { start: t2 });
   } catch (e) { console.warn('[warmup]', e); }
   performance.measure('hz:precompile', { start: t });
@@ -257,6 +284,9 @@ async function warmRuntime() {
     for (const m of ZM) {
       const sm = new THREE.SkinnedMesh(v.geometry, m);
       sm.bind(inst.mesh.skeleton, inst.mesh.bindMatrix);
+      // 排序也要包圍球:沒給的話 three 會逐頂點蒙皮算一次(每個代理 ~40k 頂點,合計 ~170ms 長任務)
+      if (!v.geometry.boundingSphere) v.geometry.computeBoundingSphere();
+      sm.boundingSphere = (inst.mesh.boundingSphere || v.geometry.boundingSphere).clone();
       draws.add(sm);
     }
     for (const o of [...g.children]) if (o !== inst.mesh) draws.add(o);

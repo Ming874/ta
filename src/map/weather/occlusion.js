@@ -45,6 +45,11 @@ export class RainOcclusion {
     this.cam.lookAt(this.cx, 0, this.cz);
     this.cam.updateMatrixWorld(true);
     this.cam.layers.enableAll();
+    // 烘焙畫的是包住主場景的外層場景:three 的燈光狀態(WebGLRenderState)是「每個場景一份」,而陰影圖用的是
+    // 上一次 setupLights 的燈數 → 直接畫主場景會讓下一幀的陰影 pass 用到烘焙時的燈數,死亡/結局時重編一批陰影深度 program
+    this.wrap = new THREE.Scene();
+    this.wrap.name = 'rain-occlusion-bake';
+    this.wrap.overrideMaterial = this.mat;
     // 只在烘焙時加進場景的東西:玻璃天窗板 + 三個看不見的代理(一般/實例/實例+顏色:覆寫材質的 program 變體在載入時就編好,
     // 之後下載的模型進場景重烘時不會在遊戲中途同步編譯)
     this.extra = [];
@@ -62,9 +67,22 @@ export class RainOcclusion {
     }
     const tri = new THREE.BufferGeometry();
     tri.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, 0, 0, 0, 0], 3));
-    const im = new THREE.InstancedMesh(tri, this.mat, 1), imc = new THREE.InstancedMesh(tri, this.mat, 1);
-    imc.setColorAt(0, new THREE.Color());
-    this.warm = [new THREE.Mesh(tri, this.mat), im, imc];
+    // 有/沒有法線(vertexNormals 是 program key 的一位)× 一般/實例/實例+顏色/批次/批次+顏色
+    const triN = tri.clone();
+    triN.setAttribute('normal', new THREE.Float32BufferAttribute([0, 1, 0, 0, 1, 0, 0, 1, 0], 3));
+    this.warm = [];
+    for (const geo of [tri, triN]) {
+      const im = new THREE.InstancedMesh(geo, this.mat, 1), imc = new THREE.InstancedMesh(geo, this.mat, 1);
+      imc.setColorAt(0, new THREE.Color());
+      this.warm.push(new THREE.Mesh(geo, this.mat), im, imc);
+    }
+    for (const col of [false, true]) {
+      const bm = new THREE.BatchedMesh(1, 3, 0, this.mat);
+      bm.addInstance(bm.addGeometry(triN));
+      if (col) bm.setColorAt(0, new THREE.Color());
+      bm.perObjectFrustumCulled = false;
+      this.warm.push(bm);
+    }
     for (const o of this.warm) { o.frustumCulled = false; o.position.set(this.cx, 0, this.cz); }
     this.rt = new THREE.WebGLRenderTarget(N, N, { type: THREE.UnsignedByteType, format: THREE.RGBAFormat, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true, generateMipmaps: false });
     this.rt.texture.name = 'rain-occlusion';
@@ -81,6 +99,18 @@ export class RainOcclusion {
     return false;
   }
 
+  // [perf] 覆寫材質的各種變體(代理物件)先非同步編好:載入時與場景預編譯一起做,之後第一次烘焙不必同步等編譯。
+  // 編譯時跟烘焙一樣:外層場景(沒有燈)+ 畫進 this.rt
+  precompile() {
+    const r = this.game.renderer;
+    if (!r?.compileAsync) return Promise.resolve();
+    const W = this.wrap, prev = r.getRenderTarget();
+    for (const o of this.warm) W.add(o);
+    let p;
+    try { r.setRenderTarget(this.rt); p = r.compileAsync(W, this.cam); } finally { r.setRenderTarget(prev); for (const o of this.warm) W.remove(o); }
+    return p.catch(() => {});
+  }
+
   bake(hide = []) {
     const g = this.game, r = g.renderer, scene = g.scene, H = g.hospital;
     if (!r || !scene || this.busy) return false;
@@ -90,31 +120,40 @@ export class RainOcclusion {
     for (const list of [H?.levelGroups, H?.propGroups, H?.chunks]) if (list) for (const o of list) if (!o.visible) { o.visible = true; forced.push(o); }
     for (const o of hide) if (o && o.visible) { o.visible = false; hid.push(o); }
     if (g.camera && g.camera.visible) { g.camera.visible = false; hid.push(g.camera); }
-    scene.traverseVisible((o) => { if (RainOcclusion.skip(o)) { o.visible = false; hid.push(o); } });
+    // 燈不參與深度,但燈的數量是 program key 的一部分:烘焙時燈一律不算(圖層清空,子物件照畫),
+    // 不然開場、結局、死亡時看得到的燈數不同,同一個覆寫材質會在遊戲中途重編 5~11 個 program
+    const lit = this._lit || (this._lit = []);
+    scene.traverseVisible((o) => {
+      if (o.isLight) { lit.push(o, o.layers.mask); o.layers.mask = 0; return; }
+      if (RainOcclusion.skip(o)) { o.visible = false; hid.push(o); }
+    });
     const added = this.renders === 0 ? this.extra.concat(this.warm) : this.extra;
-    for (const o of added) scene.add(o);
-    const prevRT = r.getRenderTarget(), prevOv = scene.overrideMaterial, prevBg = scene.background, prevFog = scene.fog;
+    const W = this.wrap, prevParent = scene.parent;
+    for (const o of added) W.add(o);
+    const prevRT = r.getRenderTarget();
     const sm = r.shadowMap, prevAU = sm.autoUpdate, prevNU = sm.needsUpdate;
     const cc = r.getClearColor(new THREE.Color()), ca = r.getClearAlpha(), prevAC = r.autoClear;
     const prevSort = r.sortObjects;
     try {
       sm.autoUpdate = false; sm.needsUpdate = false; // 不要順便重畫陰影圖
-      scene.overrideMaterial = this.mat;
-      scene.background = null; scene.fog = null;
+      W.add(scene);
       r.sortObjects = false;
       r.setRenderTarget(this.rt);
       r.setClearColor(0xffffff, 1);
       r.autoClear = true;
       r.clear(true, true, false);
-      r.render(scene, this.cam);
+      r.render(W, this.cam);
     } finally {
       r.setRenderTarget(prevRT);
-      scene.overrideMaterial = prevOv; scene.background = prevBg; scene.fog = prevFog;
+      W.remove(scene);
+      if (prevParent) prevParent.add(scene);
       sm.autoUpdate = prevAU; sm.needsUpdate = prevNU;
       r.setClearColor(cc, ca); r.autoClear = prevAC; r.sortObjects = prevSort;
+      for (let i = 0; i < lit.length; i += 2) lit[i].layers.mask = lit[i + 1];
+      lit.length = 0;
       for (const o of hid) o.visible = true;
       for (const o of forced) o.visible = false;
-      for (const o of added) scene.remove(o);
+      for (const o of added) W.remove(o);
     }
     this.renders++;
     // 著色器改取樣打包深度:uv = ( (x - x0) / S, (z1 - z) / S ),高度 = (Y0 - near) - 深度 × (far - near)
@@ -219,7 +258,7 @@ export class RainOcclusion {
   }
 
   dispose() {
-    for (const o of this.extra.concat(this.warm)) o.geometry.dispose();
+    for (const o of this.extra.concat(this.warm)) { if (o.isBatchedMesh) o.dispose(); else o.geometry.dispose(); }
     this.rt.dispose();
     this.mat.dispose();
     this.cpu = null; this.edgeJob = null;

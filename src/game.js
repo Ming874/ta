@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 
 import { World } from './map/collision.js';
-import { buildHospital } from './map/hospital.js';
+import { buildHospitalSteps } from './map/hospital.js';
+import { warmPMREM } from './sys/warmup.js';
 import { buildBlockout } from './map/blockout.js';
 import { Player } from './player.js';
 import { WeaponSystem } from './weapons/weapon.js';
@@ -23,8 +24,10 @@ import { instrument } from './gfx/gpuprof.js';
 // 遊戲主體:建立渲染器/場景/各系統,並跑主迴圈。
 // 細節分在 src/game/*:fx(粒子/血池)、combat(射擊/傷害/爆炸)、flow(回合/出怪/商店/死亡)、input(輸入)、post(後處理)
 export class Game {
-  constructor(canvas) {
+  // opts.deferred:只建最基本的欄位,其餘由 buildSteps() 分段建構(main.js 分時執行,載入時主執行緒不會被佔住好幾秒)
+  constructor(canvas, opts = {}) {
     this.canvas = canvas;
+    this.deferredBuild = !!opts.deferred;
     this.ui = new UI();
     this.state = 'menu'; // menu | playing | dead
     this.phase = 'fighting'; // fighting | collecting | break | shop
@@ -33,9 +36,13 @@ export class Game {
     this.input = { fireHeld: false, firePressed: false };
     this.look = { x: 0, y: 0 };
     this.net = null; // 連線層(多人模式時由 src/net 設定)
+    if (!opts.deferred) { const it = this.buildSteps(); while (!it.next().done) { /* 同步建完 */ } }
+  }
 
+  // [perf] 建構流程(generator):每一段之後 yield;yield 出 Promise 時,分時執行器會等它完成(同步建構時略過)
+  *buildSteps() {
     // ---- 渲染器 ----
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+    const renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: false, powerPreference: 'high-performance' });
     renderer.debug.checkShaderErrors = !import.meta.env.PROD; // 正式版不查 shader 錯誤日誌(那些查詢會同步等編譯完成;建構期間的預編譯也適用)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.shadowMap.enabled = true;
@@ -59,6 +66,7 @@ export class Game {
     this.weaponScene.add(key);
     this.weaponLight = new THREE.PointLight(0xffa850, 0, 3, 2);
     this.weaponScene.add(this.weaponLight);
+    yield;
 
     // ---- 世界 ----
     // 網址帶 ?blockout 時用灰盒場景;正式場景建構失敗時也退回灰盒(並撤銷失敗前登記的碰撞盒)
@@ -66,7 +74,7 @@ export class Game {
     const nBoxes = this.world.boxes.length;
     let built = null;
     if (!new URLSearchParams(location.search).has('blockout')) {
-      try { built = buildHospital(this.world, this.world.layout, this.scene); } catch (e) {
+      try { built = yield* buildHospitalSteps(this.world, this.world.layout, this.scene); } catch (e) {
         console.warn('[world] 場景建構失敗,改用灰盒:', e);
         this.world.truncateBoxes(nBoxes);
         built = null;
@@ -74,16 +82,24 @@ export class Game {
     }
     this.hospital = built && built.group ? built : buildBlockout(this.world, this.world.layout, this.scene);
     this.scene.add(this.hospital.group);
+    yield;
+    this.deferRainBake = !!this.deferredBuild; // [perf] 分時載入:遮雨圖等 main.js 開始畫面前再烘
     this.weather = new Weather(this); // 雨、濕地、低霧、閃電、暴風雲與城市剪影(src/map/weather.js;每幀掛在 hospital.update 之後)
-    this.buildGameplayWorld(); // 補給站店面與補給點(碰撞盒要在 buildNav 之前登記)
+    yield;
+    // 室內環境反射(src/mats/surface.js)與大氣環境貼圖會在建構中就地做 PMREM:先在背景把它的 shader 編好
+    yield warmPMREM(this, [], { sizes: [256] }).catch(() => {});
+    yield* this.buildGameplayWorldSteps(); // 補給站店面與補給點(碰撞盒要在 buildNav 之前登記)
     this.truth = applyTruth(this.world, this.hospital); // [physics] 碰撞高度 = 看到的高度、道具材質(src/physics/truth.js)
+    yield;
     this.world.buildNav(); // 場景與道具的碰撞盒都登記好之後才建導航
+    yield;
 
     this.player = new Player(this.camera, this.world);
     sfx.attachGame(this); // [audio] 視線遮蔽、樓層悶音、地面材質、房間殘響、畫質、玩家狀態(蹲下/喘息)
     this.players = [this.player]; // 多人時會加入遠端玩家(殭屍追最近的)
     this.weapons = new WeaponSystem(this.weaponScene);
     this.weapons.onFire = (def, id, speed) => this.fire(def, id, speed);
+    yield;
     this.coins = new Coins(this.scene);
     this.coins.player = this.player;
     this.coins.world = this.world;
@@ -105,12 +121,15 @@ export class Game {
     this.makeParticles();
     // 物理(src/physics:Rapier WASM,預設在 Web Worker 非同步載入;載入前或失敗時 ready=false,遊戲照舊運作)
     this.physics = createPhysics(this);
+    yield;
     setupPost(this);
+    yield;
 
     window.addEventListener('resize', () => this.resize());
     this.resize();
 
     this.initCombat(); // 先建好(含固定存在的爆炸閃光燈):光源數量是 shader 參數,之後的任何預編譯才會用對的光源數
+    yield;
     this.initGameplay(); // 掉落物、商店介面、HUD、設定、按鍵(src/game/flow.js)
     this.resetRun();
     this.setMood('menu');
