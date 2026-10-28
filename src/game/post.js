@@ -5,6 +5,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GfxPass } from '../gfx/pipeline.js';
 import { GradeShader, installGrade } from '../gfx/grade.js';
+import { installPCSS } from '../gfx/pcss.js';
 
 // 最終畫面:邊緣色差、去飽和(受傷時更明顯)、暗角、底片顆粒、受傷泛紅
 // [motion] 轉場全部是這個 pass 的 uniform(src/ui/motion.js 寫值;不加 pass、不用 define → 不會在 hz:warm 之後編譯新 program):
@@ -134,6 +135,7 @@ export function setupPost(game) {
   game.gradePass.material.toneMapped = false; // 色調映射自己做(否則 three 會在前綴再插一次 tonemapping_pars → 重複定義)
   composer.addPass(game.gradePass);
   game.grade = installGrade(game, game.gradePass);
+  installPCSS(game); // game.pcss(on):極致畫質的柔和半影(quality.js applyGfx 呼叫)
   game.composer = composer;
   game.hospital?.attachRenderer?.(game.renderer, game);
 }

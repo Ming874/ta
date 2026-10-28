@@ -24,7 +24,7 @@ function gradeFn(p) {
 }
 export const GRADES = {
   cold: { slope: [0.98, 1.0, 1.02], offset: [-0.004, 0.0, 0.006], power: [1.03, 1.0, 0.99], sat: 0.94, shadow: [-0.008, 0.006, 0.014], high: [-0.012, 0.006, 0.004], contrast: 1.04 },
-  warm: { slope: [1.06, 1.0, 0.88], offset: [0.004, 0.002, -0.004], power: [0.97, 1.0, 1.05], sat: 0.97, shadow: [0.012, 0.005, -0.004], high: [0.02, 0.004, -0.03], contrast: 1.03 },
+  warm: { slope: [1.04, 1.0, 0.94], offset: [0.003, 0.002, -0.002], power: [0.98, 1.0, 1.03], sat: 0.98, shadow: [0.008, 0.004, -0.002], high: [0.014, 0.004, -0.016], contrast: 1.03 },
   sodium: { slope: [1.04, 0.99, 0.92], offset: [-0.006, 0.0, 0.012], power: [1.0, 1.0, 0.98], sat: 0.95, shadow: [-0.01, 0.004, 0.02], high: [0.03, 0.008, -0.03], contrast: 1.07 },
 };
 export function makeLut(fn, n = 32) {

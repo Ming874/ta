@@ -51,7 +51,7 @@ void main() {
 // ---- GTAO(Jimenez 2016 / XeGTAO 的切片積分):每像素 uSlices 片 × 兩側 uSteps 步,半解析度
 export const AO = /* glsl */`
 uniform sampler2D tPrep;
-uniform float uRadius; uniform float uSlices; uniform float uSteps; uniform float uMaxPx; uniform float uTemporal;
+uniform float uRadius; uniform float uSlices; uniform float uSteps; uniform float uMaxPx; uniform float uTemporal; uniform float uPow;
 ${COMMON}
 #define HPI 1.5707963
 float fastAcos( float x ) { float a = abs( x ); float r = ( - 0.156583 * a + HPI ) * sqrt( 1.0 - a ); return x >= 0.0 ? r : PI - r; }
@@ -99,7 +99,7 @@ void main() {
     float sn = sin( n );
     vis += pl * ( ( cosN + 2.0 * h0 * sn - cos( 2.0 * h0 - n ) ) + ( cosN + 2.0 * h1 * sn - cos( 2.0 * h1 - n ) ) ) * 0.25;
   }
-  vis = clamp( vis / uSlices, 0.0, 1.0 );
+  vis = pow( clamp( vis / uSlices, 0.0, 1.0 ), uPow ); // 物理的 GTAO 在 90° 牆角只有 ~0.75:加次方讓接地感看得出來
   gl_FragColor = vec4( vis, 0.0, 0.0, 1.0 );
 }`;
 

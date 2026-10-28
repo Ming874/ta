@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { alphaGuard } from './gbuf.js';
+import './pcss.js'; // 柔和半影的 ShaderChunk 修改(要在任何 shader 編譯之前)
 import * as S from './shaders.js';
 import { WET } from '../map/weather/wet.js';
 
@@ -21,7 +22,7 @@ for (let i = 1; i <= 8; i++) {
   HALTON.push([h(2) - 0.5, h(3) - 0.5]);
 }
 export const LEVELS = {
-  ao: [null, { slices: 1, steps: 4, radius: 0.75 }, { slices: 2, steps: 6, radius: 0.9 }, { slices: 3, steps: 8, radius: 1.05 }],
+  ao: [null, { slices: 1, steps: 4, radius: 0.9 }, { slices: 2, steps: 6, radius: 1.15 }, { slices: 3, steps: 8, radius: 1.3 }],
   ssr: [null, { steps: 12, dist: 5, rough: 0.32 }, { steps: 24, dist: 9, rough: 0.5 }, { steps: 40, dist: 13, rough: 0.62 }],
   vol: [null, { steps: 6, dist: 22 }, { steps: 12, dist: 30 }, { steps: 20, dist: 40 }],
 };
@@ -67,7 +68,7 @@ export class GfxPass extends Pass {
     this.hzName = 'scene';
     this.game = game;
     this.guard = alphaGuard(game.renderer.getContext());
-    this.cfg = { ao: 2, ssr: 2, vol: 2, taa: true, msaa: 4, boost: 0, aoStrength: 0.85, ssrStrength: 1, volStrength: 1, sharp: 0.18, flashK: 0.12, moonK: 0.3, lampK: 0.45 };
+    this.cfg = { ao: 2, ssr: 2, vol: 2, taa: true, msaa: 4, boost: 0, aoStrength: 1, ssrStrength: 1.3, volStrength: 1, sharp: 0.18, flashK: 0.12, moonK: 0.3, lampK: 0.45 };
     this.live = { ao: 0, ssr: 0, vol: 0, taa: false };
     this.frame = 0;
     this.submitMs = 0; // 場景繪製的 JS 時間(自動調整用來分辨 CPU/GPU 瓶頸)
@@ -97,7 +98,7 @@ export class GfxPass extends Pass {
     };
     const tex = (v = null) => ({ value: v });
     this.mPrep = mk(S.PREP, { tDepth: tex(this.depthTex) }, 'gfx.prep');
-    this.mAO = mk(S.AO, { tPrep: tex(this.prepRT.texture), uRadius: { value: 0.9 }, uSlices: { value: 2 }, uSteps: { value: 6 }, uMaxPx: { value: 80 }, uTemporal: { value: 1 } }, 'gfx.ao');
+    this.mAO = mk(S.AO, { tPrep: tex(this.prepRT.texture), uRadius: { value: 0.9 }, uSlices: { value: 2 }, uSteps: { value: 6 }, uMaxPx: { value: 80 }, uTemporal: { value: 1 }, uPow: { value: 1.8 } }, 'gfx.ao');
     this.mAOBlur = mk(S.AOBLUR, { tAO: tex(this.aoRT.texture), tPrep: tex(this.prepRT.texture) }, 'gfx.aoblur');
     this.mDown = mk(S.DOWN, { tColor: tex(this.sceneRT.texture) }, 'gfx.down');
     this.mSSR = mk(S.SSR, {
