@@ -18,6 +18,7 @@ import { inputMethods } from './game/input.js';
 import { createPhysics } from './physics/index.js';
 import { applyTruth } from './physics/truth.js';
 import { Weather } from './map/weather.js';
+import { instrument } from './gfx/gpuprof.js';
 
 // 遊戲主體:建立渲染器/場景/各系統,並跑主迴圈。
 // 細節分在 src/game/*:fx(粒子/血池)、combat(射擊/傷害/爆炸)、flow(回合/出怪/商店/死亡)、input(輸入)、post(後處理)
@@ -211,6 +212,8 @@ export class Game {
   }
 
   render() {
+    const prof = this.quality?.gpu;
+    if (prof?.ext && this.composer.passes.length !== this._profN) { instrument(this, prof); this._profN = this.composer.passes.length; } // 新插入的 pass(鏡頭雨滴)也包進分段計時
     this.composer.render();
   }
 }

@@ -115,7 +115,9 @@ export function setupPost(game) {
   wp.clear = false;
   wp.clearDepth = true;
   composer.addPass(wp);
-  composer.addPass(new ShaderPass(SanitizeShader));
+  const san = new ShaderPass(SanitizeShader);
+  san.hzName = 'sanitize';
+  composer.addPass(san);
   game.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.32, 0.6, 0.92);
   composer.addPass(game.bloom);
   game.post = new ShaderPass(PostShader);

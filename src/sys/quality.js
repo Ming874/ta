@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { stageConfig, warmMaterials } from './warmup.js';
+import { GpuProfiler } from '../gfx/gpuprof.js';
 
 // ===== 畫質管理 → game.quality =====
 // 預設檔 low / medium / high / ultra(首次自動依 GPU 挑選,之後記在 localStorage)。
@@ -64,42 +65,7 @@ export function detectPreset(gl) {
   return { preset: (nav.hardwareConcurrency || 4) >= 8 && (nav.deviceMemory || 8) >= 8 ? 'high' : 'medium', gpu: s };
 }
 
-// GPU 計時:EXT_disjoint_timer_query_webgl2(沒有時 gpuMs = null)
-class GpuTimer {
-  constructor(gl) {
-    this.gl = gl;
-    this.ext = gl.getExtension && gl.getExtension('EXT_disjoint_timer_query_webgl2');
-    this.free = [];
-    this.wait = [];
-    this.active = null;
-    this.ms = null;
-  }
-  begin() {
-    if (!this.ext || this.active) return;
-    const q = this.free.pop() || this.gl.createQuery();
-    this.gl.beginQuery(this.ext.TIME_ELAPSED_EXT, q);
-    this.active = q;
-  }
-  end() {
-    if (!this.active) return;
-    this.gl.endQuery(this.ext.TIME_ELAPSED_EXT);
-    this.wait.push(this.active);
-    this.active = null;
-    this.poll();
-  }
-  poll() {
-    const gl = this.gl;
-    const disjoint = gl.getParameter(this.ext.GPU_DISJOINT_EXT);
-    while (this.wait.length) {
-      const q = this.wait[0];
-      if (!gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE)) break;
-      const ns = gl.getQueryParameter(q, gl.QUERY_RESULT);
-      this.free.push(this.wait.shift());
-      if (!disjoint && ns > 0) this.ms = ns / 1e6;
-    }
-    while (this.wait.length > 8) this.free.push(this.wait.shift()); // GPU 落後太多就丟掉舊的
-  }
-}
+// GPU 計時:src/gfx/gpuprof.js(EXT_disjoint_timer_query_webgl2;沒有時 gpuMs = null;F3 面板開著時逐 pass 分段)
 
 // 固定長度的幀時間統計
 class Ring {
@@ -121,7 +87,7 @@ export class Quality {
   constructor(game) {
     this.game = game;
     const gl = game.renderer.getContext();
-    this.gpu = new GpuTimer(gl);
+    this.gpu = new GpuProfiler(gl);
     this.detected = detectPreset(gl);
     const saved = load();
     this.preset = saved && PRESETS[saved.preset] ? saved.preset : this.detected.preset;
@@ -132,6 +98,7 @@ export class Quality {
     this.listeners = new Set();
     this.frame = new Ring(240); // rAF 間隔
     this.cpu = new Ring(240); // update + render 的 JS 時間
+    this.cpuR = new Ring(240); // 其中 render(送出 draw call)的 JS 時間
     this.gpuMs = new Ring(240);
     this.dpr = window.devicePixelRatio || 1;
     this.scale = this.startScale();
@@ -309,10 +276,11 @@ export class Quality {
   // ---- 每幀:由主迴圈呼叫 ----
   beginGpu() { this.gpu.begin(); }
   endGpu() { this.gpu.end(); }
-  // frameMs = rAF 間隔,cpuMs = 本幀 update + render 的 JS 時間
-  sample(frameMs, cpuMs) {
+  // frameMs = rAF 間隔,cpuMs = 本幀 update + render 的 JS 時間,renderMs = 其中 render 的部分
+  sample(frameMs, cpuMs, renderMs = 0) {
     this.frame.push(frameMs);
     this.cpu.push(cpuMs);
+    this.cpuR.push(renderMs);
     if (this.gpu.ms != null) this.gpuMs.push(this.gpu.ms);
     if (this.get('dynamicRes')) this.control();
   }
@@ -351,7 +319,7 @@ export class Quality {
     const avg = f.avg(120) || 16.7;
     return {
       fps: 1000 / avg, frameMs: avg, frameP99: f.pct(0.99, 240), frameMax: f.max(240),
-      cpuMs: this.cpu.avg(60), gpuMs: this.gpu.ext ? (this.gpuMs.n ? this.gpuMs.avg(60) : null) : null, gpuTimer: !!this.gpu.ext,
+      cpuMs: this.cpu.avg(60), cpuRenderMs: this.cpuR.avg(60), gpuMs: this.gpu.ext ? (this.gpuMs.n ? this.gpuMs.avg(60) : null) : null, gpuTimer: !!this.gpu.ext,
       pixelRatio: this.scale, width: this.game.renderer.domElement.width, height: this.game.renderer.domElement.height,
       preset: this.preset, dynamicRes: !!this.get('dynamicRes'),
     };
