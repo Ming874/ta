@@ -136,7 +136,7 @@ export function buildHospital(world, layout, scene, opts = {}) {
   const H = {
     group: root, stats, layout: L, lights, atmo, K, levelGroups, propGroups, propEvents, propLights, vis, propVis, events, game: null, chunks,
     // [scene r4] 給體驗導演(結局)的錨點與天亮控制:anchors.w207 { lamp, chair, bed, window, door, view, hub, setDawn }、anchors.alleyView
-    anchors: buildAnchors(propEvents, lights),
+    anchors: buildAnchors(propEvents, lights, root),
     setDawn: (t) => lights.setDawn(t),
     leaves: K.leaves, doorLeaves: K.doorLeaves || [], // 門扇實例與代理(src/map/hospital/leaves.js;互動與碰撞在 src/interact/doors.js)
     propDistance: 54, // 道具區塊的顯示距離(公尺):霧裡看不到的就不畫,setQuality 依 drawDistance 調整
@@ -287,7 +287,7 @@ function mergeStatics(statics, groups, chunks) {
 }
 
 // [scene r4] 道具登記的錨點(kind 'anchor', name 'w207.chair' …)→ 結構化
-function buildAnchors(propEvents, lights) {
+function buildAnchors(propEvents, lights, root) {
   const A = { w207: {} };
   for (const e of propEvents) {
     if (e.kind !== 'anchor' || !e.name) continue;
@@ -302,5 +302,7 @@ function buildAnchors(propEvents, lights) {
   const w = st.window;
   if (w) A.w207.window = { x: w.x, y: 4.2 + 1.66, z: w.z, nx: w.axis === 'z' ? 0 : -w.inDir, nz: w.axis === 'z' ? -w.inDir : 0 };
   A.w207.setDawn = (t) => lights.setDawn(t);
+  const truck = root?.getObjectByName?.('jinshui-truck');
+  if (truck) (A.truck ||= {}).mesh = truck; // 結局:anchors.truck.mesh.visible = true
   return A;
 }
