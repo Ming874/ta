@@ -24,6 +24,7 @@ export const KINDS = {
   // 外部(伏擊代理、新殭屍)
   ambush: { tier: 'medium', cd: 28, jump: true, ext: true, act: 1, cat: 'host' },
   ceilingDrop: { tier: 'medium', cd: 40, jump: true, ext: true, act: 1, cat: 'host' },
+  chase: { tier: 'medium', cd: 200, jump: true, ext: true, act: 1, cat: 'host' }, // [zombies-w3] 追逐戰(src/zombies/chase.js;約每幕一次)
   // ---- small ----
   whisper: { tier: 'small', cd: 14, act: 1, cat: 'voice', w: 1.1 },
   ambient: { tier: 'small', cd: 35, act: 1, cat: 'sound', w: 0.8 },
@@ -98,7 +99,7 @@ const CALM_START = 60; // 開局多少秒內不放 medium/big 與閃燈
 const LIGHT_KINDS = new Set(['flicker', 'signal', 'lightsDie', 'blackout', 'blackoutChange']);
 // 誘集期間(回合進行中)也可以有的:不是鬼的東西(宿主、伏擊、殭屍靠近的閃燈、天花板裡的爬行)。
 // 其他全部是「鬼」:只在靜默期(回合之間的休息)出現(STORY.md §1.9、§4.2、§12)
-export const FIGHT_OK = new Set(['ambient', 'signal', 'crawl', 'ambush', 'ceilingDrop']);
+export const FIGHT_OK = new Set(['ambient', 'signal', 'crawl', 'ambush', 'ceilingDrop', 'chase']);
 
 export class Director {
   constructor(horror) {
