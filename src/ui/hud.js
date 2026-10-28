@@ -140,6 +140,12 @@ export class Hud {
   // ---------- 武器 / 道具 ----------
   // tier = 這把武器的改裝總等級(名稱旁顯示小菱形)
   setAmmo(name, mag, reserve, reloading, cap = 0, tier = 0) {
+    // [motion] 換武器:名稱與彈藥跟著放下/舉起的節奏淡入、從下面 .35em 升上來(280ms)
+    const prevName = this.v.wname;
+    if (this._set('wname', name, () => {}) && prevName != null) {
+      this.weapon.getAnimations().forEach((a) => a.cancel());
+      this.weapon.animate([{ opacity: 0.15, translate: '0 .35em' }, { opacity: 1, translate: '0 0' }], { duration: 280, delay: 120, easing: 'cubic-bezier(.2,.7,.2,1)', fill: 'backwards' });
+    }
     this._set('wn', `${name}|${reloading ? 1 : 0}|${tier}`, () => {
       this.wName.innerHTML = (tier ? `<i class="tier" title="改裝等級">${'◆'.repeat(Math.min(tier, 9))}</i>` : '') + esc(name) + (reloading ? '<em>換彈中…</em>' : '');
     });
@@ -258,6 +264,14 @@ export class Hud {
 
   // [motion] 墨水滲開(模糊 → 清楚、微縮)、副標晚 160ms;新橫幅來時舊的先往上淡出(260ms),不硬切
   banner(text, sub = '', ms = 3500, cls = '') {
+    // 上一個橫幅至少讀得完(1.9 秒)才換:例如「燈篙暗了」之後 1.4 秒就來的「金水商行開門了」
+    const shown = performance.now() - (this._bannerT0 || -1e9), MIN = 1900;
+    clearTimeout(this._bannerQ);
+    if (shown < MIN && this._bannerLive && cls !== 'red') { this._bannerQ = setTimeout(() => this.banner(text, sub, ms, cls), MIN - shown); return; } // 紅色(危險:巨屍、追逐)馬上蓋過去
+    this._bannerT0 = performance.now();
+    this._bannerLive = true;
+    clearTimeout(this._bannerEnd);
+    this._bannerEnd = setTimeout(() => { this._bannerLive = false; }, ms);
     const e = this.bannerEl;
     const R = document.documentElement.classList.contains('mo-reduced');
     let delay = 0;
@@ -401,6 +415,7 @@ export class Hud {
   }
 
   reset() {
+    clearTimeout(this._bannerQ);
     for (const k of ['feedEl', 'pops', 'pickEl']) this[k].replaceChildren();
     this.streakEnd = 0;
     this.v.stk = 0;

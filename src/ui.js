@@ -33,6 +33,11 @@ export class UI {
   overlay(id, on) {
     if (id === 'shop') { if (on) { if (this.game) this.game.openShop(); } else this.game?.closeShop(false); return; }
     const el = $(id);
+    if (el && id !== 'menu' && !on && el.classList.contains('on')) { // [motion] 暫停/倒下的卡片收起時淡出 140ms(不擋點擊)
+      el.classList.add('mo-closing');
+      clearTimeout(el._moT);
+      el._moT = setTimeout(() => el.classList.remove('mo-closing'), 150);
+    } else if (el && on) { clearTimeout(el._moT); el.classList.remove('mo-closing'); }
     if (el) el.classList.toggle('on', on);
     if (id === 'pause') { this.menu.onPause(on); this.game?.motion?.pause(on); } // [motion] 世界變暗、褪色(160ms),繼續時亮回來
   }

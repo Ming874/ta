@@ -196,7 +196,7 @@ export function installMotion(game) {
     if (st === 'playing' && p && fx) {
       const low = p.hp < 35 && p.hp > 0 ? (1 - p.hp / 35) : 0;
       const fresh = Math.max(0, 1 - (game.time - (p.lastHurt ?? -99)) * 2.2) * (M._hitK || 0.45);
-      hc.hurt = Math.min(1, low * 0.55 + fresh);
+      hc.hurt = Math.min(1, low * 0.85 + fresh);
     } else hc.hurt = st === 'dead' ? hc.hurt * Math.max(0, 1 - dt * 1.5) : 0;
     // 心跳:暗角跟著真正排程的心跳聲(lub-dub)
     const ctx = _internal?.A?.ctx;
@@ -295,7 +295,7 @@ export function installMotion(game) {
     const roll = el.firstChild;
     let done, gone = false, raf = 0;
     const p = new Promise((r) => { done = r; });
-    const speed = (o.speed || 38) * (M.reduced ? 1 : 1); // px/s
+    const speed = o.pxps || 38 * (o.speed || 1); // speed = 倍率(1 = 每秒 38px,約 1080p 一行字 1 秒);pxps = 直接指定每秒像素
     const H = () => roll.scrollHeight, VH = () => window.innerHeight;
     let y = VH(), tPrev = performance.now(), fast = 1;
     const step = (now) => {
@@ -430,10 +430,13 @@ export function installMotion(game) {
   M.revive = async ({ line = '阿孫，轉來喔！', hold = 1600 } = {}) => {
     M.busy = true;
     const v = ch('revive');
+    M.hudHide(M.reduced ? 160 : 400);
     await M.to('revive', 'fade', 1, M.reduced ? 160 : 500, 'inOut');
     const card = showCard({ className: 'ama', title: line, fadeIn: 900, hold, fadeOut: 500, z: 60 });
     await card;
-    if (!M.reduced) { v.lid = 1; msfx.breath?.(); M.to('revive', 'fade', 0, 300); await M.to('revive', 'lid', 0.4, 420, 'out'); await M.to('revive', 'lid', 0.55, 140); await M.to('revive', 'lid', 0, 520, 'out'); } else await M.to('revive', 'fade', 0, 160);
+    $('hud') && ($('hud').style.opacity = '1');
+    M.hudHold(true);
+    if (!M.reduced) { v.lid = 1; msfx.breath?.(); M.to('revive', 'fade', 0, 300); await M.to('revive', 'lid', 0.4, 420, 'out'); await M.to('revive', 'lid', 0.55, 140); M.hudHold(false); await M.to('revive', 'lid', 0, 520, 'out'); } else { M.hudHold(false); await M.to('revive', 'fade', 0, 160); }
     M.clear('revive');
     M.busy = false;
   };
