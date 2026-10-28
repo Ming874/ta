@@ -20,7 +20,7 @@ const PEN = { fire: 'heavy', cell: 'heavy', metal: 'metal', swing: 'metal', glas
 const BARRICADE_COST = 10, BARRICADE_HP = 9, MAX_BARRICADES = 3;
 const angDiff = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
 
-export function setupDoors(game, ix, { leaves = [], seed = 77, lockSpecs = [] } = {}) {
+export function setupDoors(game, ix, { leaves = [], seed = 77, lockSpecs = [], leafApi = null, fixtures = null } = {}) {
   const world = game.world, R = rng(seed);
   const ways = new Map();
   for (const l of leaves) {
@@ -35,6 +35,7 @@ export function setupDoors(game, ix, { leaves = [], seed = 77, lockSpecs = [] } 
   const isOpen = (l) => angDiff(l.group.rotation.y, l.swingA) < 0.15 || angDiff(l.group.rotation.y, l.swingB) < 0.15;
   const isClosed = (l) => angDiff(l.group.rotation.y, l.closed) < 0.12;
   const allClosed = (w) => w.leaves.every(isClosed);
+  const locked = (w) => !!(w.lock && !w.lock.open);
   const anyShut = (w) => w.leaves.some((l) => !isOpen(l));
 
   // ---------- 碰撞盒 ----------
@@ -43,8 +44,8 @@ export function setupDoors(game, ix, { leaves = [], seed = 77, lockSpecs = [] } 
     l.boxes.length = 0;
     const a = l.group.rotation.y, c = Math.cos(a), s = -Math.sin(a), th = Math.max(0.1, (l.t || 0.06) + 0.04);
     const hx = l.group.position.x, hz = l.group.position.z, y0 = l.y, h = l.lh;
-    const locked = !!(l.way?.lock && !l.way.lock.open); // [story] 解鎖之後(lock.open)就跟一般的門一樣
-    const nav = isOpen(l) && !locked; // 開到牆邊的門扇:導航繞過;其他(半開/關著)導航穿過,殭屍會推
+    const lk = l.way ? locked(l.way) : false;
+    const nav = isOpen(l) && !lk; // 開到牆邊的門扇:導航繞過;其他(半開/關著)導航穿過,殭屍會推
     const aligned = Math.abs(c) < 0.1 || Math.abs(s) < 0.1;
     const n = aligned ? 1 : Math.ceil(l.lw / 0.28);
     const seg = l.lw / n;
@@ -52,7 +53,7 @@ export function setupDoors(game, ix, { leaves = [], seed = 77, lockSpecs = [] } 
       const u = (i + 0.5) * seg;
       const sx = Math.abs(c) * seg + Math.abs(s) * th, sz = Math.abs(s) * seg + Math.abs(c) * th;
       const b = world.addBox(hx + c * u, hz + s * u, sx, sz, h, y0);
-      if (!nav && !locked) b.nav = false; // 上鎖的門例外:導航繞過(殭屍不會卡在門前)
+      if (!nav && !lk) b.nav = false; // 上鎖的門例外:導航繞過(殭屍不會卡在門前)
       b.leaf = l;
       b.pm = PEN[l.style] || 'wood'; b.mat = MATS[b.pm]?.fx || 'wood'; b.tag = 'door:' + l.style; // 子彈穿透與彈著效果
       l.boxes.push(b);
@@ -175,7 +176,7 @@ export function setupDoors(game, ix, { leaves = [], seed = 77, lockSpecs = [] } 
     if ((extT -= dt) <= 0) { // 驚嚇事件甩門 → 門停下來後更新碰撞盒
       extT = 0.25;
       for (const l of leaves) if (l.events && !l.anim && angDiff(l.group.rotation.y, l.colA) > 0.02) {
-        if ((l.way.bar || (l.way.lock && !l.way.lock.open)) && angDiff(l.group.rotation.y, l.closed) > 0.02) { l.group.rotation.y = l.closed; continue; } // 釘了木板/上鎖的門:靈異事件推不動
+        if ((l.way.bar || locked(l.way)) && angDiff(l.group.rotation.y, l.closed) > 0.02) { l.group.rotation.y = l.closed; continue; } // 釘了木板/上鎖的門:靈異事件推不動
         colliders(l);
       }
     }
@@ -183,7 +184,7 @@ export function setupDoors(game, ix, { leaves = [], seed = 77, lockSpecs = [] } 
     pushT = 0.25;
     if (game.net && !game.net.isHost) return true;
     for (const w of list) {
-      if ((w.lock && !w.lock.open) || !anyShut(w)) { w.press = 0; continue; } // [story] 解鎖之後殭屍也推得開
+      if (locked(w) || !anyShut(w)) { w.press = 0; continue; }
       let who = null, k = 0;
       for (const z of game.zombies) {
         if (!z.alive) continue;
@@ -252,7 +253,7 @@ export function setupDoors(game, ix, { leaves = [], seed = 77, lockSpecs = [] } 
         if (w.lock && !unlocked(w)) return { text: w.lock.text || `${nm} · 上鎖了`, dim: true };
         if (w.bar) { e.hold = 1.6; e.onTap = null; e.holdText = '拆木板'; return '拆掉木板'; }
         const closed = allClosed(w);
-        if (closed && !ctx.mp || closed && ctx.isHost) { e.hold = 2.2; e.onTap = tap; e.holdText = '釘木板'; e.tapText = `打開${nm}`; return `釘上木板（${BARRICADE_COST} 元）`; }
+        if (closed && !ctx.mp || closed && ctx.isHost) { e.hold = 2.2; e.onTap = tap; e.holdText = '釘木板'; e.tapText = `打開${nm}`; return `釘上木板(${BARRICADE_COST} 金幣)`; }
         e.hold = 0; e.onTap = null;
         return closed ? `打開${nm}` : `關上${nm}`;
       },
@@ -261,7 +262,7 @@ export function setupDoors(game, ix, { leaves = [], seed = 77, lockSpecs = [] } 
         if (w.bar) { unbar(w, false); ixs.barricadeBreak(pos(w)); return; }
         if (e.hold > 0) { // 按住完成:釘木板
           const p = game.player;
-          if ((p.coins || 0) < BARRICADE_COST) { game.ui.pickup(`需要 ${BARRICADE_COST} 元`, '#a3a39a'); sfx.pickupDeny(); return false; }
+          if ((p.coins || 0) < BARRICADE_COST) { game.ui.pickup(`需要 ${BARRICADE_COST} 金幣`, '#a3a39a'); sfx.pickupDeny(); return false; }
           p.coins -= BARRICADE_COST; game.ui.setCoins(p.coins); game.ui.spend?.(BARRICADE_COST);
           const side = sideOf(w, p.pos);
           barricade(w, side);
@@ -284,31 +285,125 @@ export function setupDoors(game, ix, { leaves = [], seed = 77, lockSpecs = [] } 
   }
   const sideOf = (w, p) => (w.leaves[0].axis === 'z' ? (p.z > w.cz ? 1 : -1) : (p.x > w.cx ? 1 : -1));
 
-  // ---------- 鎖(劇情包:{ door: zoneId, item, flag, text }) ----------
+  // ---------- 鎖 ----------
+  // 劇情包的 lock({ door: zoneId, item, flag, text, consume })在建構時鎖上;劇情代理在執行期用 api.lock / api.unlock(見下面)。
+  // 上鎖:門扇關上、碰撞盒擋導航(殭屍繞路);解鎖:碰撞盒重建(導航局部重建排進佇列)、喀一聲 + 一行提示。
+  function openLock(w, { feedback = true, text = null, open = false, by = null } = {}) {
+    if (!w.lock || w.lock.open) return false;
+    w.lock.open = true;
+    for (const l of w.leaves) colliders(l);
+    if (feedback) {
+      ixs.lockerOpen(pos(w));
+      const msg = text ?? w.lock.unlockText ?? `${NAME[w.style] || '門'}的鎖開了`;
+      if (msg) game.ui?.pickup?.(msg, '#d9c48a');
+    }
+    if (open) setState(w, 'open', { by: by || game.player.pos, net: false });
+    ix.emit('unlock', w);
+    return true;
+  }
   function unlocked(w) {
     const L = w.lock;
-    if (!L) return true;
-    if (L.open) return true;
-    if (L.flag && ix.flags.has(L.flag)) return (L.open = true);
-    if (L.item && ix.inv.has(L.item)) { if (L.consume) ix.inv.take(L.item); game.ui.pickup(`用 ${ix.inv.name(L.item)} 打開了門鎖`, '#d9c48a'); ixs.lockerOpen(pos(w)); return (L.open = true); }
+    if (!L || L.open) return true;
+    if (L.flag && ix.flags.has(L.flag)) { openLock(w); return true; }
+    if (L.item && ix.inv.has(L.item)) { if (L.consume) ix.inv.take(L.item); openLock(w, { text: L.unlockText ?? `用 ${ix.inv.name(L.item)} 打開了門鎖` }); return true; }
     return false;
   }
-  for (const spec of lockSpecs) {
-    for (const w of list) {
-      if (w.out || !(w.za?.id === spec.door || w.zb?.id === spec.door)) continue;
-      w.lock = { ...spec, open: false };
-      for (const l of w.leaves) { l.group.rotation.y = l.closed; colliders(l); }
-    }
+  function applyLock(w, spec) {
+    w.lock = { ...spec, open: false };
+    for (const l of w.leaves) { l.anim = null; anims.delete(l); l.group.rotation.y = l.closed; colliders(l); }
+    sync(w);
+    ix.emit('lock', w);
   }
-  ix.on('flag', () => { for (const w of list) if (w.lock && !w.lock.open && w.lock.flag && ix.flags.has(w.lock.flag)) { w.lock.open = true; for (const l of w.leaves) colliders(l); ix.emit('unlock', w); } });
+  for (const spec of lockSpecs) for (const w of list) if (!w.out && (w.za?.id === spec.door || w.zb?.id === spec.door)) applyLock(w, spec);
+  ix.on('flag', () => { for (const w of list) if (locked(w) && w.lock.flag && ix.flags.has(w.lock.flag)) openLock(w); });
+  // 目標 → 門洞:門洞 key('li,c,r',門扇的 door 欄位)、區域 id(門的兩側任一側是這個區域)、門洞物件,或它們的陣列
+  const waysOf = (t) => {
+    if (t == null) return [];
+    if (Array.isArray(t)) return [...new Set(t.flatMap(waysOf))];
+    if (typeof t === 'object') return t.leaves ? [t] : [];
+    if (ways.has(t)) return [ways.get(t)];
+    return list.filter((w) => w.za?.id === t || w.zb?.id === t);
+  };
+
+  // ---------- 門縫透光:關著的門、房裡有燈 → 門下的地上有一道光(走廊那側);偶爾有影子從門後走過,或停在門後敲門 ----------
+  const byZone = new Map();
+  for (const f of fixtures || []) if (f.zone) { const k = f.zone.id; if (!byZone.has(k)) byZone.set(k, []); byZone.get(k).push(f); }
+  const leakWays = leafApi?.hasLeak ? list.filter((w) => leafApi.hasLeak(w.key)) : [];
+  for (const w of leakWays) {
+    const l = w.leaves[0];
+    w.wf = l.wf; w.dirRoom = l.dirRoom; w.axis = l.axis;
+    w.room = l.zone && l.zone.theme !== 'corridor' ? l.zone : null;
+    w.lit = byZone.get(w.room?.id) || null;
+    w.lr = w.lg = w.lb = 0;
+  }
+  const bump = (u, c, s) => Math.exp(-(((u - c) / s) ** 2));
+  let leakT = 0, shade = null, shadeNext = 40 + R() * 40;
+  const shadeK = (S, now) => { // 門後的人影:走過 = 兩隻腳各遮一下;停下 = 一腳、兩腳,停在門後,最後走開
+    const u = now - S.t0;
+    if (!S.stop) return Math.max(0.05, 1 - 0.8 * bump(u, 0.5, 0.2) - 0.85 * bump(u, 1.1, 0.2));
+    if (u < 0.9) return 1 - 0.75 * bump(u, 0.55, 0.2);
+    if (u < 5.6) return 0.12 + 0.05 * Math.sin(u * 3.1);
+    return Math.min(1, 0.12 + (u - 5.6) * 0.8);
+  };
+  const wantShade = (w, p, now) => { // 玩家在走廊這側 2.5~8m、看著那扇門
+    const out = -w.dirRoom, sd = ((w.axis === 'z' ? p.z : p.x) - w.wf) * out;
+    if (sd < 1.2) return false;
+    const d = Math.hypot(w.cx - p.x, w.cz - p.z);
+    if (d < 2.5 || d > 8) return false;
+    const yaw = game.player.yaw ?? 0, fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    if (((w.cx - p.x) * fx + (w.cz - p.z) * fz) / d < 0.75) return false;
+    const D = game.horror?.director;
+    if (D?.request && !D.request('underDoor', { pos: pos(w, 0.1) })) return false;
+    D?.notify?.('underDoor', { pos: pos(w, 0.1) });
+    shade = { w, t0: now, stop: R() < 0.35 };
+    if (shade.stop) ix.after(2.2 + R() * 1.2, () => { if (shade?.w === w && allClosed(w)) ixs.doorKnock?.(pos(w, 1.2), R() < 0.5 ? 3 : 2); });
+    ix.emit('doorShadow', w, shade.stop);
+    return true;
+  };
+  if (leakWays.length) ix.tick((dt) => {
+    if ((leakT -= dt) > 0) return true;
+    leakT = 0.1;
+    const p = game.player.pos, li = world.layout.levelOfY(p.y + 0.3), now = game.time;
+    if (shade && now - shade.t0 > (shade.stop ? 7 : 1.8)) shade = null;
+    let cand = null;
+    for (const w of leakWays) {
+      let r = 0, g = 0, b = 0;
+      if (w.lit && w.li === li && Math.abs(w.cx - p.x) < 20 && Math.abs(w.cz - p.z) < 20 && allClosed(w)) {
+        for (const f of w.lit) if (f.state !== 2 && f.cur > 0.02) { const k = Math.min(1.2, f.cur); r += f.color.r * k; g += f.color.g * k; b += f.color.b * k; }
+        const m = Math.max(r, g, b);
+        if (m > 1) { r /= m; g /= m; b /= m; }
+        let s = 0.8;
+        if (shade?.w === w) s *= shadeK(shade, now);
+        else if (m > 0.15 && !cand) cand = w;
+        r *= s; g *= s; b *= s;
+      }
+      if (Math.abs(r - w.lr) + Math.abs(g - w.lg) + Math.abs(b - w.lb) > 0.02) { leafApi.leak(w.key, r, g, b); w.lr = r; w.lg = g; w.lb = b; }
+    }
+    if (!shade && cand && now > shadeNext && game.state === 'playing' && game.phase !== 'fighting') { if (wantShade(cand, p, now)) shadeNext = now + 70 + R() * 70; }
+    return true;
+  });
 
   const api = {
-    list, ways, colliders, setState, barricade, unbar, isClosed, allClosed,
-    reset() { // 新的一局:門回到建構時的狀態,木板拆掉,鎖重新鎖上
+    list, ways, colliders, setState, barricade, unbar, isClosed, allClosed, leakWays, planks: planks.im,
+    shadow(w, stop = false) { shade = { w, t0: game.time, stop }; }, // 測試/劇情用:讓某扇門後面有人影
+    // ---- 劇情鎖(執行期)----
+    //  lock(target, { text, flag, item, consume, unlockText, persist }) → 鎖上的門洞數
+    //    target:門洞 key 'li,c,r' | 區域 id(例 'f2_ward_207':通往該區域的每一扇門)| 門洞物件 | 以上的陣列
+    //    text:對著門的提示(預設「病房門 · 上鎖了」);flag:旗標成立時自動解鎖;item:帶著道具按 E 就解鎖(consume 用掉)
+    //    persist:新的一局(resetRun)不清掉(預設會清掉:劇情代理在開局時重新上鎖)
+    //  unlock(target, { feedback = true, text, open = false }) → 解開的門洞數(feedback:喀一聲 + 一行提示;open:順便把門推開)
+    //  isLocked(target) → 任一扇還鎖著;waysOf(target) → 門洞物件陣列(key、li、cx、cz、za/zb 區域、style、lock)
+    lock(target, spec = {}) { let n = 0; for (const w of waysOf(target)) { if (locked(w)) { Object.assign(w.lock, spec); continue; } if (w.bar) unbar(w, false); applyLock(w, { ...spec, rt: true }); n++; } return n; },
+    unlock(target, o = {}) { let n = 0; for (const w of waysOf(target)) if (openLock(w, o)) n++; return n; },
+    isLocked: (target) => waysOf(target).some(locked),
+    waysOf,
+    reset() { // 新的一局:門回到建構時的狀態,木板拆掉;劇情包的鎖重新鎖上,執行期的鎖(沒有 persist)清掉
       for (const w of list) {
         if (w.bar) unbar(w, false, false);
-        for (const l of w.leaves) { l.anim = null; anims.delete(l); l.group.rotation.y = w.lock ? l.closed : l.init; colliders(l); }
+        if (w.lock?.rt && !w.lock.persist) w.lock = null;
+        for (const l of w.leaves) { l.anim = null; anims.delete(l); l.group.rotation.y = w.lock ? l.closed : l.init; }
         if (w.lock) w.lock.open = false;
+        for (const l of w.leaves) colliders(l);
         w.press = 0;
       }
     },

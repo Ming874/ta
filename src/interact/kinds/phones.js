@@ -182,11 +182,12 @@ function makePhone(api, o) {
       this.state = 'ringing'; this.ringT = dur; this.t = 0; this.ghost = ghost; this.line = line; this.lastRing = game.time;
       ixs.ringStart(key, pos, RING_KIND[style] || 'bell');
       ix.ringing.add(P);
+      if (P.e) { P.e.radius = Math.max(0.36, P.e.r0); P.e.reach = 2.8; P.e.priority = 9; } // 響的時候比較好瞄準(不會被旁邊的東西搶走焦點)
       ix.emit('ring', P);
       this.run();
       return true;
     },
-    stopRing() { ixs.ringStop(key); ix.ringing.delete(P); if (hs) hs.set(hsI, hsM); for (const i of leds) led.color(i, 0x221a10); },
+    stopRing() { ixs.ringStop(key); ix.ringing.delete(P); if (P.e) { P.e.radius = P.e.r0; P.e.reach = 2.5; P.e.priority = 2; } if (hs) hs.set(hsI, hsM); for (const i of leds) led.color(i, 0x221a10); },
     lift() { if (hs) hs.set(hsI, ZERO); ixs.pickup(null); },
     down() { if (hs) hs.set(hsI, hsM); ixs.hangup(pos); },
     tones() { ixs.dialTone(false); ixs.busyTone(false); ixs.offHook(false); ixs.lineNoise(false); },
@@ -292,6 +293,7 @@ function makePhone(api, o) {
     },
     reset: () => P.reset(),
   });
+  P.e.r0 = P.e.radius;
   api.phones.push(P);
   return P;
 }

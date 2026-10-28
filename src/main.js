@@ -200,7 +200,9 @@ async function warmRuntime() {
     }
   }
   performance.mark('hz:warm:start');
-  const res = await precompile(game, g);
+  const own = game.interact?.warmList?.() || []; // [interact] 互動物件與門(BatchedMesh 變體與陰影深度變體):跟著 hz:warm 編好
+  const [res, resIx] = await Promise.all([precompile(game, g), own.length ? precompile(game, { traverse: (fn) => { for (const o of own) o.traverse(fn); }, updateMatrixWorld() {} }) : null]);
+  if (resIx) for (const p of resIx.programs) res.programs.add(p);
   performance.mark('hz:warm:compiled');
   warmStage = 2;
   await initPrograms(res.programs);
