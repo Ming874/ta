@@ -455,5 +455,6 @@ export function scareKinds(h) {
   }
   h.flashFlicker = flashFlicker; // 電話腳本也會用
   h.creepDoor = creep;
+  h.scareUtil = { wallAhead, wallBeside, wayOK, doorSees, blocked, creepWay, closeWay, behindPt }; // 第三輪(haunts.js)共用的幾何查詢
   return K;
 }

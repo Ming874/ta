@@ -8,7 +8,9 @@
 // 給其他模組的穩定介面(ambush 代理等;呼叫端請用 game.horror?.director 防護):
 //   director.request(kind, { weight = 1, pos }) → true = 現在可以放這種驚嚇(已套用全域冷卻、張力節奏、大場面鎖)
 //   director.notify(kind, { weight, pos })      → 記錄「剛剛嚇過了」(request 回傳 true 後真的放了就呼叫)
-//   kind:'ambush' | 'ceilingDrop'(伏擊代理)、以及本模組自己的種類(見 KINDS)
+//   kind:'ambush' | 'ceilingDrop'(伏擊代理)、'chase'(殭屍代理的追逐)、以及本模組自己的種類(見 KINDS)
+//   追逐:request('chase') → 開始時 notify('chase', { dur }) 鎖住其他驚嚇 dur 秒 → 結束時 notify('chaseEnd', { calm = 20 })
+//        (或 director.chaseEnd({ calm })):解鎖,calm 秒內不放鬼;director.chasing → 追逐中
 //   director.level      → 'off' | 'low' | 'normal' | 'high'(設定 驚嚇強度)
 //   director.tension    → 0..1(戰鬥張力:最近殭屍距離、場上數量、血量、剛受傷)
 //   director.dread      → 0..100(安靜累積的恐懼值)
@@ -81,7 +83,31 @@ export const KINDS = {
   creeper: { tier: 'big', cd: 240, jump: true, act: 3, cat: 'figure', w: 1.2 },
   doorSlamSeq: { tier: 'big', cd: 240, jump: true, act: 3, cat: 'door', w: 0.9 },
   blackoutChange: { tier: 'big', cd: 260, act: 3, cat: 'light', w: 1.0 },
+  // ---- 第三輪(src/horror/haunts.js;劇情回報見 lines.js STORY3)----
+  frostEdge: { tier: 'small', cd: 110, act: 1, cat: 'cold', w: 0.7 },
+  flatline: { tier: 'small', cd: 130, act: 1, cat: 'device', w: 0.7 },
+  radio1999: { tier: 'small', cd: 360, act: 1, cat: 'device', w: 0.6 },
+  whistle: { tier: 'small', cd: 240, act: 1, cat: 'sound', w: 0.5 },
+  shadowPass: { tier: 'medium', cd: 110, act: 1, cat: 'presence', w: 0.9 },
+  nameCall: { tier: 'medium', cd: 300, act: 2, cat: 'voice', w: 0.8 },
+  swingBulb: { tier: 'medium', cd: 160, act: 2, cat: 'light', w: 0.8 },
+  darkFollow: { tier: 'medium', cd: 180, act: 2, cat: 'light', w: 0.8 },
+  curtainDraw: { tier: 'medium', cd: 130, act: 2, cat: 'figure', w: 0.9 },
+  beamFigure: { tier: 'medium', cd: 140, act: 2, cat: 'figure', w: 1.0 },
+  ballRoll: { tier: 'medium', cd: 200, act: 2, cat: 'object', w: 0.7 },
+  windowFog: { tier: 'medium', cd: 150, act: 2, cat: 'trace', w: 0.8 },
+  redEnvelope: { tier: 'medium', cd: 300, act: 2, cat: 'object', w: 0.6 },
+  shoulderTap: { tier: 'medium', cd: 260, jump: true, act: 2, cat: 'presence', w: 0.6 },
+  touqi: { tier: 'medium', cd: 9999, act: 1, cat: 'figure' }, // 頭七:第 7 次靜默期由 index.js 指定(不進隨機清單)
+  corridorOut: { tier: 'big', cd: 420, act: 2, cat: 'light', w: 1.2 }, // 走廊一路熄燈(罕見)
+  windowFace: { tier: 'big', cd: 360, jump: true, bj: true, act: 2, cat: 'figure', w: 0.9 },
+  doorBurst: { tier: 'big', cd: 360, jump: true, bj: true, act: 2, cat: 'door', w: 0.9 },
+  mirrorRush: { tier: 'big', cd: 360, jump: true, bj: true, act: 2, cat: 'figure', w: 0.8 },
+  // 殭屍代理的追逐(外部):request('chase') → notify('chase', { dur }) 期間鎖住其他驚嚇;結束 notify('chaseEnd', { calm })
+  chase: { tier: 'small', cd: 60, ext: true, act: 1, cat: 'host' },
 };
+// bj:大跳嚇。每一幕最多一個(驚嚇強度「高」不限)
+for (const k of ['behind', 'creeper', 'doorSlamSeq']) KINDS[k].bj = true;
 const TIER = {
   small: { dread: 16, cost: 12, gap: 22 },
   medium: { dread: 40, cost: 34, gap: 45 },
@@ -96,7 +122,7 @@ export const INTENSITY = {
 };
 export const LEVELS = ['off', 'low', 'normal', 'high'];
 const CALM_START = 60; // 開局多少秒內不放 medium/big 與閃燈
-const LIGHT_KINDS = new Set(['flicker', 'signal', 'lightsDie', 'blackout', 'blackoutChange']);
+const LIGHT_KINDS = new Set(['flicker', 'signal', 'lightsDie', 'blackout', 'blackoutChange', 'swingBulb', 'darkFollow', 'corridorOut']);
 // 誘集期間(回合進行中)也可以有的:不是鬼的東西(宿主、伏擊、殭屍靠近的閃燈、天花板裡的爬行)。
 // 其他全部是「鬼」:只在靜默期(回合之間的休息)出現(STORY.md §1.9、§4.2、§12)
 export const FIGHT_OK = new Set(['ambient', 'signal', 'crawl', 'ambush', 'ceilingDrop', 'chase']);
@@ -120,6 +146,9 @@ export class Director {
     this.uses = {}; // 這一局每種用了幾次(疲勞)
     this.lastAny = -1e9; // 上一個(非耳語)驚嚇的時間
     this.recent = []; // 最近的驚嚇 [{ kind, cat, t }]
+    this.bigJumps = {}; // 幕 → 這一幕放過幾個大跳嚇
+    this.calmUntil = 0; // 追逐結束後的喘息(這段時間不放鬼)
+    this.chaseUntil = 0;
   }
   // 第幾幕:第 1~2 回合 = 1(有人在)、3~5 = 2(看得見的痕跡)、6 以後 = 3(正面遭遇);靜默期拖很久也會往後推
   get act() {
@@ -150,6 +179,7 @@ export class Director {
   reset() {
     this.t = 0; this.dread = 0; this.tension = 0; this.calm = 0; this.bigUntil = 0; this.roundT = 0;
     this.last = {}; this.lastTier = { small: -1e9, medium: -1e9, big: -1e9 }; this.lastJump = -1e9; this.log.length = 0; this.uses = {}; this.recent.length = 0; this.lastAny = -1e9;
+    this.bigJumps = {}; this.calmUntil = 0; this.chaseUntil = 0;
   }
   // 每幀(遊戲中、非暫停):張力與恐懼值
   update(dt, game) {
@@ -203,6 +233,8 @@ export class Director {
     if (this.phase === 'fighting' && this.roundT < 6) return deny(); // 回合剛開始
     if (!K.ext && kind !== 'whisper' && kind !== 'call' && this.t - this.lastAny < (K.tier === 'small' ? 7 : 12) * I.cd) return deny(); // 任兩個驚嚇之間至少隔幾秒(不疊在一起)
     if (!this.silent && !FIGHT_OK.has(kind)) return deny(); // 鬼只在靜默期
+    if (!K.ext && kind !== 'whisper' && kind !== 'call' && this.t < this.calmUntil) return deny(); // 追逐剛結束:喘口氣
+    if (K.bj && this.level !== 'high' && (this.bigJumps[this.act] || 0) >= 1 && !o.force) return deny(); // 大跳嚇一幕一個
     if (!K.ext && !o.force && (K.act || 1) > this.act) return deny(); // 還沒到那一幕
     if (this.t < CALM_START && LIGHT_KINDS.has(kind)) return deny(); // 開局 60 秒內燈不閃
     // 恐懼值不夠:外部(伏擊)看得見的驚嚇只要求一半門檻(牠們本身就是戰鬥的一部分)
@@ -211,7 +243,10 @@ export class Director {
     return true;
   }
   notify(kind, o = {}) {
+    if (kind === 'chaseEnd') return this.chaseEnd(o);
     const K = KINDS[kind] || { tier: 'medium', jump: true };
+    if (kind === 'chase') { this.chaseUntil = this.t + (o.dur ?? 30); this.hold(o.dur ?? 30); }
+    if (K.bj) this.bigJumps[this.act] = (this.bigJumps[this.act] || 0) + 1;
     const w = Math.max(0.2, o.weight ?? 1);
     this.last[kind] = this.t;
     this.lastTier[K.tier] = this.t;
@@ -229,5 +264,13 @@ export class Director {
   }
   // 大場面:演出期間鎖住其他驚嚇
   hold(sec) { this.bigUntil = Math.max(this.bigUntil, this.t + sec); }
-  stats() { return { level: this.level, act: this.act, t: +this.t.toFixed(1), dread: +this.dread.toFixed(1), tension: +this.tension.toFixed(2), calm: +this.calm.toFixed(1), big: this.bigActive, fired: this.fired, denied: this.denied, log: this.log.slice(-10) }; }
+  // 追逐結束(殭屍代理):解開追逐的鎖,calm 秒內不放鬼、恐懼值壓到 35 以下(不要一逃完就被嚇)
+  chaseEnd(o = {}) {
+    if (this.chaseUntil > this.t) { this.bigUntil = Math.min(this.bigUntil, this.t); this.chaseUntil = this.t; }
+    this.calmUntil = this.t + (o.calm ?? 20);
+    this.dread = Math.min(this.dread, 35);
+    return true;
+  }
+  get chasing() { return this.t < this.chaseUntil; }
+  stats() { return { level: this.level, act: this.act, t: +this.t.toFixed(1), dread: +this.dread.toFixed(1), tension: +this.tension.toFixed(2), calm: +this.calm.toFixed(1), big: this.bigActive, chase: this.chasing, bigJumps: { ...this.bigJumps }, fired: this.fired, denied: this.denied, log: this.log.slice(-10) }; }
 }
