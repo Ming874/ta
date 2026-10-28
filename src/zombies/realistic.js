@@ -5,6 +5,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { registerProvider, registerSurvivorProvider, autoHitboxes, BONES, getVariantAt } from './model.js';
 import { ZU } from './materials.js';
 import { assets } from '../sys/assets.js';
+import { uploads } from '../sys/uploads.js';
 import { idle } from '../sys/sched.js';
 import { caps } from '../sys/caps.js';
 
@@ -179,9 +180,8 @@ function load(key, url, types, prio) {
   // 回傳的不是場景物件 → 資源佇列不會拿 GLB 自帶的材質去預編譯(用的是 realisticMaterials 那兩個 program)
   return assets.task(() => loader.loadAsync(url).then((g) => extract(g, key, types)), { meta: { zombieModel: key }, prio })
     .then(async (S) => {
-      // 貼圖逐張在閒置時上傳 GPU(第一次畫到時才上傳會頓)
-      const r = G?.renderer;
-      if (r) for (const t of S.tex) await idle(() => r.initTexture(t), 500);
+      // 貼圖逐張上傳 GPU(src/sys/uploads.js:每幀最多一張、超過 1K 先在背景縮小;第一次畫到時才上傳會頓)
+      for (const t of S.tex) await uploads.add(t);
       LOADED[key] = S;
       // 馬上建好變體(只是組裝,很快):回合進行中載好的也立刻能被挑到,不必等回合間的 prewarm
       for (const t of types) if (BODIES[t]) getVariantAt(t, FROM[t] + BODIES[t].indexOf(key));

@@ -21,6 +21,7 @@ import { assets } from './sys/assets.js';
 import { installStreaming } from './sys/stream.js';
 import { loadUI } from './sys/loadui.js';
 import { pools } from './sys/workers.js';
+import { uploads } from './sys/uploads.js';
 import { initGpuHint, gpuLabel } from './ui/gpuhint.js';
 
 performance.mark('hz:boot');
@@ -80,7 +81,14 @@ window.__forceVariant = forceVariant; // 測試用:下一隻生成的殭屍用�
 window.__assets = assets; // 測試用:下載佇列進度
 window.__physLoad = physicsLoad;
 installStreaming(game); // 下載順序:玩家附近 → 同層 → 其他樓層
-assets.prepare = (root) => precompile(game, root, { instanced: true }); // 下載的模型交付前先在背景編好 shader(含實例池版本)
+uploads.attach(game.renderer); // 串流貼圖每幀最多上傳一張(src/sys/uploads.js)
+// 下載的模型交付前:先在背景編好 shader(含實例池版本),再把貼圖逐幀上傳 → 加進場景、第一次畫到時不會同步編譯/上傳
+assets.prepare = async (root) => {
+  await precompile(game, root, { instanced: true });
+  const tex = new Set();
+  root.traverse((o) => { for (const m of [].concat(o.material || [])) for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap', 'alphaMap', 'bumpMap']) if (m?.[k]?.image) tex.add(m[k]); });
+  for (const t of tex) await uploads.add(t);
+};
 loadRealistic(game); // 寫實殭屍模型排進下載佇列(低畫質不載)
 window.__realistic = realisticStats; // 測試用
 assets.hiRes = game.quality.preset !== 'low'; // 低畫質:不下載 1K 顏色圖(省頻寬與顯示記憶體)

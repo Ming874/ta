@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { assets } from '../../sys/assets.js';
+import { uploads } from '../../sys/uploads.js';
 
 // CC0 PBR 貼圖組(public/textures/<set>/{color,normal,orm[,opacity]}.webp;orm = R:AO G:粗糙度)。
 // pbrTex(set, map, opts) 立刻回傳 Texture(先用平均色的佔位圖),圖片載入後就地換上同一個 Texture
@@ -109,6 +110,7 @@ function swap(s, m, img) {
   base.image = img;
   const bmp = typeof ImageBitmap !== 'undefined' && img instanceof ImageBitmap; // 已在解碼時翻轉
   for (const t of same) { if (bmp) t.flipY = false; t.needsUpdate = true; }
+  uploads.add(base); // 立刻排隊上傳(每幀一張);不等第一次畫到時好幾張擠在同一幀
 }
 function load(s) {
   const maps = Object.keys(s.maps);
