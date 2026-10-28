@@ -170,7 +170,7 @@ export function buildLights(K, { root, propLights = [], poolSize = 8 }) {
       x: spec.x, y: spec.y, z: spec.z, li: spec.li, zone: spec.zone || null, kind: spec.kind, mode: spec.mode || MODE[spec.kind] || 'steady',
       color: new THREE.Color(spec.color ?? k.color), cd: spec.cd ?? k.cd, dist: spec.dist ?? k.dist, glow: spec.glow ?? k.glow, shape: spec.shape === undefined ? k.shape : spec.shape,
       gain: k.gain, state, phase: R ? R() * 100 : Math.abs(spec.x * 7.31 + spec.z * 3.17) % 100, ov: 1, cur: 1, inst: -1, glowIdx: -1, axis: spec.axis || 'x', hang: spec.hang || 0,
-      sway: spec.kind === 'bare_bulb' ? (R ? R.r(0.03, 0.09) : 0.05) : 0, ox: 0, oz: 0, prop: !!spec.prop,
+      sway: spec.kind === 'bare_bulb' ? (R ? R.r(0.03, 0.09) : 0.05) : 0, ox: 0, oz: 0, prop: !!spec.prop, gate: 1,
       dim: spec.dim ?? (spec.kind === 'fluoro_dying' ? 0.55 + 0.33 * hash(spec.x * 3.17 + spec.z * 7.71) : 1), // 老化燈管:穩定但偏暗
     };
     fixtures.push(f);
@@ -471,7 +471,7 @@ export function buildLights(K, { root, propLights = [], poolSize = 8 }) {
       // 1) 每個燈具目前的亮度(閃爍 × 事件覆寫)
       for (let i = 0; i < nF; i++) {
         const f = fixtures[i];
-        let v = flickerValue(f, t) * f.ov * f.dim;
+        let v = flickerValue(f, t) * f.ov * f.dim * f.gate; // gate:[scene r4] 故事用的總開關(互動的配電盤只動 ov/state)
         f.cur = v;
         if (f.sway) { f.ox = Math.sin(t * 1.3 + f.phase) * f.sway; f.oz = Math.cos(t * 1.1 + f.phase * 0.7) * f.sway * 0.7; }
       }
@@ -583,16 +583,16 @@ function storyLights(K, fixtures, add, root) {
     if (f.prop) continue;
     const zid = f.zone?.id;
     // 207 天花板的燈壞了:檯燈是唯一的光
-    if (zid === 'f2_ward_207') f.state = 2;
+    if (zid === 'f2_ward_207') { f.state = 2; f.gate = 0; } // 配電盤送電時會把 state 2 的燈救回來 → 用 gate 關死
     // 2F 北翼走廊(207 前後):「北側照明:人為切斷」→ 只剩護理站壁燈與 207 門內的光
-    else if (zid === 'f2_corridor' && f.z < 30.5 && f.x > 62 && f.x < 90) f.state = 2;
+    else if (zid === 'f2_corridor' && f.z < 30.5 && f.x > 62 && f.x < 90) { f.state = 2; f.gate = 0; }
     // 金水商行:鎢絲燈的暖色(安全的地方)
     else if (f.zone?.theme === 'shop') { f.color.setHex(0xffd0a0); f.cd *= 1.05; f.dim = 1; if (f.state === 2) f.state = 0; }
   }
   // ---- 207 的窗:窗簾後面透出的暖光(朝外的單面板;室內看不到) ----
   const win = (K.windowInfo || []).find((w) => w.zone?.id === 'f2_ward_207');
   // 窗正下方 1F 後門上的鈉燈不亮(後巷裡只剩那扇窗)
-  if (win) for (const f of fixtures) if (f.ext && Math.abs(f.x - win.x) < 5 && Math.abs(f.z - win.z) < 5) f.state = 2;
+  if (win) for (const f of fixtures) if ((f.kind === 'sodium' || f.ext) && !f.zone && Math.abs(f.x - win.x) < 5 && Math.abs(f.z - win.z) < 3) { f.state = 2; f.gate = 0; }
   let glowMat = null, shaft = null, dawnF = null;
   if (win && lamp) {
     const cv = document.createElement('canvas'); cv.width = 128; cv.height = 128;
@@ -635,8 +635,8 @@ function storyLights(K, fixtures, add, root) {
     lamp.link.push({ mat: haloMat, base: new THREE.Color(0xffb878), k0: 0, k1: 0.55 });
     // ---- 天亮時從窗戶照進 207 的冷光(平常 ov = 0,不會被燈池選到)+ 一道淡淡的光柱 ----
     const nx = win.axis === 'z' ? 0 : win.inDir, nz = win.axis === 'z' ? win.inDir : 0;
-    dawnF = add({ x: win.x + nx * 1.1, y: ly + 1.9, z: win.z + nz * 1.1, li: win.li, zone: L.zones.find((z) => z.id === 'f2_ward_207') || null, kind: 'lamp', color: 0xc0c8f4, cd: 24, dist: 11, glow: 0, shape: null, state: 0, mode: 'steady' });
-    dawnF.prop = true; dawnF.ov = 0;
+    dawnF = add({ x: win.x + nx * 2.3, y: ly + 1.9, z: win.z + nz * 2.3, li: win.li, zone: null, kind: 'lamp', color: 0xc0c8f4, cd: 24, dist: 11, glow: 0, shape: null, state: 0, mode: 'steady' });
+    dawnF.prop = true; dawnF.gate = 0; // 不屬於任何區域 → 配電盤不會碰它
     const sc = document.createElement('canvas'); sc.width = 64; sc.height = 64;
     const s2 = sc.getContext('2d'); const sg = s2.createLinearGradient(0, 0, 0, 64);
     sg.addColorStop(0, 'rgba(255,255,255,0.9)'); sg.addColorStop(1, 'rgba(255,255,255,0)');
@@ -652,14 +652,14 @@ function storyLights(K, fixtures, add, root) {
   }
   // ---- 天亮(結局):t 0..1;只改顏色/強度(不加減燈、不切 visible 以外的東西) ----
   const outdoorK = new Set(['sodium', 'street', 'beacon']);
-  const outF = fixtures.filter((f) => outdoorK.has(f.kind)).map((f) => [f, f.dim]);
+  const outF = fixtures.filter((f) => outdoorK.has(f.kind) && f.gate > 0);
   let lastT = 0;
   const setDawn = (t) => {
     t = Math.max(0, Math.min(1, +t || 0));
     if (t === lastT) return;
     lastT = t;
-    for (const [f, d0] of outF) f.dim = d0 * (1 - 0.55 * t);
-    if (dawnF) dawnF.ov = t;
+    for (const f of outF) f.gate = 1 - 0.55 * t;
+    if (dawnF) dawnF.gate = t;
     if (lamp?.link) { lamp.link[0].k1 = 2.3 + 0.8 * t; if (lamp.link[1]) lamp.link[1].k1 = 0.55 * (1 - 0.4 * t); } // 天亮了窗還是要看得出亮著
     if (shaft) { shaft.visible = t > 0.02; shaft.material.opacity = 0.3 * t; }
     K.atmo?.setDawn?.(t);

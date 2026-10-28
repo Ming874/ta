@@ -220,7 +220,7 @@ export function buildAtmosphere(K, { root, scene, groundMat }) {
       // [scene r4] 天亮(結局):霧/天空/半球光往冷藍帶粉的黎明色靠(t = 0 時完全不動)
       if (api.dawn > 0) {
         const d = api.dawn;
-        _dc.setHex(0x7a80a8).lerp(_dp, 0.4 * d);
+        _dc.setHex(0x8e92b8).lerp(_dp, 0.45 * d);
         if (scene.fog) { scene.fog.color.lerp(_dc, d * 0.85); scene.fog.density *= 1 - 0.25 * d; }
         if (scene.background && scene.background.isColor) scene.background.lerp(_dc, d * 0.85);
         skyMat.uniforms.uFog.value.lerp(_dc, d * 0.9);

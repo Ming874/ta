@@ -190,7 +190,7 @@ export function dress207(R, zone, ceil) {
   const wallZ = z1 + 2;
   const lampT = tpl('w207:hubwrap', (b) => b.add(wallLampWarm(), 0, 0, 0, 0, 0, 0));
   R.put(lampT, x0 + 5.75, wallZ + 0.01, 0, { y: y + 2.05 });
-  R.light({ x: x0 + 5.75, y: y + 1.98, z: wallZ + 0.3, color: 0xffb070, intensity: 4.4, distance: 5.6, kind: 'lamp', flicker: 0, glow: 0.38, zone: 'f2_corridor' });
+  R.light({ x: x0 + 5.75, y: y + 1.85, z: wallZ + 0.55, color: 0xffb070, intensity: 4.0, distance: 3.9, kind: 'lamp', flicker: 0, glow: 0.38, zone: 'f2_corridor' });
   anchor('w207.hub', { x: x0 + 5.5, y, z: wallZ + 0.6 });
   // 便當:門西側靠牆,兩疊 + 一個塑膠袋裡的(最後幾天沒人拿)
   R.put(bentoStack(4, 1), x0 + 1.45, wallZ + 0.22, 0.1);
