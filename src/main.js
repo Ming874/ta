@@ -12,6 +12,7 @@ import { allMaterials as allZombieMaterials } from './zombies/materials.js';
 import * as audio from './audio.js';
 import { initNet } from './net/lobby.js';
 import { installHorror } from './horror/index.js';
+import { installDeduce } from './story/deduce.js';
 import { startPhysicsWorker, physicsLoad } from './physics/index.js';
 import { assets } from './sys/assets.js';
 import { installStreaming } from './sys/stream.js';
@@ -60,6 +61,7 @@ game.warmed = false; // hz:warm 之前開局:先不出怪(flow.updateRound),第�
 game.bindInput();
 initNet(game); // [net] 主選單的多人連線入口(src/net/lobby.js)
 installHorror(game); // [ghost] 靈異系統:驚嚇導演、耳語、幻影、靈異事件(src/horror)
+installDeduce(game); // [story] 線索卡、推理本(J)、擲筊、頭七(src/story)
 window.__game = game; // 除錯用:在瀏覽器 console 操作 __game
 
 // ---- 效能基礎建設 ----
@@ -180,6 +182,7 @@ async function warmRuntime() {
   const ZM = allZombieMaterials(), its = []; // [zombies-w3] 全部殭屍材質(含新類型的眼睛、刀刃、鏡片)
   inst.mesh.material = ZM; // 只編譯、不渲染
   g.add(inst.mesh);
+  for (const o of game.deduce?.warmObjects?.() || []) g.add(o); // [story] 筊杯
   for (const o of game.horror?.warmObjects?.() || []) g.add(o); // [ghost] 靈異材質(幻影、痕跡、字跡、寒氣)一起預編譯與離屏畫一次
   // 執行期才會建立的常見材質型態(曳光、血池/貼花、光暈與血條 sprite、粒子):program 只看功能旗標(貼圖/霧…),不看顏色數值
   const tex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);

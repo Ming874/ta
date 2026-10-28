@@ -88,6 +88,7 @@ export class IxUI {
     const m = this.modal;
     if (!m) return;
     if (e.code === 'Escape') { this.closeModal(); return; } // 放開滑鼠鎖定 → 暫停選單照常出現
+    if (e.code === 'KeyJ' && !e.repeat && this.game.deduce) { e.stopImmediatePropagation(); e.preventDefault(); this.closeModal(false); this.game.deduce.open(); return; } // [story] 閱讀器開著也能直接翻推理本
     if (this.game.net && MOVE.has(e.code) && !m.keys?.has?.(e.code)) { this.closeModal(); return; } // 多人:一移動就收起(世界沒停)
     e.stopImmediatePropagation();
     e.preventDefault();

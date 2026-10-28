@@ -106,7 +106,7 @@ export function createCalls(h) {
     let at = 0.6; // 拿起聽筒之後先停一下(線路雜訊)
     for (const l of c.lines) {
       at += l.gap ?? 0;
-      const text = fill(l.text), dur = lineDur(text.replace(/\{暱稱\}/g, '接單員'));
+      const text = fill(l.text), dur = lineDur(text.replace(/\{暱稱\}/g, '阿孫'));
       const left = l.ear === 'left';
       lines.push({ at: +at.toFixed(2), dur: +dur.toFixed(2), text, filter: left ? null : 'phone', mode: 'syllabic', ear: left ? 'left' : 'right' });
       at += dur - 0.45;

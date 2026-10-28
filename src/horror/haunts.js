@@ -18,7 +18,7 @@ const pick = (a) => a[(Math.random() * a.length) | 0];
 const angDiff = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
 const KEEP = new Set(['emergency', 'exit', 'beacon', 'monitor', 'candle', 'fire', 'street', 'nightlight']); // 停電也不熄的(緊急照明、出口燈、螢幕、燭火)
 const tex = (c) => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
-const nick = () => { try { const n = localStorage.getItem('hz.nick'); return n && n.trim() ? n.trim().slice(0, 12) : '接單員'; } catch { return '接單員'; } };
+const nick = () => { try { const n = localStorage.getItem('hz.nick'); return n && n.trim() ? n.trim().slice(0, 12) : '阿孫'; } catch { return '阿孫'; } };
 const _q = new THREE.Quaternion();
 
 // 第三輪的網格與畫面效果(材質都在 warmList 裡,主程式暖機時一起預編譯)
@@ -436,7 +436,7 @@ export function hauntKinds(h) {
     touqi: { ok: (c) => indoor(c) && free() && models.ready('nurse') && !!c.figSpot?.(), run(c) {
       const s = c.figSpot(), y = lv(c);
       const a = A.spawn({ tag: 'touqi', fig: 'nurse', pose: 'stand', look: 'pale', alpha: 0.8, x: s.x, y, z: s.z, yaw: Math.atan2(c.px - s.x, c.pz - s.z), dur: 14, fadeIn: 1.2, vanish: { flash: false, look: 0.985, lookT: 1.4, near: 6 },
-        onEnd: () => story('touqi', { ear: 'both', force: true }) });
+        onEnd: (why) => { h.touqiWhy = why; story('touqi', { ear: 'both', force: true }); } }); // why:'look' = 你看著她、她轉身(劇情 src/story/deduce.js 接著播頭七的兩句)
       h.chill?.(0.35, 10);
       return a;
     } },

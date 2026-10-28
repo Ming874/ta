@@ -5,6 +5,7 @@ import { radio, carradio, tv, piano, musicbox, mobile, cassette, typewriter } fr
 import { lightswitch, vending, elevator, lift, alarm, alarmBonus, pa, sink, nursecall, keypad, terminal, fusebox } from './kinds/machines.js';
 import { locker, drawer, medcab, morgue, pickup, note, candle, fountain, snack } from './kinds/storage.js';
 import { noteById } from './notes.js';
+import { memorial, cctv } from './kinds/memorial.js'; // [story] 2F 護理站阿嬤的遺照與筊杯、3F 監控室的錄影機(推理本 / 擲筊)
 import { Model, T, canvasTex, texMat, FONT } from './kit.js';
 
 // 擺放:全部依 world.layout 的區域(theme/zone id)用每張地圖固定的種子挑位置,新地圖只要有區域就能用。
@@ -34,8 +35,9 @@ const FP = {
   'note:whiteboard': { mount: 'wall', w: 1.3, d: 0.08, y0: 0.95, y1: 1.9 }, 'note:poster': { mount: 'wall', w: 0.46, d: 0.02, y0: 1.25, y1: 1.85 },
   'note:drawing': { mount: 'wall', w: 0.42, d: 0.02, y0: 0.82, y1: 1.18 }, 'note:clipboard': { mount: 'wall', w: 0.26, d: 0.03, y0: 1.22, y1: 1.58 },
   note: { mount: 'surface', w: 0.42, d: 0.42, y0: 0, y1: 0.5 },
+  memorial: { mount: 'surface', w: 0.6, d: 0.4, y0: 0.7, y1: 1.3 }, cctv: { mount: 'surface', w: 0.5, d: 0.4, y0: 0.7, y1: 1.2 },
 };
-const KINDS = { phone: phones, radio, carradio, tv, piano, musicbox, mobile, cassette, typewriter, switch: lightswitch, vending, lift, alarm, pa, sink, nursecall, keypad, terminal, fusebox, locker, drawer, medcab, morgue, pickup, note, logbook: note, candle, snack };
+const KINDS = { phone: phones, radio, carradio, tv, piano, musicbox, mobile, cassette, typewriter, switch: lightswitch, vending, lift, alarm, pa, sink, nursecall, keypad, terminal, fusebox, locker, drawer, medcab, morgue, pickup, note, logbook: note, candle, snack, memorial, cctv };
 // 一般補充:每個主題 [種類, 機率, 參數]
 const THEME = {
   ward: [['switch', 0.85], ['nursecall', 0.75], ['drawer', 0.55], ['sink', 0.25], ['medcab', 0.2], ['tv', 0.12]],
