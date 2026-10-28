@@ -74,6 +74,15 @@ const evacSign = (dir) => tpl(`svc:evac:${dir}`, (b) => {
   b.plane(G(evacRect(dir)), 0.36, 0.125, 0, 0.08, 0.0386);
 });
 
+// 樓梯間防火門旁的告示(台灣每一扇安全門旁都有)
+const fireDoorRect = () => labRect('svc:firedoor', 128, 64, (c, w, h) => {
+  c.fillStyle = '#1a7a3c'; c.fillRect(0, 0, w, h); c.fillStyle = '#f2f2ea'; c.fillRect(4, 4, w - 8, h - 8);
+  text(c, '安全門', w / 2, 20, { size: 18, color: '#1a7a3c' });
+  text(c, '請隨手關閉 勿堆放雜物', w / 2, 40, { size: 10, color: '#222' });
+  text(c, 'FIRE DOOR  KEEP CLOSED', w / 2, 53, { size: 8, color: '#444', weight: 'normal' });
+});
+const fireDoorSign = () => tpl('svc:firedoorsign', (b) => { b.box('pl_white', 0.27, 0.14, 0.006, 0, 0.07, 0.003); b.plane(L(fireDoorRect()), 0.26, 0.13, 0, 0.07, 0.0065); });
+
 // 外轉角的不鏽鋼護角(L 形 6cm × 6cm,高 h;m = ±1 決定轉角在模板 +X 或 -X 側)
 const cornerGuard = (h, m) => tpl(`svc:corner:${h.toFixed(2)}:${m}`, (b) => {
   b.box('steel', 0.065, h, 0.0025, -m * 0.0325, h / 2, 0.00125); // 貼在原牆面
@@ -123,6 +132,9 @@ function corridor(R, zone) {
   for (const g of groups) {
     const mid = (g.t0 + g.t1) / 2, pr = pseudoRun(g);
     const exitSign = g.out || g.other?.theme === 'stairwell';
+    if (g.other?.theme === 'stairwell') { // 安全門告示:門邊 1.45m
+      for (const t of [g.t1 + 0.42, g.t0 - 0.42]) { const run = runAt(R, g, t - 0.16, t + 0.16); if (run) { R.atWall(fireDoorSign(), run, t, { mount: 1.45, gap: 0.0 }); break; } }
+    }
     // 門上的緊急照明燈(出口/樓梯門上方已經有綠色出口燈)
     if (!exitSign && rng() < 0.55) R.atWall(emLight(rng.int(0, 5) === 0 ? 1 : rng() < 0.15 ? 2 : 0), pr, mid + (g.n >= 2 ? 0 : rng.range(-0.3, 0.3)), { mount: g.h + 0.17, gap: 0.0 });
     // 門框兩側:手垢(手推門的高度)、門腳踢痕;病人房間的門邊再一台乾洗手機(把手那側,離門框 25cm)

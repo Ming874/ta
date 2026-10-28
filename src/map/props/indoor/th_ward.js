@@ -39,6 +39,7 @@ export function dressWard(R, zone) {
         const top = R.topOf(ns, 0);
         onSurface(R, top, 'cup', 1);
         onSurface(R, top, k ? 'pillbottle' : 'pillbottle2', 1 + (k % 2));
+        if (n !== 207) onSurface(R, top, ['mug', 'book', 'bottle', 'tray'][(n + k + (side > 0 ? 2 : 0)) % 4], 1); // [scene6] 病人自己的東西
       }
       R.atWall(headwall(1.3, k), run, bz, { mount: 1.32 });
       // 隔簾(U 形軌道,有的拉上、有的收在牆邊)
