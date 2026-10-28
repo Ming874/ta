@@ -132,7 +132,8 @@ export function installObjectives(game) {
       X()?.tick?.((dt) => {
         if (run.evac || game.state !== 'playing') return false;
         out = c.zone === 'f2_ward_207' ? 0 : out + dt;
-        if (D()?.has?.('hc.30') || out > 4 || game.time - t0 > 30) { later(D()?.has?.('hc.30') ? 5 : 1.5, go); return false; }
+        const ho = game.story?.climax?.run, hoBusy = !!ho && !!O.has('h.boss10') && (!ho.hoRang || ho.hoState === 'ringing' || ho.hoState === 'talk') && game.time - t0 < 120; // 何董的電話先講完
+        if (!hoBusy && (D()?.has?.('hc.30') || out > 4 || game.time - t0 > 30)) { later(D()?.has?.('hc.30') ? 5 : 1.5, go); return false; }
         return true;
       });
     },

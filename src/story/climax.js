@@ -116,7 +116,8 @@ export function installClimax(game, S) {
     const q = p();
     let best = null, bd = Infinity;
     for (const P of list) { let d = Math.hypot(P.pos.x - q.x, P.pos.z - q.z) + Math.abs(P.pos.y - q.y) * 6; try { const f = game.world.flowDistance(P.pos.x, P.pos.y, P.pos.z); if (Number.isFinite(f)) d = Math.min(d, f + Math.abs(P.pos.y - q.y) * 2); } catch { /* 略 */ } if (d < bd) { bd = d; best = P; } }
-    if (!best || !best.startRing({ ...HO }, 45)) return false;
+    const parts = HO.parts.map((t) => (/^枕頭裡那一頁/.test(t) && D()?.has?.('hc.30') ? '你拿了那一頁。……她的字，一直都很工整。' : t)); // 已經拿了:他知道(監視器)
+    if (!best || !best.startRing({ ...HO, parts }, 45)) return false;
     run.hoRang = true; run.hoP = best; run.hoState = 'ringing'; run.hoT = game.time;
     X.after(3, () => line(game, 'xl', bd > 18 ? '……電話在響。很近。你要接嗎？' : '……旁邊那支電話。你要接嗎？'));
     return true;
@@ -125,7 +126,7 @@ export function installClimax(game, S) {
     if (ln?.id !== HO.id) return;
     run.hoState = 'talk'; run.hoT = game.time; run.hoP = P;
     flag('h.ho.answer');
-    const T = HO.parts.reduce((a, t) => a + 0.9 + [...t].length * 0.26 + 0.35, 0);
+    const T = (ln.parts || HO.parts).reduce((a, t) => a + 0.9 + [...t].length * 0.26 + 0.35, 0);
     run.hoEnd = game.time + T * 0.92;
     X.after(T * 0.48, () => { if (P.state === 'call' && run.hoState === 'talk') { run.xlCut = true; line(game, 'xl', '……他在跟你講話對不對？掛掉。拜託，掛掉。', { ear: 'left' }); } });
   });
@@ -140,8 +141,12 @@ export function installClimax(game, S) {
     if (acc < 0.25) return true;
     const step = acc; acc = 0;
     const h = H(), Dr = h?.director, silent = game.phase !== 'fighting';
+    // 頭七之前:小鈴先感覺到(在二樓:叫你站著;不在二樓:叫你上去)
+    if (!run.lead && h && h.quiet >= 7 && Dr?.silent && !run.touqi && (Dr.roundT || 0) > 2.5) { run.lead = true; const on2 = /^f2_/.test(game.hospital?.zone?.id || ''); seq(game, on2 ? [['xl', '……你那邊的燈怎麼一直暗下去？', 3], ['xl', '不要過去。站著就好。', 2.6]] : [['xl', '……二樓的燈，一盞一盞暗下去了。', 3.2], ['xl', '好像有人在等你。', 2.4]]); }
     // 頭七:第 7 次靜默還沒發生 → 退路
-    if (!run.touqi && h && h.quiet >= 7 && Dr?.silent && (Dr.roundT || 0) > 20 && !h.memories?.state?.cur) touqiFallback();
+    if (!run.touqi && h && h.quiet >= 7 && Dr?.silent && (Dr.roundT || 0) > 14 && !h.memories?.state?.cur) touqiFallback();
+    // 頭七那一次靜默久一點(單人):她回來、腳印、旋鈕,不要被下一波打斷
+    if (!run.ext && h && h.quiet >= 7 && !run.touqi && game.phase === 'shop' && !game.net) { run.ext = true; game.restT += 28; }
     if (run.touqi && run.knobT && game.time >= run.knobT) { run.knobT = 0; knob(); }
     // 電子鎖(鍵盤或聖筊)→ 同步給全隊
     if (X.flags.has('h.207.elock') && !O()?.has?.('h.207.elock')) flag('h.207.elock');
@@ -158,16 +163,20 @@ export function installClimax(game, S) {
       if (!run.guardDead && game.round === run.wave && silent) guardDown(); // 沒抓到(或被別的方式解決):那一波結束就算
     }
     // 何董:守燈員倒下之後的下一次靜默
-    if (has('h.boss10') && !run.hoRang && silent && game.phase === 'shop' && (Dr?.roundT ?? 9) > 5 && !h?.memories?.state?.cur && !game.net?.pvp) ringHo();
+    if (has('h.boss10') && !run.hoRang && !has('h.evac') && !game.story?.ending?.active && silent && game.phase === 'shop' && (Dr?.roundT ?? 9) > 5 && !h?.memories?.state?.cur && !game.net?.pvp) ringHo();
     if (run.hoState === 'ringing' && run.hoP && run.hoP.state === 'idle' && game.time - run.hoT > 2) { run.hoState = 'ignored'; flag('h.ho.ignored'); X.after(2, () => line(game, 'xl', '……不接也好。')); }
+    if (run.hoState === 'talk' && run.hoP && run.hoP._ended && run.hoP.state === 'call') { // 他說完了(聽筒還在耳邊)
+      run.hoState = 'heard'; flag('h.ho.heard'); D()?.addCard?.('hc.20', { by: 'call' });
+      X.after(2.2, () => seq(game, [['xl', '……我都聽到了。', 2.2], ['xl', D()?.has?.('hc.30') ? '他知道你拿了。……沒關係。' : '他叫你把那一頁留下來。……你自己判斷。', 3.6]]));
+    }
     if (run.hoState === 'talk' && run.hoP) {
       if (run.hoP.state !== 'call') { // 掛了
-        const heard = game.time >= run.hoEnd;
+        const heard = !!run.hoP._ended || game.time >= run.hoEnd + 6;
         run.hoState = heard ? 'heard' : 'hung';
         flag(heard ? 'h.ho.heard' : 'h.ho.hung');
         if (heard) D()?.addCard?.('hc.20', { by: 'call' });
         X.after(1.6, () => (heard ? seq(game, [['xl', '……我都聽到了。', 2.2], ['xl', '他叫你把那一頁留下來。……你自己判斷。', 3.6]]) : seq(game, [['xl', '……掛得好。', 1.8], ['xl', '我在這邊拍手。你沒聽到而已。', 3]])));
-      } else if (game.time >= run.hoEnd + 4) { run.hoState = 'heard'; flag('h.ho.heard'); D()?.addCard?.('hc.20', { by: 'call' }); }
+      }
     }
     void step;
     return true;

@@ -20,7 +20,7 @@ import { settings } from '../ui/settings.js';
 const NAME = { secret: '查房', good: '第七暝', dark: '熄燈', normal: '燈猶閣光' };
 const ONE = {
   secret: '護理長查完最後一間房。',
-  good: '燈，她還會再等一下。這一次，她知道有人會來關。',
+  good: '「我醒了，玉蘭姐。」',
   dark: '燈熄了。不是她關的。',
   normal: '逐暗攏光。二十三冬矣。',
 };
@@ -30,7 +30,7 @@ const NUM = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十
 
 export function installEnding(game, S) {
   const X = game.interact, H = () => game.horror, D = () => game.deduce, O = () => game.objectives;
-  const M = () => game.motion || null, W = () => game.world?.hospital || game.hospital || null;
+  const M = () => game.motion || null, W = () => game.hospital || game.world?.hospital || null;
   const has = (k) => !!X.flags.has(k) || !!O()?.has?.(k);
   let el = null, run = null;
   const E = {
@@ -38,11 +38,12 @@ export function installEnding(game, S) {
     state: () => (run ? { variant: run.variant, beat: run.beat, choices: { ...run.ch }, done: run.done } : null),
     decide,
     play,
-    skip: () => { if (run) run.skip = true; M()?.skipAll?.(); },
+    skip: () => { if (run) run.skip = true; skipMotion(); },
   };
   S.ending = E;
   game.story = Object.assign(game.story || {}, { ending: E });
 
+  function skipMotion() { const mp = run?.mp; try { mp?.skipAll ? mp.skipAll() : mp?.skip?.(); } catch { /* 略 */ } }
   function decide() {
     const d = D(), solved = !!d?.solved?.(), page = !!d?.has?.('hc.30');
     const lit = X.flags.get('h.pwr.207') !== false; // 配電盤上的 207 迴路(開局有電;玩家可以自己關掉)
@@ -148,7 +149,7 @@ export function installEnding(game, S) {
   function blink() { // 207 的燈暗一下(像有人把手放在開關上,又停住),再亮回來:只改強度
     const F = lampFixtures(); if (!F.length) return false;
     const t0 = game.time;
-    X.tick(() => { const t = game.time - t0, k = t < 0.5 ? 1 - t / 0.5 : t < 1.7 ? 0 : t < 2.4 ? (t - 1.7) / 0.7 : 1; for (const f of F) f.ov = 0.04 + 0.96 * k; return t < 2.5; });
+    X.tick(() => { const t = game.time - t0, k = t < 0.5 ? 1 - t / 0.5 : t < 1.7 ? 0 : t < 2.4 ? (t - 1.7) / 0.7 : 1, v = 0.04 + 0.96 * k; for (const f of F) { if ('gate' in f) f.gate = v; else f.ov = v; } return t < 2.5; }); // gate:場景代理給的乘數(配電盤不會蓋掉)
     return true;
   }
   // 結束這一夜:停波、清掉回來的人(黑畫面裡做,不給錢)、收槍
@@ -173,12 +174,13 @@ export function installEnding(game, S) {
     const Dr = H()?.director;
     if (Dr) { Dr.bigUntil = Dr.t + 1e6; Dr.calmUntil = Dr.t + 1e6; } // 結局裡不再有驚嚇
     // 按住空白鍵略過
-    X.tick(() => { if (!run || run.done) return false; const sk = q('.st-skip i'); const held = run.spaceT ? (performance.now() - run.spaceT) / 1200 : 0; sk.style.width = Math.min(1, held) * 60 + 'px'; if (held >= 1 && !run.skip) { run.skip = true; M()?.skipAll?.(); } if (game.input) game.input.fireHeld = false; return true; });
+    X.tick(() => { if (!run || run.done) return false; const sk = q('.st-skip i'); const held = run.spaceT ? (performance.now() - run.spaceT) / 1200 : 0; sk.style.width = Math.min(1, held) * 60 + 'px'; if (held >= 1 && !run.skip) { run.skip = true; skipMotion(); } if (game.input) game.input.fireHeld = false; return true; });
     try {
       // 一、最後一次燈篙熄
       run.beat = 'night';
       document.body.classList.add('st-ending');
       if (game.weaponScene) game.weaponScene.visible = false;
+      if (game.player.flashOn && game.player.toggleFlashlight) { run.flash = true; try { game.player.toggleFlashlight(); } catch { /* 略 */ } } // 天快亮了,只剩那扇窗
       await black(true, 1400);
       endNight();
       if (solo) { place(pose207()); try { W()?.anchors?.truck?.mesh && (W().anchors.truck.mesh.visible = true); } catch { /* 略 */ } }
@@ -277,6 +279,7 @@ export function installEnding(game, S) {
       run.beat = 'cards';
       await black(true, 1800);
       bars(false);
+      if (v === 'secret') { run.beat = 'cctv'; await mid(['監視器最後一格畫面：', '2F 走廊空無一人，推車自己停在新生兒室門口。', '保溫箱旁的小供桌上，多了一碗冒著熱氣的油飯。'], 3.4); run.beat = 'cards'; }
       run.skip = false; // 略過只略到片尾;片尾自己可以再略
       await cards(v);
     } catch (e) { console.warn('[ending]', e); }
@@ -312,18 +315,19 @@ export function installEnding(game, S) {
     const m = M();
     const credits = [
       { h: '〈207 的燈〉', lines: ['聖心醫院 · 霧港市舊港區', `結局「${NAME[v]}」`, ONE[v]] },
-      { h: '守燈的人', lines: ['鄭玉蘭（阿嬤）', '沈秀鈴（小鈴）', '蔡金水（金水伯）', '還有你，阿孫'] },
+      { h: '守燈的人', lines: ['鄭玉蘭（阿嬤）', '沈秀鈴（小鈴）', '蔡金水（金水伯）', fillNick('還有你，{暱稱}')] },
       { h: '', lines: ['本作所有人物、醫院、地點與機構皆為虛構。'] },
       { h: '', lines: ['謹以此紀念 1999 年與 2003 年，所有守在第一線的人。'] },
       { h: '', lines: ['怕的時候，數到十。'] },
     ];
     if (m?.cards && m?.credits) {
       try {
-        await m.cards([
+        run.mp = m.cards([
           { lines: [photo(v)], hold: 6.5 },
           { kicker: '回神 · 第一章', title: '〈207 的燈〉', sub: `「${NAME[v]}」`, lines: [ONE[v]], hold: 5.5 },
         ]);
-        await m.credits({ blocks: credits.slice(1), speed: 1 });
+        await run.mp; run.mp = m.credits({ blocks: credits.slice(1), speed: 1 });
+        await run.mp; run.mp = null;
         return;
       } catch { /* 用自己的 */ }
     }
@@ -349,7 +353,7 @@ export function installEnding(game, S) {
     q('.st-sub').innerHTML = '';
     q('.st-skip').style.display = '';
     dawn(0); bars(false);
-    for (const f of lampFixtures()) f.ov = 1;
+    for (const f of lampFixtures()) { if ('gate' in f) f.gate = 1; else f.ov = 1; }
     try { const t = W()?.anchors?.truck?.mesh; if (t) t.visible = false; } catch { /* 略 */ }
     const Dr = H()?.director; if (Dr) { Dr.bigUntil = Dr.t; Dr.calmUntil = Dr.t + 20; }
     document.body.classList.remove('st-ending');
@@ -359,6 +363,7 @@ export function installEnding(game, S) {
     // 繼續守夜:天亮了,金水伯的店又開了;下一次燈篙照常
     restore();
     if (game.weaponScene) game.weaponScene.visible = true;
+    if (run.flash && !game.player.flashOn) { try { game.player.toggleFlashlight(); } catch { /* 略 */ } }
     if (!game.net) { game.phase = 'shop'; game.restT = 30; try { game.shop?.setOpen?.(true); } catch { /* 略 */ } }
     try { game.setMood?.('shop'); } catch { /* 略 */ }
     try { const r = game.canvas.requestPointerLock(); r?.catch?.(() => {}); } catch { /* 要使用者手勢 */ }

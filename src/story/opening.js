@@ -9,7 +9,7 @@ import { sfx, ix as ixs } from '../audio.js';
 
 const OPEN = [
   ['pa', '各位家屬請注意：您的家人已經回來了。'],
-  ['pa', '請至一樓大廳會面。', undefined, { gap: 1.6 }],
+  ['pa', '請至一樓大廳會面。', undefined, { gap: 0.8 }],
   () => {},
   ['xl', '……喂？喂喂？這個頻道有人嗎？', 3.0, { gap: 0.9 }],
   ['xl', '你站的那個大廳，就是廣播叫大家去的地方。你看地上那些拖鞋就知道了。', 5.6],
@@ -59,7 +59,7 @@ export function installOpening(game, S) {
       if (!game.motion?.on || (!game.motion.busy && game.time - run.waitT > 1.5) || game.time - run.waitT > 6) start();
     }
     // 第 1 波:第一隻等小鈴講完(房主/單人;只延一次)
-    if (game.round === 1 && game.phase === 'fighting' && !run.held && isHost()) { run.held = true; game.spawnTimer = Math.max(game.spawnTimer || 0, 17); }
+    if (game.round === 1 && game.phase === 'fighting' && !run.held && isHost()) { run.held = true; game.spawnTimer = Math.max(game.spawnTimer || 0, 20); }
     // 第一次燈篙熄
     const silent = game.phase !== 'fighting';
     if (silent && !run.wasSilent) onSilence();
@@ -72,6 +72,7 @@ export function installOpening(game, S) {
     if (run.quiet !== 1 || run.firstBreak) return;
     run.firstBreak = true;
     run.open?.stop?.();
+    try { H()?.director?.hold?.(34); } catch { /* 略 */ } // 第一次靜默是寫好的:這 30 秒不放隨機的鬼(阿嬤那一句要留白)
     const rest = Number.isFinite(game.restT) && game.restT > 0 ? game.restT : 30;
     seq(game, [
       2.4,
