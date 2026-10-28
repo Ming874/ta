@@ -297,7 +297,11 @@ export class World {
       }
     }
     const W = this.W, y = pos.y;
-    const gref = body !== null && body.ground === body.ground && body.ground != null ? body.ground : y;
+    let gref = body !== null && body.ground === body.ground && body.ground != null ? body.ground : y;
+    if (body === null) { // 殭屍站在道具頂上(床、桌子…比 STEP 高):格子通行判定要用底下的地面,否則會被推出格子
+      const i0 = this._idx(pos.x, pos.z);
+      if (i0 >= 0 && this._pick(i0, pos.x, pos.z, y, y + STEP, STEP) !== this._pick(i0, pos.x, pos.z, y, y + STEP, STEP)) { const f = this._pick(i0, pos.x, pos.z, y, y + 0.05, 1.6); if (f === f) gref = f; }
+    }
     const top = y + STEP;
     const bodyH = body !== null && body.height ? body.height : BODY_H;
     this._push(pos, r, gref, top, bodyH, y);
