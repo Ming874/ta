@@ -64,7 +64,7 @@ vec3 ckHit( vec2 p, vec2 c, float R, float sd, float aa, inout vec2 pert ) {
 	for ( int j = 0; j < 3; j ++ ) { // 同心環:每個扇形各自一段弦(有的沒有)
 		float hj = ckH( vec2( sa * 3.0 + float( j ), sd + 1.7 ) );
 		if ( hj > 0.72 ) continue;
-		float rho = R * ( 0.15 + 0.19 * float( j ) ) * ( 0.85 + 0.3 * hj );
+		float rho = min( R * ( 0.15 + 0.19 * float( j ) ), 0.03 + 0.035 * float( j ) ) * ( 0.85 + 0.3 * hj ); // 同心環只在彈著點附近(大裂紋外圈只有放射線)
 		float dist = abs( r * cos( a - mid ) - rho * cos( sec * 0.5 ) );
 		float m = 1.0 - smoothstep( lw * 0.8, lw * 0.8 + aa, dist );
 		if ( m > 0.002 ) {
