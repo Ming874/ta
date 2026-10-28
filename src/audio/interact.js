@@ -19,7 +19,7 @@
 //  收納   lockerOpen/lockerClose(pos) drawerOpen/drawerClose(pos) cabinetOpen/cabinetClose(pos) rummage(pos)
 //  水     tapStart(key, pos, dirty) tapStop(key) tapSqueak(pos) pipeKnock(pos)
 //  其他   typeKey(pos) typeReturn(pos) nurseCall(pos) tuneSweep(pos) tvOn(pos) tvOff(pos) wheelSqueak(pos) gurneyRoll(pos)(這兩個會跟隨傳入的位置物件)
-//         paper() paperClose() tapeLine(on) stats()
+//         paper() paperClose() pageTurn() tapeLine(on) stats()
 import { A, emit, onTick, gain, filter, burst, tone, metal, bubble, shaper, playBuf, curve, duck, baked, rand, pick, clamp, distTo, levelOf } from './core.js';
 import { click, clack, slide, squeal } from './foley.js';
 import * as S from './samples.js';
@@ -1252,6 +1252,14 @@ export const ix = {
     crinkle(d, t, rand(0.35, 0.5), 0.12, 3600);
     burst(d, t + 0.08, { buf: 'pink', type: 'bandpass', f: 600, q: 0.7, dur: 0.18, a: 0.08, g: 0.06 });
     crinkle(d, t + 0.3, 0.2, 0.05, 5000);
+  }),
+  pageTurn: safe(() => { // 翻一張紙(地圖換樓層):掃過的沙沙聲 + 紙角拍一下
+    const h = E(null, { prio: 4, dur: 0.6, gain: 1.1 });
+    if (!h) return;
+    const d = h.in, t = h.t;
+    slide(d, t, rand(3000, 3600), rand(1500, 1900), 0.24, 0.05);
+    crinkle(d, t + 0.03, 0.16, 0.045, 4400);
+    burst(d, t + 0.21, { buf: 'pink', type: 'bandpass', f: 430, q: 0.8, dur: 0.07, a: 0.03, g: 0.05 });
   }),
   paperClose: safe(() => { // 摺起來收好
     const h = E(null, { prio: 4, dur: 0.7, gain: 1.35 });
