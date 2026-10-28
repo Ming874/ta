@@ -1,5 +1,5 @@
 // 血跡貼花的貼圖產生器(自動註冊:'art/stains:<名稱>';在貼圖 Worker 裡跑,不卡主執行緒)
-import { stainLayout, renderCell, ATLAS, ghostHandRGBA, wetFootRGBA } from './stainset.js';
+import { stainLayout, renderCell, ATLAS, ghostHandRGBA, wetFootRGBA, OUTDOOR, renderOutdoor } from './stainset.js';
 import { packNR } from './stains.js';
 
 // 整張圖集:map(albedo + alpha,sRGB)與 nr(R = 法線 x、G = 粗糙度、B = 法線 y;半解析度)
@@ -26,4 +26,14 @@ export function wetFoot(make, args) {
   const w = args.w ?? 128, h = args.h ?? 256, [c, x] = make(w, h);
   x.putImageData(new ImageData(wetFootRGBA(args.seed ?? 1, w, h), w, h), 0, 0);
   return c;
+}
+// 室外貼花圖集的血跡格(每格一張;主執行緒畫進 po_decal 圖集)
+export function outdoor(make, args) {
+  const out = {};
+  for (const name of Object.keys(OUTDOOR)) {
+    const C = renderOutdoor(name, args.seed ?? 1), [c, x] = make(C.w, C.h);
+    x.putImageData(new ImageData(C.rgba, C.w, C.h), 0, 0);
+    out[name] = c;
+  }
+  return out;
 }

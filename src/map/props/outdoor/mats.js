@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { registerMat, mat } from '../../materials.js';
+import { paintTextures, texturesReady } from '../../../sys/texworker.js';
+import { OUTDOOR } from '../../../art/stainset.js';
 
 // 戶外道具的額外材質(registerMat 註冊共用鍵,靜態物件才能依材質合併)與程式貼圖。
 // 貼圖集:po_decal(透明貼花:血跡/污漬/墓誌銘/車身塗裝/地面標線/塗鴉)、po_label(不透明:車牌/告示/海報/刻字)。
@@ -331,6 +333,21 @@ const DECAL_TEX = lazy(() => {
   inCell('water2', () => { softBlob(ctx, 128, 128, 120, '10,12,12', 0.55); });
   inCell('stain2', () => { for (let k = 0; k < 8; k++) softBlob(ctx, 128 + rr(-60, 60), 128 + rr(-60, 60), rr(30, 70), '40,30,20', 0.35); });
   const t = tex(c, { repeat: false });
+  // 血跡格(噴濺、滴落、手印、垂流、血泊、拖痕、鞋印):寫實版在貼圖 Worker 畫好後蓋掉上面的簡圖(src/art/stainset.js OUTDOOR)
+  const names = Object.keys(OUTDOOR).filter((n) => DECAL_RECTS[n]);
+  const T = paintTextures('art/stains:outdoor', { seed: 1 }, Object.fromEntries(names.map((n) => [n, { wrap: false }])));
+  texturesReady().then(() => {
+    for (const n of names) {
+      const img = T[n].image, [x, y, w, h] = DECAL_RECTS[n];
+      if (!img) continue;
+      ctx.clearRect(x, y, w, h);
+      ctx.save();
+      if (!T[n].flipY) { ctx.translate(0, y * 2 + h); ctx.scale(1, -1); } // Worker 的 ImageBitmap 已上下翻轉
+      ctx.drawImage(img, x, y, w, h);
+      ctx.restore();
+    }
+    t.needsUpdate = true;
+  });
   return t;
 });
 export const decalUV = (name) => { const [x, y, w, h] = DECAL_RECTS[name]; return [x / 2048, 1 - (y + h) / DH, w / 2048, h / DH]; };

@@ -201,9 +201,9 @@ export function ghostHandRGBA(seed, size = 256) {
     const t = B.t[i];
     if (t <= 0.01) continue;
     const x = i % size, y = (i / size) | 0;
-    // 皮紋(指紋脊/掌紋的細條)+ 油脂斑
-    const ridge = 0.55 + 0.45 * Math.sin((x * 0.9 + vnoise(x * 0.05, y * 0.05, seed) * 30) * 1.1 + y * 0.35);
-    const a = clamp(t * 1.25) * (0.55 + 0.45 * ridge) * (0.75 + 0.5 * (fbm(x / s * 1.5, y / s * 1.5, seed + 3, 3) - 0.5));
+    // 油脂印:大致均勻的霧面 + 斑駁;細微的皮紋只當顆粒(不是條紋)
+    const grain = vnoise(x * 0.6, y * 0.25, seed + 7);
+    const a = clamp(t * 1.15) * (0.82 + 0.18 * grain) * (0.7 + 0.6 * (fbm(x / s * 1.3, y / s * 1.3, seed + 3, 3) - 0.5));
     out[i * 4] = 255; out[i * 4 + 1] = 255; out[i * 4 + 2] = 255; out[i * 4 + 3] = clamp(a) * 255;
   }
   return out;
@@ -217,7 +217,8 @@ export function wetFootRGBA(seed, w = 128, h = 256) {
     const t = B.t[i];
     if (t <= 0.01) continue;
     const rim = clamp((t - tb[i]) * 3); // 水漬邊緣較深
-    out[i * 4] = out[i * 4 + 1] = out[i * 4 + 2] = 255; out[i * 4 + 3] = clamp(t * 0.85 + rim * 0.35) * 255;
+    const x = i % w, y = (i / w) | 0, dry = fbm(x * 0.05, y * 0.05, seed + 3, 3); // 沒踩濕的斑
+    out[i * 4] = out[i * 4 + 1] = out[i * 4 + 2] = 255; out[i * 4 + 3] = clamp((t * 0.85 + rim * 0.35) * (0.55 + 0.7 * dry)) * 255;
   }
   return out;
 }
@@ -245,4 +246,54 @@ export function bloodWriting(mask, w, h, seed, px = 96) {
   drips(B, R, { n: Math.max(2, Math.round(w / px * 1.1)), len: px * 1.3, w0: Math.max(1.6, px * 0.032), thr: 0.45, gap: px * 0.35, step: 2 });
   return compose(B, { ppm, age: 0.55, por: 0.15, rim: 0.6, seed }).rgba;
 }
-export { seg, ell, run, drop };
+export { seg, ell, run, drop, rng };
+// 向量版的垂流(給直接在 Canvas 2D 上畫的地方:油漆字、門板):起點寬 w0、越流越細、略彎,末端淚滴形的珠子
+export function dripPath(ctx, x, y, w0, len, R, col) {
+  const n = Math.max(4, Math.ceil(len / 6)), L = [], Rt = [];
+  let px = x;
+  for (let k = 0; k <= n; k++) {
+    const u = k / n, wd = (w0 / 2) * (1 - 0.6 * Math.pow(u, 0.8));
+    px += (R() - 0.5) * Math.min(1.2, w0 * 0.25);
+    L.push([px - wd, y + u * len]); Rt.push([px + wd, y + u * len]);
+  }
+  const ew = w0 * 0.36, ey = y + len;
+  ctx.fillStyle = col;
+  ctx.beginPath();
+  ctx.moveTo(L[0][0], L[0][1]);
+  for (const p of L) ctx.lineTo(p[0], p[1]);
+  ctx.bezierCurveTo(px - ew * 1.1, ey + ew * 1.2, px + ew * 1.1, ey + ew * 1.2, Rt[n][0], Rt[n][1]);
+  for (let k = n; k >= 0; k--) ctx.lineTo(Rt[k][0], Rt[k][1]);
+  ctx.closePath();
+  ctx.fill();
+}
+// ---------------------------------------------------------------- 室外貼花圖集(po_decal)的血跡格
+// 名稱與 src/map/props/outdoor/mats.js 的格子相同;只輸出 albedo(那個材質沒有法線)
+export const OUTDOOR = {
+  blood1: { w: 256, h: 256, ppm: 360, age: 0.6, flake: 0.2, rim: 0.7, paint(B, R) { spatter(B, R, { x: 128, y: 128, R: 120, n: 110, rm: 16, cone: Math.PI, rmax: 3, spikes: 18, mist: 80 }); } },
+  blood2: { w: 256, h: 256, ppm: 360, age: 0.65, flake: 0.2, rim: 0.8, paint(B, R) { for (let k = 0; k < 7; k++) floorDrop(B, R, R.r(50, 206), R.r(50, 206), R.r(3, 9), R.r(1, 1.3), R() < 0.5 ? null : R() * 6.28); } },
+  blood3: { w: 256, h: 256, ppm: 420, age: 0.55, por: 0.15, flake: 0.2, rim: 0.6, paint(B, R) {
+    spatter(B, R, { x: 128, y: 80, R: 100, n: 90, rm: 14, dir: R.r(0, 6.28), cone: Math.PI, rmax: 2.6, spikes: 14, mist: 60 });
+    drips(B, R, { n: 6, y0: 60, y1: 110, len: 150, w0: 3, thr: 0.45, gap: 8 });
+  } },
+  hand: { w: 256, h: 256, ppm: 820, age: 0.6, por: 0.15, flake: 0.2, rim: 0.6, paint(B, R) {
+    handPrint(B, R, handModel(R, { spread: 0.35 }), { x: 128, y: 190, ang: R.r(-0.1, 0.1), ppm: 820, thr: 0.32, tx: 0.1, ty: 0.15, seed: 4, load: 1 });
+    drips(B, R, { n: 5, len: 60, w0: 2.6, thr: 0.35, gap: 6 });
+  } },
+  drip: { w: 256, h: 256, ppm: 300, age: 0.6, flake: 0.2, rim: 0.6, paint(B, R) {
+    smear(B, R, curve([10, 8], [90, 14], [170, 4], [246, 10], 20), { wd: 12, load: () => 1, bristles: 40, dry: 0.3 });
+    drips(B, R, { n: 10, y0: 2, y1: 30, len: 230, w0: 3.2, thr: 0.4, gap: 8 });
+  } },
+  pool: { w: 256, h: 256, ppm: 240, age: 0.08, rim: 0.2, paint(B, R) { pool(B, R, [[128, 132, 80], [80, 90, 30], [180, 180, 28]], { edge: 2, tv: 1.6, center: 0.5, warp: 0.15 }); } },
+  smear: { w: 512, h: 256, ppm: 240, age: 0.75, flake: 0.25, rim: 0.6, paint(B, R) {
+    const P = curve([20, 128 + R.r(-20, 20)], [180, 128 + R.r(-50, 50)], [330, 128 + R.r(-50, 50)], [492, 128 + R.r(-20, 20)], 48);
+    smear(B, R, P, { wd: (u) => 110 * (1 - 0.3 * u), load: (u) => 1.25 * Math.pow(1 - u, 0.9) + 0.06, bristles: 90, clump: 0.3, dry: 0.5 });
+  } },
+  steps: { w: 512, h: 256, ppm: 300, age: 0.8, flake: 0.25, rim: 0.6, paint(B, R) {
+    for (let k = 0; k < 4; k++) footPrint(B, R, { kind: 'shoe', tread: 'lug', x: 20 + k * 128, y: 128 + (k % 2 ? 22 : -22), ang: Math.PI / 2 + R.r(-0.08, 0.08), ppm: 300, left: k % 2 === 1, load: 1 - k * 0.2, thr: 0.3 + k * 0.04 });
+  } },
+};
+export function renderOutdoor(name, seed = 1) {
+  const c = OUTDOOR[name], R = rng((seed * 131) ^ hashStr(name)), B = buf(c.w, c.h);
+  c.paint(B, R, c);
+  return compose(B, { ...c, seed });
+}
