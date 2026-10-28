@@ -2,11 +2,13 @@
 // 兩台「唱盤」交叉淡入淡出;依配樂狀態(menu/explore/tension/fight/boss/break/shop/dead)挑曲目。
 // 不用原生 loop(MP3 循環點會有空隙):每首快結束前 xf 秒就交叉淡化到另一台唱盤(同狀態的另一首,或同一首從頭),完全無縫。
 // 長曲目第一次播放時從隨機的段落開始(配合淡入),每局聽到的不一樣。某首載入失敗就跳過;全部失敗時程式配樂(music.js)單獨撐場。
-import { A, gain, clamp, pick } from './core.js';
+import { A, gain, clamp, pick, rand } from './core.js';
 import { TRACKS, STINGS } from './bank.js';
 
 const BASE = `${import.meta.env?.BASE_URL ?? '/'}audio/`;
-const X = { mood: null, decks: [], cur: -1, failed: new Set(), playing: null, ctx: null, level: 1, blocked: false };
+const X = { mood: null, decks: [], cur: -1, failed: new Set(), playing: null, ctx: null, level: 1, blocked: false, gapAt: 0, restUntil: 0 };
+// 留白(dread needs space):這些狀態播 [a, b] 秒後淡出,安靜 [c, d] 秒再換下一首
+const GAPS = { explore: [70, 130, 30, 70], break: [80, 140, 35, 75] };
 // 換狀態時的淡入淡出秒數
 const FADE = { menu: 3, explore: 4.5, tension: 3, fight: 1.8, boss: 1.4, break: 3.5, shop: 3, dead: 1.2 };
 
@@ -85,7 +87,8 @@ function next(now) {
 
 // 配樂狀態改變:同一組曲目(或共用曲目)就不切
 export function setTrackMood(mood) {
-  if (X.mood === mood && X.playing) return;
+  if (X.mood === mood && (X.playing || X.restUntil)) return;
+  if (X.mood !== mood) { X.gapAt = 0; X.restUntil = 0; }
   X.mood = mood;
   if (!A.ctx) return;
   const list = listFor(mood);
@@ -94,6 +97,22 @@ export function setTrackMood(mood) {
   playTrack(pick(list), FADE[mood] ?? 3, mood === 'menu' || mood === 'dead');
 }
 
+// 每 0.4 秒(music.js 呼叫):留白的排程
+export function trackTick(t) {
+  const gp = GAPS[X.mood];
+  if (!gp || !A.ctx) { X.restUntil = 0; return; }
+  if (X.restUntil) {
+    if (t < X.restUntil) return;
+    X.restUntil = 0; X.gapAt = t + rand(gp[0], gp[1]);
+    const list = listFor(X.mood);
+    if (list.length) playTrack(pick(list.length > 1 ? list.filter((x) => x !== X.last) : list), 7, false);
+    return;
+  }
+  if (!X.gapAt) X.gapAt = t + rand(gp[0], gp[1]);
+  if (X.playing && t > X.gapAt) { const d = X.decks[X.cur]; if (d && d.track) fadeOut(d, 9); X.last = X.playing; X.playing = null; X.restUntil = t + 9 + rand(gp[2], gp[3]); }
+}
+export const resting = () => X.restUntil > 0;
+export const _trackX = X; // 測試用
 // 自動播放被擋住後,下一次使用者互動時重試
 export function resumeTracks() { if (X.blocked && X.mood) { const m = X.mood; X.mood = null; setTrackMood(m); } }
 
@@ -114,7 +133,7 @@ export function trackLevel() {
   return d && d.track && !d.el.paused && d.el.readyState >= 2 ? 1 : 0;
 }
 
-export const trackState = () => ({ mood: X.mood, playing: X.playing ? X.playing.f : null, failed: [...X.failed], blocked: X.blocked, decks: X.decks.map((d) => (d.track ? `${d.track.f}@${d.el.currentTime.toFixed(1)}${d.el.paused ? '(p)' : ''} g=${d.g.gain.value.toFixed(2)}` : '-')) });
+export const trackState = () => ({ mood: X.mood, playing: X.playing ? X.playing.f : null, restIn: X.restUntil ? +(X.restUntil - (A.ctx ? A.ctx.currentTime : 0)).toFixed(1) : 0, gapIn: X.gapAt ? +(X.gapAt - (A.ctx ? A.ctx.currentTime : 0)).toFixed(1) : 0, failed: [...X.failed], blocked: X.blocked, decks: X.decks.map((d) => (d.track ? `${d.track.f}@${d.el.currentTime.toFixed(1)}${d.el.paused ? '(p)' : ''} g=${d.g.gain.value.toFixed(2)}` : '-')) });
 
 // ---------- 一次性配樂刺擊(串流)----------
 // 每個刺擊一個預先載好的 <audio>(只存壓縮資料),播放時接到配樂匯流排;g 額外增益、fo 幾秒後淡出(可截短長的刺擊)

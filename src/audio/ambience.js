@@ -2,6 +2,7 @@
 // 定位循環音(發電機、電視雜訊、故障燈管、監視器、電話…,依距離自動啟停,遠的不佔 CPU)、斷電效果。
 // 錄音音床(醫院空調底噪、日光燈嗡聲、地下室滴水、戶外風聲…)第一次用到才載入,載好前由合成層撐場,載好後淡入、合成層退後。
 // 沒有人呼叫 setZone 時,若有 World(或 levels.js)就依聆聽者位置自動判斷區域。
+import { radioNext } from './folk.js';
 import { A, onTick, emit, gain, filter, burst, tone, metal, bubble, rand, pick, clamp, curve, setSpace, around, distTo, levelOf, playBuf } from './core.js';
 import { vocal } from './voices.js';
 import * as SM from './samples.js';
@@ -248,7 +249,7 @@ const LAYERS = {
     n.connect(filter('bandpass', 3100, 4, g));
     return { srcs: [o, o2, n], w: [wander(g.gain, 0.0003, 0.002, 0.5, 3)] };
   },
-  radio(out) { // 收音機:靜電雜訊 + 微弱走音的老歌 + 調頻的口哨聲
+  radio(out) { // 收音機:靜電雜訊 + 收訊時有時無的台灣老歌(公有領域旋律,folk.js 合成:大廣弦 + 月琴)+ 偶爾的 AM 1207 台呼 + 調頻的口哨聲
     const n = noise('white');
     const g = gain(0.006, out);
     const bp = filter('bandpass', 2100, 0.7, g);
@@ -258,11 +259,24 @@ const LAYERS = {
     const hg = gain(0.0008, out);
     het.connect(hg);
     let next = 0, step = 0;
-    const MEL = [0, 4, 7, 4, 5, 4, 2, -1, 0, 4, 7, 12, 11, 7, 5, 4];
+    const MEL = [4, 7, 9, 12, 9, 7, 4, 7, 4, 2, 0, 2, 4, 7, 2, 0]; // 還沒烘焙好時的備用旋律(五聲音階)
+    const fade = gain(1, out);
     return {
       srcs: [n, het], w: [wander(g.gain, 0.002, 0.012, 0.1, 0.8), wander(het.frequency, 500, 2200, 2, 6), wander(hg.gain, 0, 0.0016, 1, 4)],
-      ev(now) { // 三拍子華爾滋旋律,隨收訊時有時無
+      ev(now) { // 一段老歌(收訊忽大忽小)→ 幾秒靜電 → 下一段
         if (now < next) return;
+        const b = radioNext();
+        if (b) {
+          const s = A.ctx.createBufferSource(), g = gain(0, fade);
+          s.buffer = b; s.playbackRate.value = rand(0.985, 1.01); s.connect(g);
+          const t = now + 0.05, len = b.duration / s.playbackRate.value;
+          g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.008, t + 0.8); g.gain.setValueAtTime(0.008, t + len - 1.2); g.gain.linearRampToValueAtTime(0, t + len);
+          s.start(t); s.stop(t + len + 0.05);
+          fade.gain.cancelScheduledValues(t);
+          for (let k = 0; k < len; k += rand(1.5, 4)) fade.gain.setTargetAtTime(rand(0.35, 1), t + k, 0.4); // 收訊飄移
+          next = now + len + rand(3, 9);
+          return;
+        }
         next = now + 0.48;
         const f = 392 * Math.pow(2, MEL[step++ % MEL.length] / 12) * (1 + Math.sin(now * 0.7) * 0.012);
         const v = 0.004 * (0.4 + 0.6 * Math.abs(Math.sin(now * 0.13)));
