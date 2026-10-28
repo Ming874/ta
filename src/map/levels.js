@@ -258,6 +258,7 @@ export const MOODS = {
   morgue: { fog: 0x080b0d, density: 0.04, ambient: 0.18, tint: 0xa0c0d0 },
   industrial: { fog: 0x0e0904, density: 0.04, ambient: 0.18, tint: 0xd09050 }, // 鈉燈橘
   nursery: { fog: 0x100808, density: 0.035, ambient: 0.16, tint: 0xd090a0 }, // 夜燈粉紅
+  delivery: { fog: 0x0d0808, density: 0.036, ambient: 0.12, tint: 0xb08a8a }, // [scene6] 產房:暗、偏粉灰,保溫台紅光
   psych: { fog: 0x0c0d10, density: 0.03, ambient: 0.3, tint: 0xd8e0f0 },
   office: { fog: 0x0e0c0a, density: 0.03, ambient: 0.22, tint: 0xc0a080 },
   stair: { fog: 0x0a0606, density: 0.04, ambient: 0.16, tint: 0xa05050 },
@@ -324,7 +325,7 @@ export const ZONES = [
   { id: 'f2_surgery', level: '2F', name: '手術部', rects: [[9, 15, 11, 24], [12, 23, 17, 24]], theme: 'surgery', floor: 'tile_white', wall: 'tile_wall', light: 'surgical', mood: 'clinical' },
   { id: 'f2_icu', level: '2F', name: '加護病房', rects: [[42, 15, 50, 16], [48, 17, 50, 24]], theme: 'icu', floor: 'linoleum', wall: 'paint_white', light: 'monitor', mood: 'clinical' },
   { id: 'f2_nursery', level: '2F', name: '新生兒室', rects: [[9, 29, 15, 32]], theme: 'nursery', floor: 'linoleum', wall: 'wallpaper_kids', light: 'nightlight', mood: 'nursery' },
-  { id: 'f2_delivery', level: '2F', name: '產房', rects: [[17, 29, 22, 32]], theme: 'delivery', floor: 'tile_white', wall: 'tile_wall', light: 'fluoro_dying', mood: 'ward' }, // [scene r5] 原本 surgical 全亮、像展示間 → 老化燈管
+  { id: 'f2_delivery', level: '2F', name: '產房', rects: [[17, 29, 22, 32]], theme: 'delivery', floor: 'tile_white', wall: 'tile_wall', light: 'monitor', mood: 'delivery' }, // [scene r5/6] 原本 surgical 全亮、像展示間 → 只剩稀疏的壞燈管 + 保溫台紅光(monitor 型 = 稀疏天花燈)
   { id: 'f2_playroom', level: '2F', name: '小兒科遊戲室', rects: [[37, 29, 43, 32]], theme: 'playroom', floor: 'carpet', wall: 'wallpaper_kids', light: 'nightlight', mood: 'nursery' },
   { id: 'f2_peds', level: '2F', name: '小兒病房', rects: [[45, 29, 50, 32]], theme: 'peds_ward', floor: 'linoleum', wall: 'wallpaper_kids', light: 'fluoro_dying', mood: 'nursery' },
   { id: 'f2_corridor', level: '2F', name: '走廊', rects: [...ring(27), [9, 26, 50, 27]], theme: 'corridor', floor: 'linoleum', wall: 'paint_green', light: 'fluoro_dying', mood: 'corridor' },

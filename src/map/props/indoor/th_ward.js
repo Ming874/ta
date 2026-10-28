@@ -32,6 +32,7 @@ export function dressWard(R, zone) {
       bays.push({ p, run, bz, side, kind, id });
       // 床頭櫃 + 上面的東西
       const ns = R.atWall(nightstand(k + 1), run, bz - 0.78, { gap: 0.04 });
+      bays[bays.length - 1].ns = ns;
       if (ns) {
         const top = R.topOf(ns, 0);
         onSurface(R, top, 'cup', 1);
@@ -52,7 +53,8 @@ export function dressWard(R, zone) {
   const mid = R.center();
   R.dyn(chairShell('pl_teal', 1), mid.x - 0.3, z0 + 3.2, 0.9, { mass: 4, shape: 'box' });
   if (n % 3 === 0) R.dyn(wheelchair(n), mid.x + 0.4, z0 + 6.6, 2.6, { mass: 16, shape: 'box', friction: 0.5 });
-  if (bays[1]) { const p = R.at(bays[1].run, bays[1].bz + 0.95, 1.9); R.putChecked(overbedTable(1), p.x, p.z, bays[1].run.yaw + Math.PI / 2); }
+  let overbed = null;
+  if (bays[1]) { const p = R.at(bays[1].run, bays[1].bz + 0.95, 1.9); overbed = R.putChecked(overbedTable(1), p.x, p.z, bays[1].run.yaw + Math.PI / 2); }
   // 南牆:洗手台、置物櫃、垃圾桶
   const S = R.run('S');
   if (S) {
@@ -68,7 +70,7 @@ export function dressWard(R, zone) {
   }
   if (E) R.atWall(framed(calendar(), 0.26, 0.36, 'pl_white', { glass: false }), E, E.t1 - 0.5, { mount: 1.45 });
   wardStory(R, n); // [scene r4] 203 隔離帳、209 家屬地舖
-  wardStory2(R, n); // [scene r5] 201 收音機、202 舊報紙、205 象棋、206 行李箱、208 神桌、210 萬嵐封存
+  wardStory2(R, n, { bays, overbed }); // [scene r5] 201 收音機、202 舊報紙、205 象棋、206 行李箱、208 神桌、210 萬嵐封存
   // 地面雜物
   scatter(R, 'paper', 4);
   scatter(R, 'paper2', 2);
