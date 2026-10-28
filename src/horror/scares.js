@@ -304,7 +304,8 @@ export function scareKinds(h) {
     blackoutChange: { ok: (c) => indoor(c) && c.fixNear(14).filter((f) => f.cur > 0.2 && !f.prop).length >= 3 && !!wallAhead(c), run(c) {
       const list = c.fixNear(14).filter((f) => !f.prop), t = game.time, hold = rand(3.4, 4.6);
       ghost.silence(hold + 1.5, 0.04);
-      list.forEach((f, i) => c.active.push({ type: 'die', f, t0: t + i * 0.06, t1: t + hold + i * 0.12, onStart: i === 0 ? () => sfx.scare('lights_off') : null }));
+      list.forEach((f, i) => c.active.push({ type: 'die', f, t0: t + i * 0.06, t1: t + hold + i * 0.12, onStart: i === 0 ? () => { sfx.scare('lights_off'); game.motion?.beat('dark', { hold }); } : null }));
+      h.after(hold + 0.1, () => game.motion?.beat('light')); // [motion]
       const wa = wallAhead(c), opts = WRITINGS.filter((x) => x.kind === 'appear' && !h.usedWrit.has(x.id));
       h.after(1.3, () => {
         if (wa && opts.length) { const w = pick(opts); h.usedWrit.add(w.id); M.write(w, wa.x, wa.y, wa.z, wa.nx, wa.nz, { fadeIn: 0.1 }); }

@@ -123,6 +123,23 @@ export function installMotion(game) {
       } else if (kind === 'touqi-end') {
         M.to('touqi', 'desat', 0, 3200, 'inOut');
         M.to('touqi', 'vig', 0, 3200, 'inOut');
+      } else if (kind === 'dark') { // 停電:眼睛適應(先更黑、再慢慢看得到一點),顆粒變粗
+        M.to('dark', 'fade', 0.32, 70, 'out').then(() => M.to('dark', 'fade', 0, R ? 300 : 1600, 'out'));
+        M.to('dark', 'grain', 0.5, 400, 'out');
+        M.to('dark', 'vig', 0.1, 600, 'out');
+      } else if (kind === 'light') { // 燈回來:刺眼一下(≤12% 的白,120ms),顆粒退回
+        const c = ch('glare');
+        c.fadeCol = [0.9, 0.92, 0.88];
+        if (!R) M.to('glare', 'fade', 0.12, 60, 'out').then(() => M.to('glare', 'fade', 0, 260, 'inOut'));
+        M.to('dark', 'grain', 0, 1200, 'inOut');
+        M.to('dark', 'vig', 0, 1200, 'inOut');
+      } else if (kind === 'chase') { // 追逐開始:邊緣一口紅
+        const c = ch('pulse');
+        c.tintCol = [0.6, 0.06, 0.02];
+        M.to('pulse', 'tint', 0.55, R ? 120 : 160, 'out').then(() => M.to('pulse', 'tint', 0, 1400, 'inOut'));
+        M.to('chase', 'vig', 0.1, 800, 'out');
+      } else if (kind === 'chase-end') {
+        M.to('chase', 'vig', 0, 1800, 'inOut');
       } else if (kind === 'gate') { // 回憶的放映機門:兩下很淡的亮度閃(≤10%)
         if (R) return;
         const g = ch('gate');
@@ -414,7 +431,7 @@ export function installMotion(game) {
   };
   // 重新開始/回到遊戲:眼睛張開
   M.onBegin = () => {
-    M.clear('pause'); M.clear('fight'); M.clear('pulse'); M.clear('exhale'); M.clear('dawn'); M.clear('touqi');
+    M.clear('pause'); M.clear('fight'); M.clear('pulse'); M.clear('exhale'); M.clear('dawn'); M.clear('touqi'); M.clear('dark'); M.clear('glare'); M.clear('chase');
     const d = CH.get('death');
     $('hud') && ($('hud').style.opacity = '1');
     if (d) {

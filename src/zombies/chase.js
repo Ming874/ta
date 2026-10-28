@@ -271,6 +271,7 @@ class Chase {
     sfx.zChase?.(true);
     if (safe) { this.beacon.position.set(safe.x, safe.y + 1.5, safe.z); this.beacon.visible = true; }
     if (me) {
+      g.motion?.beat('chase'); // [motion] 邊緣一口紅 + 暗角收緊(追逐結束時放開)
       g.ui?.banner?.('快逃！', '他殺不死 · 跑向閃著綠光的金水商行，或甩掉他躲起來', 3200, 'red');
       const H = g.horror;
       H?.subs?.show?.({ text: line || '快跑！往綠燈那邊——金水伯的店！', tag: line ? '電話' : 'AM 1207 · 小鈴', cap: true, hold: 2.4 });
@@ -284,6 +285,7 @@ class Chase {
     P.on = false; P.safe = null;
     this.beacon.visible = false;
     if (reason !== 'reset') sfx.zChase?.(false);
+    g.motion?.beat('chase-end');
     if (me && reason !== 'reset') {
       const msg = { safe: ['安全了……暫時', '#7dffa0'], hid: ['他跟丟你了', '#9ad0ff'], timer: ['他退回黑暗裡了', '#d0d0c0'], caught: ['你被抓住了', '#ff5a4a'] }[reason];
       if (msg) g.ui?.feed?.(msg[0], { icon: reason === 'caught' ? 'skull' : 'heal', color: msg[1], ms: 3200 });

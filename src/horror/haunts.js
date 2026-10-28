@@ -454,7 +454,8 @@ export function hauntKinds(h) {
         const i = cascade ? ahead.indexOf(f) : -1;
         die(c, f, i >= 0 ? t + 0.25 + i * step : tb, tr + rand(0, 0.4), i >= 0 ? () => ghost.tubeOff(fpos(f)) : null);
       }
-      h.after(tb - t, () => { const p = P().pos; ghost.breaker({ x: p.x, y: p.y + 2.6, z: p.z }); ghost.silence(dark + 1, 0.04); });
+      h.after(tb - t, () => { const p = P().pos; ghost.breaker({ x: p.x, y: p.y + 2.6, z: p.z }); ghost.silence(dark + 1, 0.04); game.motion?.beat('dark', { hold: dark }); }); // [motion] 眼睛適應黑暗
+      h.after(tr - t, () => game.motion?.beat('light')); // [motion] 燈回來:刺眼一下
       h.director.hold(tr - t + 5);
       h.after(tb - t + rand(1.2, 1.8), () => darkBeat(c));
       h.after(tb - t + dark * 0.55, () => story('dark'));
