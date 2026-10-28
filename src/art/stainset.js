@@ -7,7 +7,7 @@ import {
   pool, smear, curve, footPrint, seg, poly, ell, vnoise, fbm, clamp, sstep,
 } from './stains.js';
 
-const PLASTER = [226, 220, 206];
+const PLASTER = [208, 201, 186]; // 刮掉漆露出的灰泥/底材(偏暖、略暗,不要比牆面亮太多)
 export const CELLS = {
   // ---- 牆面 ----
   // 手掌按在牆上往下滑:上方完整掌印,下面是指紋拉出的條紋,最後往下滴
@@ -27,15 +27,15 @@ export const CELLS = {
   claw0: { w: 288, h: 416, ppm: 650, k: 0.92, age: 0.86, por: 0.1, rim: 0.4, ex: 2.6, sub: PLASTER, dustCol: [74, 66, 56], paint(B, R, c) {
     const PX = new Float32Array(c.w * c.h);
     const sets = [
-      { x: 92, y: 34, ang: R.r(-0.2, 0.05), len: 40, sp: 1.9, bend: R.r(-0.06, 0.06), dep: 1, blood: 0.95 },
-      { x: 178, y: 62, ang: R.r(0.05, 0.22), len: 46, sp: 1.8, bend: R.r(-0.05, 0.05), dep: 0.92 },
+      { x: 92, y: 34, ang: R.r(-0.2, 0.05), len: 46, sp: 1.9, bend: R.r(-0.06, 0.06), dep: 1, blood: 0.95 },
+      { x: 178, y: 62, ang: R.r(0.05, 0.22), len: 50, sp: 1.8, bend: R.r(-0.05, 0.05), dep: 0.92 },
       { x: 128, y: 168, ang: R.r(-0.18, 0), len: 33, sp: 1.85, bend: 0.05, dep: 0.85, blood: 0.55 },
       { x: 218, y: 214, ang: R.r(0.25, 0.45), len: 24, sp: 2.0, bend: -0.04, dep: 0.7, n: 3 },
     ];
     for (const S of sets) clawSet(B, R, S, c.ppm, PX);
     chips(B, PX, c.ppm, R.i(0, 1e5), 1);
     const halo = blur(PX, c.w, c.h, 10);
-    for (let i = 0; i < PX.length; i++) B.dust[i] = Math.max(B.dust[i], halo[i] * 0.14);
+    for (let i = 0; i < PX.length; i++) B.dust[i] = Math.max(B.dust[i], halo[i] * 0.2); // 手抓過的地方一圈手垢
   } },
   // 兩組長長往下拖的抓痕(沒有血),灰塵卡在溝裡
   claw1: { w: 224, h: 416, ppm: 600, k: 0.78, age: 0.9, por: 0.1, ex: 2.6, sub: PLASTER, dustCol: [70, 62, 52], paint(B, R, c) {
@@ -44,7 +44,7 @@ export const CELLS = {
     clawSet(B, R, { x: 150, y: 96, ang: R.r(0.04, 0.14), len: 46, sp: 1.85, bend: R.r(-0.06, 0), dep: 0.8, n: 3 }, c.ppm, PX);
     chips(B, PX, c.ppm, R.i(0, 1e5), 0.9);
     const halo = blur(PX, c.w, c.h, 10);
-    for (let i = 0; i < PX.length; i++) B.dust[i] = Math.max(B.dust[i], halo[i] * 0.12);
+    for (let i = 0; i < PX.length; i++) B.dust[i] = Math.max(B.dust[i], halo[i] * 0.18);
   } },
   // 撞擊噴濺 + 一排往下流的血
   drip0: { w: 160, h: 448, ppm: 380, k: 0.84, age: 0.6, por: 0.15, flake: 0.25, rim: 0.6, ex: 2.2, paint(B, R, c) {
@@ -203,7 +203,7 @@ export function ghostHandRGBA(seed, size = 256) {
     const x = i % size, y = (i / size) | 0;
     // 油脂印:大致均勻的霧面 + 斑駁;細微的皮紋只當顆粒(不是條紋)
     const grain = vnoise(x * 0.6, y * 0.25, seed + 7);
-    const a = clamp(t * 1.15) * (0.82 + 0.18 * grain) * (0.7 + 0.6 * (fbm(x / s * 1.3, y / s * 1.3, seed + 3, 3) - 0.5));
+    const a = clamp(t * 1.9) * (0.85 + 0.15 * grain) * (0.82 + 0.45 * (fbm(x / s * 1.3, y / s * 1.3, seed + 3, 3) - 0.5));
     out[i * 4] = 255; out[i * 4 + 1] = 255; out[i * 4 + 2] = 255; out[i * 4 + 3] = clamp(a) * 255;
   }
   return out;
@@ -218,7 +218,7 @@ export function wetFootRGBA(seed, w = 128, h = 256) {
     if (t <= 0.01) continue;
     const rim = clamp((t - tb[i]) * 3); // 水漬邊緣較深
     const x = i % w, y = (i / w) | 0, dry = fbm(x * 0.05, y * 0.05, seed + 3, 3); // 沒踩濕的斑
-    out[i * 4] = out[i * 4 + 1] = out[i * 4 + 2] = 255; out[i * 4 + 3] = clamp((t * 0.85 + rim * 0.35) * (0.55 + 0.7 * dry)) * 255;
+    out[i * 4] = out[i * 4 + 1] = out[i * 4 + 2] = 255; out[i * 4 + 3] = clamp((t * 1.3 + rim * 0.4) * (0.65 + 0.6 * dry)) * 255;
   }
   return out;
 }

@@ -179,7 +179,7 @@ export function compose(B, P) {
     let Cr = 0, Cg = 0, Cb = 0, A = 0, Ro = 0;
     const over = (r, gg, b, a, ro) => { Cr = r * a + Cr * (1 - a); Cg = gg * a + Cg * (1 - a); Cb = b * a + Cb * (1 - a); Ro = ro * a + Ro * (1 - a); A = a + A * (1 - a); };
     const ac = clamp(Math.max(c, g * 1.8));
-    if (ac > 0.002) { const sh = (0.9 + 0.17 * n2) * (1 - 0.32 * g - 0.4 * g * g * g); over(sub[0] * sh, sub[1] * sh, sub[2] * sh, ac, 0.9); }
+    if (ac > 0.002) { const sh = (0.88 + 0.16 * n2) * (1 - 0.4 * g - 0.35 * g * g * g); over(sub[0] * sh, sub[1] * sh, sub[2] * sh, ac, 0.9); }
     if (d > 0.002) { const sh = 0.85 + 0.3 * n2; over(dcol[0] * sh, dcol[1] * sh, dcol[2] * sh, clamp(d * dA), 0.96); }
     if (soak > 0.002) {
       const s = COL.soak, k = clamp(soak * 2);
@@ -471,7 +471,7 @@ export function chips(B, PX, ppm, seed, amt = 1) {
     const ring = v > 0.5 ? (1 - sstep(0.0, 0.12, e1)) * 0.5 : 0; // 漆片斷口的髒邊
     c = Math.max(c, sstep(0.04, 0.14, g));
     B.chip[i] = Math.max(B.chip[i], c);
-    B.dust[i] = Math.max(B.dust[i], g * g * 0.45 + c * 0.04 + ring * 0.35);
+    B.dust[i] = Math.max(B.dust[i], g * g * 0.6 + c * 0.08 + ring * 0.4);
   }
 }
 // ---------------------------------------------------------------- 噴濺 / 滴落

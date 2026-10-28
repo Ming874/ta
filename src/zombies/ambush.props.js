@@ -109,7 +109,7 @@ export function createAmbushProps(game, L, grilles, vents) {
 
   // 屍體下的血泊(與 fx.js 的血池同一個材質;暖機時已編好)
   const poolMat = stainMaterial();
-  const poolGeo = stainPlane('pool0', 1).rotateX(-Math.PI / 2);
+  const poolGeo = stainPlane('pool0', 0.75).rotateX(-Math.PI / 2);
   const pools = [];
   // 預編譯用的原型(看不到):掉落中的格柵/碎板是一般網格 + 會投影、血泊,開機預編譯掃場景時一起編好
   for (const m of [new THREE.Mesh(gLoose, mat), new THREE.Mesh(tileGeo, tileMat), new THREE.Mesh(poolGeo, poolMat)]) { m.visible = false; m.castShadow = m.material !== poolMat; m.raycast = () => {}; group.add(m); }

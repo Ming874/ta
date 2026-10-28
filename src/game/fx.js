@@ -76,7 +76,7 @@ export const fxMethods = {
 
   // 地上的血池(y 為地面高度)
   addPool(x, y, z) {
-    if (!poolGeo) poolGeo = stainPlane('pool0', 1);
+    if (!poolGeo) poolGeo = stainPlane('pool0', 0.62); // 格內的血泊約佔 75%:舊貼圖的可見範圍較小
     const m = new THREE.Mesh(poolGeo, stainMaterial());
     m.renderOrder = 1;
     m.receiveShadow = true;
