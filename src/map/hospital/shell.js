@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { prng, hashStr } from './paint.js';
 import { surfSize, isRoomMapped } from './surfaces.js';
 import { wallRecipe, floorKey, ceilKey, zoneTint, zoneWear, FACADE, COURT, BOUNDARY, revealFor } from './style.js';
+import { ceilServices } from './ceilsvc.js';
 
 // 建築外殼:地板、牆(上下段 + 收邊)、窗台/窗楣、天花板(含缺塊與夾層)、樓板邊、牆頂、屋頂與女兒牆、拱頂、管線。
 // 會把每面牆的資訊(位置、法線、區域、配方)記錄在 K.faces,給貼花/標示/燈具使用。
@@ -306,7 +307,7 @@ export function buildCeilings(K) {
     B.wear = zone ? zoneWear(zone, lvId) : 0.6;
     const tiled = key === 'ceil_tile' || key === 'ceil_tile_b' || key === 'ceil_tile_c';
     const hole = tiled && L.charAt(li, c, r) !== '+' && R() < (zone?.light === 'fluoro_dying' ? 0.14 : zone?.mood === 'psych' || zone?.theme === 'surgery' ? 0.02 : 0.05);
-    if (!hole) B.flat(li, key, x0, z0, x0 + 2, z0 + 2, yC, false, { col });
+    if (!hole) { B.flat(li, key, x0, z0, x0 + 2, z0 + 2, yC, false, { col }); if (tiled) ceilServices(B, li, c, r, yC, zone); } // [scene6] 灑水頭/偵煙器/廣播喇叭/回風口
     else { // 缺了幾片天花板:露出夾層(黑)與吊線;有的沒掉下來,一邊還掛著(下垂)
       const t = 2 / 3, miss = new Set();
       const n = 1 + ((R() * 2.4) | 0);
