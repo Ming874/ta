@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { registerProvider, registerSurvivorProvider, autoHitboxes, BONES } from './model.js';
+import { registerProvider, registerSurvivorProvider, autoHitboxes, BONES, getVariantAt } from './model.js';
 import { ZU } from './materials.js';
 import { assets } from '../sys/assets.js';
 import { idle } from '../sys/sched.js';
@@ -183,6 +183,8 @@ function load(key, url, types, prio) {
       const r = G?.renderer;
       if (r) for (const t of S.tex) await idle(() => r.initTexture(t), 500);
       LOADED[key] = S;
+      // 馬上建好變體(只是組裝,很快):回合進行中載好的也立刻能被挑到,不必等回合間的 prewarm
+      for (const t of types) if (BODIES[t]) getVariantAt(t, FROM[t] + BODIES[t].indexOf(key));
       stat.loaded++;
       stat.ms = Math.round(performance.now() - t0);
     })

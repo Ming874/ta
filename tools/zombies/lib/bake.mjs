@@ -139,7 +139,7 @@ export function zombify(img, M, look, ctx) {
     // ---- 衣物:泛黃發灰、體液汙漬 ----
     const cloth = 1 - skin;
     if (cloth > 0) {
-      tmp[0] = c[0] + (L - c[0]) * 0.3; tmp[1] = c[1] + (L - c[1]) * 0.3; tmp[2] = c[2] + (L - c[2]) * 0.3;
+      tmp[0] = c[0] + (L - c[0]) * 0.18; tmp[1] = c[1] + (L - c[1]) * 0.18; tmp[2] = c[2] + (L - c[2]) * 0.18;
       c[0] += (tmp[0] * 0.84 - c[0]) * cloth; c[1] += (tmp[1] * 0.78 - c[1]) * cloth; c[2] += (tmp[2] * 0.64 - c[2]) * cloth;
       const st = sstep(0.12, 0.4, fbm(x * 6 + K, y * 6, z * 6, 3)) * (part === PART.torso ? 0.7 : 0.4) * cloth;
       mul(STAIN.map((v) => v * 1.5), st * 0.55);
