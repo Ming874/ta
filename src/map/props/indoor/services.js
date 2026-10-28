@@ -8,7 +8,7 @@
 import { tpl, L, G, led } from './parts.js';
 import { labRect, glowRect, atlasStats } from './atlas.js';
 import { text } from './tex.js';
-import { floorDecal, wallDecal } from './clutter.js';
+import { floorDecal, wallDecal, ctpl } from './clutter.js';
 
 const HALF = Math.PI / 2;
 const SIDE_YAW = { N: 0, S: Math.PI, W: HALF, E: -HALF };
@@ -54,12 +54,12 @@ const sanitizer = (k = 0) => tpl(`svc:sanit:${k % 2}`, (b) => {
 
 // 低位避難方向指示燈(白底綠圖,箭頭 dir = 1 向右 / -1 向左;觀看者面對牆時的左右)
 const evacRect = (dir) => glowRect(`svc:evac:${dir}`, 192, 72, (c, w, h) => {
-  c.fillStyle = '#d9eadc'; c.fillRect(0, 0, w, h);
+  c.fillStyle = '#a3bca9'; c.fillRect(0, 0, w, h); // 白底(發光材質下偏暗一點,不要像一張亮白貼紙)
   c.strokeStyle = '#1a8a46'; c.lineWidth = 3; c.strokeRect(3, 3, w - 6, h - 6);
   const g = '#16924a';
   c.save(); if (dir < 0) { c.translate(w, 0); c.scale(-1, 1); }
   // 門框 + 奔跑的人(朝箭頭方向)
-  c.fillStyle = g; c.fillRect(14, 12, 34, 50); c.fillStyle = '#d9eadc'; c.fillRect(18, 16, 26, 46);
+  c.fillStyle = g; c.fillRect(14, 12, 34, 50); c.fillStyle = '#a3bca9'; c.fillRect(18, 16, 26, 46);
   c.fillStyle = g; c.strokeStyle = g; c.lineCap = 'round'; c.lineWidth = 6;
   c.beginPath(); c.arc(70, 18, 6, 0, 6.28); c.fill();
   c.beginPath(); c.moveTo(68, 27); c.lineTo(62, 44); c.lineTo(72, 52); c.lineTo(70, 64); c.moveTo(62, 44); c.lineTo(52, 50); c.lineTo(46, 62); c.moveTo(66, 31); c.lineTo(78, 39); c.moveTo(66, 31); c.lineTo(54, 34); c.stroke();
@@ -183,6 +183,36 @@ function corridor(R, zone) {
       seen.add(key);
       R.put(cornerGuard(1.35, m), p.x, p.z, run.yaw, {});
       floorDecal(R, 'scuff', p.x + run.nx * 0.5 + (run.horiz ? step * 0.4 : 0), p.z + run.nz * 0.5 + (run.horiz ? 0 : step * 0.4), 1.1);
+    }
+  }
+  // 牆腳的積塵堆:紙張、紙團、碎屑被腳步與推床推到牆邊(中間的動線反而乾淨),轉角與門邊最多
+  const drift = (x, z, n, r, kinds) => {
+    for (let k = 0, placed = 0; k < n * 3 && placed < n; k++) {
+      const a = rng() * Math.PI * 2, d = Math.sqrt(rng()) * r, px = x + Math.cos(a) * d, pz = z + Math.sin(a) * d;
+      if (!R.freeAt(px, pz, 0.04)) continue;
+      const name = kinds[(rng() * kinds.length) | 0];
+      R.I(name, ctpl(name), px, R.y, pz, rng() * Math.PI * 2);
+      placed++;
+    }
+  };
+  const lv1 = Lr.levels[li].id === '1F';
+  const dk = lv1 ? ['paper', 'paper2', 'crumple', 'leaf', 'leaf', 'debris', 'butt'] : ['paper', 'paper2', 'paper3', 'crumple', 'debris', 'gauze', 'glove'];
+  for (const run of R.walls) {
+    if (run.len < 2) continue;
+    for (let t = run.t0 + 0.3; t < run.t1 - 0.3; t += rng.range(1.2, 2.6)) {
+      if (rng() < 0.45) continue;
+      const p = R.at(run, t, rng.range(0.12, 0.3));
+      drift(p.x, p.z, rng.int(1, 3), 0.18, dk);
+    }
+  }
+  // 往出口/樓梯的逃生動線:越靠近門,地上掉的病歷紙、表單、手套越多(當年把病人往外推時掉的)
+  for (const g of groups) {
+    if (!(g.out || g.other?.theme === 'stairwell')) continue;
+    const mid = (g.t0 + g.t1) / 2;
+    for (let k = 0; k < 9; k++) {
+      const dd = 0.8 + Math.pow(rng(), 1.6) * 5.5, o = rng.range(-1.4, 1.4);
+      const x = g.horiz ? mid + o : g.plane + g.nx * dd, z = g.horiz ? g.plane + g.nz * dd : mid + o;
+      drift(x, z, rng.int(1, 3), 0.35, ['paper', 'paper2', 'paper3', 'file', 'glove', 'crumple']);
     }
   }
   // 走廊中央的動線磨耗:沿每個長矩形的中線,一段一段的 lane 貼花
