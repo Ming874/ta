@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { makeBloodSplat } from '../map/textures.js';
+import { stainMaterial, stainPlane } from '../art/stainmat.js';
 
 // 埋伏用的小型場景物件(全部共用幾何/材質,不配置 PointLight):
 //  - 通風格柵:天花板(散布在走廊/房間,固定種子 → 各端一致)+ 牆腳通風口(L.vents),全部一個 InstancedMesh;
@@ -95,8 +95,9 @@ export function createAmbushProps(game, L, grilles, vents) {
   const dripGeo = new THREE.BoxGeometry(0.009, 0.028, 0.009);
   const drips = [];
   for (let i = 0; i < 10; i++) { const m = new THREE.Mesh(dripGeo, dripMat); m.visible = false; m.raycast = () => {}; group.add(m); drips.push({ m, vy: 0, floor: 0, on: false, spot: null }); }
-  const splatMat = new THREE.MeshBasicMaterial({ color: 0x260303, transparent: true, opacity: 0.85, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-  const splatGeo = new THREE.CircleGeometry(1, 14).rotateX(-Math.PI / 2);
+  // 地上的小血漬與屍體下的血泊:共用的寫實血跡材質(src/art/stainmat.js;滴落濺開格 / 新鮮血泊格)
+  const splatMat = stainMaterial();
+  const splatGeo = stainPlane('splatF', 2).rotateX(-Math.PI / 2);
   const splats = [];
   for (let i = 0; i < 8; i++) { const m = new THREE.Mesh(splatGeo, splatMat); m.visible = false; m.raycast = () => {}; m.renderOrder = 1; group.add(m); splats.push({ m, key: null, r: 0 }); }
   let splatI = 0;
@@ -106,9 +107,9 @@ export function createAmbushProps(game, L, grilles, vents) {
     return s;
   };
 
-  // 屍體下的血泊(與 fx.js 的血池同款貼圖;材質型態與暖機時編好的「貼圖 + 透明 + 霧」相同,不會多一個 program)
-  const poolMat = new THREE.MeshBasicMaterial({ map: makeBloodSplat(), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3, color: 0xbbbbbb });
-  const poolGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+  // 屍體下的血泊(與 fx.js 的血池同一個材質;暖機時已編好)
+  const poolMat = stainMaterial();
+  const poolGeo = stainPlane('pool0', 1).rotateX(-Math.PI / 2);
   const pools = [];
   // 預編譯用的原型(看不到):掉落中的格柵/碎板是一般網格 + 會投影、血泊,開機預編譯掃場景時一起編好
   for (const m of [new THREE.Mesh(gLoose, mat), new THREE.Mesh(tileGeo, tileMat), new THREE.Mesh(poolGeo, poolMat)]) { m.visible = false; m.castShadow = m.material !== poolMat; m.raycast = () => {}; group.add(m); }
@@ -206,7 +207,7 @@ export function createAmbushProps(game, L, grilles, vents) {
       api.reset();
       game.scene.remove(group);
       for (const g of [gFull, gOpen, gLoose, tileGeo, dripGeo, splatGeo, poolGeo]) g.dispose();
-      for (const m of [mat, tileMat, dripMat, splatMat, poolMat]) { m.map?.dispose(); m.dispose(); }
+      for (const m of [mat, tileMat, dripMat]) { m.map?.dispose(); m.dispose(); } // 血跡材質是共用的,不釋放
       inst.dispose(); open.dispose();
     },
   };

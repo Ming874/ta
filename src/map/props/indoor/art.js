@@ -1,4 +1,5 @@
 import { labRect, glowRect, decalRect } from './atlas.js';
+import { isStainKind, stainRect } from '../../../art/stainmat.js';
 import { rnd, rr, reseed, css, blotches, grain, scratches, blob, text, scribbleLine, FONT } from './tex.js';
 
 // 圖集內容(全部以畫布程式繪製,依 key 快取):標籤、告示、海報、螢幕畫面、X 光片、蠟筆畫、畫像、貼花。
@@ -518,7 +519,10 @@ function softBlob(c, x, y, r, k = 10, squash = 1, jag = 0.35) {
 function drops(c, n, x0, y0, w, h, rmin, rmax, a = 0.85) {
   for (let k = 0; k < n; k++) { c.fillStyle = RED(a); c.beginPath(); c.arc(x0 + rnd() * w, y0 + rnd() * h, rr(rmin, rmax), 0, 7); c.fill(); }
 }
-export function decal(kind, v = 0) {
+// 血跡類(手印、抓痕、血泊、垂流、噴濺、抹痕、拖痕、腳印)改用共用的寫實血跡圖集(src/art/stains*.js,
+// 有法線與粗糙度;floor = 地面版);其餘(水漬、黴、鏽、煙燻、嘔吐物…)維持這裡的 pi_decal 圖集
+export function decal(kind, v = 0, floor = false) {
+  if (isStainKind(kind)) return stainRect(kind, v, floor);
   const S = { pool: [256, 256], splat: [128, 128], drip: [96, 256], smear: [128, 256], hand: [96, 128], feet: [128, 256], stain: [192, 192], scratch: [128, 160], burn: [128, 128], mold: [128, 128], drag: [128, 256], dirt: [192, 192], rust: [64, 192], vomit: [128, 128], water: [192, 192], soot: [128, 192] }[kind] || [128, 128];
   const [w, h] = S;
   return decalRect(`dec:${kind}:${v}`, w, h, (c) => {

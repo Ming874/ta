@@ -9,6 +9,7 @@ import { backgroundTicker } from './sys/ticker.js';
 import { texStats, texturesReady } from './sys/texworker.js';
 import { prewarm, whenTypesReady, variantStats, getVariant, instantiate, VARIANT_TYPES } from './zombies/model.js';
 import { allMaterials as allZombieMaterials } from './zombies/materials.js';
+import { stainWarmMesh } from './art/stainmat.js';
 import * as audio from './audio.js';
 import { initNet } from './net/lobby.js';
 import { installHorror } from './horror/index.js';
@@ -180,6 +181,7 @@ async function warmRuntime() {
   const ZM = allZombieMaterials(), its = []; // [zombies-w3] 全部殭屍材質(含新類型的眼睛、刀刃、鏡片)
   inst.mesh.material = ZM; // 只編譯、不渲染
   g.add(inst.mesh);
+  g.add(stainWarmMesh()); // 寫實血跡材質(靜態貼花、血泊、滴落血漬共用)
   for (const o of game.horror?.warmObjects?.() || []) g.add(o); // [ghost] 靈異材質(幻影、痕跡、字跡、寒氣)一起預編譯與離屏畫一次
   // 執行期才會建立的常見材質型態(曳光、血池/貼花、光暈與血條 sprite、粒子):program 只看功能旗標(貼圖/霧…),不看顏色數值
   const tex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
