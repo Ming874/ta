@@ -70,7 +70,8 @@ export const inputMethods = {
     });
     window.addEventListener('blur', () => { this.player.keys = {}; inp.fireHeld = false; inp.aimHeld = false; inp.shift = false; });
 
-    const lock = () => { resumeAudio(); canvas.requestPointerLock(); };
+    // 沒有使用者手勢時(例如載入途中按了開始、建好後才自動開局)瀏覽器會拒絕鎖定:吞掉 Promise 錯誤,玩家再點一下畫面即可鎖定
+    const lock = () => { resumeAudio(); try { canvas.requestPointerLock()?.catch?.(() => {}); } catch { /* 舊瀏覽器同步丟錯 */ } };
     const startSingle = () => {
       // [motion] 開場:監視器關機 → 標題卡 → 睜眼(約 3.6 秒,任何按鍵跳過;滑鼠在點擊當下就鎖定,演出中也能動)
       if (this.motion?.coldOpen) { if (!this.motion.busy) { lock(); this.motion.coldOpen(() => this.begin()); } return; } // coldOpen 同步設 busy,鎖定事件到的時候選單還留著

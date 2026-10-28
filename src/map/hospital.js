@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { parseLayout } from './levels.js';
 import { createDressCtx } from './props/ctx.js';
-import { dressWorld } from './props/index.js';
+import { dressWorldSteps } from './props/index.js';
+import { prepareOutdoorSteps } from './props/outdoor.js';
 import { Buckets } from './hospital/builder.js';
 import { createShellContext, buildFloors, buildWalls, buildWindowCells, buildCeilings, buildVaults, buildPipes } from './hospital/shell.js';
 import { buildDoors, buildWindows, buildRails, buildFences, buildElevators, buildEdgeRails } from './hospital/openings.js';
@@ -21,6 +22,13 @@ import { procStats } from './hospital/proctex.js';
 // 細節在 src/map/hospital/*;這裡負責組裝、樓層可見性與每幀更新。
 // opts:{ poolSize }(光源池燈數,預設 8;品質設定可用 hospital.setQuality 改)
 export function buildHospital(world, layout, scene, opts = {}) {
+  const it = buildHospitalSteps(world, layout, scene, opts);
+  let r;
+  while (!(r = it.next()).done) { /* 同步跑完 */ }
+  return r.value;
+}
+// [perf] 分段版(generator):每個建構階段、每個區域的擺設、每塊合併之後 yield;載入時由 main.js 分時執行
+export function* buildHospitalSteps(world, layout, scene, opts = {}) {
   const t0 = performance.now();
   const L = layout || world?.layout || parseLayout();
   const root = new THREE.Group();
@@ -39,20 +47,21 @@ export function buildHospital(world, layout, scene, opts = {}) {
   const K = createShellContext(L, B);
   K.levelGroups = levelGroups;
   K.propGroups = propGroups; // 門扇實例跟著道具群組顯示(src/map/hospital/leaves.js)
-  buildRails(K);
-  buildFloors(K);
-  buildWalls(K);
-  buildWindowCells(K);
-  buildCeilings(K);
-  buildVaults(K);
-  buildPipes(K);
-  buildDoors(K);
-  buildWindows(K);
-  buildFences(K);
-  buildElevators(K);
-  buildStairs(K);
-  buildEdgeRails(K);
+  buildRails(K); yield;
+  buildFloors(K); yield;
+  buildWalls(K); yield;
+  buildWindowCells(K); yield;
+  buildCeilings(K); yield;
+  buildVaults(K); yield;
+  buildPipes(K); yield;
+  buildDoors(K); yield;
+  buildWindows(K); yield;
+  buildFences(K); yield;
+  buildElevators(K); yield;
+  buildStairs(K); yield;
+  buildEdgeRails(K); yield;
   try { buildSigns(K); } catch (e) { console.error('[hospital] 標示建構失敗', e); }
+  yield;
   const tShell = performance.now();
 
   // ---- 道具(依樓層合併靜態網格) ----
@@ -70,11 +79,14 @@ export function buildHospital(world, layout, scene, opts = {}) {
     return res;
   };
   let propErr = null;
-  try { dressWorld(ctx); } catch (e) { propErr = e; console.error('[hospital] dressWorld 失敗', e); }
+  try { yield* prepareOutdoorSteps(); } catch (e) { console.error('[hospital] 戶外材質準備失敗', e); }
+  try { yield* dressWorldSteps(ctx); } catch (e) { propErr = e; console.error('[hospital] dressWorld 失敗', e); }
   const { lights: propLights, events: propEvents } = ctx.finalize();
+  yield;
   const chunks = []; // 合併後的道具區塊(距離剔除用)
-  const propMeshes = mergeStatics(statics, propGroups, chunks);
+  const propMeshes = yield* mergeStatics(statics, propGroups, chunks);
   const propPbr = upgradePropMaterials();
+  yield;
   // 可推動的小道具是各自獨立的物件(不能合併):離玩家 34m 以外就不畫(夜裡有霧,看不出來),省 draw call
   const dynProps = [];
   for (const g of propGroups) for (const o of g.children) if (o.userData?.dynamic && !o.isInstancedMesh) dynProps.push(o);
@@ -83,13 +95,17 @@ export function buildHospital(world, layout, scene, opts = {}) {
 
   // ---- 燈光與氛圍 ----
   const lights = buildLights(K, { root, propLights, poolSize: opts.poolSize ?? 8 });
+  yield;
   const atmo = buildAtmosphere(K, { root, scene, groundMat: surf('soil') });
+  yield;
   atmo.moon.shadow.camera.layers.enable(NO_FLASH_SHADOW_LAYER);
   K.atmo = atmo;
   onGlowFog(setGlowFog);
   const meshes = B.build(levelGroups);
   const tris = B.tris;
+  yield;
   const events = createEvents({ K, L, lights, propEvents, root });
+  yield;
 
   // ---- 樓層可見性:地下室只在地下或靠近往下的樓梯時才畫 ----
   const b1 = L.levels.findIndex((l) => l.id === 'B1');
@@ -229,9 +245,10 @@ function plainBucket(mat) {
   if (!b) plainMats.set(key, (b = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: r / 5, metalness: mt / 5, side: mat.side, flatShading: mat.flatShading, envMapIntensity: mat.envMapIntensity ?? 1, name: 'plain:' + key })));
   return b;
 }
-function mergeStatics(statics, groups, chunks) {
+function* mergeStatics(statics, groups, chunks) {
   let count = 0;
-  statics.forEach((list, li) => {
+  for (let li = 0; li < statics.length; li++) {
+    const list = statics[li];
     const eff = new Map(); // 原材質 → 實際合併用的材質(純色材質 → 共用頂點色材質)
     const verts = new Map(); // 合併用材質 → 這一層的頂點數
     for (const m of list) {
@@ -265,6 +282,7 @@ function mergeStatics(statics, groups, chunks) {
       byMat.set(mat, arr);
       m.parent.remove(m);
     }
+    yield;
     for (const byMat of byKey.values()) {
       for (const [material, geos] of byMat) {
         for (let i = 0; i < geos.length; i += 400) {
@@ -279,10 +297,11 @@ function mergeStatics(statics, groups, chunks) {
           groups[li].add(mesh);
           chunks.push(mesh);
           count++;
+          yield;
         }
       }
     }
-  });
+  }
   return count;
 }
 

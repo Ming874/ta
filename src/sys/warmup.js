@@ -124,6 +124,19 @@ if (MC) MC.port1.onmessage = () => { const f = mq.shift(); if (f) f(); };
 export const yieldTask = () => new Promise((r) => { if (MC) { mq.push(r); MC.port2.postMessage(0); } else setTimeout(r, 0); });
 export const yieldNow = yieldTask; // 舊名稱
 
+// ---- 分時執行 generator(載入時的世界建構)----
+// 每一步跑完若已超過 budget ms 就讓出主執行緒(選單、載入條、Worker 結果照常處理);yield 出 Promise 時等它完成
+export async function runSliced(gen, { budget = 12, onStep = null } = {}) {
+  let t = performance.now(), r, n = 0;
+  while (!(r = gen.next()).done) {
+    n++;
+    const v = r.value;
+    if (v && typeof v.then === 'function') { await v; t = performance.now(); continue; }
+    if (performance.now() - t > budget) { onStep?.(n); await yieldTask(); t = performance.now(); }
+  }
+  return r.value;
+}
+
 // ---- GPU 行程節流 ----
 // 一次送出大量 shader(每個 program 數十 KB 原始碼)會塞滿命令緩衝區;D3D11 的 shader 翻譯/FXC 很慢,
 // 主執行緒會在下一個 GL 呼叫上同步等 GPU 行程消化 → 好幾秒的長任務。每批之後放一個 fence,
@@ -302,8 +315,8 @@ export function warmMaterials() {
 // ---- 環境貼圖(PMREM)----
 // 用等距柱狀環境貼圖的材質,three 會在第一次編譯時就地做 PMREM:建立模糊 shader 立刻畫 → 同步等 shader 編譯(D3D11 1~2 秒)。
 // 先用同尺寸把 PMREM 的 shader 在背景編好(program 依 defines 共用),之後那次轉換只剩 GPU 畫幾下
-export async function warmPMREM(game, roots) {
-  const r = game.renderer, sizes = new Set();
+export async function warmPMREM(game, roots, { sizes: extra = [] } = {}) {
+  const r = game.renderer, sizes = new Set(extra);
   for (const root of roots) root?.traverse?.((o) => {
     for (const m of [].concat(o.material || [])) {
       const t = m?.envMap;
@@ -311,23 +324,56 @@ export async function warmPMREM(game, roots) {
     }
   });
   if (!sizes.size) return 0;
-  const pm = new THREE.PMREMGenerator(r);
-  if (typeof pm._setSize !== 'function' || typeof pm._allocateTargets !== 'function') { pm.dispose(); return 0; } // 不同版本的 three:放棄(照舊同步)
+  if (typeof THREE.PMREMGenerator.prototype._setSize !== 'function' || typeof THREE.PMREMGenerator.prototype._allocateTargets !== 'function') return 0; // 不同版本的 three:放棄(照舊同步)
+  let pm = null;
   const cam = new THREE.OrthographicCamera(), progs = new Set();
-  const comp = (mat) => { if (!mat) return; const mesh = new THREE.Mesh(new THREE.BufferGeometry(), mat); for (const m of r.compile(mesh, cam)) { const p = r.properties.get(m).currentProgram; if (p) progs.add(p); } };
+  // PMREM 是畫進 HalfFloat 的 render target(線性、不做色調映射):編譯時也要設成 render target,參數才會一樣(畫到螢幕的版本是另一個 program)
+  // 幾何要用 PMREM 自己的 LOD 平面:有沒有 position 屬性是 program key 的一位(空幾何編出來的是另一個 program,
+  // 真的轉換時 GGX/模糊著色器還是會在 getUniforms 同步等編譯 300~500ms)
+  let target = null;
+  const comp = (mat) => { if (!mat) return; const mesh = new THREE.Mesh(pm._lodMeshes?.[0]?.geometry || new THREE.BufferGeometry(), mat), prev = r.getRenderTarget(); r.setRenderTarget(target); try { for (const m of r.compile(mesh, cam)) { const p = r.properties.get(m).currentProgram; if (p) progs.add(p); } } finally { r.setRenderTarget(prev); } };
+  // 每個尺寸一個生成器:同一個生成器換尺寸會 dispose 上一組材質(program 跟著被回收)
   for (const s of sizes) {
+    pm = new THREE.PMREMGenerator(r);
     pm._setSize(s);
-    const rt = pm._allocateTargets();
-    rt.dispose();
-    pm.compileEquirectangularShader();
-    comp(pm._equirectMaterial); comp(pm._blurMaterial); comp(pm._ggxMaterial);
+    target = pm._allocateTargets();
+    const cm = pm._compileMaterial; pm._compileMaterial = () => {}; // 只要材質;它自己用空幾何編的版本用不到
+    try { pm.compileEquirectangularShader(); pm.compileCubemapShader?.(); } finally { pm._compileMaterial = cm; }
+    comp(pm._equirectMaterial); comp(pm._cubemapMaterial); comp(pm._blurMaterial); comp(pm._ggxMaterial);
+    target.dispose(); pm._pingPongRenderTarget?.dispose(); // 顯存放掉(物件留著;這個生成器不會再拿來轉換)
+    keep.push(pm); // 生成器保留(它的材質持有剛編好的 program;dispose 會讓 three 回收)
     await gpuDrain(r);
   }
   await waitReady(progs);
   await initPrograms(progs);
-  // 生成器保留(它的材質持有剛編好的 program;dispose 會讓 three 回收)
-  keep.push(pm);
   return progs.size;
+}
+
+// 等距柱狀貼圖 → 立方體貼圖(非 PBR 材質或背景用到 equirect 時,three 在 compile/第一次畫時就地轉換):
+// 轉換用的 ShaderMaterial 每次新建、第一次會同步等編譯(~0.5 秒)。用假的 renderer 跑一次轉換拿到它的 shader 原始碼,
+// 自己建一份同樣的材質非同步編好並留著(program 依原始碼共用,真的轉換時直接用編好的)
+export function warmCubeFromEquirect(game) {
+  const r = game.renderer;
+  let cap = null;
+  const fake = {
+    isWebGLRenderer: true, coordinateSystem: r.coordinateSystem, reversedDepthBuffer: r.reversedDepthBuffer, autoClear: false, xr: { enabled: false, isPresenting: false },
+    state: { buffers: { depth: { getReversed: () => false } } },
+    getRenderTarget: () => null, getActiveCubeFace: () => 0, getActiveMipmapLevel: () => 0, setRenderTarget() {}, clearDepth() {}, clear() {},
+    render(s) { cap ??= s; },
+  };
+  const tex = new THREE.DataTexture(new Uint8Array(8 * 4 * 4), 8, 4);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  const crt = new THREE.WebGLCubeRenderTarget(16);
+  try { crt.fromEquirectangularTexture(fake, tex); } catch { cap = null; }
+  const src = cap?.material;
+  if (!src?.vertexShader || !r.compileAsync) { crt.dispose(); tex.dispose(); return Promise.resolve(0); }
+  const mat = new THREE.ShaderMaterial({ name: 'CubemapFromEquirect', uniforms: { tEquirect: { value: tex } }, vertexShader: src.vertexShader, fragmentShader: src.fragmentShader, side: THREE.BackSide, blending: THREE.NoBlending });
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(5, 5, 5), mat);
+  keep.push(mat);
+  const prev = r.getRenderTarget();
+  let p;
+  try { r.setRenderTarget(crt); p = r.compileAsync(mesh, new THREE.PerspectiveCamera()); } finally { r.setRenderTarget(prev); }
+  return p.then(() => { crt.dispose(); return 1; }, () => 0);
 }
 
 // 真的畫一次(畫進 4x4 的離屏 target,玩家看不到):有些成本要到「第一次繪製」才發生——
@@ -351,13 +397,35 @@ export function warmDraw(game, objects) {
 // 分批:每批只畫 batch 個(其餘物件用圖層暫時排除),批與批之間讓出主執行緒並等 GPU 行程追上 → 不會變成一個數秒的長任務。
 // 陰影 pass 不畫(陰影深度 program 已預編譯;每批都重畫手電筒陰影太浪費)
 const WARM_LAYER = 30;
+// 陰影圖先各畫一次(相機只看 WARM_LAYER:主 pass 什麼都不畫,只有陰影 pass)。要在 warmDrawScene 之前:
+// 陰影圖還沒建立時,陰影取樣器綁到格式不合的貼圖(ANGLE 報 Mismatch between texture format and sampler type),那次離屏繪製可能沒真的暖到。
+// 實測:開始畫面第一幀的慢繪製(玻璃/貼花)變少,但沒完全消失(原因未完全確認)
+export async function warmShadows(game) {
+  const r = game.renderer, scene = game.scene, cam = game.camera, sm = r.shadowMap, lights = [];
+  if (!sm.enabled) return;
+  scene.traverse((o) => { if (o.isLight) lights.push(o); });
+  warmRT = warmRT || new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType });
+  const mask = cam.layers.mask, prev = r.getRenderTarget();
+  for (const l of lights) l.layers.enable(WARM_LAYER);
+  cam.layers.set(WARM_LAYER);
+  sm.needsUpdate = true;
+  try { r.setRenderTarget(warmRT); r.render(scene, cam); } finally {
+    r.setRenderTarget(prev);
+    cam.layers.mask = mask;
+    for (const l of lights) l.layers.disable(WARM_LAYER);
+  }
+  await gpuDrain(r, 3000);
+}
 export async function warmDrawScene(game, { batch = 12, all = false } = {}) {
   const r = game.renderer, scene = game.scene, cam = game.camera, sm = r.shadowMap;
   // all:每個物件都畫一次(上傳全部幾何緩衝 / VAO;開始畫面前做,第一幀與走進新區域時就不會一次上傳一大堆)
   const reps = all ? [] : representatives(scene), lights = [];
   if (all) scene.traverse((o) => { if ((o.isMesh || o.isLine || o.isPoints || o.isSprite) && o.material && o.geometry) reps.push(o); });
   scene.traverse((o) => { if (o.isLight) lights.push(o); });
-  warmRT = warmRT || new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType });
+  // 跟主畫面的合成 target 一樣用 MSAA(離屏繪製的狀態盡量和真的第一幀相同)
+  const ns = game.composer?.renderTarget1?.samples || 0;
+  if (warmRT && warmRT.samples !== ns) { warmRT.dispose(); warmRT = null; }
+  warmRT = warmRT || new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: ns });
   for (let i = 0; i < reps.length; i += batch) {
     await gpuDrain(r, 1000);
     const list = reps.slice(i, i + batch), saved = [];
