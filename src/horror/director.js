@@ -102,6 +102,7 @@ export const KINDS = {
   windowFace: { tier: 'big', cd: 360, jump: true, bj: true, act: 2, cat: 'figure', w: 0.9 },
   doorBurst: { tier: 'big', cd: 360, jump: true, bj: true, act: 2, cat: 'door', w: 0.9 },
   mirrorRush: { tier: 'big', cd: 360, jump: true, bj: true, act: 2, cat: 'figure', w: 0.8 },
+  memory: { tier: 'small', cd: 0, act: 1, cat: 'memory' }, // 回憶(memories.js 自己排;這裡只記錄)
   // 殭屍代理的追逐(外部):request('chase') → notify('chase', { dur }) 期間鎖住其他驚嚇;結束 notify('chaseEnd', { calm })
   chase: { tier: 'small', cd: 60, ext: true, act: 1, cat: 'host' },
 };

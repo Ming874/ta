@@ -79,7 +79,7 @@ export class Whispers {
     if (this.log.length > 30) this.log.shift();
     if (o.subtitle !== false) {
       const clock = hnd && A.ctx ? () => A.ctx.currentTime : undefined;
-      this.h.subs.show({ text: L.text, ear: ear === 'world' ? 'both' : ear, filter, times: hnd ? hnd.times : timesByIndex(sy, 0.55), t0: hnd ? hnd.t0 : undefined, clock, hold: 1.8, tag, cap: pa });
+      this.h.subs.show({ text: L.text, ear: ear === 'world' ? 'both' : ear, filter, times: hnd ? hnd.times : timesByIndex(sy, 0.55), t0: hnd ? hnd.t0 : undefined, clock, hold: 1.8, tag, cap: pa, style: o.style });
     }
     this.h.emit('whisper', { id: L.id, text: L.text, ear, filter, ghost: L.ghost || null, hint: L.hint || null });
     const me = this.cur;

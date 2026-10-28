@@ -590,5 +590,20 @@ export function whistle(pos, dur = 3.2) {
   for (let i = 0; i < n; i++) { const t = h.t + (i / n) * dur, f = notes[i] * rand(0.985, 1.01); tone(h.in, t, { f, f1: f * rand(0.97, 1.0), dur: dur / n * 0.9, a: 0.05, g: 0.045 }); }
   burst(h.in, h.t, { buf: 'pink', type: 'bandpass', f: 1000, q: 3, dur, a: 0.2, g: 0.012 }); // 氣聲
 }
+// 回憶的背景:2003 年的病房/大廳/夜裡(人聲嘈雜、監視器嗶聲、遠處電話、口罩下的呼吸與腳步、磁帶嘶聲;頻寬像舊錄音)
+// kind 'ward' | 'lobby' | 'night' | 'dock';回傳 handle(kill() 提早結束)
+export function pastBed(dur = 18, kind = 'ward') {
+  const h = emit({ bus: 'scare', prio: 6, dur: dur + 1.5, room: 0.5, hall: 0.6, gain: 1 });
+  if (!h) return null;
+  const d = filter('lowpass', 3400, 0.7, h.in), t0 = h.t + 0.6, T = t0 + dur - 0.8;
+  const crowd = kind === 'lobby' ? 0.05 : kind === 'night' ? 0.008 : kind === 'dock' ? 0.012 : 0.03;
+  for (let t = t0; t < T; t += rand(0.5, 1.1)) burst(d, t, { buf: 'pink', type: 'bandpass', f: rand(380, 900), q: rand(2, 4), dur: rand(0.4, 1.0), a: 0.25, g: crowd });
+  if (kind === 'ward' || kind === 'night') for (let t = t0 + rand(0, 1); t < T; t += 1.05) tone(d, t, { f: 980, dur: 0.08, a: 0.003, g: kind === 'night' ? 0.018 : 0.03 });
+  if (kind === 'ward' || kind === 'lobby') for (let t = t0 + rand(2, 5); t < T - 2; t += rand(6, 9)) for (let i = 0; i < 2; i++) { tone(d, t + i * 0.45, { f: 1250, dur: 0.35, a: 0.01, g: 0.012 }); tone(d, t + i * 0.45, { f: 1550, dur: 0.35, a: 0.01, g: 0.01 }); }
+  if (kind === 'dock') for (let t = t0 + 1; t < T; t += rand(2.5, 4)) tone(d, t, { type: 'sawtooth', f: rand(55, 70), dur: 1.4, a: 0.4, g: 0.012 }); // 發財車怠速
+  for (let t = t0 + 1; t < T; t += rand(0.45, 0.6)) if (Math.random() < (kind === 'night' ? 0.15 : 0.5)) burst(d, t, { type: 'lowpass', f: 700, dur: 0.05, g: 0.035 });
+  burst(d, t0, { buf: 'pink', type: 'highpass', f: 2500, dur: dur - 0.8, a: 1, g: 0.012 });
+  return h;
+}
 export const ghostState = () => ({ live: LIVE.length });
-export const ghost = { whisper, track, breathNeck, stinger, silence, crawl, squeak, wetStep, scrawl, cart, elevator, tubeOff, lullaby, gust, mist, vanish, creakLong, giggle, knock, rings, callBell, flashBuzz, clip, whoosh, paGlitch, breaker, beeps, tune, roll, bounce, chain, exhale, whistle, renderBinaural, syllabify, state: ghostState, EAR };
+export const ghost = { whisper, track, breathNeck, stinger, silence, crawl, squeak, wetStep, scrawl, cart, elevator, tubeOff, lullaby, gust, mist, vanish, creakLong, giggle, knock, rings, callBell, flashBuzz, clip, whoosh, paGlitch, pastBed, breaker, beeps, tune, roll, bounce, chain, exhale, whistle, renderBinaural, syllabify, state: ghostState, EAR };

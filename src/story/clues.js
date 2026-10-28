@@ -69,6 +69,8 @@ export const WORDS = {
 export const CARDS = [
   { id: 'hc.01', title: '封院公告', src: 'env', words: ['w.health', 'w.sarspt'], sup: [],
     text: '霧港市衛生局公告：聖心醫院自九十二年四月二十九日中午十二時起，封院十四日。\n（公告下緣，有人用原子筆一天畫一槓，畫到第十四槓。）' },
+  { id: 'hc.02', title: '柱子上的字', src: 'env', words: ['w.downstairs'], sup: ['b1', 'b3'],
+    text: '「不要相信廣播」。紅漆褪成了磚色。萬嵐裝潢時漆過兩次白漆，字還是透了出來。筆畫很工整，像在寫病歷。' },
   { id: 'hc.03', title: '院內廣播紀錄簿・2003', src: 'note', words: ['w.drho'], sup: ['b1'],
     text: '92/5/4　22:10　呼叫：鄭玉蘭護理長至一樓大廳　申請：神經內科 何\n92/5/5　23:40　呼叫：鄭玉蘭護理長至一樓大廳　申請：神經內科 何\n（5/5 那一行旁邊，有人用紅筆畫了一個問號。）' },
   { id: 'hc.04', title: '207 進出登記・2003', src: 'note', words: ['w.drho'], sup: ['b1', 'b5'],
@@ -116,6 +118,8 @@ export const CARDS = [
   { id: 'hc.30', title: '交班簿・最後一頁', src: 'note', words: [], sup: ['b4', 'b6'], key: true,
     text: '5/12　封院第 14 天。燒退一點。左手腫。\n207 今天眼睛有動。我跟她說：燈我會顧，等你自己醒來，自己關。\n如果我走了，告訴我女兒：我不是 SARS。是針。\n告訴阿孫：阿嬤沒有不要回家。' },
   { id: 'hc.31', title: '小鈴的工作證', src: 'env', words: ['w.xiaoling'], sup: ['b0'], text: '霧港之聲　中秋前夕特別節目　工作證\n小鈴（沈秀鈴）　1999/9/20　萬嵐山研究站' },
+  { id: 'hc.32', title: '阿嬤抱著你', src: 'photo', words: [], sup: [], text: '2000 年，新生兒室。阿嬤抱著滿月的你，保溫箱上放著一碗油飯和一疊床母衣。
+背面：「床母娘娘，保庇阮孫。　玉蘭」' },
   { id: 'hc.33', title: '回神傳單', src: 'note', words: [], sup: [], text: '讓每一位家人，都回得來。\n（背面，原子筆）我媽昨天叫了我的名字。她已經十年沒開口了。' },
   // 靈異事件的劇情回報(horror/lines.js STORY3;不解鎖詞,只加支持)
   { id: 'hc.34', title: '耳語：十四暝', src: 'ghost', words: [], sup: ['b5'], text: '燈泡晃動時，阿嬤說：「那盞燈……阿嬤顧了十四暝。」' },
