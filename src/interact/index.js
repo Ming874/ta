@@ -48,14 +48,14 @@ export function buildInteract(game) {
 
 // 第一次有電話響:提示怎麼接(走新手提示系統;提示被關掉時改用訊息列,一局一次)
 function hints(game, ix) {
-  TIP_TEXT.phone ||= ['電話在響', '附近的電話在響……循著鈴聲找到它,看著電話按 [E] 接聽'];
-  TIP_TEXT.interact ||= ['調查', '看著東西時畫面下方出現提示,就按 [E]:電話、門、開關、抽屜、收音機……有些要按住 [E]'];
+  TIP_TEXT.phone ||= ['電話在響', '附近的電話在響……循著鈴聲找到它，看著電話按 [E] 接聽'];
+  TIP_TEXT.interact ||= ['調查', '看著東西時畫面下方出現提示，就按 [E]：電話、門、開關、抽屜、收音機……有些要按住 [E]。看到、撿到、聽到的線索會自己記進推理本（[J]）。'];
   let told = false;
   ix.on('ring', () => {
     if (told) return;
     told = true;
     const T = game.ui?.tips;
-    if (!(T && T.show('phone', 0.2)) && !T?.has?.('phone')) game.ui?.feed?.('附近的電話在響……循著鈴聲找到它,按 [E] 接聽', { color: '#ffd27a', ms: 6500 });
+    if (!(T && T.show('phone', 0.2)) && !T?.has?.('phone')) game.ui?.feed?.('附近的電話在響……循著鈴聲找到它，按 [E] 接聽', { color: '#ffd27a', ms: 6500 });
   });
   ix.on('reset', () => { told = false; });
   ix.on('focus', () => { game.ui?.tips?.show?.('interact', 0.4); });

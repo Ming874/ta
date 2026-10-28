@@ -45,11 +45,12 @@ export class Flags {
 
 // ---------- 道具:鑰匙、保險絲、油桶…(每局重來;多人時各自的) ----------
 export const ITEMS = {
-  fuse: { name: '保險絲', icon: '⌁' }, oil: { name: '油桶', icon: '⛽' }, 'card.security': { name: '保全識別證', icon: '▣' },
+  fuse: { name: '保險絲', icon: '⌁' }, oil: { name: '油桶', icon: '⛽' }, 'card.security': { name: '門禁卡', icon: '▣' },
+  oilrice: { name: '油飯', icon: '◉' }, hongbao: { name: '紅包', icon: '▤' }, slip: { name: '紙條', icon: '▭' },
 };
 export class Inventory {
   constructor(onChange) { this.m = new Map(); this.onChange = onChange; }
-  name(id) { return ITEMS[id]?.name || (id.startsWith('key.') ? `鑰匙(${ITEMS[id]?.label || id.slice(4)})` : id); }
+  name(id) { return ITEMS[id]?.name || (id.startsWith('key.') ? `鑰匙（${ITEMS[id]?.label || id.slice(4)}）` : id); }
   count(id) { return this.m.get(id) || 0; }
   has(id, n = 1) { return this.count(id) >= n; }
   add(id, n = 1) { this.m.set(id, this.count(id) + n); this.onChange?.(id, this.count(id), n); return this.count(id); }
@@ -161,14 +162,14 @@ export class Interact {
   // 不能用的原因(字串)或 null
   denyOf(e, ctx) {
     const g = this.game, nm = e.name || '';
-    if (e.once === 'round' && e.usedRound === g.round) return e.usedText || `${nm} · 下一回合再來`;
+    if (e.once === 'round' && e.usedRound === g.round) return e.usedText || `${nm} · 下一次燈篙再來`;
     if (e.once && e.once !== 'round' && e.used) return e.usedText || `${nm} · 已經用過了`;
     if (e.cdUntil > g.time) return e.cdText || `${nm} · 稍後再試`;
     const rq = e.require;
     if (rq) {
-      if (rq.item && !this.inv.has(rq.item, rq.n || 1)) return rq.text || `${nm} · 需要 ${this.inv.name(rq.item)}${rq.n > 1 ? ` (${this.inv.count(rq.item)}/${rq.n})` : ''}`;
+      if (rq.item && !this.inv.has(rq.item, rq.n || 1)) return rq.text || `${nm} · 需要 ${this.inv.name(rq.item)}${rq.n > 1 ? `（${this.inv.count(rq.item)}/${rq.n}）` : ''}`;
       if (rq.flag && !this.flags.has(rq.flag)) return rq.text || `${nm} · 還不能用`;
-      if (rq.coins && (g.player.coins || 0) < rq.coins) return rq.text || `${nm} · 需要 ${rq.coins} 金幣`;
+      if (rq.coins && (g.player.coins || 0) < rq.coins) return rq.text || `${nm} · 需要 ${rq.coins} 元`;
     }
     if (e.when) { const w = e.when(ctx); if (w === false) return `${nm} · 現在不能用`; if (typeof w === 'string') return w; }
     return null;

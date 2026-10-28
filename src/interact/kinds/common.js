@@ -8,9 +8,9 @@ import { MATS } from '../../physics/truth.js';
 // 各種互動物件共用的工具(由 place.js 建一個 api 物件傳給每個種類的 build):
 //  座標:spot = { li, x, y, z, yaw, nx, nz, zone, mount };物件局部座標 +Z 朝房間內、原點在牆面/地面
 //  說話:speak(line, { filter, pos, ear }) → 優先交給 game.horror.whisper(靈異系統,有自己的字幕);沒有就用合成的電話聲 + 自己的字幕
-//  獎勵:loot(spec, pos)(金幣、彈藥、道具、紙條)、heal、give、note(閱讀器)
+//  獎勵:loot(spec, pos)(錢、彈藥、道具、紙條)、heal、give、note(閱讀器)
 const _v = new THREE.Vector3();
-const WHO_COLOR = { '院內廣播': '#b8c2c6', '錄音帶': '#d9c48a', 'AM 1207 · 小鈴': '#9fd0ff', '對講機 · 金水伯': '#ffcf8a', '？？？': '#c8b8e8' };
+const WHO_COLOR = { '院內廣播': '#b8c2c6', '院內廣播（2003 年的錄音）': '#cbbf9e', '錄音帶': '#d9c48a', 'AM 1207 · 小鈴': '#9fd0ff', '對講機 · 金水伯': '#ffcf8a', '來電 · 何啟明': '#a9b6be', '阿嬤': '#e6c6c0', '？？？': '#c8b8e8' };
 export const dur = (text) => { const s = String(text || ''); const n = s.replace(/[\s()()「」]/g, '').length; return 0.6 + n / 4.5 + (s.match(/[……，。,.?!?!]/g) || []).length * 0.12; };
 
 export function makeApi(game, ix, kit, R) {
@@ -109,9 +109,9 @@ export function makeApi(game, ix, kit, R) {
       }
       if (!spec) { const l = LINES.MISC?.locker?.empty; api.toast(l ? l[(R2() * l.length) | 0] : '空的。', '#a3a39a'); return false; }
       if (spec.item) api.give(spec.item, spec.n || 1, spec.label);
-      if (spec.coins) { api.coins(spec.coins); api.toast(`${spec.coins} 金幣`, '#f2c84b'); sfx.coin(0); }
+      if (spec.coins) { api.coins(spec.coins); api.toast(`${spec.coins} 元`, '#f2c84b'); sfx.coin(0); }
       if (spec.ammo) api.ammo();
-      if (spec.heal) { const g = api.heal(spec.heal); api.toast(g > 0 ? `+${Math.round(g)} 生命` : '止痛藥(用不到)', '#7dffae'); }
+      if (spec.heal) { const g = api.heal(spec.heal); api.toast(g > 0 ? `+${Math.round(g)} 生命` : '止痛藥（用不到）', '#7dffae'); }
       if (spec.scare) { sfx.scare(R2() < 0.5 ? 'breath_close' : 'whisper', pos); const l = LINES.MISC?.locker?.scare; if (l) api.toast(l[(R2() * l.length) | 0], '#a3a39a'); }
       if (spec.flag) ix.flags.set(spec.flag, true);
       if (spec.note) api.note(spec.note);

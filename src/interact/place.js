@@ -260,14 +260,14 @@ function answering() {
       st.blink = ix.tick(() => { if (st.played) return false; led.color(li, (api.game.time * 1.6) % 1 < 0.5 ? 0xff2010 : 0x220404); return true; });
       return ix.register(v, {
         id: spec.id || 'voicemail', kind: 'answering', name: '答錄機', reach: 1.9, radius: 0.14, scope: 'map', cooldown: 1,
-        prompt: () => (st.talk ? '停止播放' : st.played ? '再聽一次留言' : '播放留言(紅燈在閃)'),
+        prompt: () => (st.talk ? '停止播放' : st.played ? '再聽一次留言' : '播放留言（紅燈在閃）'),
         onUse: () => {
           if (st.talk) { st.talk.stop(); st.talk = null; ixs.tapeLine(false); return; }
           st.played = true; led.color(li, 0x220404);
           ixs.switchClick(v, true);
           const l = api.lineById(spec.message) || api.lineList('PHONE.voicemail')[0];
           ixs.tapeLine(true);
-          api.say('', '(嗶——)', 1200);
+          api.say('', '（嗶——）', 1200);
           ix.after(1.2, () => { st.talk = l ? api.speak(l, { filter: 'phone', pos: v }) : null; ix.after((st.talk?.dur || 1) + 0.5, () => { ixs.tapeLine(false); st.talk = null; }); });
           ix.flags.set('h.ev.voicemail', true);
           ix.emit('voicemail', l);

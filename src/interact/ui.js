@@ -9,7 +9,7 @@ import { ix as ixs } from '../audio.js';
 // 按鍵在 window 捕獲階段處理(比 flow.js / input.js 早),面板吃掉的按鍵不會切武器、不會走路。
 const mk = (cls, html = '', tag = 'div') => { const e = document.createElement(tag); e.className = cls; if (html) e.innerHTML = html; return e; };
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-const KIND = { note: '紙條', letter: '信', log: '紀錄', chart: '病歷', photo: '照片', tape: '錄音帶', drawing: '蠟筆畫', poster: '告示', whiteboard: '白板', logbook: '登記簿', polaroid: '拍立得' };
+const KIND = { note: '紙條', letter: '信', log: '紀錄', chart: '病歷', photo: '照片', tape: '錄音帶', drawing: '蠟筆畫', poster: '告示', whiteboard: '白板', logbook: '登記簿', polaroid: '拍立得', report: '通報單', video: '錄影帶' };
 const _v = new THREE.Vector3();
 const MOVE = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
@@ -107,7 +107,7 @@ export class IxUI {
       : `<div class="tx">${esc(note.body).replace(/\n/g, '<br>')}</div>`;
     el.innerHTML = `<div class="sheet"><div class="kd">${esc(KIND[kind] || '文件')}${note.where ? ` · ${esc(note.where)}` : ''}</div>
       <h2>${esc(note.title)}</h2>${note.author || note.date ? `<div class="meta">${esc([note.author, note.date].filter(Boolean).join(' · '))}</div>` : ''}${body}</div>
-      <div class="ft">${withKeys(tape ? '[E] 收起(錄音帶繼續播) · [Esc] 暫停選單' : '[E] 收起 · [Esc] 暫停選單')}${this.game.net ? ' · 移動或受傷會自動收起' : ''}</div>`;
+      <div class="ft">${withKeys(tape ? '[E] 收起（錄音帶繼續播） · [J] 推理本 · [Esc] 暫停選單' : '[E] 收起 · [J] 推理本 · [Esc] 暫停選單')}${this.game.net ? ' · 移動或受傷會自動收起' : ''}</div>`;
     const m = { el, kind: 'reader', note, onClose: (s) => { if (s) ixs.paperClose(); opts.onClose?.(); } };
     if (tape) m.mark = (i) => { const li = el.querySelectorAll('.tr li'); li.forEach((x, j) => x.classList.toggle('on', j === i)); li[i]?.scrollIntoView?.({ block: 'nearest' }); };
     this.openModal(m);

@@ -198,7 +198,7 @@ function makePhone(api, o) {
       this.state = 'call'; this.offT = 0; this.ghost = false; this.line = null; this.end = 'dead'; this._ended = false;
       const hz = game.horror;
       let call = null, talk = null;
-      if (ln) { // 劇情來電(小芳的分機 B12、回撥…):我們自己的台詞
+      if (ln) { // 劇情來電(何啟明、回撥…):我們自己的台詞
         if (ln.id) this.used.add(ln.id);
         talk = api.speak(ln, { filter: 'phone' });
         ix.flags.set('h.call.' + (ln.id || key), true);
@@ -218,7 +218,7 @@ function makePhone(api, o) {
       ixs.lineNoise(true);
       const dur = call ? call.dur ?? 6 : talk?.dur ?? 2.5;
       this.callEnd = game.time + dur + 0.4;
-      if (!call && !talk) api.say('', '(只有沙沙的雜訊)', 2200, 'phone');
+      if (!call && !talk) api.say('', '（只有沙沙的雜訊）', 2200, 'phone');
       ix.emit('call', P, ln || call || null);
     },
     pickUp() { // 沒在響:撥號音;偶爾線上已經有人
@@ -256,7 +256,7 @@ function makePhone(api, o) {
         }
         if (this.ringT <= 0) { // 沒人接:不消耗任何內容
           this.stopRing(); this.state = 'idle'; this.ghost = false; this.line = null;
-          if (api.near(pos, 14)) { const ms = api.lineList('PHONE.missed'); const m = ms[(R() * ms.length) | 0]; if (m) api.say('', m.text || '(電話停了。)', 2600); }
+          if (api.near(pos, 14)) { const ms = api.lineList('PHONE.missed'); const m = ms[(R() * ms.length) | 0]; if (m) api.say('', m.text || '（電話停了。）', 2600); }
           ix.emit('missed', P);
         }
         return true;
@@ -342,7 +342,7 @@ export const phones = {
     }
     const pos = api.wp(s, ...focus);
     const key = spec.id || `ph${s.li}_${Math.round(pos.x * 10)}_${Math.round(pos.z * 10)}`;
-    const name = (spec.ext && style !== 'nurse' ? `電話(${/^[A-Z]?\d/.test(spec.ext) ? '分機 ' : ''}${spec.ext})` : null) || { wall: '電話', desk: '電話', nurse: '護理站電話', pay: '公共電話' }[style];
+    const name = (spec.ext && style !== 'nurse' ? `電話（${/^[A-Z]?\d/.test(spec.ext) ? '分機 ' : ''}${spec.ext}）` : null) || { wall: '電話', desk: '電話', nurse: '護理站電話', pay: '公共電話' }[style];
     return makePhone(api, {
       key, pos, style, li: s.li, zone: s.zone, hs, hsI, hsM, led, leds, spec, name, face: { x: s.nx || 0, z: s.nz || 0 },
       calls: (spec.calls || []).map((id) => api.lineById(id)).filter(Boolean), pool: api.lineList(POOL[style] || 'PHONE.ring'),
