@@ -128,13 +128,14 @@ export function installObjectives(game) {
     page() {
       const t0 = game.time;
       later(1.2, () => { const q = c.at('h.ix.pillow'); if (q && !D()?.has?.('hc.30')) { run.glint = q; run.glintT = 10; } });
+      later(7, () => { if (!D()?.has?.('hc.30') && c.zone === 'f2_ward_207') c.ama('枕頭……阿嬤囥佇枕頭內底。'); }); // 她要你拿到那一頁(靜默期才說)
       const go = () => { O.flag('h.truck'); c.talk([[KS, '少年仔！車來囉！', 2.0], [KS, '急診車道，阿伯佇遐等你。緊上車！', 3.4]]); };
       let out = 0;
       X()?.tick?.((dt) => {
         if (run.evac || game.state !== 'playing') return false;
         out = c.zone === 'f2_ward_207' ? 0 : out + dt;
         const ho = game.story?.climax?.run, hoBusy = !!ho && !!O.has('h.boss10') && (!ho.hoRang || ho.hoState === 'ringing' || ho.hoState === 'talk') && game.time - t0 < 120; // 何董的電話先講完
-        if (!hoBusy && (D()?.has?.('hc.30') || out > 4 || game.time - t0 > 30)) { later(ho?.hoRang ? 4.5 : D()?.has?.('hc.30') ? 5 : 1.5, go); return false; }
+        if (!hoBusy && (D()?.has?.('hc.30') || out > 4 || game.time - t0 > 30)) { later(ho?.hoRang ? 9.5 : D()?.has?.('hc.30') ? 5 : 1.5, go); return false; } // 電話之後讓小鈴先說完
         return true;
       });
     },
