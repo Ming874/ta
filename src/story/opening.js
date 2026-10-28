@@ -39,6 +39,7 @@ export function installOpening(game, S) {
   function start() {
     if (run.started || game.state !== 'playing' || game.net?.mode?.pvp || game.net?.pvp) return;
     run.started = true; run.t0 = game.time;
+    try { H()?.reveal?.('zheng'); } catch { /* 略 */ } // 阿嬤從第一句起字幕就是「阿嬤」(懸念是發生了什麼事,不是她是誰)
     const Dr = H()?.director;
     if (Dr?.last) Dr.last.chase = Dr.t; // 第一次追逐至少等一分鐘:先認識小鈴,再被她叫你快跑
     run.open = seq(game, [1.2, ...OPEN.map((L) => (typeof L === 'function' ? () => { try { ixs.tuneSweep?.(game.player.pos); sfx.radio?.(true, 0.2); X.after(1.2, () => sfx.radio?.(false)); } catch { /* 略 */ } } : L))], { alive: () => game.state === 'playing' && game.round <= 1 });

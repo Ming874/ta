@@ -6,7 +6,7 @@ import { syllabify } from '../audio/ghost.js';
 // say(lineId | text, { ear, subtitle, filter, priority, pos, mode, g, orbit }) → handle { id, ear, end, dur, line, kill(), stop() } | null
 // filter 'pa' = 院內廣播(萬嵐系統的合成女聲,從天花板喇叭);orbit = 繞著頭轉 { r, w(弧度/秒), a(起始角,0 = 正後方) }
 const A = _internal.A;
-const TAG = { phone: '電話', radio: '收音機', pa: '院內廣播' }; // STORY.md §11.1 的字幕標籤
+const TAG = { phone: '電話', radio: '收音機', pa: '醫院廣播' }; // STORY.md §11.1 的字幕標籤
 // 玩家暱稱(大廳設定的;沒有就用「阿孫」)
 const nick = () => { try { const n = localStorage.getItem('hz.nick'); return n && n.trim() ? n.trim().slice(0, 12) : '阿孫'; } catch { return '阿孫'; } };
 export class Whispers {

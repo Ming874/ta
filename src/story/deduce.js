@@ -135,7 +135,7 @@ export function installDeduce(game) {
     if (!api || !lines?.length || game.story?.ending?.active) { cb?.(); return; } // 結局裡只有結局自己的聲音
     let t = 0;
     for (const [who, text, secs] of lines) {
-      ix().after(t, () => api.speak({ who, parts: [text], voice: /小鈴|女/.test(who) ? 'woman' : 'old' }, { filter: o.filter || (/對講機|AM/.test(who) ? 'radio' : 'phone'), noHorror: true }));
+      ix().after(t, () => api.speak({ who, parts: [text], voice: /小美|小鈴|阿嬤|女|淑芬/.test(who) ? 'woman' : /王醫師|男/.test(who) ? 'man' : 'old' }, { filter: o.filter || (/對講機|收音機|AM/.test(who) ? 'radio' : 'phone'), noHorror: true }));
       t += (secs || 3) + 0.3;
     }
     if (cb) ix().after(t + 0.2, cb);
@@ -194,8 +194,8 @@ export function installDeduce(game) {
     const on2F = /^f2_/.test(game.hospital?.zone?.id || '');
     try { sfx.folk('ama', game.player.pos); } catch { /* 還沒烘焙好 */ }
     if (why === 'look' && on2F) {
-      X0?.after?.(4.2, () => h?.whisper?.('h.w.tc1', { ear: 'both', priority: 9, force: true }));
-      if (!D.has('hc.19')) X0?.after?.(8.4, () => h?.whisper?.('h.w.tc2', { ear: 'both', priority: 9, force: true }));
+      X0?.after?.(6.5, () => h?.whisper?.('h.w.tc1', { ear: 'both', priority: 9, force: true })); // 一次一句,中間留 6 秒
+      if (!D.has('hc.19')) X0?.after?.(13, () => h?.whisper?.('h.w.tc2', { ear: 'both', priority: 9, force: true }));
     } else if (!D.has('hc.19')) { run.tqLate = true; ix()?.flags?.set?.('h.touqi.late', true); }
   }
 

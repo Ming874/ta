@@ -10,7 +10,7 @@ import { MATS } from '../../physics/truth.js';
 //  說話:speak(line, { filter, pos, ear }) → 優先交給 game.horror.whisper(靈異系統,有自己的字幕);沒有就用合成的電話聲 + 自己的字幕
 //  獎勵:loot(spec, pos)(錢、彈藥、道具、紙條)、heal、give、note(閱讀器)
 const _v = new THREE.Vector3();
-const WHO_COLOR = { '院內廣播': '#b8c2c6', '院內廣播（2003 年的錄音）': '#cbbf9e', '錄音帶': '#d9c48a', 'AM 1207 · 小鈴': '#9fd0ff', '對講機 · 金水伯': '#ffcf8a', '來電 · 何啟明': '#a9b6be', '阿嬤': '#e6c6c0', '？？？': '#c8b8e8' };
+const WHO_COLOR = { '醫院廣播': '#b8c2c6', '醫院廣播（2003 年的舊錄音）': '#cbbf9e', '錄音帶': '#d9c48a', '收音機 · 小美': '#9fd0ff', '對講機 · 金水伯': '#ffcf8a', '電話 · 王醫師': '#a9b6be', '阿嬤': '#e6c6c0', '？？？': '#c8b8e8' };
 export const dur = (text) => { const s = String(text || ''); const n = s.replace(/[\s()()「」]/g, '').length; return 0.6 + n / 4.5 + (s.match(/[……，。,.?!?!]/g) || []).length * 0.12; };
 
 export function makeApi(game, ix, kit, R) {
@@ -60,7 +60,7 @@ export function makeApi(game, ix, kit, R) {
           if (cancelled) return;
           let used = false;
           if (hz?.whisper && !o.noHorror) { // 靈異系統的耳語/電話聲(有自己的字幕);回傳 null = 它正在說更重要的,改用我們的
-            try { const h = hz.whisper(p, { ear: o.ear || line.ear || (filter === 'phone' ? 'right' : 'both'), subtitle: true, filter, priority: 7, pos: o.pos || null, who }); if (h) { used = true; cur = h; } } catch { used = false; }
+            try { const h = hz.whisper(p, { ear: o.ear || line.ear || (filter === 'phone' ? 'right' : 'both'), subtitle: true, filter, priority: 7, pos: o.pos || null, who, tag: who || undefined }); if (h) { used = true; cur = h; } } catch { used = false; } // 字幕標籤 = 說話的人(收音機 · 小美、電話 · 王醫師…)
           }
           if (!used) {
             cur = ixs.phoneVoice(p, { voice, filter, pos: o.pos || null, gain: o.gain });

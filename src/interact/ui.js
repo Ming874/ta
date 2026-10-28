@@ -108,7 +108,7 @@ export class IxUI {
     const body = tape && note.lines
       ? `<ol class="tr">${note.lines.map(([who, text]) => `<li><b>${esc(who)}</b>${esc(text)}</li>`).join('')}</ol>`
       : `<div class="tx">${esc(note.body).replace(/\n/g, '<br>')}</div>`;
-    el.innerHTML = `<div class="sheet"><div class="kd">${esc(KIND[kind] || '文件')}${note.where ? ` · ${esc(note.where)}` : ''}</div>
+    el.innerHTML = `<div class="sheet"><div class="kd">${esc(KIND[kind] || '文件')}${note.where && typeof note.where === 'string' ? ` · ${esc(note.where)}` : ''}</div>
       <h2>${esc(note.title)}</h2>${note.author || note.date ? `<div class="meta">${esc([note.author, note.date].filter(Boolean).join(' · '))}</div>` : ''}${body}</div>
       <div class="ft">${withKeys(tape ? '[E] 收起（錄音帶繼續播） · [J] 推理本 · [Esc] 暫停選單' : '[E] 收起 · [J] 推理本 · [Esc] 暫停選單')}${this.game.net ? ' · 移動或受傷會自動收起' : ''}</div>`;
     const m = { el, kind: 'reader', note, onClose: (s) => { if (s) ixs.paperClose(); opts.onClose?.(); } };

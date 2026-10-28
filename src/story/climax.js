@@ -40,9 +40,9 @@ export function installClimax(game, S) {
   const p = () => game.player.pos;
 
   // ---------- 頭七 ----------
-  H()?.on?.('story', (e) => { if (e?.id === 's3.touqi' && !run.touqi) { run.touqi = true; run.knobT = game.time + 13; } });
+  H()?.on?.('story', (e) => { if (e?.id === 's3.touqi' && !run.touqi) { run.touqi = true; run.knobT = game.time + 20; } }); // 她的兩句說完才轉開旋鈕
   function touqiFallback() { // 幻影出不來:照樣發生(她不一定要被看見)
-    run.touqi = true; run.knobT = game.time + 14;
+    run.touqi = true; run.knobT = game.time + 16;
     try { sfx.folk('lament', p()); } catch { /* 略 */ }
     X.flags.set('h.touqi', true);
     X.after(3.5, () => { try { H()?.remember?.('s3.touqi', { event: 'touqi', tag: 'zheng', ghost: 'zheng' }); } catch { /* 略 */ } line(game, 'ama', '頭七矣。……阿嬤轉來看你。', { id: 's3.touqi' }); });

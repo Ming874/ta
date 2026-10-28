@@ -180,7 +180,7 @@ const items = [
     why: '藥局的內線電話；萬嵐的總機會自動撥進來放「家屬會面」廣播。' },
   { id: 'h.ix.phone.icu', kind: 'phone', zone: 'f2_icu', mount: 'surface', near: null, style: 'desk', ext: '2F 加護病房', calls: ['ph.r06', 'ph.r07', 'ph.r04'], ring: 'tension', special: 'callback',
     why: '加護病房的內線；掛掉之後，阿嬤會從護理站打回來（PHONE.callback）。' },
-  { id: 'h.ix.phone.secretary', kind: 'phone', zone: 'f3_secretary', mount: 'surface', near: null, style: 'desk', ext: '院長室', calls: ['ph.ho01', 'ph.ho02'], ring: 'flag:ev.ho', special: null,
+  { id: 'h.ix.phone.secretary', kind: 'phone', zone: 'f3_secretary', mount: 'surface', near: null, style: 'desk', ext: '院長室', calls: [], ring: 'tension', special: null, // 王醫師整章只打一次(src/story/climax.js)
     why: '院長室秘書的電話；何啟明用萬嵐的網路打來（hc.20）。' },
   { id: 'h.ix.typewriter', kind: 'typewriter', zone: 'f3_secretary', mount: 'surface', near: null, lines: ['tw.v3', 'tw.loop', 'tw.burn', 'tw.001', 'tw.207', 'tw.recover'],
     why: '秘書室的電動打字機接在院內網路上當印表機；萬嵐的主機一直把排程送過來。' },

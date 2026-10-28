@@ -57,7 +57,7 @@ export const LINES = [
   { id: 'z.207.2', text: '這張椅仔……阿嬤坐十四暝。', ghost: 'zheng', who: '鄭玉蘭', why: '監控畫面裡,207 的床空著的時候燈下還坐著一個人:她死在 207 的陪病椅上', when: '七月十一', trig: 'zone', zone: ['f2_ward_207'], prog: [4] },
   { id: 'z.nursery', text: '一、二、三……數到十，就不怕了。', who: '小兒科護理師的聲音(留白:她哄孩子躲著不要出聲;孩子們都活著離開了)', why: '新生兒室牆上「數到十就好了」;句子來自小鈴的節目', when: '七月初三夜', trig: 'zone', zone: ['f2_nursery'] },
   { id: 'z.nursery.box', text: '音樂盒……要上發條才會唱。', who: '小兒科護理師的聲音(留白)', why: '新生兒室的音樂盒,盒底刻著「2001 金水 贈」', when: '七月初三之前', trig: 'zone', zone: ['f2_nursery'], prog: [3], hint: 'egg:musicbox' },
-  { id: 'z.playroom', text: '囡仔攏去睏矣……阿嬤明仔載閣來講。', who: '孩子的聲音(留白:遊戲室的孩子都被2003 年的修女帶到廟口,活著)', why: '001 醒來後偷偷下樓講故事;遊戲室有那張蠟筆畫', when: '2025 年春天', trig: 'zone', zone: ['f2_playroom', 'f2_peds'] },
+  { id: 'z.playroom', text: '囡仔攏去睏矣……阿嬤明仔載閣來講。', ghost: 'zheng', who: '孩子的聲音(留白:遊戲室的孩子都被2003 年的修女帶到廟口,活著)', why: '001 醒來後偷偷下樓講故事;遊戲室有那張蠟筆畫', when: '2025 年春天', trig: 'zone', zone: ['f2_playroom', 'f2_peds'] },
   { id: 'z.icu', text: '機器一直叫……都沒有人過來。', who: '加護病房的病人(亡者)', why: '加護病房被改成回神的第二病房;機器的聲音會把宿主叫來', when: '七月初二', trig: 'zone', zone: ['f2_icu'], hint: 'rule:sound' },
   { id: 'z.morgue.1', text: '抽屜好冷。……你的是幾號？', who: '甦醒之夜被萬嵐清理隊放進冰櫃的人(2026)', why: '回收清冊上有你的編號「預約中」', when: '七月下旬', trig: 'zone', zone: ['b1_morgue'] },
   { id: 'z.morgue.2', text: '我在裡面敲了好久……都沒有人開。', who: '甦醒之夜被萬嵐清理隊放進冰櫃的人(2026)', why: '抽屜會從裡面被敲;一位母親在這裡寫了「他還在裡面」', when: '七月十八之前', trig: 'zone', zone: ['b1_morgue'], prog: [3] },
@@ -72,7 +72,7 @@ export const LINES = [
   { id: 'z.laundry', text: '床單洗好了……要拿去哪一床？', who: '洗衣房的人(亡者)', why: '洗衣房的排班表停在七月初三', when: '七月初三', trig: 'zone', zone: ['b1_laundry'] },
 
   // ---------- 低血量(只在靜默期) ----------
-  { id: 'hp.1', text: '阿孫……莫睏，緊轉來。', who: '不明(亡者)', why: '每一次回收都是一次回神劑量;你也在改變', when: '現在', trig: 'lowhp' },
+  { id: 'hp.1', text: '阿孫……莫睏，緊轉來。', ghost: 'zheng', who: '不明(亡者)', why: '每一次回收都是一次回神劑量;你也在改變', when: '現在', trig: 'lowhp' },
   { id: 'hp.2', text: '怕的時候，數到十。', who: '不明(亡者;這句話護理站每個人都會背)', why: '「霧港夜話」的結尾語;207 放了二十五年的錄音帶', when: '現在', trig: 'lowhp', hint: 'rule:voice' },
   { id: 'hp.3', text: '躺下來……這裡很安靜。', ghost: 'lobby', who: '大廳的人', why: '倒下的人都躺在大廳', when: '七月初三', trig: 'lowhp' },
   { id: 'hp.4', text: '倒落去，阿嬤嘛會叫你。', who: '甦醒之夜被萬嵐清理隊放進冰櫃的人(2026)', why: '生命徵象中斷時,萬嵐清理隊會把你撿回去', when: '現在', trig: 'lowhp', prog: [2] },
@@ -87,7 +87,7 @@ export const LINES = [
 
   // ---------- 連殺之後(戰鬥結束後的靜默) ----------
   { id: 'st.1', text: '他們以前……也是病人。', ghost: 'zheng', who: '鄭玉蘭', why: '感染者穿著生前的病人服、拖鞋', when: '現在', trig: 'streak' },
-  { id: 'st.2', text: '那是我爸……他只是想回家。', ghost: 'zheng', who: '鄭玉蘭', why: '宿主會走回生前熟悉的地方', when: '七月十一之前', trig: 'streak' },
+  { id: 'st.2', text: '那是我爸……他只是想回家。', ghost: 'lobby', who: '鄭玉蘭', why: '宿主會走回生前熟悉的地方', when: '七月十一之前', trig: 'streak' },
   { id: 'st.3', text: '謝謝你……讓他們休息。', who: '不明(亡者)', why: '主題「放手」', when: '現在', trig: 'streak', prog: [3] },
   { id: 'st.5', text: '輕一點……他們會痛。', ghost: 'zheng', who: '鄭玉蘭', why: '留白', when: '現在', trig: 'streak' },
 
@@ -318,7 +318,7 @@ export const PLACE_CALLS = {
     lines: [{ text: '三樓的門……攏是對外口鎖的。' }, { text: '阿嬤叩門，無人應。', gap: 0.8 }], end: 'dead' },
   psych_cell: { who: '試驗病房的病人(內線;亡者)', why: '三樓試驗病房的門從外面鎖;001 用刻痕數日子', when: '2025 年',
     lines: [{ text: '你佇隔離房內底。……門是對外口鎖的。' }, { text: '二〇〇三年，遮關過六个人。', gap: 0.8 }], cues: [{ line: 1, kind: 'knock', at: 0.6 }], end: 'dead' },
-  f2_nursery: { who: '值夜護理師的聲音(留白;孩子們都活著離開了)', why: '七月初三夜,2003 年的修女把孩子帶到廟口', when: '七月初三',
+  f2_nursery: { ghost: 'zheng', who: '值夜護理師的聲音(留白;孩子們都活著離開了)', why: '七月初三夜,2003 年的修女把孩子帶到廟口', when: '七月初三',
     lines: [{ text: '囡仔攏平安出去矣。' }, { text: '……阿孫，你嘛是佇遮出世的。', gap: 1.0 }], end: 'click' },
   f1_chapel: { who: '禮拜堂的人(內線;亡者)', why: '2003 年的修女的習慣:有人在等,就點一根蠟燭', when: '現在',
     lines: [{ text: '蠟燭……還有人在點嗎？' }, { text: '修女說，有人在等，就點一根。', gap: 0.8 }], end: 'click', hint: 'egg:candle' },
