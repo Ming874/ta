@@ -177,7 +177,8 @@ export const flowMethods = {
     this.spawnTimer = P.delay;
     this.phase = 'fighting';
     this.weapons.resupply();
-    this.shop?.setOpen(false);
+    this._shopCloseT = 0; // 捲門:店裡沒人才拉下(updateRound 檢查);玩家在裡面就等他出來,不會被關在店裡
+    if (!this._shopHasPlayer()) this.shop?.setOpen(false); else this._shopClosePending = true;
     this.supplies?.newRound();
     this.interact?.newRound();
     if (this.shopUIOpen) this.closeShop(false);
@@ -289,7 +290,27 @@ export const flowMethods = {
   },
 
   // 每幀:出怪、回合結束、休息倒數(取代 game.update 裡原本的出怪/回合區塊)
+  // 有玩家(或隊友)站在金水商行裡面?
+  _shopHasPlayer() {
+    const W = this.world;
+    if (!W?.zoneAt || !this.shop) return false;
+    for (const p of this.players || [this.player]) { const q = p?.pos; if (q && W.zoneAt(q.x, q.y + 0.2, q.z)?.id === 'f1_store') return true; }
+    return false;
+  },
+  _updateShopClose(dt) {
+    if (!this._shopClosePending) return;
+    if (this.phase !== 'fighting') { this._shopClosePending = false; return; }
+    if (!this._shopHasPlayer()) { this._shopClosePending = false; this.shop?.setOpen(false); return; }
+    const t0 = this._shopCloseT || 0, t = (this._shopCloseT = t0 + dt);
+    if (t0 === 0 || (t0 < 8 && t >= 8)) this.ui.feed(t0 === 0 ? '金水伯：「緊出來！我欲拉鐵門矣！」（快出來，要關門了）' : '金水伯：「緊咧！」（快點！）', { icon: 'warn', color: '#e8b46a', ms: 4200 });
+    if (t >= 20) { // 還是不出來:送到大廳,再拉下
+      for (const p of this.players || [this.player]) { const q = p?.pos; if (q && p === this.player && this.world.zoneAt(q.x, q.y + 0.2, q.z)?.id === 'f1_store') { const s = this.world.layout?.start; if (s) p.place?.(s.x, s.y || 0, s.z, p.yaw); } }
+      this._shopClosePending = false;
+      this.shop?.setOpen(false);
+    }
+  },
   updateRound(dt) {
+    this._updateShopClose(dt);
     // 載入後馬上開局、戰鬥 shader 還在背景預熱(main.js warmRuntime):先不出怪、不擺假屍體,最多等 12 秒
     this.spawnHeld = this.phase === 'fighting' && this.warmed === false && (this._warmHold = (this._warmHold || 0) + dt) < 12;
     this.ambush?.update(dt); // [ambush] 觸發、線索、假屍體
