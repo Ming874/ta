@@ -1,25 +1,70 @@
 // [scene r5] 其餘房間的故事層(STORY_v2):ICU、小兒病房、產房、院長室(萬嵐層)、廣播室、監控室的光、洗衣房、六間病房
 // 全部用共用道具材質(tpl → 自動帶 src/mats 表面資料);文字是道具上的字。
-import { tpl, L, G } from './parts.js';
+import { tpl, L, G, THREE, caster, knob, led, cable } from './parts.js';
 import { labRect } from './atlas.js';
-import { glowSwatch } from './art.js';
+import { glowSwatch, monitorScreen } from './art.js';
+import { text } from './tex.js';
 import { plasticWall } from './sars.js';
 import { kidBed } from './decor.js';
+import { ventilator as icuVent } from './equip.js';
 
 const rnd = (seed) => { let s = seed >>> 0 || 1; return () => ((s = (s * 16807) % 2147483647) / 2147483647); };
 const glowScr = (c) => G(glowSwatch(c, c));
 
 // ---------------- ICU ----------------
-const vitalMon = () => tpl('r5:vitalmon', (b) => {
-  b.box('pl_beige', 0.36, 0.3, 0.32, 0, 0.15, 0, { r: 0.02 });
-  b.plane(glowScr('#2a7a50'), 0.26, 0.19, 0, 0.165, 0.161);
-  b.box('pl_dark', 0.3, 0.03, 0.02, 0, 0.02, 0.16);
+// 推車上的 14 吋 CRT 生命徵象監視器(綠色波形;2003 年的機型,米色外殼、後殼凸出)
+const vitalCart = (k) => tpl(`r5:vitalcart:${k % 2}`, (b) => {
+  for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2 + 0.3; b.rod('chrome', 0.011, [0, 0.085, 0], [Math.cos(a) * 0.25, 0.06, Math.sin(a) * 0.25], { seg: 5 }); caster(b, Math.cos(a) * 0.25, Math.sin(a) * 0.25, 0.06, { r: 0.022 }); }
+  b.cyl('chrome', 0.017, 0.84, 0, 0.5, 0, { seg: 8 });
+  b.box('pl_gray', 0.44, 0.025, 0.38, 0, 0.93, 0, { r: 0.008 }); // 托盤
+  for (const sx of [-1, 1]) b.box('pl_gray', 0.012, 0.05, 0.38, sx * 0.214, 0.955, 0); // 托盤擋邊
+  b.box('pl_beige', 0.37, 0.31, 0.22, 0, 1.1, 0.05, { r: 0.022 }); // 前殼
+  b.box('pl_beige', 0.27, 0.23, 0.17, 0, 1.1, -0.13, { r: 0.03 }); // 映像管後殼
+  b.box('pl_dark', 0.3, 0.23, 0.012, 0, 1.115, 0.158, { r: 0.004 }); // 螢幕框
+  b.plane(G(monitorScreen(k % 2 ? 'ecg' : 'vitals')), 0.27, 0.2, 0, 1.115, 0.1655);
+  for (let i = 0; i < 4; i++) b.cyl('pl_dark', 0.009, 0.012, -0.12 + i * 0.05, 0.975, 0.165, { axis: 'z', seg: 8 }); // 旋鈕列
+  led(b, 0.14, 0.975, 0.164, '#30ff60', 0.005);
+  b.box('pl_gray', 0.2, 0.012, 0.012, 0, 1.27, 0.14, { r: 0.004 }); // 提把
+  // 導線:從螢幕側垂到托盤下、再往床邊(血氧夾、心電圖導線)
+  cable(b, [[0.17, 1.02, -0.02], [0.24, 0.9, 0.0], [0.27, 0.6, 0.06], [0.33, 0.3, 0.1], [0.42, 0.04, 0.18]], 0.005, 'pl_gray');
+  cable(b, [[0.17, 1.0, 0.03], [0.26, 0.86, 0.12], [0.36, 0.78, 0.16], [0.5, 0.74, 0.12]], 0.004, 'pl_ltblue');
+  b.box('pl_dark', 0.14, 0.05, 0.1, -0.08, 0.968, -0.08, { r: 0.008 }); // 記錄器(熱感紙)
+  b.box('paper', 0.05, 0.004, 0.22, -0.08, 0.944, 0.06, { rx: 0.08 }); // 一截掉出來的記錄紙
+  b.meta.coll = new THREE.Box3(new THREE.Vector3(-0.28, 0, -0.28), new THREE.Vector3(0.28, 1.28, 0.28));
 });
-const ventilator = () => tpl('r5:vent', (b) => {
-  b.box('pl_cream', 0.42, 0.9, 0.38, 0, 0.55, 0, { r: 0.02 });
-  b.plane(glowScr('#3a8a9a'), 0.22, 0.14, 0, 0.82, 0.191);
-  for (const s of [-1, 1]) b.cyl('rubber', 0.03, 0.04, s * 0.16, 0.05, 0.14, { seg: 8, axis: 'x' });
-  b.tube('pl_clear', [[0.12, 0.7, 0.2], [0.3, 0.75, 0.45], [0.55, 0.62, 0.5], [0.75, 0.68, 0.35]], 0.012, { seg: 5, bend: 0.06 });
+// 負壓前室:鋁框 + 拉鍊門 + 告示(塑膠布本體用 sars.plasticWall)。模板 X 沿牆、+Z 朝 ICU 內
+const anteRect = () => labRect('r5:ante', 160, 112, (c, w, h) => {
+  c.fillStyle = '#e8d84a'; c.fillRect(0, 0, w, h); c.fillStyle = '#1a1a1a'; c.fillRect(0, 0, w, 6); c.fillRect(0, h - 6, w, 6);
+  text(c, '負壓隔離前室', w / 2, 24, { size: 19, color: '#9a1010' });
+  text(c, 'ANTEROOM', w / 2, 44, { size: 12, color: '#222' });
+  text(c, '進入前:N95・隔離衣', w / 2, 66, { size: 12, color: '#111', weight: 'normal' });
+  text(c, '手套・護目鏡 / 拉鍊隨手拉上', w / 2, 84, { size: 11, color: '#111', weight: 'normal' });
+  text(c, '92.4.24 感控', w - 36, h - 16, { size: 9, color: '#444', weight: 'normal' });
+});
+const anteFrame = (len, top) => tpl(`r5:anteframe:${len.toFixed(1)}:${top.toFixed(2)}`, (b) => {
+  const p = 0.035;
+  for (const x of [-len / 2 + 0.03, len / 2 - 0.03, -0.42, 0.42]) b.box('alu', p, top, p, x, top / 2, 0); // 立柱(兩端靠牆、門框兩根)
+  b.box('alu', len - 0.04, p, p, 0, top - p / 2, 0); // 頂樑
+  b.box('alu', 0.84, p, p, 0, 2.05, 0); // 門楣
+  for (const x of [-0.4, 0.4]) b.box('pl_dark', 0.012, 2.0, 0.006, x, 1.03, 0.022); // 拉鍊
+  b.box('alu', 0.03, 0.06, 0.012, 0.4, 1.25, 0.03); // 拉鍊頭
+  b.box('pl_yellow', len - 0.1, 0.004, 0.05, 0, 0.002, -0.3); // 地上黃線(污染/清潔分界)
+  b.box('pl_white', 0.34, 0.24, 0.005, 0.72, 1.55, 0.024); // 告示背板
+  b.plane(L(anteRect()), 0.32, 0.22, 0.72, 1.55, 0.028);
+  b.box('paper', 0.18, 0.24, 0.002, -0.75, 1.45, 0.022, { rz: 0.06 }); // 手寫的出入登記
+});
+// 前室的隔離衣推車:三層、上層一箱 N95 和手套盒、側掛隔離衣
+const ppeTrolley = () => tpl('r5:ppecart', (b) => {
+  const W = 0.62, D = 0.42;
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) { b.box('chrome', 0.022, 0.84, 0.022, sx * (W / 2 - 0.02), 0.5, sz * (D / 2 - 0.02)); caster(b, sx * (W / 2 - 0.03), sz * (D / 2 - 0.03), 0.08, { r: 0.025 }); }
+  for (const y of [0.16, 0.5, 0.9]) b.box('steel', W, 0.018, D, 0, y, 0, { r: 0.004 });
+  b.box('cardboard', 0.26, 0.11, 0.18, -0.14, 0.965, -0.04, { r: 0.003 });
+  b.box('pl_ltblue', 0.2, 0.02, 0.12, -0.14, 1.03, -0.04, { rz: 0.1 });
+  for (let i = 0; i < 2; i++) b.box(i ? 'pl_blue' : 'pl_white', 0.24, 0.09, 0.12, 0.15, 0.954 + i * 0.09, 0.02, { r: 0.004, ry: i * 0.2 });
+  b.box('fab_yellow', 0.5, 0.06, 0.34, 0, 0.54, 0, { r: 0.02 }); // 疊好的隔離衣
+  b.box('fab_yellow', 0.04, 0.55, 0.3, W / 2 + 0.03, 0.62, 0, { r: 0.01, rz: 0.06 }); // 側掛
+  b.box('pl_white', 0.16, 0.24, 0.12, -0.18, 0.29, 0, { r: 0.01 }); // 酒精桶
+  b.meta.coll = new THREE.Box3(new THREE.Vector3(-W / 2, 0, -D / 2), new THREE.Vector3(W / 2 + 0.06, 1.05, D / 2));
 });
 const o2Tank = () => tpl('r5:o2', (b) => { b.cyl('enamel_green', 0.09, 1.1, 0, 0.55, 0, { seg: 12 }); b.cyl('chrome', 0.03, 0.08, 0, 1.14, 0, { seg: 8 }); });
 
@@ -106,14 +151,63 @@ const washer = () => tpl('r5:washer', (b) => {
 const linenBag = (k) => tpl(`r5:linenbag:${k}`, (b) => { const m = k ? 'fab_yellow' : 'fab_white'; b.sph(m, 0.28, 0, 0.24, 0, { sy: 0.85 }); b.cyl(m, 0.05, 0.12, 0, 0.5, 0, { seg: 8 }); });
 
 // ---------------- 病房的小東西 ----------------
-const radio = () => tpl('r5:radio', (b) => { b.box('pl_red', 0.22, 0.13, 0.07, 0, 0.065, 0, { r: 0.015 }); b.cyl('alu', 0.04, 0.005, -0.05, 0.07, 0.036, { axis: 'z', seg: 12 }); b.rod('chrome', 0.002, [0.08, 0.13, 0], [0.12, 0.42, -0.04], { seg: 3 }); });
-const suitcase = () => tpl('r5:suitcase', (b) => { b.box('vinyl_blue', 0.45, 0.62, 0.2, 0, 0.32, 0, { r: 0.02 }); b.tor('pl_dark', 0.06, 0.008, 0, 0.66, 0, { ts: 10, rs: 4, arc: Math.PI }); });
-const chessBoard = () => tpl('r5:xiangqi', (b) => { b.box('wood_yellow', 0.36, 0.015, 0.4, 0, 0.0075, 0); for (let i = 0; i < 12; i++) b.cyl(i % 2 ? 'wood_red' : 'wood_old', 0.016, 0.01, -0.14 + (i % 4) * 0.09, 0.02, -0.15 + ((i / 4) | 0) * 0.13, { seg: 10 }); });
+// 紅色手提收音機(AM 1207 的頻道):喇叭網、刻度窗、調頻鈕、提把、拉出一截的天線,電線垂到床頭櫃後面
+const dialRect = () => labRect('r5:dial', 96, 24, (c, w, h) => {
+  c.fillStyle = '#e8dcb8'; c.fillRect(0, 0, w, h); c.fillStyle = '#222'; c.font = '7px sans-serif';
+  ['53', '60', '70', '90', '120', '160'].forEach((t, i) => { const x = 6 + i * 16; c.fillRect(x, 4, 1, 5); c.fillText(t, x - 3, 18); });
+  c.fillStyle = '#c01010'; c.fillRect(78, 2, 2, 20); // 指針停在 1207 附近
+});
+const radio = () => tpl('r5:radio', (b) => {
+  b.box('pl_red', 0.24, 0.14, 0.075, 0, 0.082, 0, { r: 0.016 });
+  b.box('pl_dark', 0.25, 0.012, 0.08, 0, 0.006, 0, { r: 0.004 }); // 底座
+  b.cyl('pl_dark', 0.045, 0.004, -0.055, 0.08, 0.0375, { axis: 'z', seg: 14 }); // 喇叭網
+  for (let i = -2; i <= 2; i++) b.box('alu', 0.074 - Math.abs(i) * 0.012, 0.0025, 0.003, -0.055, 0.08 + i * 0.014, 0.041);
+  b.box('glass_dark', 0.09, 0.028, 0.003, 0.055, 0.112, 0.0385);
+  b.plane(L(dialRect()), 0.086, 0.024, 0.055, 0.112, 0.0402);
+  knob(b, 0.075, 0.057, 0.036, 0.011, 'alu'); knob(b, 0.035, 0.057, 0.036, 0.009, 'alu');
+  b.tube('chrome', [[-0.1, 0.15, 0], [-0.1, 0.18, 0], [0.1, 0.18, 0], [0.1, 0.15, 0]], 0.005, { seg: 4, bend: 0.02 }); // 提把
+  b.rod('chrome', 0.0025, [0.105, 0.152, -0.02], [0.16, 0.45, -0.07], { seg: 3 }); // 天線
+  cable(b, [[-0.12, 0.03, -0.02], [-0.15, 0.012, -0.03], [-0.19, 0.008, -0.034]], 0.0035, 'pl_dark');
+});
+// 行李箱的手寫吊牌
+const tagRect = () => labRect('r5:bagtag', 48, 32, (c, w, h) => { c.fillStyle = '#f0e8d0'; c.fillRect(0, 0, w, h); c.fillStyle = '#1f2f6e'; c.font = 'bold 9px serif'; c.fillText('5/13', 4, 12); c.fillText('出院', 4, 26); });
+const suitcase = () => tpl('r5:suitcase', (b) => {
+  b.box('vinyl_blue', 0.45, 0.6, 0.2, 0, 0.33, 0, { r: 0.025 });
+  b.box('pl_dark', 0.46, 0.02, 0.205, 0, 0.33, 0); // 拉鍊接縫
+  for (const sx of [-1, 1]) { b.cyl('pl_dark', 0.022, 0.018, sx * 0.17, 0.025, -0.06, { axis: 'x', seg: 10 }); b.box('pl_dark', 0.04, 0.04, 0.05, sx * 0.17, 0.04, 0.07); }
+  b.tube('pl_dark', [[-0.06, 0.63, 0], [-0.05, 0.67, 0], [0.05, 0.67, 0], [0.06, 0.63, 0]], 0.009, { seg: 4, bend: 0.02 });
+  b.box('fab_red', 0.025, 0.45, 0.004, 0.12, 0.33, 0.102); // 綁帶
+  b.rod('pl_white', 0.0015, [0.06, 0.66, 0], [0.09, 0.56, 0.11], { seg: 3 });
+  b.plane(L(tagRect()), 0.06, 0.04, 0.09, 0.54, 0.112, { rz: 0.15 });
+});
+// 象棋:紙棋盤 + 木棋子(下到一半,吃掉的幾顆疊在旁邊)
+const xqRect = () => labRect('r5:xqboard', 96, 108, (c, w, h) => {
+  c.fillStyle = '#e4cf98'; c.fillRect(0, 0, w, h); c.strokeStyle = '#5a3a1a'; c.lineWidth = 1;
+  const x0 = 8, y0 = 8, dx = (w - 16) / 8, dy = (h - 16) / 9;
+  for (let i = 0; i <= 9; i++) { c.beginPath(); c.moveTo(x0, y0 + i * dy); c.lineTo(x0 + 8 * dx, y0 + i * dy); c.stroke(); }
+  for (let j = 0; j <= 8; j++) { c.beginPath(); c.moveTo(x0 + j * dx, y0); c.lineTo(x0 + j * dx, y0 + 4 * dy); c.moveTo(x0 + j * dx, y0 + 5 * dy); c.lineTo(x0 + j * dx, y0 + 9 * dy); c.stroke(); }
+  c.fillStyle = '#5a3a1a'; c.font = '9px serif'; c.fillText('楚 河', x0 + dx * 1, y0 + dy * 4.65); c.fillText('漢 界', x0 + dx * 5.4, y0 + dy * 4.65);
+});
+const chessBoard = () => tpl('r5:xiangqi', (b) => {
+  b.box('cardboard', 0.32, 0.004, 0.36, 0, 0.002, 0);
+  b.plane(L(xqRect()), 0.31, 0.35, 0, 0.0045, 0, { rx: -Math.PI / 2 });
+  const P = [[-0.12, -0.15, 1], [0.04, -0.15, 1], [0.12, -0.08, 1], [-0.04, -0.04, 1], [0.0, 0.08, 0], [-0.08, 0.15, 0], [0.12, 0.15, 0], [0.08, 0.04, 0], [-0.12, 0.0, 0], [0.04, -0.11, 0]];
+  for (const [x, z, red] of P) { b.cyl('wood_toy', 0.014, 0.009, x, 0.009, z, { seg: 10 }); b.cyl(red ? 'wood_red' : 'wood_dark', 0.009, 0.001, x, 0.0138, z, { seg: 8 }); }
+  for (let i = 0; i < 4; i++) b.cyl('wood_toy', 0.014, 0.009, 0.21 + (i % 2) * 0.03, 0.0045 + ((i / 2) | 0) * 0.009, -0.1 + i * 0.012, { seg: 10 }); // 被吃掉的
+});
+// 訪客坐的紅色塑膠矮凳
+const stoolLow = () => tpl('r5:stoollow', (b) => {
+  b.cyl('pl_red', 0.15, 0.03, 0, 0.43, 0, { seg: 14 });
+  for (let i = 0; i < 4; i++) { const a = (i / 4) * Math.PI * 2 + 0.78; b.rod('pl_red', 0.016, [Math.cos(a) * 0.1, 0.42, Math.sin(a) * 0.1], [Math.cos(a) * 0.16, 0, Math.sin(a) * 0.16], { seg: 5 }); }
+  b.tor('pl_red', 0.125, 0.008, 0, 0.16, 0, { rx: Math.PI / 2, rs: 4, ts: 14 });
+});
 const altar = () => tpl('r5:altar', (b) => {
   b.box('wood_red', 0.5, 0.03, 0.3, 0, 0.015, 0.15);
   b.lathe('ceramic', [[0, 0], [0.04, 0], [0.035, 0.08], [0.02, 0.16], [0.03, 0.2], [0, 0.24]], -0.1, 0.03, 0.15, { seg: 10 });
   b.cyl('brass', 0.045, 0.05, 0.1, 0.055, 0.15, { seg: 12 }); for (let i = 0; i < 3; i++) b.rod('wood_red', 0.0025, [0.09 + i * 0.01, 0.08, 0.15], [0.09 + i * 0.012, 0.2, 0.15], { seg: 3 });
   b.box('fab_yellow', 0.05, 0.08, 0.004, 0.0, 0.07, 0.29); // 平安符
+  for (const sx of [-0.18, 0.18]) { b.box('iron', 0.02, 0.18, 0.012, sx, -0.09, 0.006); b.box('iron', 0.02, 0.012, 0.22, sx, -0.006, 0.11); b.rod('iron', 0.006, [sx, -0.16, 0.012], [sx, -0.012, 0.2], { seg: 4 }); } // L 型層架鐵件
+  for (const sx of [-0.18, 0.18]) b.cyl('steel', 0.005, 0.004, sx, -0.04, 0.013, { axis: 'z', seg: 6 }); // 螺絲
 });
 const plasticCover = () => tpl('r5:wrap', (b) => { b.box('pl_clear', 1.0, 0.9, 2.1, 0, 0.45, 0, { r: 0.05 }); b.box('fab_white', 0.25, 0.12, 0.004, 0.2, 0.72, 1.051); });
 const newsRect = () => labRect('r5:news', 96, 120, (c, w, h) => {
@@ -134,21 +228,36 @@ export function roomStory(R, zone) {
   const W = R.run('W'), E = R.run('E'), N = R.run('N'), S = R.run('S');
   const ceil = () => R.L.ceilY(R.li, R.c0, R.r0) - y;
   if (id === 'f2_icu') {
-    // SARS 加護:每床一台呼吸器 + 綠色監視器 + 氧氣瓶;入口一道負壓塑膠前室;監視器的綠光是這裡唯一「活著」的光
-    for (let i = 0; i < 3; i++) {
-      const x = x0 + 2.4 + i * 5.2, z = z0 + 1.5;
-      if (R.freeAt(x, z, 0.35)) R.tryPut(ventilator(), x, z, 0.2, {});
-      if (R.freeAt(x - 0.65, z + 0.2, 0.15)) R.tryPut(o2Tank(), x - 0.65, z + 0.2, 0, {});
-      R.put(vitalMon(), x + 0.55, z + 0.05, 0.1, { y: y + 1.05 });
+    // SARS 加護:每床一台呼吸器(床頭右側)+ 推車上的綠色生命徵象 CRT(床尾旁、面向走道)+ 氧氣瓶;
+    // 床位跟 th_2f.dressICU 一樣由北牆長段推算(N.t0 + 2.4 / 5.6,床頭靠牆)。走廊進來的西門內側一道負壓塑膠前室。
+    const N2 = R.run('N', (q) => q.len > 8);
+    if (N2) [N2.t0 + 2.4, N2.t0 + 5.6].forEach((t, i) => {
+      const at = (dx, d) => ({ x: t + dx, z: N2.plane + N2.nz * d });
+      const v = at(0.9, 0.55), m = at(0.92, 1.72), o = at(1.38, 0.24);
+      if (!R.tryPut(icuVent(i), v.x, v.z, -1.2, {})) R.tryPut(icuVent(i), v.x, v.z, -1.2, { force: true });
+      if (!R.tryPut(vitalCart(i), m.x, m.z, -0.7, {})) R.tryPut(vitalCart(i), m.x, m.z, -0.7, { force: true });
+      R.put(o2Tank(), o.x, o.z, 0.4, {});
+      if (i === 0) R.light({ x: m.x, y: y + 1.25, z: m.z + 0.3, color: 0x6ad0a0, intensity: 2.2, distance: 6, kind: 'monitor', flicker: 0.4 });
+    });
+    // 負壓前室:西門(走廊)進來 2.4m 處橫跨整條通道的塑膠布 + 鋁框拉鍊門 + 告示,前室裡一台隔離衣推車
+    const dw = R.doors.find((d) => d.nx === 1 && d.nz === 0);
+    if (dw) {
+      const ax = dw.x + 1 + 2.4, top = Math.min(2.9, ceil() - 0.08);
+      const zs = [...R.cells].filter((k) => (k % R.L.W) === Math.floor(ax / 2)).map((k) => ((k / R.L.W) | 0) * 2);
+      if (zs.length) {
+        const za = Math.min(...zs), zb = Math.max(...zs) + 2, len = zb - za, zc = (za + zb) / 2;
+        R.put(plasticWall(len - 0.1, top, 2), ax, zc, -Math.PI / 2, {});
+        R.put(anteFrame(len - 0.06, top), ax - 0.03, zc, -Math.PI / 2, {}); // 告示朝門(-X),拉鍊門在通道中間
+        if (!R.tryPut(ppeTrolley(), dw.x + 2.0, zb - 0.36, Math.PI, {})) R.putChecked(ppeTrolley(), dw.x + 2.0, zb - 0.36, Math.PI);
+      }
     }
-    R.light({ x: (x0 + x1) / 2, y: y + 1.3, z: z0 + 2.4, color: 0x6ad0a0, intensity: 2.6, distance: 7, kind: 'monitor', flicker: 0.4 });
-    if (S) R.put(plasticWall(3.2, Math.min(2.9, ceil() - 0.1), 2), (x0 + x1) / 2, z1 - 1.8, 0, { collide: false });
   } else if (id === 'f2_peds') {
     // 小兒病房:牆上兒童畫、床上戴口罩的小熊、紙鶴吊飾;一盞粉紅夜燈
     const DW = S || W;
     if (DW) for (let i = 0; i < 4; i++) R.atWall(tpl(`r5:kidsheet:${i}`, (b) => b.plane(L(kidDrawing(i)), 0.4, 0.3, 0, 0.15, 0.004)), DW, DW.t0 + 1.2 + i * 1.3, { mount: 1.2 + (i % 2) * 0.12 });
     // 一排兒童床(靠北牆),床上戴口罩的小熊
-    if (N) for (let i = 0; i < 4; i++) { const t = N.t0 + 1.0 + i * 2.6; if (t > N.t1 - 0.8) break; const p = R.atWall(kidBed(i), N, t, { gap: 0.05 }); if (p && i % 2 === 0) { const tp = R.topOf(p, 0); if (tp) R.put(maskedTeddy(), (tp.x0 + tp.x1) / 2, (tp.z0 + tp.z1) / 2, r() * 6, { y: tp.y }); } }
+    // (kidBed 沒有 surface → 小熊直接放在床墊上、枕頭前:本地 y 0.555,面向床尾)
+    if (N) for (let i = 0; i < 4; i++) { const t = N.t0 + 1.0 + i * 2.6; if (t > N.t1 - 0.8) break; const p = R.atWall(kidBed(i), N, t, { gap: 0.05 }); if (p) { const q = R.local(p, i % 2 ? -0.12 : 0.1, 0.557, -0.3); R.put(maskedTeddy(), q.x, q.z, p.yaw + (i % 2 ? 0.5 : -0.35), { y: q.y, collide: false }); } }
     R.put(craneMobile(), x0 + 4.0, z0 + 2.4, 0.3, { y: y + 2.4 });
     R.light({ x: x0 + 1.2, y: y + 0.45, z: z1 - 1.0, color: 0xff9ab4, intensity: 1.8, distance: 6, kind: 'nightlight', flicker: 0 });
   } else if (id === 'f2_delivery') {
@@ -166,7 +275,8 @@ export function roomStory(R, zone) {
     if (N) { R.atWall(tpl('r5:shelf', (b) => { b.box('pl_white', 1.2, 0.03, 0.25, 0, 0.015, 0.125); b.add(trophy(), -0.3, 0.03, 0.12); b.add(trophy(), 0.25, 0.03, 0.12); }), N, x0 + 2.0, { mount: 1.5 }); }
   } else if (id === 'f1_security') {
     // 廣播室:2003 年的院內廣播主機就在這裡(「不要相信廣播」的源頭)
-    if (S) { R.atWall(paDesk(), S, S.t1 - 1.0, { gap: 0.03 }); R.atWall(ampRack(), S, S.t1 - 2.2, { gap: 0.03 }); }
+    // 南牆西段(窗的西邊、飲水機旁):廣播桌;功放機櫃在窗東邊
+    if (S) { if (!R.atWall(paDesk(), S, S.t0 + 2.6, { gap: 0.03 })) R.atWall(paDesk(), S, S.t0 + 2.6, { gap: 0.03, collide: false }); R.atWall(ampRack(), S, S.t1 - 2.2, { gap: 0.03 }); }
   } else if (id === 'f3_monitor') {
     // 監控室的 CRT 藍光從門口漏到 3F 走廊(「被錄下來的真相」的顏色)
     R.light({ x: (x0 + x1) / 2, y: y + 1.4, z: z1 - 0.6, color: 0x7ab8e0, intensity: 3.2, distance: 7.5, kind: 'monitor', flicker: 0.4 });
@@ -179,22 +289,34 @@ export function roomStory(R, zone) {
 }
 
 // 其餘病房各一層故事(201、202、205、206、208、210;203/209 在 story.js)
-export function wardStory2(R, n) {
+export function wardStory2(R, n, ctx = {}) {
   const E = R.run('E'), W = R.run('W');
   const z0 = R.r0 * 2, c = R.center();
+  const bays = ctx.bays || [];
+  const bay = (side, k) => bays.find((q) => q.side === side && q.bz === z0 + (k ? 5.05 : 1.25));
   if (n === 201) {
-    // 小鈴的頻道:床頭的紅色收音機(AM 1207),床欄上家屬的字條
-    if (E) R.atWall(radio(), E, z0 + 0.42, { mount: 0.66, collide: false });
+    // 小鈴的頻道:東側靠窗那床的床頭櫃上一台紅色收音機(AM 1207),西床床欄旁牆上家屬的字條
+    const b = bay(1, 0);
+    const tp = b && b.ns && R.topOf(b.ns, 0);
+    if (tp) R.put(radio(), (tp.x0 + tp.x1) / 2 + 0.02, (tp.z0 + tp.z1) / 2 - 0.03, b.ns.yaw + 0.12, { y: tp.y, collide: false });
     if (W) R.atWall(tpl('r5:railnotesheet', (b) => b.plane(L(railNote()), 0.15, 0.19, 0, 0.1, 0.004)), W, z0 + 2.1, { mount: 0.6 });
   } else if (n === 202) {
     for (let i = 0; i < 4; i++) { const x = c.x - 0.8 + (i % 2) * 0.6, z = z0 + 3.0 + ((i / 2) | 0) * 0.55; if (R.freeAt(x, z, 0.25)) R.put(newspaper(i * 0.4), x, z, 0, { collide: false }); }
   } else if (n === 205) {
-    // 阿嬤照顧過的阿伯(鐵網上:「護理長 謝謝您 照顧我爸爸 2F 205」):床邊桌上一盤沒下完的象棋
-    R.put(chessBoard(), c.x + 0.6, z0 + 2.1, 0.3, { y: R.y + 0.78, collide: false });
+    // 阿嬤照顧過的阿伯(鐵網上:「護理長 謝謝您 照顧我爸爸 2F 205」):床上桌一盤沒下完的象棋,對面一張訪客的紅色矮凳
+    const tp = ctx.overbed && R.topOf(ctx.overbed, 0);
+    if (tp) {
+      const q = R.onTop(ctx.overbed, 0.62, 0.5);
+      R.put(chessBoard(), q.x, q.z, ctx.overbed.yaw + 0.2, { y: tp.y, collide: false });
+      const s = R.local(ctx.overbed, 0.2, 0, -0.62); // 床上桌另一側(走道側)
+      if (R.freeAt(s.x, s.z, 0.18)) R.put(stoolLow(), s.x, s.z, 0.4, { collide: false });
+    }
   } else if (n === 206) {
-    if (E) R.atWall(suitcase(), E, z0 + 2.6, { gap: 0.04 }); // 收拾好的行李:五月十三號要接回家
+    // 收拾好的行李:五月十三號要接回家(立在東側靠門那床的床尾旁)
+    const b = bay(1, 1) || bay(-1, 1);
+    if (b) { const q = R.local(b.p, 0.3, 0, 1.36); R.putChecked(suitcase(), q.x, q.z, b.p.yaw + Math.PI - 0.25) || R.put(suitcase(), q.x, q.z, b.p.yaw + Math.PI - 0.25); }
   } else if (n === 208) {
-    if (W) R.atWall(altar(), W, z0 + 3.2, { mount: 1.25, collide: false }); // 家屬帶來的小神桌
+    if (W) R.atWall(altar(), W, z0 + 3.2, { mount: 1.25, gap: 0.004, collide: false }); // 家屬帶來的小神桌(L 型鐵件層架)
   } else if (n === 210) {
     for (const [run, t] of [[E, z0 + 1.3], [W, z0 + 1.3]]) if (run) { const p = R.at(run, t, 1.08); R.put(plasticCover(), p.x, p.z, Math.PI / 2, { y: R.y + 0.05, collide: false }); } // 萬嵐 2024 的「封存」
   }

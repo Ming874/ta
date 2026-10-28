@@ -140,9 +140,10 @@ export function dressDelivery(R) {
   const cx = (x0 + x1) / 2 + 0.5, cz = (z0 + z1) / 2;
   R.tryPut(deliveryBed(), cx, cz - 0.3, Math.PI / 2, {});
   R.put(surgicalLight(ceil, false), cx + 0.2, cz - 0.3, 0.9);
-  R.light({ x: cx + 0.4, y: R.y + 1.8, z: cz - 0.3, color: 0xfff0d8, intensity: 6, distance: 6, kind: 'surgical', flicker: 0.5 });
+  // [scene6] 產房太亮(像展示間):無影燈只剩一顆燈泡微微亮著(暖、低、近),主光源改成保溫台的紅光
+  R.light({ x: cx + 0.3, y: R.y + 1.75, z: cz - 0.3, color: 0xffd8b0, intensity: 1.1, distance: 3.6, kind: 'surgical', flicker: 0.3 });
   const N = R.run('N'), S = R.run('S'), E = R.run('E');
-  if (E) { const p = R.atWall(infantWarmer(true), E, z0 + 1.5, { gap: 0.04 }); if (p) R.light({ x: x1 - 0.5, y: R.y + 1.9, z: z0 + 1.5, color: 0xff4020, intensity: 2, distance: 3, kind: 'heater', flicker: 0.05 }); }
+  if (E) { const p = R.atWall(infantWarmer(true), E, z0 + 1.5, { gap: 0.04 }); if (p) R.light({ x: x1 - 0.5, y: R.y + 1.9, z: z0 + 1.5, color: 0xff4020, intensity: 2.4, distance: 4.2, kind: 'heater', flicker: 0.05 }); }
   if (N) { R.atWall(glassCabinet(0.9, 1.9, 0), N, x0 + 1.0, { gap: 0.03 }); R.atWall(sinkWall(0), N, x1 - 1.2, { mount: 0, collide: false }); }
   if (S) { R.atWall(monitorCart(0), S, x1 - 1.6, { gap: 0.1 }); R.atWall(bin('bio', 0), S, x0 + 1.4, { collide: false }); }
   R.tryPut(mayoStand(1), cx + 1.6, cz + 0.8, -0.7, {});

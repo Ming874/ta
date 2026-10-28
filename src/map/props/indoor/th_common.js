@@ -40,7 +40,10 @@ export function dressCorridor(R, zone) {
       if (R.isWindow(run, t - 0.4, t + 0.4)) continue;
       const k = R.rng();
       if (k < 0.35) R.atWall(extinguisher(), run, t, { mount: 1.0 });
-      else if (k < 0.5 && !psych) R.atWall(fireHoseCabinet(), run, t, { mount: 1.05 });
+      else if (k < 0.5 && !psych) { // [scene6] 加高的消防栓箱(上段綜合盤),下緣 0.42m:前面不能有靠牆的推床/長椅
+        const a = R.at(run, t - 0.3, 0.2), b2 = R.at(run, t + 0.3, 0.2);
+        if (R.freeAt(a.x, a.z) && R.freeAt(b2.x, b2.z)) { const p = R.atWall(fireHoseCabinet(), run, t, { mount: 0.42 }); if (p) R.mark(R.footprint(p.t.bbox, p.x, p.z, p.yaw, 0.02)); }
+      }
       else if (k < 0.75) R.atWall(posterSheet(poster(R.pick(psych ? ['quiet', 'missing'] : ['handwash', 'quiet', 'blood', 'missing', 'kids'])), 0.38, 0.53, { curl: R.rand(0, 0.08) }), run, t, { mount: 1.3 });
       else if (k < 0.85) R.atWall(corkBoard(1.1, 0.75, R.rng.int(0, 5)), run, t, { mount: 1.15 });
       else R.atWall(wallClock(R.rng.int(0, 1)), run, t, { mount: 2.4 });

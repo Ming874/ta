@@ -128,6 +128,10 @@ function dressParking(ctx, zone) {
   for (let x = 3; x < 117; x += 2) if (Math.abs(x - 60) > 5) tuftPatch(ctx, R, x, 96, 0, 1.2, R.int(1, 4), { dryP: 0.7, tallP: 0.3 });
   edgeDress(ctx, zone, R, P, { leaves: 8, ivy: 0.1, tufts: 3, litter: 0.35 });
   scatter(ctx, zone, R, P, { leaves: 0.18, litter: 0.08, puddles: 0.05, stains: 0.05 });
+  // [scene6] 雨水往緣石邊流:沿南北兩條緣石的長條積水;柏油裂縫長草;外牆腳/圍牆腳的草、落葉、髒污帶與爬藤
+  for (const zc of [76.45, 93.6]) for (let x = 4 + R.range(0, 6); x < 116; x += R.range(6, 13)) if (freeAt(ctx, li, x, zc, 0.3)) puddle(P, R, x, zc, R.range(0.35, 0.6), R.range(2.0, 3.4), 0.45, 0.0045);
+  scatter(ctx, zone, R, P, { leaves: 0, litter: 0, cracks: 0.04, tufts: 0.035, stains: 0.03 });
+  edgeDress(ctx, zone, R, P, { leaves: 5, ivy: 0.12, tufts: 3, litter: 0.2, stain: 0.12 });
   finish(ctx, P);
 }
 
@@ -231,6 +235,7 @@ function dressPlaza(ctx, zone) {
   manhole(ctx, 98, 0, 72.8, 1.2);
   edgeDress(ctx, zone, R, P, { leaves: 9, ivy: 0.18, tufts: 2, litter: 0.3, stain: 0.1 });
   scatter(ctx, zone, R, P, { leaves: 0.22, litter: 0.12, puddles: 0.03, stains: 0.04 });
+  edgeDress(ctx, zone, R, P, { leaves: 4, ivy: 0.1, tufts: 2, litter: 0.15, stain: 0.1 }); // [scene6] 牆腳的草/落葉/髒污帶
   crow(ctx, 48, 8.05, 69.4, 1.2);
   finish(ctx, P);
 }
@@ -515,7 +520,8 @@ function dressAmbulanceBay(ctx, zone) {
   groundDecal(P, 'skid', 111, 46.5, 4, 1.4, 1.2, 0.0068);
   crow(ctx, 115.1, 2.66, 44.4, 1.6);
   edgeDress(ctx, zone, R, P, { leaves: 6, ivy: 0.15, tufts: 3, litter: 0.3, stain: 0.1 });
-  scatter(ctx, zone, R, P, { leaves: 0.12, litter: 0.1, puddles: 0.06, stains: 0.08 });
+  scatter(ctx, zone, R, P, { leaves: 0.12, litter: 0.1, puddles: 0.06, stains: 0.08, cracks: 0.03, tufts: 0.03 });
+  edgeDress(ctx, zone, R, P, { leaves: 4, ivy: 0.08, tufts: 2, litter: 0.15, stain: 0.12 }); // [scene6]
   finish(ctx, P);
 }
 // 急診門口雨遮(貼著東外牆,往外伸 1.9m)
