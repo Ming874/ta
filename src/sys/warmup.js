@@ -324,24 +324,28 @@ export async function warmPMREM(game, roots, { sizes: extra = [] } = {}) {
     }
   });
   if (!sizes.size) return 0;
-  const pm = new THREE.PMREMGenerator(r);
-  if (typeof pm._setSize !== 'function' || typeof pm._allocateTargets !== 'function') { pm.dispose(); return 0; } // 不同版本的 three:放棄(照舊同步)
+  if (typeof THREE.PMREMGenerator.prototype._setSize !== 'function' || typeof THREE.PMREMGenerator.prototype._allocateTargets !== 'function') return 0; // 不同版本的 three:放棄(照舊同步)
+  let pm = null;
   const cam = new THREE.OrthographicCamera(), progs = new Set();
   // PMREM 是畫進 HalfFloat 的 render target(線性、不做色調映射):編譯時也要設成 render target,參數才會一樣(畫到螢幕的版本是另一個 program)
+  // 幾何要用 PMREM 自己的 LOD 平面:有沒有 position 屬性是 program key 的一位(空幾何編出來的是另一個 program,
+  // 真的轉換時 GGX/模糊著色器還是會在 getUniforms 同步等編譯 300~500ms)
   let target = null;
-  const comp = (mat) => { if (!mat) return; const mesh = new THREE.Mesh(new THREE.BufferGeometry(), mat), prev = r.getRenderTarget(); r.setRenderTarget(target); try { for (const m of r.compile(mesh, cam)) { const p = r.properties.get(m).currentProgram; if (p) progs.add(p); } } finally { r.setRenderTarget(prev); } };
+  const comp = (mat) => { if (!mat) return; const mesh = new THREE.Mesh(pm._lodMeshes?.[0]?.geometry || new THREE.BufferGeometry(), mat), prev = r.getRenderTarget(); r.setRenderTarget(target); try { for (const m of r.compile(mesh, cam)) { const p = r.properties.get(m).currentProgram; if (p) progs.add(p); } } finally { r.setRenderTarget(prev); } };
+  // 每個尺寸一個生成器:同一個生成器換尺寸會 dispose 上一組材質(program 跟著被回收)
   for (const s of sizes) {
+    pm = new THREE.PMREMGenerator(r);
     pm._setSize(s);
     target = pm._allocateTargets();
-    pm.compileEquirectangularShader(); pm.compileCubemapShader?.();
+    const cm = pm._compileMaterial; pm._compileMaterial = () => {}; // 只要材質;它自己用空幾何編的版本用不到
+    try { pm.compileEquirectangularShader(); pm.compileCubemapShader?.(); } finally { pm._compileMaterial = cm; }
     comp(pm._equirectMaterial); comp(pm._cubemapMaterial); comp(pm._blurMaterial); comp(pm._ggxMaterial);
-    target.dispose();
+    target.dispose(); pm._pingPongRenderTarget?.dispose(); // 顯存放掉(物件留著;這個生成器不會再拿來轉換)
+    keep.push(pm); // 生成器保留(它的材質持有剛編好的 program;dispose 會讓 three 回收)
     await gpuDrain(r);
   }
   await waitReady(progs);
   await initPrograms(progs);
-  // 生成器保留(它的材質持有剛編好的 program;dispose 會讓 three 回收)
-  keep.push(pm);
   return progs.size;
 }
 

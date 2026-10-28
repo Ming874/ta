@@ -27,7 +27,9 @@ export const flowMethods = {
   // [perf] 分段版:各建構之間 yield(載入時分時執行)
   *buildGameplayWorldSteps() {
     if (this.shop || this.supplies) this.disposeGameplayWorld();
-    this.shop = new Shop(this.scene, this.world, { game: this });
+    this.shop = new Shop(this.scene, this.world, { game: this, steps: true });
+    yield* this.shop.steps;
+    this.shop.steps = null;
     yield;
     this.supplies = new Supplies(this.scene, this.world);
     yield;
