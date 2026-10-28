@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { WRITINGS } from './lines.js';
+import { paintTexture } from '../sys/texworker.js';
+import { bloodWriting, dripPath, rng } from '../art/stainset.js';
 
 // 痕跡與「看得見的靈異」:濕腳印、玻璃上的手印、牆上的字、門縫下的光與走過的影子、隔簾後的人影、鏡子裡的臉、
 // 電視雜訊裡的臉、電梯門縫的光。腳印與手印各用一個 InstancedMesh(每個實例自己的透明度),
@@ -11,40 +13,16 @@ const FONT_SANS = '"Microsoft JhengHei", "PingFang TC", "Noto Sans TC", sans-ser
 // ---------- 貼圖(canvas;第一次用到才畫) ----------
 let footTex = null, handTex = null;
 function tex(c) { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; }
+// 濕腳印:解剖比例的赤腳(腳跟、外側足弓、前掌、五趾;足弓內側懸空),水漬邊緣較深(src/art/stainset.js;貼圖 Worker 畫)
 function footTexture() {
   if (footTex) return footTex;
-  const c = document.createElement('canvas'); c.width = 64; c.height = 128;
-  const x = c.getContext('2d');
-  x.fillStyle = '#fff';
-  const blob = (cx, cy, rx, ry, a = 1) => { x.globalAlpha = a; x.beginPath(); x.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); x.fill(); };
-  blob(32, 82, 15, 30, 0.9); blob(30, 104, 13, 16, 0.9); // 腳掌 + 腳跟
-  x.fillStyle = '#000'; x.globalAlpha = 1; x.beginPath(); x.ellipse(42, 78, 6, 18, 0.1, 0, Math.PI * 2); x.fill(); // 足弓
-  x.fillStyle = '#fff';
-  [[22, 40, 7], [32, 36, 5.5], [40, 38, 4.8], [46, 42, 4], [51, 47, 3.4]].forEach(([cx, cy, r]) => blob(cx, cy, r, r * 1.2, 0.85));
-  // 水漬:邊緣不規則
-  x.globalCompositeOperation = 'destination-out';
-  for (let i = 0; i < 160; i++) { x.globalAlpha = Math.random() * 0.5; x.beginPath(); x.arc(Math.random() * 64, Math.random() * 128, Math.random() * 2.5, 0, 6.3); x.fill(); }
-  footTex = tex(c);
+  footTex = paintTexture('art/stains:wetFoot', { seed: 3, w: 128, h: 256 }, { wrap: false, anisotropy: 4 });
   return footTex;
 }
+// 玻璃上的手印:油脂/霧氣的掌印(指節橫紋、指腹、掌丘、掌紋、壓力不均與皮紋;src/art/stainset.js;貼圖 Worker 畫)
 function handTexture() {
   if (handTex) return handTex;
-  const c = document.createElement('canvas'); c.width = 128; c.height = 128;
-  const x = c.getContext('2d');
-  x.filter = 'blur(1.6px)';
-  x.fillStyle = '#fff';
-  x.globalAlpha = 0.8;
-  x.beginPath(); x.ellipse(64, 84, 24, 28, 0, 0, Math.PI * 2); x.fill(); // 手掌
-  const fing = [[38, 52, -0.5, 26], [52, 34, -0.15, 34], [66, 30, 0, 37], [80, 34, 0.15, 33], [92, 50, 0.4, 25]];
-  for (const [fx, fy, a, len] of fing) { x.save(); x.translate(fx, fy + len / 2); x.rotate(a); x.beginPath(); x.ellipse(0, 0, 6.5, len / 2, 0, 0, Math.PI * 2); x.fill(); x.restore(); }
-  x.filter = 'none';
-  // 指紋/掌紋的細紋與往下流的水痕
-  x.globalCompositeOperation = 'destination-out';
-  for (let i = 0; i < 260; i++) { x.globalAlpha = Math.random() * 0.4; x.fillRect(Math.random() * 128, Math.random() * 128, 1, 1 + Math.random() * 2); }
-  x.globalCompositeOperation = 'source-over';
-  x.globalAlpha = 0.35;
-  for (let i = 0; i < 5; i++) { const sx = 46 + Math.random() * 36; x.fillRect(sx, 100, 2, 18 + Math.random() * 10); }
-  handTex = tex(c);
+  handTex = paintTexture('art/stains:ghostHand', { seed: 5, size: 256 }, { wrap: false, anisotropy: 4 });
   return handTex;
 }
 // 字跡貼圖:依風格畫手寫字(每個字隨機旋轉/大小/基線)
@@ -64,8 +42,9 @@ export function writingCanvas(text, style = 'marker', seed = 1) {
   const cols = Math.max(...lines.map((l) => [...l].length));
   const W = Math.ceil(cols * px * 1.05 + px * 0.6), H = Math.ceil(lines.length * px * 1.25 + px * (S.drip ? 0.9 : 0.4));
   const c = document.createElement('canvas'); c.width = Math.min(2048, W); c.height = Math.min(1024, H);
-  const x = c.getContext('2d');
+  const x = c.getContext('2d', S.smear ? { willReadFrequently: true } : undefined);
   x.textBaseline = 'middle'; x.textAlign = 'center';
+  const R = rng(seed);
   lines.forEach((ln, li) => {
     [...ln].forEach((ch, ci) => {
       if (ch === ' ' || ch === '　') return;
@@ -78,15 +57,24 @@ export function writingCanvas(text, style = 'marker', seed = 1) {
       } else if (S.scratch) {
         x.lineWidth = 1.4; x.strokeStyle = S.col;
         for (let k = 0; k < 3; k++) { x.globalAlpha = 0.55; x.strokeText(ch, (r() - 0.5) * 2.5, (r() - 0.5) * 2.5); }
+      } else if (S.smear) { // 手指沾血寫:先畫成遮罩(白),最後整張換成血(厚薄、條紋、乾刷斷裂、往下流)
+        x.globalAlpha = 1; x.fillStyle = '#fff'; x.fillText(ch, 0, 0);
+        x.globalAlpha = 0.45; x.fillText(ch, 1.5 + r() * 2.5, 1 + r() * 2);
       } else {
-        x.globalAlpha = S.smear ? 0.95 : 0.93; x.fillStyle = S.col; x.fillText(ch, 0, 0);
-        if (S.smear) { x.globalAlpha = 0.3; x.fillText(ch, 2 + r() * 3, 1 + r() * 2); }
+        x.globalAlpha = 0.93; x.fillStyle = S.col; x.fillText(ch, 0, 0);
       }
       x.restore();
-      // 往下流的痕跡
-      if (S.drip && r() < 0.45) { x.globalAlpha = 0.75; x.fillStyle = S.col; const dl = 12 + r() * px * 0.8, dw = 2 + r() * 3; x.fillRect(cx + (r() - 0.5) * sz * 0.5, cy + sz * 0.3, dw, dl); x.beginPath(); x.arc(cx + (r() - 0.5) * 2, cy + sz * 0.3 + dl, dw, 0, 6.3); x.fill(); }
+      // 油漆往下流:越流越細、末端淚滴
+      if (S.drip && !S.smear && r() < 0.45) { x.globalAlpha = 0.85; dripPath(x, cx + (r() - 0.5) * sz * 0.5, cy + sz * 0.28, 2.5 + r() * 3, 12 + r() * px * 0.8, R, S.col); }
     });
   });
+  if (S.smear) {
+    const img = x.getImageData(0, 0, c.width, c.height), d = img.data, n = c.width * c.height, m = new Float32Array(n);
+    for (let i = 0; i < n; i++) m[i] = d[i * 4 + 3] / 255;
+    img.data.set(bloodWriting(m, c.width, c.height, seed, px));
+    x.putImageData(img, 0, 0);
+    return c;
+  }
   // 磨損
   x.globalCompositeOperation = 'destination-out';
   for (let i = 0; i < c.width * c.height / 220; i++) { x.globalAlpha = r() * (S.chalk ? 0.7 : 0.35); x.fillRect(r() * c.width, r() * c.height, 1 + r() * 3, 1 + r() * 2); }
