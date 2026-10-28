@@ -773,7 +773,7 @@ export class Shop {
         D.addObject(obj, mtx);
       }
     }
-    this._collide(-L, Rt, -0.42, 0.42, 1.05);
+    this._collide(-L, Rt, -0.42, 0.42, 1.01); // [physics] 碰撞頂 = 檯面(1.0075)
 
     // ===== 捲門上方的招牌箱(捲門收在裡面) =====
     const fw = L + Rt, fcx = (Rt - L) / 2, fh = ceil - fasciaY;

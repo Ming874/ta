@@ -1,15 +1,15 @@
 import { sfx } from '../audio.js';
 
 // 翻越/攀上(按空白鍵時、正往腰高的障礙物前進):
-//  - 障礙物頂部比腳底高 0.6~1.25m(更矮的直接跳過去;更高的翻不過),上方要有淨空
+//  - 0.46m 以下直接走上去(World.BOX_STEP);0.6~1.25m 翻過去、0.6~1.42m(胸口高)攀上去;更矮的直接跳,上方要有淨空
 //  - 「翻過去」:另一側同一樓層(可以比較低,最多 1.3m)有站得下的位置(牆/欄杆/挑空/樓梯開口/地圖外都不算)→ 落在另一側
-//  - 「攀上去」:翻不過去時(桌子、大箱子很深),頂部 ≤ 1.1m 而且站得上去的道具 → 站到頂上(頭上空間不夠就蹲著)
+//  - 「攀上去」:翻不過去時(桌子、大箱子很深)或太高翻不過,頂部 ≤ 1.42m 而且站得上去的道具 → 站到頂上(頭上空間不夠就蹲著)
 //  - 0.4~0.6 秒的固定軌跡(手撐上去 → 越過 → 落地),鏡頭壓低、微微低頭與側傾;期間不做碰撞,結束時正常碰撞(World.resolve)
 // 只在按下空白鍵時檢查一次(沿前進方向取樣三條線),沒有每幀成本。
 
 const R = 0.35; // 玩家半徑(player.js RADIUS)
-const STEP = 0.5, BOX_STEP = 0.35;
-const MIN_H = 0.6, MAX_OVER = 1.25, MAX_ONTO = 1.1, REACH = 0.8, DROP = 1.3;
+const STEP = 0.5, BOX_STEP = 0.46; // 與 World.BOX_STEP 一致(更矮的直接走上去)
+const MIN_H = 0.6, MAX_OVER = 1.25, MAX_ONTO = 1.42, REACH = 0.8, DROP = 1.3; // 攀上去:到胸口高(殭屍也爬得上去,見 physics/zclimb.js)
 const STAND_H = 1.8, CROUCH_H = 1.25;
 const NO = Infinity; // 不能翻的東西(牆、窗、圍籬、高的道具)
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -94,12 +94,12 @@ export class Mantle {
     if (a0 < 0) { this.last = 'none'; return false; }
     const rel = top - y;
     if (rel < MIN_H) { this.last = 'low'; return false; } // 矮的直接跳
-    if (rel > MAX_OVER) { this.last = 'high'; return false; }
+    if (rel > MAX_ONTO) { this.last = 'high'; return false; }
     // 障礙物上方的淨空(身體越過時至少 0.9m)
     for (let a = a0; a <= (a1 > 0 ? a1 : a0 + 0.6); a += 0.2) if (W.headroom(P.x + dx * a, P.z + dz * a, top, 0.2) < top + 0.9) { this.last = 'noclear'; return false; }
     // 2) 翻過去:另一側的落地點
     let lx = NaN, lz = NaN, ly = NaN;
-    if (a1 > 0) {
+    if (a1 > 0 && rel <= MAX_OVER) {
       for (let a = a1 + R + 0.04, b = a1; a <= a1 + R + 1.0; a += 0.1) {
         const x = P.x + dx * a, z = P.z + dz * a;
         let bad = false;

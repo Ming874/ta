@@ -39,6 +39,7 @@ import { folkCue, folkReset, folkState, folkPrebake, _folk, FS as folkFS } from 
 import { trackState, resumeTracks, preloadStings, _trackX } from './audio/tracks.js';
 import { roomInfo, resetRooms } from './audio/rooms.js';
 import * as SM from './audio/samples.js';
+import { glass } from './audio/glass.js';
 
 // AudioContext 只能在使用者互動後建立/恢復;第一次互動(點擊、按鍵)就自動啟動,選單也聽得到配樂與環境音
 let booted = false;
@@ -118,6 +119,7 @@ export const sfx = {
   hit: safe(() => foley.hit()),
   headshot: safe(() => foley.headshot()),
   wall: safe((pos, surface) => foley.wall(pos, surface)), // pos/surface 可選:定位 + 依材質的彈著聲
+  glass: safe((kind, pos, size, sprint) => glass(kind, pos, size, sprint)), // [physics] 玻璃:'crack'|'shatter'|'crumble'|'tinkle'|'break'|'crunch'(audio/glass.js)
 
   // ---- 拾取 / 商店 / 介面 ----
   coin: safe((i = 0) => ui.coin(i)),
