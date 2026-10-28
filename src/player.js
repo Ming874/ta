@@ -151,7 +151,15 @@ export class Player {
       sfx.armorHit();
     }
     this.hp = Math.max(0, this.hp - dmg);
-    this.shake = Math.max(this.shake, 0.35);
+    // [motion] 方向性的鏡頭後座(彈簧回正,約 0.35 秒):右邊被打 → 頭往左歪、往後仰;取代大部分的亂數晃動
+    if (src && Number.isFinite(src.x)) {
+      const ax = src.x - this.pos.x, az = src.z - this.pos.z, s = Math.sin(this.yaw), c = Math.cos(this.yaw);
+      const side = ax * c - az * s, fwd = -ax * s - az * c, n = Math.hypot(side, fwd) || 1;
+      const k = Math.min(1, 0.35 + dmg / 30) * (this.kickMul ?? 1);
+      this.kickRV = (this.kickRV || 0) + (side / n) * 0.55 * k;
+      this.kickPV = (this.kickPV || 0) + (0.22 + 0.25 * Math.max(0, fwd / n)) * k;
+      this.shake = Math.max(this.shake, 0.12);
+    } else this.shake = Math.max(this.shake, 0.35);
     this.lastHurt = t;
     if (src) this.lastHurtFrom = { x: src.x, z: src.z };
     sfx.hurt(dmg);
@@ -292,13 +300,19 @@ export class Player {
     } else this.viewY = p.y;
     this.eyeH = EYE + (EYE_CROUCH - EYE) * this.crouchT + this.mantle.eye;
     this.shake = Math.max(0, this.shake - dt);
+    // [motion] 受傷後座的彈簧(ζ≈0.73,一點點過衝後回正)
+    let kr = this.kickR || 0, krv = this.kickRV || 0, kp = this.kickP || 0, kpv = this.kickPV || 0;
+    krv += (-170 * kr - 19 * krv) * dt; kr += krv * dt;
+    kpv += (-170 * kp - 19 * kpv) * dt; kp += kpv * dt;
+    if (Math.abs(kr) + Math.abs(krv) + Math.abs(kp) + Math.abs(kpv) < 1e-5) kr = krv = kp = kpv = 0;
+    this.kickR = kr; this.kickRV = krv; this.kickP = kp; this.kickPV = kpv;
     const bobAmp = this.onGround ? 1 - this.crouchT * 0.5 : 0;
     const bobY = Math.sin(this.bobT * 2) * 0.035 * this.speedNorm * bobAmp;
     const bobX = Math.cos(this.bobT) * 0.025 * this.speedNorm * bobAmp;
-    const sh = this.shake * (Math.random() - 0.5) * 0.08;
+    const sh = this.shake * (this.shakeMul ?? 1) * (Math.random() - 0.5) * 0.08;
     this.camera.position.set(p.x + bobX * cos, this.viewY + this.eyeH + bobY + this.dip + sh, p.z - bobX * sin);
     this.camera.rotation.order = 'YXZ';
-    this.camera.rotation.set(this.pitch + sh + this.mantle.pitch, this.yaw, this.mantle.roll);
+    this.camera.rotation.set(this.pitch + sh + this.mantle.pitch + this.kickP, this.yaw, this.mantle.roll + this.kickR);
   }
 
   get eye() {

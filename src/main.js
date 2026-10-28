@@ -16,6 +16,7 @@ import { initNet } from './net/lobby.js';
 import { installHorror } from './horror/index.js';
 import { installDeduce } from './story/deduce.js';
 import { installObjectives } from './story/objectives.js';
+import { installMotion } from './ui/motion.js';
 import { startPhysicsWorker, physicsLoad } from './physics/index.js';
 import { assets } from './sys/assets.js';
 import { installStreaming } from './sys/stream.js';
@@ -67,6 +68,7 @@ initNet(game); // [net] 主選單的多人連線入口(src/net/lobby.js)
 installHorror(game); // [ghost] 靈異系統:驚嚇導演、耳語、幻影、靈異事件(src/horror)
 installDeduce(game); // [story] 線索卡、推理本(J)、擲筊、頭七(src/story)
 installObjectives(game); // [story] 目標鏈、區域解鎖、提示(src/story/objectives.js)
+installMotion(game); // [motion] 轉場與手感:開機、開場、燈篙節拍、受傷、倒下、暫停(src/ui/motion.js;全部是 post 的 uniform)
 window.__game = game; // 除錯用:在瀏覽器 console 操作 __game
 
 // ---- 效能基礎建設 ----
@@ -171,7 +173,11 @@ async function boot() {
   game.initCombat?.();
   // 殭屍與常見特效材質:每種殭屍的第一個變體一建好就預編譯(與場景預編譯平行,不等它做完)
   whenTypesReady().then(() => { performance.mark('hz:variants'); warmStage = 1; return idle(warmRuntime, 300); })
-    .catch((e) => console.warn('[warmup]', e)).finally(() => { warmStage = 4; game.warmed = true; });
+    .catch((e) => console.warn('[warmup]', e)).finally(() => {
+      warmStage = 4; game.warmed = true;
+      // [motion] 商店 3D 預覽(獨立的小 context)在選單閒置時先建好、shader 先編(含環境貼圖的 PMREM):第一次開店不卡
+      setTimeout(() => { if (!game.ui.shop.game) game.ui.shop.game = game; game.ui.shop.warm?.(); }, 1200);
+    });
   await yieldNow(); // 先讓模組執行完(DOMContentLoaded、選單可互動),編譯分批在之後的任務裡做
   const t = performance.now();
   try {

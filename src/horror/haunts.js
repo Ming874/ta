@@ -436,8 +436,9 @@ export function hauntKinds(h) {
     touqi: { ok: (c) => indoor(c) && free() && models.ready('nurse') && !!c.figSpot?.(), run(c) {
       const s = c.figSpot(), y = lv(c);
       const a = A.spawn({ tag: 'touqi', fig: 'nurse', pose: 'stand', look: 'pale', alpha: 0.8, x: s.x, y, z: s.z, yaw: Math.atan2(c.px - s.x, c.pz - s.z), dur: 14, fadeIn: 1.2, vanish: { flash: false, look: 0.985, lookT: 1.4, near: 6 },
-        onEnd: (why) => { h.touqiWhy = why; story('touqi', { ear: 'both', force: true }); } }); // why:'look' = 你看著她、她轉身(劇情 src/story/deduce.js 接著播頭七的兩句)
+        onEnd: (why) => { h.touqiWhy = why; game.motion?.beat('touqi-end'); story('touqi', { ear: 'both', force: true }); } }); // why:'look' = 你看著她、她轉身(劇情 src/story/deduce.js 接著播頭七的兩句)
       h.chill?.(0.35, 10);
+      if (a) game.motion?.beat('touqi'); // [motion] 她站在那裡的時候:世界慢慢褪色、變冷
       return a;
     } },
 
@@ -453,7 +454,8 @@ export function hauntKinds(h) {
         const i = cascade ? ahead.indexOf(f) : -1;
         die(c, f, i >= 0 ? t + 0.25 + i * step : tb, tr + rand(0, 0.4), i >= 0 ? () => ghost.tubeOff(fpos(f)) : null);
       }
-      h.after(tb - t, () => { const p = P().pos; ghost.breaker({ x: p.x, y: p.y + 2.6, z: p.z }); ghost.silence(dark + 1, 0.04); });
+      h.after(tb - t, () => { const p = P().pos; ghost.breaker({ x: p.x, y: p.y + 2.6, z: p.z }); ghost.silence(dark + 1, 0.04); game.motion?.beat('dark', { hold: dark }); }); // [motion] 眼睛適應黑暗
+      h.after(tr - t, () => game.motion?.beat('light')); // [motion] 燈回來:刺眼一下
       h.director.hold(tr - t + 5);
       h.after(tb - t + rand(1.2, 1.8), () => darkBeat(c));
       h.after(tb - t + dark * 0.55, () => story('dark'));

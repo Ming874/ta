@@ -68,7 +68,11 @@ class Preview {
   }
 
   start() {
-    if (this.renderer) return;
+    if (this.renderer) { // [motion] 第二次以後:沿用同一個 context(shader 已編好,開店不再卡 0.5~1.3 秒)
+      if (!this.raf) this._loop();
+      this.resize();
+      return;
+    }
     // 每次開啟都換新的 canvas(釋放後舊 canvas 的 context 已遺失)
     this.canvas?.remove();
     this.canvas = document.createElement('canvas');
@@ -77,6 +81,7 @@ class Preview {
       this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true, powerPreference: 'low-power' });
     } catch { this.renderer = null; return; }
     const r = this.renderer;
+    r.debug.checkShaderErrors = !import.meta.env?.PROD; // [motion] 正式版不查 shader 錯誤日誌(getProgramInfoLog 會同步等編譯完成,開店卡 0.6 秒)
     r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     r.outputColorSpace = THREE.SRGBColorSpace;
     r.toneMapping = THREE.ACESFilmicToneMapping;
@@ -85,9 +90,13 @@ class Preview {
     this.resize();
     this._onResize = () => this.resize();
     window.addEventListener('resize', this._onResize);
+    this._loop();
+  }
+
+  _loop() {
     let last = performance.now();
     const loop = (now) => {
-      if (!this.renderer) return;
+      if (!this.renderer) { this.raf = 0; return; }
       this.raf = requestAnimationFrame(loop);
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
@@ -105,8 +114,38 @@ class Preview {
     this.raf = requestAnimationFrame(loop);
   }
 
+  // [motion] 店門拉起時(還沒走到店裡)在閒置時段先建好預覽的 context,並用 compileAsync 把每種商品模型的 shader 編好:
+  // 第一次開店不再卡 0.5~1.3 秒(KHR_parallel_shader_compile:不擋主執行緒)
+  // ok():現在可以做嗎(選單閒置、或燈篙熄的時候;開場演出與戰鬥中不做 —— 第一個步驟含環境貼圖的 PMREM,約 0.6 秒)
+  warm(list, ok = () => true) {
+    if (this._warm) return;
+    this._warm = true;
+    const idle = (fn) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(fn, { timeout: 250 }) : setTimeout(fn, 60));
+    const items = list || [];
+    let i = -1;
+    const step = async () => {
+      if (this.raf) return; // 商店已經開了:正常流程接手
+      if (!ok()) { setTimeout(() => idle(step), 1000); return; }
+      if (i < 0) { this.start(); cancelAnimationFrame(this.raf); this.raf = 0; i = 0; return idle(step); }
+      const r = this.renderer;
+      if (!r || i >= items.length) { this.clear(); this.key = ''; this._warmDone = performance.now(); return; }
+      this.show(items[i++]);
+      try { await r.compileAsync(this.scene, this.camera); } catch { /* 舊瀏覽器:第一次畫的時候再編 */ }
+      idle(step);
+    };
+    idle(step);
+  }
+
+  // [motion] 關店只停止繪製、清掉模型,保留 renderer 與 canvas(下次開店不用重建 context、重編 shader)
   stop() {
     cancelAnimationFrame(this.raf);
+    this.raf = 0;
+    this.clear();
+    this.key = '';
+  }
+
+  dispose() {
+    this.stop();
     if (this._onResize) window.removeEventListener('resize', this._onResize);
     if (this.renderer) {
       this.renderer.dispose();
@@ -115,8 +154,6 @@ class Preview {
     }
     this.canvas?.remove();
     this.canvas = null;
-    this.clear();
-    this.key = '';
   }
 
   resize() {
@@ -257,6 +294,8 @@ export class ShopUI {
   open(game) {
     this.game = game;
     this.isOpen = true;
+    clearTimeout(this._closeT);
+    this.root.classList.remove('closing');
     this.root.classList.add('on');
     this.coinShown = game.player.coins;
     this.coinEl.textContent = this.coinShown;
@@ -279,10 +318,24 @@ export class ShopUI {
     }
   }
 
+  // 店門拉起時呼叫:預覽的 shader 先在背景編好
+  warm() {
+    try {
+      const pv = [];
+      for (const t of this.game?.shopTabs?.() || []) for (const it of t.items || []) if (it.preview && !pv.some((q) => q.type === it.preview.type && q.id === it.preview.id)) pv.push(it.preview);
+      const g = this.game;
+      this.preview.warm(pv, () => !g || (g.state === 'menu' ? !g.motion?.busy && !document.hidden : g.state === 'playing' && g.phase !== 'fighting'));
+    } catch (e) { console.warn('[shop] warm', e); }
+  }
+
   close() {
     if (!this.isOpen) return;
     this.isOpen = false;
+    // [motion] 關門:面板往下 10px 淡出(160ms),不擋操作(pointer-events:none)
+    this.root.classList.add('closing');
     this.root.classList.remove('on');
+    clearTimeout(this._closeT);
+    this._closeT = setTimeout(() => this.root.classList.remove('closing'), 170);
     this.preview.stop();
   }
 

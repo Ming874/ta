@@ -14,6 +14,7 @@ export const DEFAULTS = {
   master: 0.9, music: 0.7, sfx: 0.9, // 音量 0..1
   hurtFx: true, // 受傷畫面效果(暈影/方向指示)
   tips: true, // 新手提示
+  motion: 'auto', // [motion] 畫面動態 auto(跟著 prefers-reduced-motion)| full | reduced(src/ui/motion.js)
   scare: 'normal', // [ghost] 驚嚇強度 off | low | normal | high(src/horror/director.js)
   // 沒有效能模組時的畫質備援
   preset: 'high', shadows: true, bloom: true, dynamicRes: true,

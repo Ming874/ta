@@ -99,6 +99,7 @@ export function createMemories(h) {
     ghost.silence(run.dur + 1.2, 0.18);
     sfx.folk?.('ama', { x: F.x, y: F.y + 1.4, z: F.z });
     S.pastTgt = 1;
+    game.motion?.beat('gate'); // [motion] 滑進過去:放映機門的兩下很淡的閃
     run.bed = ghost.pastBed?.(run.dur, m.bed || 'ward');
     if ((m.lights || 'on') === 'on') lightsPast(F, 16);
     const T = run.token, at = (sec, fn) => h.after(sec, () => { if (S.cur?.token === T) fn(); });

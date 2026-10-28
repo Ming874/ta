@@ -33,8 +33,13 @@ export class UI {
   overlay(id, on) {
     if (id === 'shop') { if (on) { if (this.game) this.game.openShop(); } else this.game?.closeShop(false); return; }
     const el = $(id);
+    if (el && id !== 'menu' && !on && el.classList.contains('on')) { // [motion] 暫停/倒下的卡片收起時淡出 140ms(不擋點擊)
+      el.classList.add('mo-closing');
+      clearTimeout(el._moT);
+      el._moT = setTimeout(() => el.classList.remove('mo-closing'), 150);
+    } else if (el && on) { clearTimeout(el._moT); el.classList.remove('mo-closing'); }
     if (el) el.classList.toggle('on', on);
-    if (id === 'pause') this.menu.onPause(on);
+    if (id === 'pause') { this.menu.onPause(on); this.game?.motion?.pause(on); } // [motion] 世界變暗、褪色(160ms),繼續時亮回來
   }
 
   // ---------- HUD(轉給 Hud) ----------
@@ -70,16 +75,22 @@ export class UI {
     this.onHit?.(head);
   }
 
-  damageFlash() {
+  // [motion] 受傷:邊緣暗紅,強度跟傷害走(最多 .62,不做全螢幕紅閃),偏向受傷的那一側;40ms 起、520ms 退
+  damageFlash(amount = 15, src = null, p = null) {
     if (!settings.get('hurtFx')) return;
     const el = $('damage');
     if (!el) return;
-    el.style.transition = 'none';
-    el.style.opacity = 0.9;
-    requestAnimationFrame(() => {
-      el.style.transition = 'opacity .6s';
-      el.style.opacity = 0;
-    });
+    const k = Math.min(0.62, 0.22 + (amount || 0) / 40);
+    let dx = 0;
+    if (src && p) { // 來源在畫面的哪一側(-1 左 … 1 右)
+      const ax = src.x - p.pos.x, az = src.z - p.pos.z, s = Math.sin(p.yaw), c = Math.cos(p.yaw);
+      const a = Math.atan2(ax * c - az * s, -ax * s - az * c);
+      dx = Math.max(-1, Math.min(1, Math.sin(a) * 1.4));
+    }
+    el.style.setProperty('--dx', dx.toFixed(2));
+    el.getAnimations?.().forEach((a) => a.cancel());
+    el.animate([{ opacity: 0 }, { opacity: k, offset: 0.07 }, { opacity: 0 }], { duration: 560, easing: 'cubic-bezier(.2,.7,.2,1)' });
+    if (this.game?.motion) this.game.motion._hitK = Math.min(0.6, 0.3 + (amount || 0) / 60);
   }
 
   // 每幀(遊戲進行中、未暫停)
