@@ -144,6 +144,7 @@ export class Game {
     this.hospital.update(this.time, dt, this.player);
     this.horror?.update(dt); // [ghost] 靈異導演、耳語、幻影(src/horror)
     this.post.uniforms.time.value = this.time % 100;
+    this.grade?.update(dt); // [gpu] 分區 LUT 權重、驚嚇色差脈衝(src/gfx/grade.js)
     this.updateParticles(dt);
     this.updateCombat(dt); // 武器:開鏡視野、準心/狙擊鏡、手榴彈、彈殼與彈孔等特效(src/game/combat.js)
 

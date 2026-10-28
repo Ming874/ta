@@ -17,6 +17,7 @@ export class GpuProfiler {
     this.name = null;
     this.detail = false;
     this.ms = null;
+    this.msA = 0; // 其中場景繪製段(frame/scene/shadow)
     this.seg = {};
     this.last = {};
     this.lost = 0;
@@ -40,6 +41,8 @@ export class GpuProfiler {
     c.n.push(name);
   }
   pass(name) { if (this.detail && this.cur) this.mark(name); }
+  // 場景繪製結束:非 detail 模式也切一段(自動調整要分開「場景段」與「之後的全螢幕 pass」)
+  split(name) { if (!this.detail && this.cur) this.mark(name); }
   end() {
     if (!this.cur) return;
     if (this.active) this.gl.endQuery(this.ext.TIME_ELAPSED_EXT);
@@ -66,6 +69,7 @@ export class GpuProfiler {
       }
       if (disjoint || !(tot > 0)) { this.lost++; continue; }
       this.ms = tot;
+      this.msA = (per.frame || 0) + (per.scene || 0) + (per.shadow || 0);
       this.done++;
       this.last = per;
       for (const k in this.seg) if (!(k in per)) this.seg[k] *= 0.9; // 這幀沒有這段(pass 關掉了)→ 慢慢歸零
