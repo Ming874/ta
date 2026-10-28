@@ -188,7 +188,7 @@ export const warmRoots = () => [...registry.keys()];
 
 // 核心:把 srcs 的代表物件在 target 場景的光源/霧狀態下編譯(分批、每批等 GPU 行程追上),回傳建立/用到的 program
 // state:{ shadows, type } 只在每次 compile 的同步區段內暫時套到 renderer.shadowMap(畫質切換的預先編譯用)
-async function compileSet(game, srcs, { shadows = true, target = game.scene, camera = game.camera, budget = 10, state = null, onProgress = null } = {}) {
+async function compileSet(game, srcs, { shadows = true, target = game.scene, camera = game.camera, budget = 10, state = null, onProgress = null, per = 2 } = {}) {
   const r = game.renderer, rt = game.composer ? game.composer.readBuffer : null, sm = r.shadowMap;
   const progs = new Set();
   const shadowOn = state ? !!state.shadows : sm.enabled;
@@ -203,6 +203,8 @@ async function compileSet(game, srcs, { shadows = true, target = game.scene, cam
       for (const m of mats) {
         const mp = r.properties.get(m), p = mp.currentProgram;
         if (p) progs.add(p);
+        // 雙面透明材質 three 會編正反兩個 program(BackSide/FrontSide),currentProgram 只是其中一個:全部都要等、都要初始化
+        if (mp.programs) for (const q of mp.programs.values()) progs.add(q);
         // 暫存場景(新畫質設定)編的:compile 會把材質目前的 program 換成新設定的版本。不需要光源的材質(Basic/Sprite/Line…)
         // 在實際繪製時不會發現要換回來,會拿還沒編完的新 program 去畫 → 同步等編譯。標記版本讓下一次繪製重新挑(找到現成的舊 program)
         if (state) mp.__version = -1;
@@ -226,7 +228,7 @@ async function compileSet(game, srcs, { shadows = true, target = game.scene, cam
         // three 的 compile() 同一次呼叫裡每個材質只編「第一個用到它的物件」的變體:同一批不能有共用材質的物件
         // (例如同一材質的 Mesh 與 BatchedMesh,第二個的 batching 變體會被跳過,之後第一次畫到才現場編)
         const part = [], seenM = new Set();
-        while (i < list.length && part.length < 2) {
+        while (i < list.length && part.length < per) {
           const ms = [].concat(list[i].material || []);
           if (part.length && ms.some((m) => seenM.has(m))) break;
           for (const m of ms) seenM.add(m);
@@ -276,8 +278,14 @@ export async function stageConfig(game, { lights, shadows, type, weapon = false 
   });
   while (add-- > 0) st.add(new THREE.PointLight(0xffffff, 0, 8, 2));
   const srcs = [{ root: scene, instanced: false }, ...[...registry].map(([root, o]) => ({ root, instanced: o.instanced }))];
+  // 編譯期間 GPU 行程很忙,任何同步的 GL 查詢都會排在它後面等(實測 1 秒)。目前設定下還沒「第一次使用」過的 program
+  // (例如雙面透明材質的背面版本)先初始化好,編譯途中實際繪製時就不會撞上
+  const live = new Set();
+  for (const s0 of srcs) s0.root.traverse((o) => { for (const m of [].concat(o.material || [])) { const mp = m && game.renderer.properties.get(m); if (mp?.programs) for (const q of mp.programs.values()) live.add(q); } });
+  await initPrograms(live);
   const state = { shadows, type };
-  const progs = await compileSet(game, srcs, { target: st, state, onProgress: (f) => onProgress?.(weapon ? f * 0.85 : f) });
+  // 遊戲進行中編:每次只編一個物件、每批 4ms,批與批之間等 GPU 行程追上(慢一點,但不搶畫面)
+  const progs = await compileSet(game, srcs, { target: st, state, budget: 4, per: 1, onProgress: (f) => onProgress?.(weapon ? f * 0.85 : f) });
   if (weapon && game.weaponScene) { // 陰影類型也是手持武器層 program 的參數
     for (const p of await compileSet(game, [{ root: game.weaponScene }], { target: game.weaponScene, camera: game.weaponCamera, shadows: false, state, onProgress: (f) => onProgress?.(0.85 + 0.15 * f) })) progs.add(p);
   }
