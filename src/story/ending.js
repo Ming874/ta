@@ -226,6 +226,8 @@ export function installEnding(game, S) {
       }
       // 五、數到十
       run.beat = 'count';
+      const nc = S.calls || 0; // 今晚阿嬤叫了你幾次(src/story/revive.js)
+      if (nc > 0) await talk('xl', `今天晚上，那個阿嬤叫了你${nc === 1 ? '一' : nc === 2 ? '兩' : nc === 3 ? '三' : '好幾'}次。……我都聽到了。`, { gap: 1.4 });
       await talk('xl', '{暱稱}，你在發抖。', { gap: 1 });
       await talk('xl', '我跟你講。怕的時候，數到十。……我們一起數。', { gap: 1.2 });
       const hum207 = (v === 'good' || v === 'secret') && !!W()?.anchors?.w207?.view;

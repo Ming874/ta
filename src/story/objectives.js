@@ -23,6 +23,7 @@ import { CARDS, QUESTION, WORDS, CATS } from './clues.js';
 import { installOpening } from './opening.js';
 import { installClimax } from './climax.js';
 import { installEnding } from './ending.js';
+import { installRevive } from './revive.js';
 import * as THREE from 'three';
 
 // 提示的時間(秒,卡在同一步多久):小鈴 / 阿嬤 / 閃一下
@@ -290,6 +291,7 @@ export function installObjectives(game) {
   try { installOpening(game, S); } catch (e) { console.warn('[story] opening', e); }
   try { installClimax(game, S); } catch (e) { console.warn('[story] climax', e); }
   try { installEnding(game, S); } catch (e) { console.warn('[story] ending', e); }
+  try { installRevive(game, S); } catch (e) { console.warn('[story] revive', e); }
   return O;
 }
 
