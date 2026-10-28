@@ -73,6 +73,11 @@ class Chase {
     }
     if (ix && ix !== this.ixBound && ix.on) {
       this.ixBound = ix;
+      ix.on('door', (w, st) => { // 門在追獵者面前被甩上:撞個正著,暈一下(之後照樣把門推開)
+        const z = this.z;
+        if (st !== 'closed' || !z || !this.active || !this.host || z.state === 'stun') return;
+        if (Math.hypot(z.pos.x - w.cx, z.pos.z - w.cz) < 2.6 && Math.abs(z.pos.y - w.y) < 1.6) { z.go('stun'); this.slams = (this.slams || 0) + 1; }
+      });
       ix.on('unlock', (w) => { // 打開上鎖的門:追獵者從門後衝出來
         if (!this.host || this.active || this.pending || !this._can(true)) return;
         const p = g.player, dx = w.cx - p.pos.x, dz = w.cz - p.pos.z, d = Math.hypot(dx, dz) || 1;
@@ -255,7 +260,7 @@ class Chase {
     this.pending = null; this.acts.clear(); this.checkT = 6;
     this._presStop('reset', false);
   }
-  stats() { return { active: this.active, count: this.count, reason: this.reason, t: +this.t.toFixed(1), lost: +this.lost.toFixed(1), pursuer: this.z ? this.z.state : null, safe: this.safe, log: this.log.slice(-8) }; }
+  stats() { return { active: this.active, count: this.count, slams: this.slams || 0, reason: this.reason, t: +this.t.toFixed(1), lost: +this.lost.toFixed(1), pursuer: this.z ? this.z.state : null, safe: this.safe, log: this.log.slice(-8) }; }
 
   // ======================= 畫面與聲音(每一端) =======================
   _presStart(me, safe, line) {
