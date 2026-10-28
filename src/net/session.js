@@ -402,9 +402,9 @@ export class NetSession {
     const T = rp.target;
     T.root = a.root;
     T.pos = a.root.position; // 射擊判定用畫面上看到的(插值後)位置
-    T.meshes = a.hits;
-    T.hitboxes = a.hits;
-    for (const h of a.hits) h.userData.zombie = T;
+    // 命中盒跟著模型:寫實角色下載好、換掉程式生成的模型時也要更新
+    a.onModel = () => { T.meshes = a.hits; T.hitboxes = a.hits; for (const h of a.hits) h.userData.zombie = T; };
+    a.onModel();
     return a;
   }
 

@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { sfx } from '../audio.js';
-import { DECAL } from '../weapons/fx.js';
 import { MATS } from './truth.js';
+import { GlassPanes, installCrackShader } from './glass.js';
+import { GlassFX } from './glassfx.js';
 
 // 子彈穿透(依材質與厚度):
-//  - 薄面板(不在 World 碰撞盒裡,不擋視線/移動):窗玻璃、櫃台玻璃隔板(打裂 → 打碎,碎了就不再有效果)、
+//  - 薄面板(不在 World 碰撞盒裡,不擋視線/移動):窗玻璃、櫃台玻璃隔板(彈孔 + 蛛網裂紋,多發後裂紋連成網、整片失效碎落;
+//    舊窗 = 退火玻璃大塊尖碎片,櫃台 = 強化玻璃先龜裂再崩成小粒;見 physics/glass.js、glassfx.js)、
 //    鐵絲網/鐵欄圍籬(子彈直接穿過,偶爾冒火花)、封窗木板(木屑、少量減傷)
 //  - 道具碰撞盒(World.rayBox 告訴我們打到哪個):依 physics/truth.js 的穿透類別與實際穿過的厚度扣穿透力,
 //    穿得過就從出口繼續飛(入口彈孔/碎屑、出口彈孔、射程與傷害衰減),混凝土/石材/沙包一定擋住;最多再穿 2 個(每發最多多 2 次 rayDistance)
@@ -41,14 +43,29 @@ export class Ballistics {
     this.st = new Int8Array(n); // 玻璃貼圖格:0 完整 / 1 蛛網裂 / 2 破洞 / 3 只剩碎片 / -1 沒玻璃
     this.ax = new Uint8Array(n); // 0 = 面朝 z(沿 x 延伸)/ 1 = 面朝 x
     this.bx = new Float32Array(n * 6); // minX maxX minY maxY minZ maxZ
-    this.ref = new Array(n); // 玻璃:{ mesh, vi }(換 UV);木板:[[cu, cy, a]...]
+    this.ref = new Array(n); // 玻璃:{ mesh, vi }(四個頂點);木板:[[cu, cy, a]...]
+    this.gi = new Int32Array(n).fill(-1); // 玻璃:GlassPanes 裡的編號(-1 = 找不到網格,只有邏輯)
+    this.temp = new Uint8Array(n); // 1 = 強化玻璃(櫃台隔板)
+    this.dmg = new Float32Array(n); // 沒有網格的玻璃用的受損值
     this._s = new Uint32Array(n);
     this._stamp = 0;
+    // 窗玻璃的裂紋 shader(預編譯前就掛上;雨滴 hook 在 weather 建構時已經掛好,這裡包在它外面)
+    this.panes = new GlassPanes();
+    const gm = new Set();
+    for (const e of list) if (e.ref && e.ref.mesh) gm.add(e.ref.mesh.material);
+    for (const m of gm) installCrackShader(m);
+    game.scene.traverse((o) => { if (o.isMesh && gm.has(o.material)) this.panes.prepareMesh(o); }); // 同材質的其他網格也要有屬性
     list.forEach((e, i) => {
       this.kind[i] = e.kind; this.st[i] = e.st ?? 0; this.ax[i] = e.ax;
       this.bx.set([e.x0, e.x1, e.y0, e.y1, e.z0, e.z1], i * 6);
       this.ref[i] = e.ref || null;
+      if (e.kind !== P_GLASS) return;
+      this.temp[i] = e.counter ? 1 : 0;
+      const W = e.ax === 0 ? e.x1 - e.x0 : e.z1 - e.z0, H = e.y1 - e.y0;
+      if (e.ref && e.ref.mesh) this.gi[i] = this.panes.add(e.ref, W, H, e.st, this.temp[i], i * 7 + 3);
+      if (e.st >= 3) this.dmg[i] = 2;
     });
+    this.fx = new GlassFX(game); // 碎片(實例化;開場預編譯時就在場景裡)
     // 2m 格索引(CSR)
     const WH = this.W * this.H, cnt = new Int32Array(WH + 1);
     const cells = (i, fn) => {
@@ -67,7 +84,7 @@ export class Ballistics {
     this.segT = new Float32Array(MAX_SEG); this.segMul = new Float32Array(MAX_SEG); this.segX = new Float32Array(MAX_SEG); this.nSeg = 0;
     this.evT = new Float32Array(MAX_EV); this.evT2 = new Float32Array(MAX_EV); this.evK = new Uint8Array(MAX_EV); this.evI = new Int32Array(MAX_EV); this.evB = new Array(MAX_EV).fill(null); this.nEv = 0;
     this.end = 0; this.stop = false; this.endBox = null; this.pens = 0;
-    this.stats = { ms: Math.round(performance.now() - t0), panes: n, glass: list.filter((e) => e.kind === P_GLASS && e.st >= 0 && e.st < 2).length, shattered: 0, pen: 0 };
+    this.stats = { ms: Math.round(performance.now() - t0), panes: n, glass: list.filter((e) => e.kind === P_GLASS && e.st < 3).length, visual: this.panes.list.length, shattered: 0, cracks: 0, pen: 0 };
   }
 
   // ---------- 建立面板 ----------
@@ -199,10 +216,11 @@ export class Ballistics {
         if (this._s[i] === st) continue;
         this._s[i] = st;
         const kd = this.kind[i];
-        if (kd === P_GLASS && (this.st[i] < 0 || this.st[i] >= 2)) continue; // 已經碎了:直接穿過
+        if (kd === P_GLASS && this.broken(i)) continue; // 已經碎了:直接穿過
         const th = slab(bx, i * 6, o.x, o.y, o.z, d.x, d.y, d.z, t0, t1);
         if (th === Infinity) continue;
         if (kd === P_BOARD && !this._onBoard(i, o, d, th)) continue;
+        if (kd === P_GLASS && this.gi[i] >= 0 && this.panes.inHole(this.gi[i], this._u(i, o.x + d.x * th, o.z + d.z * th), o.y + d.y * th - bx[i * 6 + 2])) continue; // 從破洞穿過
         if (this.nEv >= MAX_EV) break;
         const ev = this.nEv++;
         this.evK[ev] = EV_PANE; this.evT[ev] = th; this.evI[ev] = i; this.evB[ev] = null;
@@ -220,6 +238,9 @@ export class Ballistics {
       this.evT[b + 1] = T; this.evI[b + 1] = I;
     }
   }
+
+  broken(i) { return this.gi[i] >= 0 ? this.panes.broken(this.gi[i]) : this.dmg[i] >= 1.9; }
+  _u(i, x, z) { return this.ax[i] === 0 ? x - this.bx[i * 6] : z - this.bx[i * 6 + 4]; }
 
   // 封窗木板:命中點是否落在某塊(斜放)木板上
   _onBoard(i, o, d, t) {
@@ -249,7 +270,9 @@ export class Ballistics {
         const b = this.evB[e], M = MATS[b.pm];
         boxNormal(b, _p, _n);
         fx.impact(_p, _n, d, M.fx, power * 0.8);
-        if (main) sfx.wall(_p, M.fx);
+        if (b.pm === 'glass') { this.fx.burst(_p, d, false, 6); if (main) sfx.glass('crack', _p, 0.4); } // 玻璃櫃、公車亭:退火玻璃碎片
+        else if (b.pm === 'car' && _p.y > b.minY + 0.92) { this.fx.burst(_p, d, true, 34); if (main) sfx.glass('crumble', _p, 0.2); } // 車窗:強化玻璃小粒
+        else if (main) sfx.wall(_p, M.fx);
         // 出口:彈孔 + 往前噴的碎屑
         const t2 = this.evT2[e];
         _q.set(o.x + d.x * t2, o.y + d.y * t2, o.z + d.z * t2);
@@ -261,55 +284,36 @@ export class Ballistics {
     }
   }
 
-  // 玻璃被打中:完整 → 蛛網裂(小口徑)/ 碎掉(大口徑、第二發);碎掉時整片玻璃落下
+  // 玻璃被打中:彈孔 + 蛛網裂紋,舊裂紋延伸;受損累積到 1 就整片碎落(退火:大塊尖碎片;強化:先龜裂、再崩成小粒)
+  // P0 = 穿透力(手槍 0.8 → 每發 0.19,第 6 發碎;步槍 ~0.35~0.4;霰彈彈丸 0.08,兩發碎;巴雷特/爆炸一次碎)
   hitGlass(i, p, d, P0, main) {
-    const s = this.st[i];
-    if (s < 0 || s >= 2) return;
-    const fx = this.game.wfx;
-    this._paneNormal(i, d, _n);
-    if (s === 0 && P0 < 1.2) {
-      this._setGlass(i, 1);
-      fx.impact(p, _n, d, 'glass', 0.3);
-      if (main) sfx.wall(p, 'glass');
-      return;
+    if (this.broken(i)) return;
+    const fx = this.game.wfx, add = Math.max(0.08, Math.min(1.2, P0 * 0.24));
+    const u = this._u(i, p.x, p.z), v = p.y - this.bx[i * 6 + 2];
+    let fail;
+    if (this.gi[i] >= 0) fail = this.panes.hit(this.gi[i], u, v, add);
+    else { this.dmg[i] = this.temp[i] ? (this.dmg[i] < 0.3 && add < 0.5 ? 0.6 : 2) : this.dmg[i] + add; fail = this.dmg[i] >= 1; if (fail) this.dmg[i] = 2; }
+    if (fail) { this._shatter(i, p, d, Math.min(1, P0 / 2)); return; }
+    this.stats.cracks++;
+    // 沒碎:彈孔噴出的細碎玻璃粉 + 一點閃光
+    if (fx) {
+      const fl = fx.floor(p.x, p.y, p.z);
+      for (let k = 0; k < 7; k++) { const sp = rand(0.5, 2.2), s = rand(0.003, 0.008); fx.debris.spawn(p.x, p.y, p.z, d.x * sp + rand(-0.4, 0.4), rand(-0.3, 0.7), d.z * sp + rand(-0.4, 0.4), s, 0.0015, s, 0xc8dcdc, rand(0.8, 1.6), fl, 0.2, 0.3, 9.8, 20); }
+      for (let k = 0; k < 3; k++) fx.glow.spawn(p.x, p.y, p.z, d.x * rand(0.5, 2) + rand(-0.4, 0.4), rand(-0.2, 0.8), d.z * rand(0.5, 2) + rand(-0.4, 0.4), 2.6, 3, 3.4, rand(0.1, 0.25), 0.005, fl, 9.8, 0.9);
     }
-    this._setGlass(i, 3);
-    this.stats.shattered++;
-    // 整片落下的碎玻璃(往子彈方向與下方)
-    const b = this.bx, o = i * 6, fl = fx.floor(p.x, p.y, p.z);
-    const area = (this.ax[i] === 0 ? b[o + 1] - b[o] : b[o + 5] - b[o + 4]) * (b[o + 3] - b[o + 2]);
-    const cnt = Math.min(42, 14 + area * 22);
-    for (let k = 0; k < cnt; k++) {
-      const u = Math.random(), v = Math.random();
-      const x = this.ax[i] === 0 ? b[o] + (b[o + 1] - b[o]) * u : (b[o] + b[o + 1]) / 2;
-      const z = this.ax[i] === 0 ? (b[o + 4] + b[o + 5]) / 2 : b[o + 4] + (b[o + 5] - b[o + 4]) * u;
-      const y = b[o + 2] + (b[o + 3] - b[o + 2]) * v;
-      const sp = rand(0.4, 2.4);
-      fx.debris.spawn(x, y, z, d.x * sp + rand(-0.5, 0.5), rand(-0.6, 0.8), d.z * sp + rand(-0.5, 0.5), rand(0.01, 0.035), 0.002, rand(0.01, 0.04), 0xb8d4dc, rand(2, 4), fl, 0.25, 0.3, 9.8, 16);
-    }
-    fx.impact(p, _n, d, 'glass', 0.8);
-    // 地上的碎玻璃(子彈那一側,窗外/窗內)
-    const gy = fl;
-    if (gy !== null && gy !== undefined && Number.isFinite(gy) && p.y - gy < 3) {
-      _q.set(p.x + d.x * 0.7, gy + 0.01, p.z + d.z * 0.7);
-      fx.decals.add(_q, _up, rand(0.6, 0.9), DECAL.glass, 240);
-    }
-    sfx.wall(p, 'glass');
-    if (main || area > 0.5) sfx.wall(p, 'glass');
+    if (main) sfx.glass('crack', p, add);
   }
 
-  // 換玻璃貼圖格(atlas 2×2:0 完整、1 蛛網裂、2 破洞、3 只剩框邊碎片)
-  _setGlass(i, k) {
-    this.st[i] = k;
-    const q = this.ref[i];
-    if (!q || !q.mesh) return;
-    const uv = q.mesh.geometry.attributes.uv;
-    const uA = (k % 2) * 0.5, vA = 1 - (((k / 2) | 0) + 1) * 0.5;
-    const ua = uA + 0.03, ub = uA + 0.47, va = vA + 0.03, vb = vA + 0.47;
-    uv.setXY(q.vi, ua, va); uv.setXY(q.vi + 1, ub, va); uv.setXY(q.vi + 2, ub, vb); uv.setXY(q.vi + 3, ua, vb);
-    uv.addUpdateRange(q.vi * 2, 8);
-    uv.needsUpdate = true;
+  _shatter(i, p, d, power) {
+    const o = i * 6, b = this._bb || (this._bb = new Float32Array(6));
+    for (let k = 0; k < 6; k++) b[k] = this.bx[o + k];
+    if (this.temp[i]) { this.fx.tempered(b, this.ax[i], p, d, power); sfx.glass('crumble', p, 1); }
+    else { this.fx.annealed(b, this.ax[i], p, d, power); sfx.glass('shatter', p, (b[1] - b[0] + b[5] - b[4]) * (b[3] - b[2])); }
+    this.stats.shattered++;
   }
+
+  // 每幀(combat.updateCombat):碎片
+  update(dt) { this.fx.update(dt); }
 
   _paneNormal(i, d, out) {
     if (this.ax[i] === 0) return out.set(0, 0, d.z > 0 ? -1 : 1);
@@ -346,14 +350,14 @@ export class Ballistics {
       const idx = r * this.W + cc;
       for (let k = this.cs[idx], e = this.cs[idx + 1]; k < e; k++) {
         const i = this.ci[k];
-        if (this._s[i] === st || this.kind[i] !== P_GLASS || this.st[i] < 0 || this.st[i] >= 2) continue;
+        if (this._s[i] === st || this.kind[i] !== P_GLASS || this.broken(i)) continue;
         this._s[i] = st;
         const o = i * 6, px = (bx[o] + bx[o + 1]) / 2, py = (bx[o + 2] + bx[o + 3]) / 2, pz = (bx[o + 4] + bx[o + 5]) / 2;
         const dd = Math.hypot(px - c.x, py - c.y, pz - c.z);
         if (dd > R || !W.hasLineOfSight(c.x, c.y, c.z, px, py, pz)) continue;
         _p.set(px, py, pz);
         _n.set(px - c.x, 0, pz - c.z).normalize();
-        this.hitGlass(i, _p, _n, 9, false);
+        this.hitGlass(i, _p, _n, 9, false); // 震波:一次就碎(碎片往外飛)
       }
     }
   }
@@ -366,7 +370,7 @@ export class Ballistics {
     const idx = r * this.W + c;
     for (let k = this.cs[idx], e = this.cs[idx + 1]; k < e; k++) {
       const i = this.ci[k];
-      if (this.kind[i] !== P_GLASS || this.st[i] < 0 || this.st[i] >= 2) continue;
+      if (this.kind[i] !== P_GLASS || this.broken(i)) continue;
       const t = slab(this.bx, i * 6, p.x, p.y, p.z, d.x, d.y, d.z, 0, len);
       if (t === Infinity) continue;
       _p.set(p.x + d.x * t, p.y + d.y * t, p.z + d.z * t);
@@ -379,7 +383,7 @@ export class Ballistics {
   // 翻越用:'=' 櫃台格的玻璃隔板是否還在(完整或裂開都算擋住)
   counterBlocked(li, c, r) {
     for (let i = 0; i < this.n; i++) {
-      if (this.kind[i] !== P_GLASS || this.st[i] < 0 || this.st[i] >= 2) continue;
+      if (this.kind[i] !== P_GLASS || this.broken(i)) continue;
       const o = i * 6;
       if (Math.floor((this.bx[o] + this.bx[o + 1]) / 4) === c && Math.floor((this.bx[o + 4] + this.bx[o + 5]) / 4) === r && Math.abs(this.bx[o + 2] - this.world.lvY[li] - 1.3) < 0.05) return true;
     }

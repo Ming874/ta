@@ -7,7 +7,7 @@ import { parseLayout } from './levels.js';
 // 熱路徑(resolve / rayDistance / flowDir / updateFlow)全部用型別陣列與純量運算,不配置新物件。
 
 const STEP = 0.5; // 可直接跨上/跨下的地面高度差
-const BOX_STEP = 0.35; // 道具盒頂 ≤ 腳底 + 此值時可直接踏上(不擋)
+const BOX_STEP = 0.46; // 道具盒頂 ≤ 腳底 + 此值時可直接踏上(不擋):路緣石、花台、矮階、木箱都能直接走上去(玩家與殭屍一樣)
 const BODY_H = 1.75; // 預設身高(道具盒阻擋判定)
 const FINE = 0.5; // 導航細格(m)
 const SUB = 4; // 每格 2m = 4 個導航細格
@@ -100,6 +100,7 @@ export class World {
     this.sizeX = W * L.CELL;
     this.sizeZ = H * L.CELL;
     this.STEP = STEP;
+    this.BOX_STEP = BOX_STEP;
     this.DOOR_H = DOOR_H;
     this.FENCE_H = FENCE_H;
     this.lvY = Float32Array.from(L.levels, (l) => l.y);
@@ -296,7 +297,11 @@ export class World {
       }
     }
     const W = this.W, y = pos.y;
-    const gref = body !== null && body.ground === body.ground && body.ground != null ? body.ground : y;
+    let gref = body !== null && body.ground === body.ground && body.ground != null ? body.ground : y;
+    if (body === null) { // 殭屍站在道具頂上(床、桌子…比 STEP 高):格子通行判定要用底下的地面,否則會被推出格子
+      const i0 = this._idx(pos.x, pos.z);
+      if (i0 >= 0 && this._pick(i0, pos.x, pos.z, y, y + STEP, STEP) !== this._pick(i0, pos.x, pos.z, y, y + STEP, STEP)) { const f = this._pick(i0, pos.x, pos.z, y, y + 0.05, 1.6); if (f === f) gref = f; }
+    }
     const top = y + STEP;
     const bodyH = body !== null && body.height ? body.height : BODY_H;
     this._push(pos, r, gref, top, bodyH, y);
@@ -774,6 +779,49 @@ export class World {
       if (!this._pass(Math.floor(px / 2), Math.floor(pz / 2), px, pz, y, y + STEP)) return null;
     }
     out.x = x + dx * L; out.z = z + dz * L; out.top = top;
+    return out;
+  }
+
+  // 爬上道具頂(殭屍追站在床、桌子、花台、木箱上的玩家):前方 r+0.55 內、頂部在 (y+BOX_STEP, y+maxH] 的道具,
+  // 頂上站得下(身體半徑 r、頭上 1.5m、沒有別的道具擋著)→ out { x, z, top }(落點在道具邊緣往內約 0.6r),否則 null
+  climbOnto(x, y, z, dx, dz, r, maxH, out) {
+    const W = this.W, reach = r + 0.55;
+    const c0 = Math.max(0, Math.floor((Math.min(x, x + dx * reach) - r) / 2)), c1 = Math.min(W - 1, Math.floor((Math.max(x, x + dx * reach) + r) / 2));
+    const r0 = Math.max(0, Math.floor((Math.min(z, z + dz * reach) - r) / 2)), r1 = Math.min(this.H - 1, Math.floor((Math.max(z, z + dz * reach) + r) / 2));
+    let best = null, bt = Infinity;
+    const st = ++this._stamp;
+    for (let rr = r0; rr <= r1; rr++) for (let cc = c0; cc <= c1; cc++) {
+      const list = this.boxGrid[rr * W + cc];
+      for (let k = 0; k < list.length; k++) {
+        const b = list[k];
+        if (b._s === st) continue;
+        b._s = st;
+        if (b.maxY <= y + BOX_STEP || b.maxY > y + maxH || b.minY > y + 0.3 || !b.pm) continue; // 只爬有材質標記的道具(不爬商店櫃台、門)
+        let t0 = 0, t1 = reach, a, c, s;
+        if (dx > -1e-9 && dx < 1e-9) { if (x < b.minX - r || x > b.maxX + r) continue; }
+        else { a = (b.minX - r - x) / dx; c = (b.maxX + r - x) / dx; if (a > c) { s = a; a = c; c = s; } if (a > t0) t0 = a; if (c < t1) t1 = c; }
+        if (dz > -1e-9 && dz < 1e-9) { if (z < b.minZ - r || z > b.maxZ + r) continue; }
+        else { a = (b.minZ - r - z) / dz; c = (b.maxZ + r - z) / dz; if (a > c) { s = a; a = c; c = s; } if (a > t0) t0 = a; if (c < t1) t1 = c; }
+        if (t0 > t1 || t0 > reach) continue;
+        if (t0 < bt) { bt = t0; best = b; }
+      }
+    }
+    if (!best) return null;
+    const top = best.maxY, m = Math.min(0.12, (best.maxX - best.minX) / 2 - 0.01), mz = Math.min(0.12, (best.maxZ - best.minZ) / 2 - 0.01);
+    let lx = x + dx * (bt + r * 1.6), lz = z + dz * (bt + r * 1.6);
+    lx = lx < best.minX + m ? best.minX + m : lx > best.maxX - m ? best.maxX - m : lx;
+    lz = lz < best.minZ + mz ? best.minZ + mz : lz > best.maxZ - mz ? best.maxZ - mz : lz;
+    if (this.headroom(lx, lz, top, r * 0.8) < top + 1.5) return null;
+    const idx = this._idx(lx, lz);
+    if (idx < 0) return null;
+    const list = this.boxGrid[idx];
+    for (let k = 0; k < list.length; k++) {
+      const b = list[k];
+      if (b === best || b.maxY <= top + BOX_STEP || b.minY >= top + 1.5) continue;
+      if (lx + r * 0.8 <= b.minX || lx - r * 0.8 >= b.maxX || lz + r * 0.8 <= b.minZ || lz - r * 0.8 >= b.maxZ) continue;
+      return null;
+    }
+    out.x = lx; out.z = lz; out.top = top;
     return out;
   }
 

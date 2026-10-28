@@ -288,7 +288,7 @@ export class Player {
     this.dip += this.dipV * dt;
     if (this.onGround) {
       const d = p.y - this.viewY;
-      this.viewY = d > 1 || d < -1 ? p.y : this.viewY + d * Math.min(1, dt * 16);
+      this.viewY = d > 1 || d < -1 ? p.y : this.viewY + d * Math.min(1, dt * (d > 0 ? 10 : 16)); // 踏上矮台(≤0.46m)時鏡頭慢一點跟上,不會跳
     } else this.viewY = p.y;
     this.eyeH = EYE + (EYE_CROUCH - EYE) * this.crouchT + this.mantle.eye;
     this.shake = Math.max(0, this.shake - dt);

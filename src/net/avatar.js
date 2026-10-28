@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { survivorVariant, instantiate } from '../zombies/model.js';
+import { survivorVariant, survivorUpgraded, instantiate } from '../zombies/model.js';
 import { createDisplayGun } from '../weapons/models.js';
 import { makeFlashStar, makeGlow } from '../map/textures.js';
 import { F } from './protocol.js';
@@ -67,40 +67,16 @@ export class Avatar {
   // opts: { look, name, team(隊友:名牌穿牆可見 + 血條) }
   constructor(scene, opts = {}) {
     this.scene = scene;
-    const v = survivorVariant(opts.look ?? 0);
-    this.v = v;
-    const inst = instantiate(v);
-    this.mesh = inst.mesh;
-    this.b = inst.bones;
-    this.list = inst.list;
-    this.rest = inst.rest;
-    this.hits = inst.hits; // 隱形命中盒(對戰模式射線用)
-    for (const n of ['hips', 'spine', 'chest', 'neck', 'head']) this.b[n].rotation.order = 'YXZ';
+    this.look = opts.look ?? 0;
+    this.onModel = null; // 換模型後(命中盒是新的)通知連線層
     this.root = new THREE.Group();
-    this.root.add(this.mesh);
     scene.add(this.root);
-    this.legT = v.legT;
-    this.legS = v.legS;
-    this.hipY = this.b.hips.position.y;
-    this.shoulderY = v.rig.bones[v.rig.index.upperArmR].head.y;
-    this.sw = v.rig.sw * v.P.s;
-    this.headH = v.rig.HC.y;
-    const arm = (L) => {
-      const R = v.rig, u = R.bones[R.index['upperArm' + L]], f = R.bones[R.index['forearm' + L]];
-      return {
-        up: this.b['upperArm' + L], fo: this.b['forearm' + L], ha: this.b['hand' + L],
-        la: u.head.distanceTo(u.tail), lb: f.head.distanceTo(f.tail),
-        restU: u.tail.clone().sub(u.head).normalize(), restF: f.tail.clone().sub(f.head).normalize(),
-      };
-    };
-    this.armR = arm('R');
-    this.armL = arm('L');
-
     // 槍:掛在右手骨骼上
     this.mount = new THREE.Group();
     this.mount.quaternion.copy(GUN_IN_HAND);
     this.mount.position.copy(GUN_IN_HAND_POS);
-    this.b.handR.add(this.mount);
+    this._setModel(survivorVariant(this.look));
+    this._upT = 0;
     this.guns = {};
     this.weapon = null;
     this.muzzle = V(0, 0.03, -0.2);
@@ -148,6 +124,38 @@ export class Avatar {
     this.visible = true;
     this.speed = 0;
     this.onStep = null; // (pos) => void 腳步聲
+  }
+
+  // 角色模型(開局時寫實模型還沒下載完就先用程式生成的,下載好再換)
+  _setModel(v) {
+    if (this.mesh) { this.root.remove(this.mesh); this.mesh.skeleton?.dispose(); }
+    this.v = v;
+    const inst = instantiate(v);
+    this.mesh = inst.mesh;
+    this.b = inst.bones;
+    this.list = inst.list;
+    this.rest = inst.rest;
+    this.hits = inst.hits; // 隱形命中盒(對戰模式射線用)
+    for (const n of ['hips', 'spine', 'chest', 'neck', 'head']) this.b[n].rotation.order = 'YXZ';
+    this.root.add(this.mesh);
+    this.legT = v.legT;
+    this.legS = v.legS;
+    this.hipY = this.b.hips.position.y;
+    this.shoulderY = v.rig.bones[v.rig.index.upperArmR].head.y;
+    this.sw = v.rig.sw * v.P.s;
+    this.headH = v.rig.HC.y;
+    const arm = (L) => {
+      const R = v.rig, u = R.bones[R.index['upperArm' + L]], f = R.bones[R.index['forearm' + L]];
+      return {
+        up: this.b['upperArm' + L], fo: this.b['forearm' + L], ha: this.b['hand' + L],
+        la: u.head.distanceTo(u.tail), lb: f.head.distanceTo(f.tail),
+        restU: u.tail.clone().sub(u.head).normalize(), restF: f.tail.clone().sub(f.head).normalize(),
+      };
+    };
+    this.armR = arm('R');
+    this.armL = arm('L');
+    this.b.handR.add(this.mount);
+    if (this.onModel) this.onModel(this);
   }
 
   setWeapon(id) {
@@ -217,6 +225,7 @@ export class Avatar {
   // s:取樣後的狀態 {x,y,z,yaw,pitch,vx,vz,flags,hp};cam:本機鏡頭(名牌與陰影距離)
   update(dt, s, cam) {
     this.t += dt;
+    if (!this.v.external && (this._upT -= dt) <= 0) { this._upT = 1; if (survivorUpgraded(this.look)) this._setModel(survivorVariant(this.look)); }
     const b = this.b, root = this.root;
     const alive = (s.flags & F.ALIVE) && !(s.flags & F.DEAD);
     const downed = !!(s.flags & F.DOWNED) && alive;
@@ -451,6 +460,7 @@ export class Avatar {
   }
 
   dispose() {
+    this.mesh?.skeleton?.dispose(); // 每個實例的骨骼貼圖
     this.scene.remove(this.root);
     this.scene.remove(this.plate);
     this.plateT.dispose();
