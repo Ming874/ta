@@ -281,7 +281,7 @@ const tornTape = (seed = 0) => tpl(`sars:torn:${seed % 4}`, (b) => {
   b.meta.cap = 64;
 });
 // 從天花板垂下、拆了一半的塑膠布(隔離區的臨時隔間),頂端黃色膠帶
-const plasticWall = (len = 3.2, top = 3.3, seed = 0) => tpl(`sars:plastic:${len.toFixed(1)}:${top.toFixed(2)}:${seed % 3}`, (b) => {
+export const plasticWall = (len = 3.2, top = 3.3, seed = 0) => tpl(`sars:plastic:${len.toFixed(1)}:${top.toFixed(2)}:${seed % 3}`, (b) => {
   const path = [[-len / 2, 0], [len / 2, 0]];
   const g = curtainGeo(path, top, 0.25 + (seed % 3) * 0.3, { pleat: 0.06, holes: 0.25, rag: 0.7, seed: 11 + seed, bunch: 0.15 * (seed % 3) });
   b.raw('pl_clear', g, null, 'keep');

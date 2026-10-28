@@ -178,6 +178,8 @@ function checkpoint(ctx, zone, R, P) {
 // 前廣場
 // ======================================================================
 function dressPlaza(ctx, zone) {
+  // [scene r4] 立面識別:屋頂女兒牆上的「聖心醫院」霓虹(心不亮、醫在閃),從停車場一眼認得出這棟醫院
+  neonSign(ctx, 60, 10.45, 67.55, 0, '聖心醫院', { size: 1.75, modes: ['on', 'dead', 'flicker', 'on'], zone });
   const R = zrng(zone), P = new Parts(), li = zone.levelIndex;
   // 醫院霓虹招牌(大門上方):心字熄滅、醫字閃爍
   neonSign(ctx, 60, 3.55, 68.02, 0, '聖心醫院', { color: '#ff3020', hex: 0xff3020, size: 0.85, modes: ['on', 'dead', 'flicker', 'on'], zone });

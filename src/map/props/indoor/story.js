@@ -4,6 +4,7 @@ import { tpl, L, G } from './parts.js';
 import { labRect, decalRect } from './atlas.js';
 import { D } from './geo.js';
 import { glowSwatch } from './art.js';
+import { plasticWall } from './sars.js';
 
 const PI = Math.PI;
 const rnd = (seed) => { let s = seed >>> 0 || 1; return () => ((s = (s * 16807) % 2147483647) / 2147483647); };
@@ -92,3 +93,55 @@ export function lobbyColdOpen(R) {
   return { ns, nb, nf };
 }
 void G; void glowSwatch;
+
+// ================================================================ 樓梯間:大大的樓層數字(西梯紅褐、東梯藍),玩家一眼知道自己在哪一層、哪一側
+const floorNum = (lv, side) => decalRect(`story:floor:${lv}:${side}`, 160, 120, (c, w, h) => {
+  c.clearRect(0, 0, w, h);
+  // 白漆大字(樓梯間是紅色緊急燈,紅字會看不見)+ 西梯紅帶 / 東梯藍帶
+  c.fillStyle = 'rgba(236,230,214,0.92)'; c.font = 'bold 92px sans-serif'; c.textAlign = 'center'; c.fillText(lv, w / 2, 92);
+  c.fillStyle = side === 'w' ? 'rgba(170,40,28,0.9)' : 'rgba(30,80,170,0.9)'; c.fillRect(8, 101, w - 16, 9);
+  c.fillStyle = 'rgba(236,230,214,0.92)';
+  c.font = 'bold 14px sans-serif'; c.fillText(side === 'w' ? '西 梯' : '東 梯', w / 2, 120);
+  c.globalCompositeOperation = 'destination-out';
+  for (let i = 0; i < 90; i++) { c.fillStyle = `rgba(0,0,0,${0.25 + (i % 4) * 0.15})`; c.fillRect((i * 37) % w, (i * 53) % h, 4 + (i % 5), 2 + (i % 3)); }
+  c.globalCompositeOperation = 'source-over';
+});
+export function stairMark(R, zone) {
+  const lv = R.L.levels[R.li].id, side = /_w$/.test(zone.id) ? 'w' : 'e';
+  const runs = R.walls.filter((r) => r.len >= 1.6).sort((a, b) => b.len - a.len);
+  const t = tpl(`story:floornum:${lv}:${side}`, (b) => b.plane(D(floorNum(lv, side)), 1.3, 0.975, 0, 0.49, 0.003));
+  for (const run of runs.slice(0, 2)) {
+    const tt = (run.t0 + run.t1) / 2;
+    if (R.isWindow(run, tt - 0.7, tt + 0.7)) continue;
+    R.atWall(t, run, tt, { mount: 1.15 });
+  }
+}
+
+// ================================================================ 病房:同一套擺設,各自多一層故事(迷路時認得出是哪一間)
+// 203:一張床被塑膠布圍起來(隔離);209:家屬打地舖(草蓆、被子、保溫瓶、拖鞋 —— 封院時被關在裡面的陪病家屬)
+const mat = (k) => tpl(`story:mat:${k}`, (b) => {
+  b.box('fab_canvas', 0.9, 0.012, 1.85, 0, 0.006, 0, { r: 0.004 });
+  b.box(k % 2 ? 'fab_floral' : 'fab_check', 0.82, 0.07, 1.0, 0.02, 0.045, 0.35, { r: 0.03, ry: 0.05 });
+  b.box('fab_white', 0.42, 0.08, 0.28, 0, 0.05, -0.7, { r: 0.035 });
+});
+export function wardStory(R, n) {
+  const W = R.run('W'), E = R.run('E');
+  const x0 = R.c0 * 2, z0 = R.r0 * 2;
+  if (n === 203 && W) {
+    // 床邊兩面垂到地的塑膠布(長邊 + 床尾),上緣用膠帶貼在隔簾軌道上
+    const bz = z0 + 5.05, top = R.L.ceilY(R.li, R.c0, R.r0) - R.y - 0.12;
+    const a = R.at(W, bz - 0.75, 1.15), b2 = R.at(W, bz, 2.25);
+    R.put(plasticWall(2.2, Math.min(2.9, top), 1), a.x, a.z, 0, { collide: false });
+    R.put(plasticWall(1.5, Math.min(2.9, top), 2), b2.x, b2.z, Math.PI / 2, { collide: false });
+  }
+  if (n === 209) {
+    const c = R.center();
+    const r = rnd(209);
+    for (let i = 0; i < 2; i++) {
+      const x = c.x - 0.55 + i * 1.05, z = z0 + 3.6 + (r() - 0.5) * 0.3;
+      if (R.freeAt(x, z, 0.4)) R.put(mat(i), x, z, (r() - 0.5) * 0.2, { collide: false });
+    }
+    if (E) R.atWall(tpl('story:thermos2', (b) => { b.cyl('enamel_blue', 0.05, 0.27, 0, 0.135, 0, { seg: 12 }); b.cyl('pl_white', 0.04, 0.05, 0, 0.295, 0, { seg: 10 }); }), E, z0 + 3.4, { gap: 0.05, collide: false });
+  }
+  void x0;
+}

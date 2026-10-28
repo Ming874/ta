@@ -5,6 +5,7 @@ import { poster, calendar } from './art.js';
 import { scatter, onSurface, floorDecal, wallDecal } from './clutter.js';
 import { rng as mkRng } from '../ctx.js';
 import { dress207 } from './w207.js';
+import { wardStory } from './story.js';
 
 // 病房 201-210:刻意幾乎一模一樣(迷失感)。床頭靠東西兩側牆、每床有隔簾/床頭櫃/氧氣面板/點滴架。
 // 207:一張床上有蓋白布的人形(而且只有這間的燈是正常的)。204:所有床被推到牆角堆疊。
@@ -65,6 +66,7 @@ export function dressWard(R, zone) {
     R.atWall(posterSheet(poster(n === 207 ? 'quiet' : 'handwash'), 0.38, 0.53, { curl: 0.06 }), N, N.t1 - 0.6, { mount: 1.3 });
   }
   if (E) R.atWall(framed(calendar(), 0.26, 0.36, 'pl_white', { glass: false }), E, E.t1 - 0.5, { mount: 1.45 });
+  wardStory(R, n); // [scene r4] 203 隔離帳、209 家屬地舖
   // 地面雜物
   scatter(R, 'paper', 4);
   scatter(R, 'paper2', 2);
