@@ -1,4 +1,5 @@
 import { labRect, glowRect, decalRect } from './atlas.js';
+import { isStainKind, stainRect } from '../../../art/stainmat.js';
 import { rnd, rr, reseed, css, blotches, grain, scratches, blob, text, scribbleLine, FONT } from './tex.js';
 
 // 圖集內容(全部以畫布程式繪製,依 key 快取):標籤、告示、海報、螢幕畫面、X 光片、蠟筆畫、畫像、貼花。
@@ -149,7 +150,7 @@ export function calendar() {
     reseed(404);
     c.fillStyle = '#ece8dc'; c.fillRect(0, 0, w, h);
     c.fillStyle = '#7a1a1a'; c.fillRect(0, 0, w, 30);
-    text(c, '1999  十月', w / 2, 16, { size: 15, color: '#f0e8d8' });
+    text(c, '2003  五月', w / 2, 16, { size: 15, color: '#f0e8d8' });
     for (let k = 0; k < 35; k++) {
       const x = 8 + (k % 7) * 16.5, y = 44 + ((k / 7) | 0) * 24;
       text(c, String((k % 31) + 1), x + 8, y + 6, { size: 10, color: k % 7 === 0 ? '#a01010' : '#222', weight: 'normal' });
@@ -225,7 +226,7 @@ export function poster(kind) {
       c.fillStyle = '#6a6660'; c.fillRect(w / 2 - 40, 50, 80, 100);
       c.fillStyle = '#3a3630'; c.beginPath(); c.ellipse(w / 2, 90, 22, 28, 0, 0, 7); c.fill();
       c.fillStyle = '#100c0a'; c.fillRect(w / 2 - 14, 84, 10, 4); c.fillRect(w / 2 + 4, 84, 10, 4);
-      text(c, '最後出現:本院二樓', w / 2, 170, { size: 14, color: '#222' });
+      text(c, '最後出現：七月初一 一樓大廳', w / 2, 170, { size: 14, color: '#222' });
       text(c, '請勿單獨前往 B1', w / 2, 196, { size: 14, color: '#7a1010' });
     }
     grime(c, w, h, 1.6);
@@ -322,7 +323,7 @@ export function whiteboard(kind = 'er') {
     if (kind === 'er') {
       text(c, '急診 床位', 60, 18, { size: 16, color: '#1a3a8a' });
       for (let k = 0; k < 6; k++) { c.beginPath(); c.moveTo(10, 36 + k * 24); c.lineTo(w - 10, 36 + k * 24); c.stroke(); text(c, `${k + 1}  ${['發燒 39.8 隔離', '咬傷 ??', '咬傷 左臂', '意識不清 攻擊性', '—', '咬傷'][k]}`, 16, 48 + k * 24, { size: 13, color: '#1a3a8a', align: 'left', weight: 'normal' }); }
-      text(c, '不要讓他們出去!!', w - 80, h - 16, { size: 16, color: '#b01818' });
+      text(c, '不要讓他們出去！！', w - 80, h - 16, { size: 16, color: '#b01818' });
     } else {
       text(c, '本週值班', 60, 18, { size: 16, color: '#1a3a8a' });
       for (let k = 0; k < 5; k++) text(c, ['一 林', '二 陳', '三 —', '四 —', '五 —'][k], 20, 44 + k * 26, { size: 14, color: '#1a3a8a', align: 'left', weight: 'normal' });
@@ -436,7 +437,7 @@ export function dosScreen(kind = 'his') {
     reseed(kind.length * 61);
     c.fillStyle = kind === 'blue' ? '#0a1a8a' : '#020402'; c.fillRect(0, 0, w, h);
     const col = kind === 'blue' ? '#e8e8f8' : '#40d860';
-    const lines = kind === 'blue' ? ['*** STOP: 0x0000007B', '', 'INACCESSIBLE_BOOT_DEVICE', '', 'PATIENT RECORD 207', 'STATUS: ????????', '', 'DO NOT RESTART'] : ['聖心醫院 HIS v2.3', '病患查詢 >> 207', '姓名: ********', '入院: 1999/10/24', '狀態: 已出院?', '      已出院?', '      已出院?', 'C:\\>_'];
+    const lines = kind === 'blue' ? ['*** STOP: 0x0000007B', '', 'INACCESSIBLE_BOOT_DEVICE', '', 'PATIENT RECORD 207', 'STATUS: ????????', '', 'DO NOT RESTART'] : ['萬嵐 HIS v4', '病患查詢 >> 207', '姓名：無名氏', '入院：1999/09/24', '狀態：封存', '', '', 'C:\\>_'];
     lines.forEach((t, k) => text(c, t, 8, 12 + k * 16, { size: 12, color: col, align: 'left', font: 'monospace', weight: 'normal' }));
     for (let y = 0; y < h; y += 2) { c.fillStyle = 'rgba(0,0,0,0.25)'; c.fillRect(0, y, w, 1); }
   });
@@ -518,7 +519,10 @@ function softBlob(c, x, y, r, k = 10, squash = 1, jag = 0.35) {
 function drops(c, n, x0, y0, w, h, rmin, rmax, a = 0.85) {
   for (let k = 0; k < n; k++) { c.fillStyle = RED(a); c.beginPath(); c.arc(x0 + rnd() * w, y0 + rnd() * h, rr(rmin, rmax), 0, 7); c.fill(); }
 }
-export function decal(kind, v = 0) {
+// 血跡類(手印、抓痕、血泊、垂流、噴濺、抹痕、拖痕、腳印)改用共用的寫實血跡圖集(src/art/stains*.js,
+// 有法線與粗糙度;floor = 地面版);其餘(水漬、黴、鏽、煙燻、嘔吐物…)維持這裡的 pi_decal 圖集
+export function decal(kind, v = 0, floor = false) {
+  if (isStainKind(kind)) return stainRect(kind, v, floor);
   const S = { pool: [256, 256], splat: [128, 128], drip: [96, 256], smear: [128, 256], hand: [96, 128], feet: [128, 256], stain: [192, 192], scratch: [128, 160], burn: [128, 128], mold: [128, 128], drag: [128, 256], dirt: [192, 192], rust: [64, 192], vomit: [128, 128], water: [192, 192], soot: [128, 192] }[kind] || [128, 128];
   const [w, h] = S;
   return decalRect(`dec:${kind}:${v}`, w, h, (c) => {

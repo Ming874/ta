@@ -55,7 +55,7 @@ export const combatMethods = {
     this._recoilYaw = 0;
     this._wl = 0;
     this._boom = 0;
-    this._hudOpt = { show: false, scoped: false, ads: 0, gapPx: 8, shotgun: false, holdBreath: false, moving: false, busy: false };
+    this._hudOpt = { show: false, scoped: false, scope: 0, optic: null, zoomMax: 1, dot: 0, ads: 0, gapPx: 8, shotgun: false, holdBreath: false, moving: false, busy: false };
     this.weapons.onEvent = (k, d) => this.weaponEvent(k, d);
     this.wfx.casings.onLand = (p, kind, n) => {
       const surf = this.world.surfaceAt ? this.world.surfaceAt(p.x, p.y, p.z) : 'tile';
@@ -88,7 +88,7 @@ export const combatMethods = {
     if (Math.abs(this.weaponCamera.fov - wfov) > 1e-3) { this.weaponCamera.fov = wfov; this.weaponCamera.updateProjectionMatrix(); }
     const ho = this._hudOpt;
     if (!active) {
-      ho.show = false; ho.scoped = false;
+      ho.show = false; ho.scoped = false; ho.scope = 0; ho.dot = 0;
       this.chud.update(0, ho);
       return;
     }
@@ -110,6 +110,10 @@ export const combatMethods = {
     const spread = w.spreadNow(p.speedNorm, p.sprinting);
     ho.show = true;
     ho.scoped = w.scoped;
+    ho.scope = w.scopeAmt; // 狙擊鏡/ACOG 鏡內畫面淡入
+    ho.optic = w.optic;
+    ho.zoomMax = def.ads ? def.ads.zoom : 1;
+    ho.dot = w.dotAmt; // 紅點反射鏡光點
     ho.ads = w.ads;
     ho.gapPx = (Math.tan(spread) / Math.tan((cam.fov * RAD) / 2)) * (window.innerHeight / 2);
     ho.shotgun = !!def.pellets;
@@ -130,6 +134,7 @@ export const combatMethods = {
       this.boomLight.intensity = 85 * k * k * (0.85 + Math.random() * 0.3);
     } else this.boomLight.intensity = 0;
     this._updateNades(dt);
+    if (this.ballistics) this.ballistics.update(dt); // [physics] 玻璃碎片
     this._updateGore(dt);
     this.wfx.update(dt);
   },

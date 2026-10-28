@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { climbStep } from '../physics/zclimb.js'; // [physics] 爬上玩家站著的道具
 import { sfx } from '../audio.js';
 import { TYPES } from './types.js';
 import { getVariant, instantiate } from './model.js';
@@ -358,6 +359,7 @@ export class Zombie {
     const think = this.amb ? this._ambThink : this._thinkFn || (this._thinkFn = this['_think_' + this.type]); // 快取方法,避免每幀組字串;[ambush] 衝出/掉落中
     const dealt = !this.amb && Z3.pre(this, dt, ctx, dist, w) ? 0 : think.call(this, dt, ctx, dist, toX, toZ, w); // [zombies-w3] pre:面壁等閒置怪癖(埋伏中不跑)
     if (!this.alive) return dealt; // 膿腫者自爆
+    climbStep(this, world, player, hd, dy, w, ZR); // [physics] 玩家站在道具上:爬上去 / 同檯面直接走過去
     // 樓梯上放慢(衝鋒/飛撲除外)
     this.onStair = world.stairAt ? world.stairAt(pos.x, pos.y, pos.z) : -1;
     if (this.onStair >= 0 && !w.instant && this.state !== 'charge') w.speed *= 0.86;
@@ -664,7 +666,11 @@ export class Zombie {
     this.pos.x = lerp(v.x0, v.x1, e);
     this.pos.z = lerp(v.z0, v.z1, e);
     this.vel.x = this.vel.z = 0;
-    if (u >= 1) world.resolve(this.pos, rad);
+    if (u >= 1) {
+      if (v.onto != null) { this.pos.y = v.onto; v.onto = null; } // [physics] 爬上道具頂(zclimb.js)
+      world.resolve(this.pos, rad);
+      if (this.state === 'climb' && this.type !== 'runner') { this.rootY = 0; this.go('chase'); } // 狂奔者在自己的 think 裡結束
+    }
     this.blocked = false;
   }
 

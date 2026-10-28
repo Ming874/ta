@@ -26,7 +26,7 @@ const POSES = {
   runB: { spine: [0.18, 0, 0], thighR: [-0.75, 0, 0], shinR: [0.95, 0, 0], thighL: [0.5, 0, 0], shinL: [0.35, 0, 0], upperArmR: [0.55, 0, 0], upperArmL: [-0.65, 0, 0], forearmR: [-0.5, 0, 0], forearmL: [-0.7, 0, 0], head: [-0.1, 0, 0] },
 };
 // 每個角色需要的姿勢
-const NEED = { nurse: ['push', 'stand'], patient: ['stand', 'tilt', 'reach'], man: ['stand', 'reach'], child: ['runA', 'runB', 'stand'] };
+const NEED = { nurse: ['push', 'stand'], patient: ['stand', 'tilt', 'reach'], man: ['stand', 'reach', 'runA', 'runB'], child: ['runA', 'runB', 'stand'] };
 
 // ---------- 材質 ----------
 const VS = `
@@ -68,7 +68,7 @@ void main(){
 function makeMat(shade) {
   return new THREE.ShaderMaterial({
     uniforms: { uTime: { value: 0 }, uWob: { value: 1 }, uH: { value: 1.75 }, uColor: { value: new THREE.Color(shade ? 0x8fb0d8 : 0xb8d4ff) }, uAlpha: { value: 0 }, uFog: { value: 0.03 }, uDissolve: { value: 0 }, uShade: { value: shade ? 1 : 0 } },
-    vertexShader: VS, fragmentShader: FS, transparent: true, depthWrite: false, fog: false,
+    vertexShader: VS, fragmentShader: FS, transparent: true, depthWrite: false, fog: false, name: shade ? 'ghost-shade' : 'ghost-pale',
     blending: shade ? THREE.NormalBlending : THREE.AdditiveBlending, side: THREE.FrontSide,
   });
 }
@@ -147,17 +147,17 @@ export const models = new Models();
 // ---------- 槽位與行為 ----------
 const _v = new THREE.Vector3(), _f = new THREE.Vector3(), _c = new THREE.Vector3();
 export class Apparitions {
-  constructor(h, scene) {
+  constructor(h, scene, n = 2) { // n:同時幾個(驚嚇用 2;回憶的回音人影用 6,同一個 shader)
     this.h = h;
     this.scene = scene;
-    this.slots = [0, 1].map(() => {
+    this.slots = Array.from({ length: n }, () => {
       const pale = makeMat(false), shade = makeMat(true);
       const mesh = new THREE.Mesh(new THREE.BufferGeometry(), pale);
       mesh.visible = false; mesh.castShadow = false; mesh.receiveShadow = false; mesh.frustumCulled = false; mesh.raycast = () => {};
       mesh.renderOrder = 6;
       mesh.name = 'ghost';
       // 深度預先繪製:只留最外層表面(不然加法混合會透出身體裡層的管狀結構,像假人)
-      const depth = new THREE.ShaderMaterial({ uniforms: { uTime: { value: 0 }, uWob: { value: 1 }, uH: { value: 1.75 } }, vertexShader: VS, fragmentShader: 'void main(){}', colorWrite: false, depthWrite: true, transparent: true, fog: false });
+      const depth = new THREE.ShaderMaterial({ uniforms: { uTime: { value: 0 }, uWob: { value: 1 }, uH: { value: 1.75 } }, vertexShader: VS, fragmentShader: 'void main(){}', colorWrite: false, depthWrite: true, transparent: true, fog: false, name: 'ghost-depth' });
       const dm = new THREE.Mesh(mesh.geometry, depth);
       dm.renderOrder = 5; dm.castShadow = false; dm.frustumCulled = false; dm.raycast = () => {};
       mesh.add(dm);

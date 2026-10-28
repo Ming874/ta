@@ -182,11 +182,12 @@ function makePhone(api, o) {
       this.state = 'ringing'; this.ringT = dur; this.t = 0; this.ghost = ghost; this.line = line; this.lastRing = game.time;
       ixs.ringStart(key, pos, RING_KIND[style] || 'bell');
       ix.ringing.add(P);
+      if (P.e) { P.e.radius = Math.max(0.36, P.e.r0); P.e.reach = 2.8; P.e.priority = 9; } // 響的時候比較好瞄準(不會被旁邊的東西搶走焦點)
       ix.emit('ring', P);
       this.run();
       return true;
     },
-    stopRing() { ixs.ringStop(key); ix.ringing.delete(P); if (hs) hs.set(hsI, hsM); for (const i of leds) led.color(i, 0x221a10); },
+    stopRing() { ixs.ringStop(key); ix.ringing.delete(P); if (P.e) { P.e.radius = P.e.r0; P.e.reach = 2.5; P.e.priority = 2; } if (hs) hs.set(hsI, hsM); for (const i of leds) led.color(i, 0x221a10); },
     lift() { if (hs) hs.set(hsI, ZERO); ixs.pickup(null); },
     down() { if (hs) hs.set(hsI, hsM); ixs.hangup(pos); },
     tones() { ixs.dialTone(false); ixs.busyTone(false); ixs.offHook(false); ixs.lineNoise(false); },
@@ -198,7 +199,7 @@ function makePhone(api, o) {
       this.state = 'call'; this.offT = 0; this.ghost = false; this.line = null; this.end = 'dead'; this._ended = false;
       const hz = game.horror;
       let call = null, talk = null;
-      if (ln) { // 劇情來電(小芳的分機 B12、回撥…):我們自己的台詞
+      if (ln) { // 劇情來電(何啟明、回撥…):我們自己的台詞
         if (ln.id) this.used.add(ln.id);
         talk = api.speak(ln, { filter: 'phone' });
         ix.flags.set('h.call.' + (ln.id || key), true);
@@ -218,7 +219,7 @@ function makePhone(api, o) {
       ixs.lineNoise(true);
       const dur = call ? call.dur ?? 6 : talk?.dur ?? 2.5;
       this.callEnd = game.time + dur + 0.4;
-      if (!call && !talk) api.say('', '(只有沙沙的雜訊)', 2200, 'phone');
+      if (!call && !talk) api.say('', '（只有沙沙的雜訊）', 2200, 'phone');
       ix.emit('call', P, ln || call || null);
     },
     pickUp() { // 沒在響:撥號音;偶爾線上已經有人
@@ -256,7 +257,7 @@ function makePhone(api, o) {
         }
         if (this.ringT <= 0) { // 沒人接:不消耗任何內容
           this.stopRing(); this.state = 'idle'; this.ghost = false; this.line = null;
-          if (api.near(pos, 14)) { const ms = api.lineList('PHONE.missed'); const m = ms[(R() * ms.length) | 0]; if (m) api.say('', m.text || '(電話停了。)', 2600); }
+          if (api.near(pos, 14)) { const ms = api.lineList('PHONE.missed'); const m = ms[(R() * ms.length) | 0]; if (m) api.say('', m.text || '（電話停了。）', 2600); }
           ix.emit('missed', P);
         }
         return true;
@@ -292,6 +293,7 @@ function makePhone(api, o) {
     },
     reset: () => P.reset(),
   });
+  P.e.r0 = P.e.radius;
   api.phones.push(P);
   return P;
 }
@@ -342,7 +344,7 @@ export const phones = {
     }
     const pos = api.wp(s, ...focus);
     const key = spec.id || `ph${s.li}_${Math.round(pos.x * 10)}_${Math.round(pos.z * 10)}`;
-    const name = (spec.ext && style !== 'nurse' ? `電話(${/^[A-Z]?\d/.test(spec.ext) ? '分機 ' : ''}${spec.ext})` : null) || { wall: '電話', desk: '電話', nurse: '護理站電話', pay: '公共電話' }[style];
+    const name = (spec.ext && style !== 'nurse' ? `電話（${/^[A-Z]?\d/.test(spec.ext) ? '分機 ' : ''}${spec.ext}）` : null) || { wall: '電話', desk: '電話', nurse: '護理站電話', pay: '公共電話' }[style];
     return makePhone(api, {
       key, pos, style, li: s.li, zone: s.zone, hs, hsI, hsM, led, leds, spec, name, face: { x: s.nx || 0, z: s.nz || 0 },
       calls: (spec.calls || []).map((id) => api.lineById(id)).filter(Boolean), pool: api.lineList(POOL[style] || 'PHONE.ring'),

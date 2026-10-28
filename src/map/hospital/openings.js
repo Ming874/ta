@@ -43,7 +43,6 @@ const THEME_DOOR = {
   ward: 'ward', peds_ward: 'ward', nursery: 'ward', xray: 'ward', ct: 'ward', pharmacy: 'ward', rehab: 'ward', cafeteria: 'ward', waiting: 'ward',
   security: 'ward', monitor: 'ward', playroom: 'ward',
 };
-const DOOR_MAT = { cell: 'door_white', fire: 'door_red', swing: 'steel_brushed', chapel: 'door_dark', wood: 'door_wood', metal: 'door_gray', glass: 'trim_alu', ward: 'door_mint' };
 const FRAME_MAT = { cell: 'steel_dirty', fire: 'trim_gray', swing: 'steel_brushed', chapel: 'trim_wood', wood: 'trim_wood', metal: 'trim_gray', glass: 'trim_alu', ward: 'trim_white', none: 'trim_white' };
 
 function doorStyle(d) {
@@ -56,56 +55,11 @@ function doorStyle(d) {
   return THEME_DOOR[room] || 'ward';
 }
 
-// 門扇各部位(門扇局部座標:x 沿門寬 0..lw(從鉸鍊),y 從地面,z 厚度)
-function leafParts(style, lw, lh, R) {
-  const t = style === 'cell' || style === 'fire' ? 0.07 : 0.05;
-  const mat = DOOR_MAT[style] || 'door_cream';
-  const parts = [];
-  const P = (key, x0, y0, z0, x1, y1, z1, col) => parts.push([key, x0, y0, z0, x1, y1, z1, col]);
-  if (style === 'glass') { // 鋁框玻璃門
-    P('trim_alu', 0, 0, -t / 2, lw, 0.12, t / 2); P('trim_alu', 0, lh - 0.08, -t / 2, lw, lh, t / 2);
-    P('trim_alu', 0, 0, -t / 2, 0.06, lh, t / 2); P('trim_alu', lw - 0.06, 0, -t / 2, lw, lh, t / 2);
-    P('trim_alu', 0.06, 1.0, -t / 2, lw - 0.06, 1.06, t / 2);
-    parts.glass = [[0.06, 0.12, lw - 0.06, 1.0], [0.06, 1.06, lw - 0.06, lh - 0.08]];
-    return { parts, t };
-  }
-  P(mat, 0, 0, -t / 2, lw, lh, t / 2);
-  const win = { cell: [lw * 0.38, 1.42, lw * 0.62, 1.62], fire: [lw * 0.42, 1.2, lw * 0.58, 1.75], swing: [lw * 0.3, 1.25, lw * 0.7, 1.65], ward: [lw * 0.3, 1.3, lw * 0.7, 1.9], metal: null, wood: null, chapel: null }[style];
-  if (win) parts.glass = [win];
-  if (style === 'cell') P('steel_dirty', lw * 0.3, 0.95, -t / 2 - 0.012, lw * 0.7, 1.12, t / 2 + 0.012); // 送餐口
-  if (style !== 'chapel' && style !== 'wood') P('steel_brushed', 0.04, 0.02, -t / 2 - 0.004, lw - 0.04, 0.26, t / 2 + 0.004); // 踢板
-  if (style === 'fire') P('trim_dark', 0.12, 0.96, t / 2, lw - 0.1, 1.02, t / 2 + 0.07); // 推桿
-  if (style === 'chapel' || style === 'wood') { // 木門的凸板
-    for (const [a, b] of [[0.18, 0.95], [1.1, lh - 0.18]]) { P(mat, 0.12, a, -t / 2 - 0.012, lw - 0.12, b, t / 2 + 0.012); }
-  }
-  P('steel_brushed', lw - 0.13, 1.0, -t / 2 - 0.05, lw - 0.06, 1.04, t / 2 + 0.05); // 把手
-  void R;
-  return { parts, t };
-}
-
-// 把門扇各部位放到世界(鉸鍊位置 hx,hz、轉向 psi;fallen = 平躺)
-function emitLeaf(B, li, style, hinge, psi, lw, lh, R, fallen = false) {
-  const { parts, t } = leafParts(style, lw, lh, R);
-  const base = new THREE.Matrix4();
-  _e.set(0, psi, 0, 'YXZ'); _q.setFromEuler(_e);
-  base.compose(_p.set(hinge[0], hinge[1], hinge[2]), _q, _s.set(1, 1, 1));
-  if (fallen) { const rx = new THREE.Matrix4().makeRotationX(-Math.PI / 2 + R.r(-0.04, 0.06)); base.multiply(rx); }
-  for (const [key, x0, y0, z0, x1, y1, z1, col] of parts) {
-    _M2.compose(_p.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), _q.identity(), _s.set(x1 - x0, y1 - y0, z1 - z0));
-    _M.multiplyMatrices(base, _M2);
-    B.geo(li, key, box1, _M, col ? { col } : {});
-  }
-  for (const [a0, b0, a1, b1] of parts.glass || []) {
-    _M2.compose(_p.set((a0 + a1) / 2, (b0 + b1) / 2, 0), _q.identity(), _s.set(a1 - a0, b1 - b0, t + 0.006));
-    _M.multiplyMatrices(base, _M2);
-    B.geo(li, 'glass_dark', box1, _M);
-  }
-}
-
 export function buildDoors(K) {
   const { L, B } = K;
   const dyn = []; // 會被事件推動的門(樓梯間防火門、隔離房門)
   const all = []; // 全部門扇(互動、碰撞盒)
+  const frames = (K.doorFrames = []), fallen = (K.fallenLeaves = []);
   K.doorList = [];
   for (const lv of L.levels) {
     const li = lv.index, y = lv.y;
@@ -128,26 +82,28 @@ export function buildDoors(K) {
       if (topB > h) B.wall(li, sb.recipe.up, dirB, w1, u0, u1, y + h, y + topB, { cBot: [0.85, 0.85, 0.83], cTop: [0.9, 0.9, 0.88] });
       const soff = F.X(u0, w0), soff2 = F.X(u1, w1), sz0 = F.Z(u0, w0), sz1 = F.Z(u1, w1);
       B.flat(li, revealFor(lv.id).up, Math.min(soff, soff2), Math.min(sz0, sz1), Math.max(soff, soff2), Math.max(sz0, sz1), y + h, false, { col: [0.7, 0.7, 0.68] });
-      // 門框飾條(兩面;多格門洞只在兩端)
+      // 門框飾條(兩面;多格門洞只在兩端)與門檻 → K.doorFrames:src/map/hospital/leaves.js 用門的 PBR 圖集畫(和門扇同一批、同一個 draw call)
       const style = doorStyle(d);
       const fm = FRAME_MAT[style] || 'trim_white';
       const runStart = d.run[0] === (d.axis === 'z' ? c : r), runEnd = d.run[1] === (d.axis === 'z' ? c : r);
+      const fbox = (key, ua, ya, wa, ub, yb, wb, sw) => { const xa = F.X(ua, wa), xb = F.X(ub, wb), za = F.Z(ua, wa), zb = F.Z(ub, wb); frames.push({ li, key, sw, b: [Math.min(xa, xb), ya, Math.min(za, zb), Math.max(xa, xb), yb, Math.max(za, zb)] }); };
       for (const [wf, sgn] of [[w0, -1], [w1, 1]]) {
         const wa = wf, wb = wf + sgn * 0.028;
         const [lo, hi] = wa < wb ? [wa, wb] : [wb, wa];
-        if (runStart) lbox(B, li, fm, F, u0 - 0.09, y, lo, u0, y + h + 0.09, hi, {});
-        if (runEnd) lbox(B, li, fm, F, u1, y, lo, u1 + 0.09, y + h + 0.09, hi, {});
-        lbox(B, li, fm, F, runStart ? u0 - 0.09 : u0, y + h, lo, runEnd ? u1 + 0.09 : u1, y + h + 0.09, hi, {});
+        if (runStart) fbox(fm, u0 - 0.09, y, lo, u0, y + h + 0.09, hi);
+        if (runEnd) fbox(fm, u1, y, lo, u1 + 0.09, y + h + 0.09, hi);
+        fbox(fm, runStart ? u0 - 0.09 : u0, y + h, lo, runEnd ? u1 + 0.09 : u1, y + h + 0.09, hi);
       }
       // 門扇
       if (style === 'none') continue;
       const roomB = sb.kind === 'room' && sb.zone?.theme !== 'corridor' && !d.outB ? true : sa.kind === 'room' && sa.zone?.theme !== 'corridor' && !d.outA ? false : R() < 0.5;
       const dirRoom = roomB ? 1 : -1, wf = roomB ? w1 : w0;
-      // 全部做成雙扇門(關上時剛好封住 2m 門洞;單扇門關上會留一道縫)。門扇是可轉動的實例(src/map/hospital/leaves.js),
+      fbox(null, u0 + 0.03, y, wf - 0.07, u1 - 0.03, y + 0.008, wf + 0.07, style === 'fire' || style === 'metal' || style === 'cell' ? 'kick' : 'alu'); // 門檻(金屬壓條)
+      // 全部做成雙扇門(關上時封住 2m 門洞,中間留 6mm 門縫)。門扇是可轉動的實例(src/map/hospital/leaves.js),
       // 每扇有自己的代理 group:事件(甩門)與互動(開關門、碰撞盒、殭屍推門)只改 group.rotation.y
       const lh = h - 0.03;
       const hinges = [[u0, 1], [u1, -1]];
-      const lw = (u1 - u0) / 2 - 0.015;
+      const lw = (u1 - u0) / 2 - 0.038; // 鉸鍊離門框 3.5cm → 兩扇剛好在中線留 6mm(以前兩扇重疊 4cm,貼圖後會 z-fighting)
       const dynamic = (style === 'fire' || style === 'cell') && !d.outA && !d.outB;
       const ang = (du, dw) => Math.atan2(-(d.axis === 'z' ? dw : du), d.axis === 'z' ? du : dw);
       for (const [uh, sgn] of hinges) {
@@ -162,9 +118,12 @@ export function buildDoors(K) {
         else { const th = R.r(0.45, 1.05); du = sgn * Math.cos(th); dw = dirRoom * Math.sin(th); }
         const psi = ang(du, dw);
         const hinge = [F.X(hu, hw), y + 0.01, F.Z(hu, hw)];
-        if (state === 'fallen') {
+        if (state === 'fallen') { // 倒在地上的門扇:平躺,一端墊在碎屑上(亂數順序與以前相同,門的配置不變)
           const cu = (u0 + u1) / 2 + R.r(-0.5, 0.5), cw = wf + dirRoom * R.r(0.9, 1.3);
-          emitLeaf(B, li, style, [F.X(cu, cw) - 0.5, y + 0.06, F.Z(cu, cw) + 0.9], R.r(0, 6.28), lw, lh, R, true);
+          const yaw = R.r(0, 6.28), tilt = Math.abs(R.r(-0.04, 0.06)), t = style === 'cell' || style === 'fire' ? 0.07 : 0.05;
+          _e.set(0, yaw, 0, 'YXZ'); _q.setFromEuler(_e);
+          const m = new THREE.Matrix4().compose(_p.set(F.X(cu, cw) - 0.5, y + t / 2 + 0.004, F.Z(cu, cw) + 0.9), _q, _s.set(1, 1, 1)).multiply(new THREE.Matrix4().makeRotationX(-Math.PI / 2 + tilt));
+          fallen.push({ li, style, lw, lh, m });
           continue;
         }
         const g = new THREE.Object3D();
@@ -174,6 +133,7 @@ export function buildDoors(K) {
           li, style, group: g, open: psi, closed: ang(sgn, 0), swingA: ang(0, -dirRoom), swingB: ang(0, dirRoom), x: hinge[0], y, z: hinge[2],
           cx: (F.X(u0, w0) + F.X(u1, w1)) / 2, cz: (F.Z(u0, w0) + F.Z(u1, w1)) / 2, zone: (roomB ? sb.zone : sa.zone) || sa.zone || sb.zone,
           lw, lh, sgn, state, axis: d.axis, door: `${li},${c},${r}`, za: sa.zone, zb: sb.zone, out: !!(d.outA || d.outB), events: dynamic,
+          wf, dirRoom, // 門扇關上時所在的牆面線(局部 w)與房間在哪一側(門縫光畫在另一側)
         };
         all.push(leaf);
         if (dynamic) dyn.push(leaf); // 驚嚇事件(甩門)只用樓梯間防火門與隔離房門(和以前一樣)
@@ -182,7 +142,7 @@ export function buildDoors(K) {
   }
   K.dynDoors = dyn;
   K.doorLeaves = all;
-  K.leaves = buildLeaves(K, all, (style, lw, lh) => leafParts(style, lw, lh));
+  K.leaves = buildLeaves(K, all);
   return dyn;
 }
 

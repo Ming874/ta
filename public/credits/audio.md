@@ -444,3 +444,35 @@
   - 使用於:`audio/zombies/zombie_pain_6.mp3`
 
 素材清單與原始授權說明:每個檔案的作者、標題、來源網址、授權與剪輯紀錄都保存在素材 manifest(整理自 OpenGameArt、Freesound、incompetech、Kenney 等 CC0 / CC-BY 資源)。
+
+## 雨聲與雷聲(public/audio/rain/,皆為 CC0 / 免署名)
+
+每層兩個不同的片段(左右各一,去相關的立體寬度);從原檔裁切穩定段落、等功率交叉淡化做成無縫循環、RMS 對齊 -24 dBFS、轉成 Opus 單聲道 40~44 kbps(共約 1.05 MB)。
+
+| 檔案 | 來源作品 | 作者 | 授權 | 來源網址 |
+|---|---|---|---|---|
+| `audio/rain/rain_wash_a.ogg`、`rain_wash_b.ogg`(遠處雨幕,原檔 290 秒、100 秒起各 30 秒) | amb rain loop 2(GoPro 實地錄音) | kresiek-the-furry | CC0 | https://opengameart.org/content/amb-rain-loop-2 |
+| `audio/rain/rain_near_a.ogg`、`rain_near_b.ogg`(近處雨滴/水窪,原檔 660 秒、500 秒起各 24 秒) | amb rain loop 2(同上) | kresiek-the-furry | CC0 | https://opengameart.org/content/amb-rain-loop-2 |
+| `audio/rain/rain_roof_a.ogg`、`rain_roof_b.ogg`(雨棚/排水溝,原檔 21 秒起 28 秒、1 秒起 18 秒) | Rain Gutter Loop | ogrebane | CC0 | https://opengameart.org/content/rain-gutter-loop |
+| `audio/rain/rain_window_a.ogg`、`rain_window_b.ogg`(窗戶,`3.ogg` 16 秒起、`1.ogg` 2 秒起各 22 秒) | Rain (loopable) | ylmir | CC0 | https://opengameart.org/content/rain-loopable |
+| `audio/rain/rain_gush.ogg`(排水管湧流,`water_flowing.ogg` 1.5 秒循環) | 30 CC0 SFX loops | rubberduck | CC0 | https://opengameart.org/content/30-cc0-sfx-loops |
+| `audio/rain/thunder_roll.ogg`(雷聲,原檔 21.2~44.3 秒) | Rain - Long Thunder | wuxiascrub | CC0(作者註明「No need to credit」) | https://opengameart.org/content/rain-long-thunder |
+
+## 台灣民謠與儀式聲(src/audio/folk.js,全部在程式裡合成,沒有任何錄音檔)
+
+旋律只用公有領域的作品;演奏(音樂盒、卡帶電子琴、收音機裡的大廣弦與月琴、哼唱、嗩吶、北管鑼鼓、西索米、引魂鈴、木魚與誦經、哀歌)全部是本專案程式碼合成,沒有取樣或參考任何既有錄音、編曲。簡譜依記憶整理為五聲音階的單旋律、節奏簡化。
+
+| 旋律 | 作者 | 公有領域依據 | 用法 |
+|---|---|---|---|
+| 《望春風》(1933) | 鄧雨賢 作曲(1906–1944) | 作曲者逝世已逾 50 年(台灣著作權法:生存期間 + 50 年),旋律為公有領域。**只用旋律**:作詞者李臨秋(1909–1979)的歌詞仍受保護,不唱、不顯示歌詞 | 音樂盒(207 病房的搖籃曲、育嬰室的音樂盒)、阿嬤的哼唱、恐懼配樂床裡的音樂盒片段 |
+| 《雨夜花》(1934) | 鄧雨賢 作曲 | 同上。**只用旋律**:作詞者周添旺(1911–1988)的歌詞仍受保護 | 護理站錄音機的卡帶電子琴、收音機 |
+| 《天黑黑》 | 作者不詳(台灣傳統童謠) | 傳統民謠,無著作權人 | 空病房裡孩子的哼唱 |
+| 《火金姑》 | 作者不詳(台灣傳統童謠) | 傳統民謠 | 孩子的哼唱 |
+| 《思想起》 | 作者不詳(恆春傳統民謠) | 傳統民謠 | 收音機(大廣弦 + 月琴)、配樂片段 |
+| 《丟丟銅仔》 | 作者不詳(宜蘭傳統民謠) | 傳統民謠 | 收音機 |
+| 《桃花過渡》 | 作者不詳(傳統車鼓戲曲調) | 傳統民謠 | 收音機 |
+| 《六月茉莉》 | 作者不詳(傳統民謠) | 傳統民謠 | 收音機、補給站的溫暖配樂床 |
+| 《一隻鳥仔哮啾啾》 | 作者不詳(傳統民謠) | 傳統民謠 | 遠處出殯的西索米樂隊 |
+| 北管風嗩吶短句、牽亡歌風哀歌、AM 1207 台呼、追逐/停電/恐懼/頭七配樂床 | 本專案原創 | 原創 | 戶外遠處的北管鑼鼓、頭七、收音機台呼、配樂狀態 |
+
+宗教與喪葬的聲音(誦經、木魚、引魂鈴、牽亡歌、西索米)只在安靜時段以低音量、完整演出出現,間隔很長,不用於跳嚇或玩笑。

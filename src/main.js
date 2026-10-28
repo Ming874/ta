@@ -7,11 +7,15 @@ import { idle } from './sys/sched.js';
 import { precompile, precompilePasses, initPrograms, warmDraw, warmDrawScene, warmPMREM, yieldNow } from './sys/warmup.js';
 import { backgroundTicker } from './sys/ticker.js';
 import { texStats, texturesReady } from './sys/texworker.js';
-import { prewarm, whenTypesReady, variantStats, getVariant, instantiate, VARIANT_TYPES } from './zombies/model.js';
+import { prewarm, whenTypesReady, variantStats, getVariant, instantiate, forceVariant, VARIANT_TYPES } from './zombies/model.js';
 import { allMaterials as allZombieMaterials } from './zombies/materials.js';
+import { loadRealistic, realisticMaterials, realisticStats } from './zombies/realistic.js'; // 寫實殭屍(載入本模組即註冊變體數,要在 prewarm 之前)
+import { stainWarmMesh } from './art/stainmat.js';
 import * as audio from './audio.js';
 import { initNet } from './net/lobby.js';
 import { installHorror } from './horror/index.js';
+import { installDeduce } from './story/deduce.js';
+import { installObjectives } from './story/objectives.js';
 import { startPhysicsWorker, physicsLoad } from './physics/index.js';
 import { assets } from './sys/assets.js';
 import { installStreaming } from './sys/stream.js';
@@ -60,6 +64,8 @@ game.warmed = false; // hz:warm 之前開局:先不出怪(flow.updateRound),第�
 game.bindInput();
 initNet(game); // [net] 主選單的多人連線入口(src/net/lobby.js)
 installHorror(game); // [ghost] 靈異系統:驚嚇導演、耳語、幻影、靈異事件(src/horror)
+installDeduce(game); // [story] 線索卡、推理本(J)、擲筊、頭七(src/story)
+installObjectives(game); // [story] 目標鏈、區域解鎖、提示(src/story/objectives.js)
 window.__game = game; // 除錯用:在瀏覽器 console 操作 __game
 
 // ---- 效能基礎建設 ----
@@ -70,10 +76,13 @@ game.perf = new Perf(game); // F3 效能面板(src/sys/perf.js)
 prewarm(); // 殭屍變體:有 Worker 時立刻全部平行送到 Worker 池建模
 performance.mark('hz:game');
 window.__perfVariants = variantStats; // 測試用
+window.__forceVariant = forceVariant; // 測試用:下一隻生成的殭屍用指定變體
 window.__assets = assets; // 測試用:下載佇列進度
 window.__physLoad = physicsLoad;
 installStreaming(game); // 下載順序:玩家附近 → 同層 → 其他樓層
 assets.prepare = (root) => precompile(game, root, { instanced: true }); // 下載的模型交付前先在背景編好 shader(含實例池版本)
+loadRealistic(game); // 寫實殭屍模型排進下載佇列(低畫質不載)
+window.__realistic = realisticStats; // 測試用
 assets.hiRes = game.quality.preset !== 'low'; // 低畫質:不下載 1K 顏色圖(省頻寬與顯示記憶體)
 game.quality.on('change', (k, q) => { assets.hiRes = q.preset !== 'low'; });
 game.hospital.setQuality?.(game.quality); // 光源池大小、道具顯示距離跟著畫質
@@ -185,9 +194,12 @@ boot();
 async function warmRuntime() {
   const g = new THREE.Group();
   const inst = instantiate(getVariant('walker', 0));
-  const ZM = allZombieMaterials(), its = []; // [zombies-w3] 全部殭屍材質(含新類型的眼睛、刀刃、鏡片)
+  const ZM = [...allZombieMaterials(), ...realisticMaterials()], its = []; // [zombies-w3] 全部殭屍材質(含新類型的眼睛、刀刃、鏡片、寫實殭屍)
   inst.mesh.material = ZM; // 只編譯、不渲染
   g.add(inst.mesh);
+  for (const o of game.deduce?.warmObjects?.() || []) g.add(o); // [story] 筊杯
+  g.add(stainWarmMesh()); // 寫實血跡材質(靜態貼花、血泊、滴落血漬共用)
+  for (const o of game.horror?.warmObjects?.() || []) g.add(o); // [ghost] 靈異材質(幻影、痕跡、字跡、寒氣)一起預編譯與離屏畫一次
   // 執行期才會建立的常見材質型態(曳光、血池/貼花、光暈與血條 sprite、粒子):program 只看功能旗標(貼圖/霧…),不看顏色數值
   const tex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -200,7 +212,9 @@ async function warmRuntime() {
     }
   }
   performance.mark('hz:warm:start');
-  const res = await precompile(game, g);
+  const own = game.interact?.warmList?.() || []; // [interact] 互動物件與門(BatchedMesh 變體與陰影深度變體):跟著 hz:warm 編好
+  const [res, resIx] = await Promise.all([precompile(game, g), own.length ? precompile(game, { traverse: (fn) => { for (const o of own) o.traverse(fn); }, updateMatrixWorld() {} }) : null]);
+  if (resIx) for (const p of resIx.programs) res.programs.add(p);
   performance.mark('hz:warm:compiled');
   warmStage = 2;
   await initPrograms(res.programs);

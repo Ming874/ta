@@ -120,7 +120,7 @@ export class NetClient {
       this.status = 'closed';
       this.lostAt = 0;
       this.token = null;
-      if (was === 'connecting') this.emit('_fail', new Error('遊戲已更新,請重新整理頁面'));
+      if (was === 'connecting') this.emit('_fail', new Error('遊戲已更新，請重新整理頁面'));
       else this.emit('lost', { reason: 'version' });
       return;
     }

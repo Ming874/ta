@@ -4,7 +4,12 @@
 //
 // 公開介面(給 interact / story / ambush 代理):
 //   game.horror.whisper(lineId | text, { ear, subtitle, filter, priority, pos, mode }) → handle | null
-//   game.horror.phone({ pos, id, ringing }) → handle     接起電話(電話聽筒濾波,右耳)
+//   game.horror.remember(id, { event, tag, ghost, card, text }) / seen(tag?, within = 300) → 最近一筆
+//                                                    第三輪:靈異事件的劇情回報都記在這裡(tag:zheng 看到阿嬤 | dark 停電 | taboo 禁忌 | self 你是誰 | clue 線索);
+//                                                    有 card 就 game.objectives?.clue?.(card);發 'story' 事件;電話用 need.seen 引用
+//   game.horror.memory(id, { force }) / memories.state      第四輪「回憶」:走到 2003 年封院發生過事情的地方,滑進那一段(memdata.js)
+//   game.horror.phoneCall(ctx) → script | null          接起電話:依玩家身邊的場景組一通電話(見 calls.js;互動代理呼叫)
+//   game.horror.phone({ pos, id, ringing }) → handle     (舊)接起電話:隨機一句電話台詞
 //   game.horror.radio({ pos, id }) → handle              收音機開了(收音機濾波,在收音機的位置)
 //   game.horror.event(kind, { force }) → bool            立刻觸發一個靈異事件(見 director.KINDS);force 略過導演節奏
 //   game.horror.apparition(kind, opts) → bool            figure | window | child | nurse | behind | curtain | mirror | counter
@@ -23,24 +28,38 @@ import { Apparitions, models } from './ghosts.js';
 import { Marks } from './marks.js';
 import { ColdFx } from './fx.js';
 import { paranormalKinds } from './paranormal.js';
+import { scareKinds } from './scares.js';
+import { createCalls } from './calls.js';
+import { hauntKinds, HauntFx } from './haunts.js';
+import { createMemories } from './memories.js';
 import { LINES, CAPTIONS } from './lines.js';
 import { precompile as warmCompile, initPrograms } from '../sys/warmup.js';
 
-// 導演挑事件用的清單:[種類, 權重];區域偏好另外乘
-const CATALOG = {
-  small: [['ambient', 1], ['flicker', 0.35], ['crawl', 0.6], ['silence', 0.45], ['lullaby', 0.5], ['radioOn', 0.45], ['phoneRing', 0.55], ['whisper', 1.2]],
-  medium: [['doorCreep', 0.9], ['door', 0.5], ['cart', 0.5], ['rollToward', 0.6], ['moveBehind', 0.7], ['footprints', 0.85], ['handprints', 0.8], ['writing', 0.8], ['coldBreath', 0.6], ['tvFace', 0.6], ['elevator', 0.55], ['anchor', 0.7], ['fall', 0.4],
-    ['figure', 1.1], ['window', 0.8], ['child', 0.7], ['nurse', 0.8], ['curtain', 0.9], ['mirror', 1.2]],
-  big: [['behind', 1], ['lightsDie', 1.1], ['blackout', 0.5]],
-};
-const APPARITION = new Set(['figure', 'window', 'child', 'nurse', 'behind', 'curtain', 'mirror', 'counter']);
+// 導演挑事件用的清單:由 director.KINDS 的 tier / w 產生(外部種類、劇情通稱、來電、訊號閃燈不在裡面)
+const CATALOG = { small: [], medium: [], big: [] };
+for (const [k, v] of Object.entries(DK)) if (v.w && !v.ext && CATALOG[v.tier]) CATALOG[v.tier].push([k, v.w]);
+const APPARITION = new Set(['figure', 'window', 'child', 'nurse', 'behind', 'curtain', 'mirror', 'counter', 'peripheral', 'creeper', 'flashFlick', 'reflection']);
 const BIAS = {
-  corridor: { figure: 2, nurse: 2, lightsDie: 1.8, footprints: 1.4, child: 1.3 }, ward: { curtain: 2.5, nurse: 1.3, mirror: 1.5, handprints: 1.3 },
-  nursery: { lullaby: 4, child: 2.5, handprints: 1.5 }, peds_ward: { lullaby: 3, child: 2 }, playroom: { lullaby: 3, child: 2.5 },
-  morgue: { coldBreath: 2.5, crawl: 1.5, silence: 1.5, anchor: 1.5 }, autopsy: { coldBreath: 2, crawl: 1.4 }, psych_cell: { doorCreep: 2.5, behind: 1.5 }, stairwell: { doorCreep: 2.5, crawl: 1.3 },
-  tunnel: { crawl: 2, silence: 1.5, footprints: 1.5 }, chapel: { anchor: 2, silence: 1.5 }, rehab: { mirror: 3 }, waiting: { tvFace: 2, phoneRing: 1.5 }, lobby: { elevator: 1.5, figure: 1.3 },
-  monitor: { tvFace: 3 }, security: { tvFace: 3 }, icu: { tvFace: 1.5, coldBreath: 1.4 }, outdoor: { window: 0, crawl: 0, figure: 0.6, writing: 0, footprints: 0, doorCreep: 0 },
+  corridor: { figure: 2, nurse: 2, lightsDie: 1.8, footprints: 1.4, child: 1.3, pace: 1.8, knockFollow: 1.3, runBehind: 1.4, peripheral: 1.5, flashFlick: 1.8, creeper: 1.5, doorSlamSeq: 2, gurneyPass: 1.5, doorOpen: 1.2,
+    corridorOut: 2.2, darkFollow: 1.8, shadowPass: 1.5, beamFigure: 1.4, nameCall: 1.3, doorBurst: 1.3, ballRoll: 1.2 },
+  ward: { curtain: 2.5, nurse: 1.3, mirror: 1.5, handprints: 1.3, nurseCall: 2, reflection: 1.6, doorClose: 1.3, throw: 1.3, breathBehind: 1.2,
+    curtainDraw: 2.4, flatline: 1.6, windowFog: 1.4, windowFace: 1.3, swingBulb: 1.2, shoulderTap: 1.2 },
+  nursery: { lullaby: 4, child: 2.5, handprints: 1.5, ballRoll: 2 }, peds_ward: { lullaby: 3, child: 2, ballRoll: 2.5 }, playroom: { lullaby: 3, child: 2.5, ballRoll: 3 },
+  morgue: { coldBreath: 2.5, crawl: 1.5, silence: 1.5, anchor: 1.5, rollcall: 3, breathBehind: 1.5 }, autopsy: { coldBreath: 2, crawl: 1.4 }, psych_cell: { doorCreep: 2.5, behind: 1.5, cellKnock: 3, doorBurst: 2.5 }, stairwell: { doorCreep: 2.5, crawl: 1.3, pace: 1.4, doorClose: 1.5, runBehind: 1.2, whistle: 1.6, nameCall: 1.5 },
+  tunnel: { crawl: 2, silence: 1.5, footprints: 1.5, pace: 1.6, creeper: 1.4 }, chapel: { anchor: 2, silence: 1.5, breathBehind: 1.4, redEnvelope: 2 }, rehab: { mirror: 3, reflection: 1.5, mirrorRush: 2.5 }, waiting: { tvFace: 2, phoneRing: 1.5, paHijack: 1.6, windowFace: 1.5, windowFog: 1.6, radio1999: 1.5 }, lobby: { elevator: 1.5, figure: 1.3, paHijack: 2.5, windowFog: 1.5, redEnvelope: 1.4 }, psych: { cellKnock: 2, knockFollow: 1.5, doorBurst: 1.8 },
+  monitor: { tvFace: 3 }, security: { tvFace: 3 }, icu: { tvFace: 1.5, coldBreath: 1.4, flatline: 3 }, outdoor: { corridorOut: 0, darkFollow: 0, swingBulb: 0, curtainDraw: 0, shadowPass: 0, windowFog: 0, windowFace: 0, doorBurst: 0, ballRoll: 0, beamFigure: 0.6, frostEdge: 1.2, whistle: 1.4, nameCall: 1.2, window: 0, crawl: 0, figure: 0.6, writing: 0, footprints: 0, doorCreep: 0, pace: 0, knockFollow: 0, doorOpen: 0, doorClose: 0, doorSlamSeq: 0, gurneyPass: 0, nurseCall: 0, rollcall: 0, reflection: 0, cellKnock: 0, runBehind: 0.5, creeper: 0.5, blackoutChange: 0 },
 };
+// 地圖上的驚嚇點:在這些區域、這一局還沒發生過時,這些種類權重 ×3、恐懼門檻 ×0.7;發生一次就用掉
+const HOTSPOTS = [
+  { zone: 'b1_morgue', kinds: ['rollcall', 'coldBreath'] }, { zone: 'f2_nursery', kinds: ['lullaby', 'ballRoll'] }, { zone: 'f2_playroom', kinds: ['lullaby', 'anchor', 'ballRoll'] },
+  { zone: 'f2_ward_207', kinds: ['swingBulb', 'beamFigure', 'frostEdge'] }, { theme: 'icu', kinds: ['flatline', 'curtainDraw'] }, { zone: 'b1_tunnel', kinds: ['corridorOut', 'darkFollow'] },
+  { theme: 'psych_cell', kinds: ['cellKnock'] }, { zone: 'f3_corridor', kinds: ['cellKnock', 'creeper', 'knockFollow'] }, { zone: 'f1_lobby', kinds: ['paHijack', 'elevator'] },
+  { zone: 'f1_rehab', kinds: ['mirror', 'reflection', 'mirrorRush'] }, { zone: 'f3_monitor', kinds: ['tvFace'] }, { zone: 'f1_security', kinds: ['tvFace'] },
+  { zone: 'f2_corridor', kinds: ['nurse', 'pace', 'nurseCall', 'doorSlamSeq', 'corridorOut', 'shadowPass'] }, { zone: 'f1_corridor', kinds: ['doorSlamSeq', 'flashFlick', 'figure', 'darkFollow', 'nameCall'] },
+  { zone: 'b1_tunnel', kinds: ['pace', 'crawl', 'creeper'] }, { theme: 'stairwell', kinds: ['doorClose', 'runBehind'] }, { zone: 'f1_chapel', kinds: ['breathBehind', 'anchor', 'redEnvelope', 'whistle'] },
+  { theme: 'ward', kinds: ['curtain', 'reflection', 'nurseCall', 'throw'] }, { zone: 'f2_icu', kinds: ['tvFace', 'coldBreath', 'flatline'] }, { zone: 'f1_waiting', kinds: ['paHijack', 'tvFace', 'windowFace', 'radio1999'] },
+  { zone: 'f1_parking', kinds: ['radioOn'] }, { zone: 'f1_cemetery', kinds: ['whisper', 'figure'] }, { zone: 'f3_dorm', kinds: ['knockFollow', 'circle'] }, { zone: 'b1_archive', kinds: ['writing', 'breathBehind'] },
+];
 const _a = new THREE.Vector3(), _b = new THREE.Vector3();
 
 export function installHorror(game) {
@@ -72,6 +91,7 @@ export function installHorror(game) {
       H.emit('phone:answer', { id: o.id ?? null, line: h?.id ?? null });
       return h;
     },
+    phoneCall(ctx = {}) { return H.calls ? H.calls.phoneCall(ctx) : null; },
     radio(o = {}) {
       const l = H.whispers.pick('radio', { round: game.round, phase: game.phase }) || 'rd.1';
       return H.whispers.say(l, { filter: 'radio', pos: o.pos, ear: o.pos ? 'world' : 'near', priority: o.auto ? 5 : 8, force: !o.auto });
@@ -121,6 +141,7 @@ export function installHorror(game) {
       H.fx?.update(dt, game, H.coldK);
       H.marks?.update(dt);
       H.app?.update(dt, game);
+      H.memories?.update(dt);
       for (let i = later.length - 1; i >= 0; i--) if (game.time >= later[i][0]) { const fn = later[i][1]; later.splice(i, 1); try { fn(); } catch (e) { console.warn('[horror]', e); } }
       for (let i = watchers.length - 1; i >= 0; i--) { let keep = false; try { keep = watchers[i](dt); } catch (e) { console.warn('[horror]', e); } if (!keep) watchers.splice(i, 1); }
       if (H.ringing && game.time > H.ringing.until) H.ringing = null;
@@ -130,14 +151,35 @@ export function installHorror(game) {
     resetRun() {
       H.director.reset(); H.whispers.reset(); H.app?.clear(); H.marks?.clear(); H.fx?.clear();
       later.length = 0; watchers.length = 0; H.usedWrit.clear(); H.ringing = null; H.coldK = H.coldT = 0; H.coldUntil = 0;
+      H.calls?.reset(); T.spots.clear(); H._pace = false;
+      H.memories?.reset(); H.hfx?.reset(); H.seenLog.length = 0; H.storyUsed.clear(); H.quiet = 0; T.touqi = false; T.quietPh = null;
       T.zones.clear(); T.props.clear(); T.still = 0; T.streak = 0; T.lastKill = 0; T.zonePend = null; T.next = 0;
       for (const d of H.events?.doors || []) d.primed = false;
       if (performance.now() > 40000) models.warm();
     },
+    // main.js warmRuntime 呼叫:每種靈異材質一個代表物件(加進暖機群組 → 預編譯 + 離屏畫一次)
+    warmObjects() { H.warmIn = true; return warmSet(H); },
+    // ---- 第三輪:劇情記憶(靈異事件揭露了什麼;之後的電話/台詞引用) ----
+    seenLog: [], storyUsed: new Set(), quiet: 0,
+    remember(id, o = {}) {
+      const e = { id, t: game.time, zone: zoneOf()?.id || null, event: o.event || null, tag: o.tag || null, ghost: o.ghost || null, card: o.card || null, text: o.text || null };
+      H.seenLog.push(e); if (H.seenLog.length > 60) H.seenLog.shift();
+      game.flags?.set?.('h.seen.' + id, true);
+      if (e.card) { game.deduce?.addCard?.(e.card); game.objectives?.clue?.(e.card, { by: o.event === 'memory' ? 'memory' : 'ghost' }); }
+      H.emit('story', e);
+      return e;
+    },
+    lastSeen(tag, within = 300) {
+      for (let i = H.seenLog.length - 1; i >= 0; i--) { const e = H.seenLog[i]; if (game.time - e.t > within) return null; if (!tag || e.tag === tag || e.ghost === tag || e.id === tag || e.event === tag) return e; }
+      return null;
+    },
+    seen(tag, within) { return H.lastSeen(tag, within); },
+    memory(id, o = {}) { return H.memories?.play(id, o) ?? null; },
     stats() { return { ...H.director.stats(), whispers: H.whispers.count, wlog: H.whispers.log.slice(-8), apparitions: H.app?.count ?? 0, alog: H.app?.log.slice(-8) ?? [], active: H.app?.active ?? 0, models: models.state, events: H.events?.S.log.slice(-10) ?? [], cold: +H.coldK.toFixed(2) }; },
   };
   H.director = new Director(H);
   H.whispers = new Whispers(H);
+  H.calls = createCalls(H);
   game.horror = H;
 
   // ---- 場景相關(灰盒地圖沒有 hospital.events 時只剩耳語) ----
@@ -146,16 +188,22 @@ export function installHorror(game) {
     H.app = new Apparitions(H, game.scene);
     H.marks = new Marks(H, game.scene);
     H.fx = new ColdFx(game.scene);
+    H.hfx = new HauntFx(H, game.scene);
     E.register(paranormalKinds(H));
+    E.register(scareKinds(H)); // 第二輪驚嚇庫(src/horror/scares.js)
+    H.memories = createMemories(H); // 第四輪:回憶
+    E.register(hauntKinds(H)); // 第三輪:更多靈異事件、走廊熄燈、大跳嚇,每個都有劇情回報(src/horror/haunts.js)
     E.auto = false; // 驚嚇導演接手排程
     try { H.marks.placeStatic(game.hospital.K, game.hospital.layout); } catch (e) { console.warn('[horror] 牆上字跡', e); }
   }
   // 選單期間就開始在背景準備幻影模型;等 main.js 的開機預編譯做完(畫質、光源數都定了)再預編譯靈異材質(不卡第一次出現)
-  // 等主程式的暖機(hz:warm:殭屍變體與常用材質)做完才開始,不跟它搶 CPU/GPU 編譯執行緒;最多等 30 秒
-  { const t0 = performance.now(); const wait = () => { if (performance.getEntriesByName('hz:warm').length || performance.now() - t0 > 30000) { models.warm(); precompile(game, H); } else setTimeout(wait, 400); }; setTimeout(wait, 1000); }
+  // 靈異材質由 main.js 的暖機(warmRuntime → H.warmObjects())一起預編譯,hz:warm 之後 shader 數量不再增加;
+  // 幻影模型(背景 Worker 建模 + 閒置烘焙,不新增 shader)等 hz:warm 之後才開始,不跟暖機搶 CPU。
+  // 主程式沒有叫 warmObjects(舊版/測試頁)時,30 秒後自己預編譯當退路
+  { const t0 = performance.now(); const wait = () => { const warm = performance.getEntriesByName('hz:warm').length; if (warm || performance.now() - t0 > 30000) { models.warm(); if (!H.warmIn) precompile(game, H); } else setTimeout(wait, 400); }; setTimeout(wait, 1000); }
 
   // ---- 觸發器與排程 ----
-  const T = { zones: new Set(), props: new Set(), still: 0, streak: 0, lastKill: 0, zonePend: null, next: 0, acc: 0, low: -1e9, dark: -1e9, strk: -1e9, prop: -1e9, warn: -1e9, guide: -1e9, sig: -1e9 };
+  const T = { spots: new Set(), zones: new Set(), props: new Set(), still: 0, streak: 0, lastKill: 0, zonePend: null, next: 0, acc: 0, low: -1e9, dark: -1e9, strk: -1e9, prop: -1e9, warn: -1e9, guide: -1e9, sig: -1e9 };
   const zoneOf = () => game.hospital?.zone || null;
   const say = (l, o) => { if (!l) return null; const r = H.whispers.say(l, { priority: 5, ...o }); if (r) H.director.notify('whisper'); return r; };
   function ambientWhisper(force) {
@@ -179,6 +227,10 @@ export function installHorror(game) {
       if (game.time > T.zonePend.until) T.zonePend = null;
       else if (D.silent && D.tension < 0.45 && !H.whispers.busy && D.request('whisper', { force: true })) { say(T.zonePend.l, { priority: 5 }); T.zonePend = null; }
     }
+    H.memories?.tick(); // 回憶:走到地點就滑進去
+    // 靜默期計數;頭七:第 7 次靜默期,她回來(STORY v2;一局一次)
+    if (D.silent && T.quietPh !== true) { T.quietPh = true; H.quiet++; } else if (!D.silent) T.quietPh = false;
+    if (H.quiet === 7 && !T.touqi && D.silent && D.roundT > 8 && game.time - (T.touqiTry || 0) > 4) { T.touqiTry = game.time; if (H.event('touqi', { force: true })) T.touqi = true; }
     // 低血量
     // 用急救包(正典 §5.8#7;只在靜默期)
     if (game.healT > 0 && !T.heal) { T.heal = true; if (D.silent && !H.whispers.busy && D.request('whisper', { force: true })) { const l = H.whispers.pick('medkit', c); if (l) say(l, { priority: 6 }); } } else if (!(game.healT > 0)) T.heal = false;
@@ -239,9 +291,11 @@ export function installHorror(game) {
     // 依恐懼值挑事件
     if (game.time < T.next) return;
     T.next = game.time + 1.5;
+    const spot = zone ? HOTSPOTS.find((q) => (q.zone === zone.id || q.theme === zone.theme) && !T.spots.has(q)) : null;
+    const th0 = spot ? 0.7 : 1; // 驚嚇點:門檻低一點
     let tier = null;
-    if (D.dread >= 75 && D.allowTier('big', game) && Math.random() < 0.6) tier = 'big';
-    else if (D.dread >= 40 && D.allowTier('medium', game)) tier = 'medium';
+    if (D.dread >= 75 * th0 && D.allowTier('big', game) && Math.random() < 0.6) tier = 'big';
+    else if (D.dread >= 40 * th0 && D.allowTier('medium', game)) tier = 'medium';
     else if (D.dread >= 16 && D.allowTier('small', game) && Math.random() < 0.3) tier = 'small'; // 小事件不要一直放:留給恐懼累積到看得見的事件
     if (!tier) return;
     const th = zone?.theme, mood = zone?.mood, out = /^outdoor|^roof/.test(mood || '');
@@ -252,13 +306,15 @@ export function installHorror(game) {
       if (out && BIAS.outdoor[k] != null) w *= BIAS.outdoor[k];
       if (APPARITION.has(k)) w *= 0.35 + esc; // 一局越後面越常看到人影
       if (k === 'whisper' && !H.whispers.pick('idle', c)) w = 0;
-      if (w <= 0 || !D.request(k)) continue;
+      if (spot && spot.kinds.includes(k)) w *= 3;
+      w *= D.weight(k); // 疲勞:同一種/同一類最近用過就降權
+      if (w <= 0 || !D.request(k, { weight: 1 })) continue;
       cand.push([k, w * (0.6 + Math.random() * 0.8)]);
     }
     cand.sort((a, b) => b[1] - a[1]);
     for (const [k] of cand) {
       if (k === 'whisper') { if (ambientWhisper(true)) return; continue; }
-      if (E.fire(k)) { D.notify(k, { dur: tier === 'big' ? 12 : undefined }); H.emit('event', { kind: k }); return; }
+      if (E.fire(k)) { D.notify(k, { dur: tier === 'big' ? 12 : undefined }); H.emit('event', { kind: k }); if (spot && spot.kinds.includes(k)) T.spots.add(spot); return; }
     }
   }
   function isDark(p) {
@@ -279,20 +335,28 @@ export function installHorror(game) {
   return H;
 }
 
-// 預編譯靈異材質(幻影兩種、腳印/手印、字跡、寒氣粒子):先在背景執行緒編好,第一次出現不卡
+// 每種靈異材質一個代表物件(幻影 pale/shade/深度、腳印/手印、門縫光、剪影 ×2、電視、電梯光、字跡、寒氣粒子)
+function warmSet(H) {
+  if (!H.app) return [];
+  const out = [], geo = new THREE.SphereGeometry(0.2, 8, 6);
+  const s = H.app.slots[0];
+  for (const m of [s.pale, s.shade, s.depth]) { const x = new THREE.Mesh(geo, m); x.frustumCulled = false; out.push(x); }
+  for (const m of H.marks.warmList()) { const c = m.clone(); c.visible = true; c.frustumCulled = false; if (c.isInstancedMesh) c.count = 1; out.push(c); }
+  out.push(H.marks.warmWriting());
+  for (const m of H.memories?.warmList() || []) { const x = new THREE.Mesh(geo, m); x.frustumCulled = false; out.push(x); } // 回憶的回音人影(同一個 shader)
+  for (const m of H.hfx?.warmList() || []) { const c = m.clone(); c.visible = true; c.frustumCulled = false; out.push(c); } // 第三輪:球、紅包、影子、窗上霧氣
+  const pts = H.fx.pts.clone(); pts.visible = true; out.push(pts);
+  return out;
+}
+// 退路:自己預編譯(主程式沒有呼叫 warmObjects 時)
 async function precompile(game, H) {
   if (!H.app || H.warm) return;
   H.warm = 'compiling';
   try {
     const g = new THREE.Group();
-    const geo = new THREE.SphereGeometry(0.2, 8, 6);
-    for (const s of H.app.slots.slice(0, 1)) for (const m of [s.pale, s.shade, s.depth]) g.add(new THREE.Mesh(geo, m));
-    for (const m of H.marks.warmList()) { const c = m.clone(); c.visible = true; if (c.isInstancedMesh) c.count = 1; g.add(c); }
-    const wm = H.marks.write({ id: 'warm', text: '·', style: 'marker' }, 0, -50, 0, 0, 1, { keep: true }); wm.visible = true;
-    const pts = H.fx.pts.clone(); pts.visible = true; g.add(pts);
+    for (const o of warmSet(H)) g.add(o);
     const res = await warmCompile(game, g, { shadows: false });
     if (res?.programs) await initPrograms(res.programs);
-    wm.visible = false;
     H.warm = 'done';
   } catch (e) { H.warm = 'failed'; console.warn('[horror] 預編譯', e); }
 }

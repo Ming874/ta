@@ -108,6 +108,7 @@ export function materials() {
       burned: eye('#d8d0c0', 0x3a2a20, 0.15, 0xb0a090, 1.0), // 煮熟的眼球:不透明灰白
       hazmat: eye('#7a8070', 0x303028, 0.15, 0x8a9070, 0.6),
       straitjacket: eye('#5a6a40', 0x2a3018, 0.2, 0xc8d070, 0.3),
+      pursuer: eye('#d01808', 0xff2008, 1.4, 0xff3010, 0.15), // 追獵者:繃帶縫隙裡兩點紅光
     },
   };
   return M;

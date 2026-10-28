@@ -287,8 +287,8 @@ export class NetSession {
     // 重新連上:伺服器在 welcome 告訴我們座位有沒有保住(超過保留時間就結束這場);保住的話緊接著送 joined(房間現況)
     on('reconnected', (m) => {
       clearTimeout(this._resumeT);
-      if (!m.resumed) { this.lobby.matchLost('重新連線失敗:座位已釋出'); return; }
-      this._resumeT = setTimeout(() => { if (this.active) this.lobby.matchLost('重新連線失敗:座位已釋出'); }, 5000);
+      if (!m.resumed) { this.lobby.matchLost('重新連線失敗：座位已釋出'); return; }
+      this._resumeT = setTimeout(() => { if (this.active) this.lobby.matchLost('重新連線失敗：座位已釋出'); }, 5000);
     });
     on('joined', (m) => {
       if (!m.resumed || !this.active) return;
@@ -370,7 +370,7 @@ export class NetSession {
     this.hostSlot = id;
     this.room.host = id;
     if (this.isHost && !wasHost) {
-      this.hud.feed('你成為新的房主(接手模擬殭屍與回合)', 'host');
+      this.hud.feed('你成為新的房主（接手模擬殭屍與回合）', 'host');
       this.zs.becomeHost();
       this.mode.becomeHost?.();
     } else if (!this.isHost && wasHost) {
@@ -402,9 +402,9 @@ export class NetSession {
     const T = rp.target;
     T.root = a.root;
     T.pos = a.root.position; // 射擊判定用畫面上看到的(插值後)位置
-    T.meshes = a.hits;
-    T.hitboxes = a.hits;
-    for (const h of a.hits) h.userData.zombie = T;
+    // 命中盒跟著模型:寫實角色下載好、換掉程式生成的模型時也要更新
+    a.onModel = () => { T.meshes = a.hits; T.hitboxes = a.hits; for (const h of a.hits) h.userData.zombie = T; };
+    a.onModel();
     return a;
   }
 

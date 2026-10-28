@@ -149,7 +149,8 @@ export function bindMaterials(v) {
 }
 export function buildShape(type, seed, opt = {}) {
   // 外觀提供者:有自訂建模器的類型(registerProvider,例如日後的外部骨架模型轉接)直接交給它
-  if (PROVIDERS[type]) { const pv = PROVIDERS[type].fn(type, seed, opt); if (pv) return pv; } // 回傳 null = 這個種子照舊程式生成
+  const pr = PROVIDERS[type];
+  if (pr && !(opt.k < pr.from)) { const pv = pr.fn(type, seed, opt); if (pv) return pv; } // 回傳 null = 這個種子照舊程式生成;opt.k = 變體編號
   const r = rng(seed);
   const LK = LOOKS[type] || null; // 新類型的外觀描述(looks.js);舊類型沿用本檔的表
   const P = (LK ? LK.body : BODY[type])(r);
@@ -1216,8 +1217,8 @@ function hitboxes(rig, P, type, LK = null) {
 }
 
 // ---------- 變體快取 ----------
-const PER_TYPE = { walker: 6, runner: 4, crawler: 4, bloater: 3, brute: 3, screamer: 3, stalker: 3, surgeon: 3, burned: 3, hazmat: 2, straitjacket: 3 };
-const SEEDS = { walker: 1000, runner: 2000, crawler: 3000, bloater: 4000, brute: 5000, screamer: 7000, stalker: 8000, surgeon: 9000, burned: 10000, hazmat: 11000, straitjacket: 12000 };
+const PER_TYPE = { walker: 6, runner: 4, crawler: 4, bloater: 3, brute: 3, screamer: 3, stalker: 3, surgeon: 3, burned: 3, hazmat: 2, straitjacket: 3, pursuer: 1 };
+const SEEDS = { walker: 1000, runner: 2000, crawler: 3000, bloater: 4000, brute: 5000, screamer: 7000, stalker: 8000, surgeon: 9000, burned: 10000, hazmat: 11000, straitjacket: 12000, pursuer: 13000 };
 
 // ---------- 外觀提供者(接縫) ----------
 // 預設由 buildShape 程式生成。某類型若註冊了提供者,buildShape(type, seed, opt) 直接回傳它的結果,其餘流程
@@ -1229,14 +1230,25 @@ const SEEDS = { walker: 1000, runner: 2000, crawler: 3000, bloater: 4000, brute:
 //   ownMaterials(可選):自帶材質陣列(與 slots 對應);沒有就用殭屍共用材質(skin/cloth/gear…)
 // 外部的帶骨架模型(glTF,例如 conform 轉接器):把它的骨骼對應到 BONES 名稱、蒙皮權重重新映射到這組索引、頂點色可全白(a = 0)。
 // 提供者在主執行緒註冊,Worker 看不到 → 有提供者的類型一律在主執行緒建(request 跳過 Worker;提供者應只做複製/組裝,很快)。
-// registerProvider(type, fn, count?):fn(type, seed, opt) 回傳變體或 null(null = 該種子照舊程式生成,可混用);
-// count = 該類型的變體數(連線同步的變體編號 0..count-1;各端必須註冊相同的提供者與數量)。註冊後清掉該類型已建好的快取。
+// registerProvider(type, fn, count?, { from, ready }?):fn(type, seed, opt) 回傳變體或 null(null = 該種子照舊程式生成,可混用;opt.k = 變體編號);
+// count = 該類型的變體數(連線同步的變體編號 0..count-1;各端必須註冊相同的提供者與數量)。註冊後清掉提供者負責的已建快取。
+//   from:編號 < from 的照舊程式生成(Worker 建,不呼叫提供者),>= from 才交給提供者 → 外部模型「附加」在程式變體之後
+//   ready(k):外部模型還在下載時回傳 false → 這個編號暫時不參與隨機挑選、不擋暖機;指定編號(連線/埋伏)時先用 k % from 的程式變體代替
+//   (下載期間房主與客戶端可能短暫看到不同外觀;載入後各端一致)
+//   append:n = 接在目前的程式變體之後加 n 個(from = 原本的變體數,count 自動算);回傳 from
 const PROVIDERS = {};
-export function registerProvider(type, fn, count) {
-  PROVIDERS[type] = { fn };
+export function registerProvider(type, fn, count, opt = {}) {
+  const prev = PROVIDERS[type];
+  const from = opt.append != null ? (prev ? prev.from : PER_TYPE[type] || 0) : Math.max(0, opt.from | 0);
+  if (opt.append != null) count = from + (opt.append | 0);
+  PROVIDERS[type] = { fn, from, ready: opt.ready || null };
   if (count > 0) PER_TYPE[type] = count | 0;
-  if (cache[type]) cache[type].length = 0;
+  if (cache[type]) for (let k = from; k < cache[type].length; k++) cache[type][k] = undefined;
+  return from;
 }
+export const variantCount = (type) => PER_TYPE[type] || 1;
+const owned = (type, k) => { const p = PROVIDERS[type]; return !!p && k >= p.from; };
+const pending = (type, k) => { const p = PROVIDERS[type]; return !!p && k >= p.from && !!p.ready && !p.ready(k); };
 export { makeRig, hitboxes as autoHitboxes };
 const cache = {};
 // 變體 k 用固定種子 → 每台機器、每個執行緒建出來都一樣(連線時可用 getVariant(type, k) 同步外觀)
@@ -1259,13 +1271,13 @@ function store(type, k, v) {
 function buildSync(type, k) {
   const t = performance.now();
   if (!vstat.t0) vstat.t0 = t;
-  const v = store(type, k, buildVariant(type, seedOf(type, k)));
+  const v = store(type, k, buildVariant(type, seedOf(type, k), { k }));
   vstat.sync++;
   vstat.syncMs += performance.now() - t;
   return v;
 }
 function request(type, k) {
-  if (PROVIDERS[type]) return null; // 提供者只在主執行緒註冊:改走同步建模
+  if (owned(type, k)) return null; // 提供者只在主執行緒註冊:改走同步建模
   const key = type + ':' + k;
   if (cache[type]?.[k] || inflight[key]) return inflight[key];
   const p = modelPool();
@@ -1286,23 +1298,30 @@ export function getVariant(type, k) {
   if (k == null && forced && forced.type === type) { k = forced.i; forced = null; }
   const list = cache[type] || (cache[type] = []);
   const n = PER_TYPE[type] || 1;
-  if (k != null) { k = ((k % n) + n) % n; return list[k] || buildSync(type, k); } // 指定變體
+  if (k != null) { // 指定變體
+    k = ((k % n) + n) % n;
+    if (pending(type, k)) k %= Math.max(1, PROVIDERS[type].from); // 外部模型還沒載好:先用程式變體代替
+    return list[k] || buildSync(type, k);
+  }
   let ready = 0, miss = -1;
-  for (let i = 0; i < n; i++) if (list[i]) ready++; else if (miss < 0) miss = i;
+  for (let i = 0; i < n; i++) if (list[i]) ready++; else if (miss < 0 && !pending(type, i)) miss = i;
   if (ready && modelPool()) {
     for (let i = 0; i < n; i++) if (!list[i]) request(type, i);
     let pick = (Math.random() * ready) | 0;
     for (let i = 0; i < n; i++) if (list[i] && pick-- === 0) return list[i];
   }
   if (miss >= 0) return buildSync(type, miss); // 照舊:前 n 次各建一個新的
-  return list[(Math.random() * n) | 0];
+  let pick = (Math.random() * ready) | 0;
+  for (let i = 0; i < n; i++) if (list[i] && pick-- === 0) return list[i];
+  return buildSync(type, 0);
 }
 // 選單期間預建:有 Worker 時第一次呼叫就全部平行送出;沒有時每次排一個到 requestIdleCallback 同步建
 const ORDER = ['walker', 'walker', 'walker', 'runner', 'crawler', 'bloater', 'brute', 'screamer', 'surgeon', 'straitjacket', 'burned', 'stalker', 'hazmat',
   'walker', 'walker', 'walker', 'runner', 'runner', 'runner', 'crawler', 'crawler', 'crawler', 'bloater', 'bloater', 'brute', 'brute',
-  'screamer', 'screamer', 'surgeon', 'surgeon', 'straitjacket', 'straitjacket', 'burned', 'burned', 'stalker', 'stalker', 'hazmat'];
+  'screamer', 'screamer', 'surgeon', 'surgeon', 'straitjacket', 'straitjacket', 'burned', 'burned', 'stalker', 'stalker', 'hazmat', 'pursuer'];
 export const VARIANT_TYPES = Object.keys(PER_TYPE);
-const TOTAL = () => Object.values(PER_TYPE).reduce((a, b) => a + b, 0); // 提供者可改變數,所以每次重算
+// 提供者可改變數,所以每次重算;還在下載的外部模型不算(不擋暖機)
+const TOTAL = () => { let n = 0; for (const t in PER_TYPE) for (let k = 0; k < PER_TYPE[t]; k++) if (!pending(t, k)) n++; return n; };
 const readyCount = () => { let n = 0; for (const t in cache) for (const v of cache[t]) if (v) n++; return n; };
 function nextMissing() {
   const seen = {};
@@ -1315,7 +1334,7 @@ function nextMissing() {
 let dispatched = false, idleQueued = false;
 export function prewarm() {
   // 有外部提供者的類型:主執行緒一次建一個(提供者只做組裝,很快;Worker 看不到主執行緒註冊的提供者)
-  for (const t in PROVIDERS) { const n = PER_TYPE[t] || 1; for (let k = 0; k < n; k++) if (!cache[t]?.[k]) { buildSync(t, k); return true; } }
+  for (const t in PROVIDERS) { const n = PER_TYPE[t] || 1; for (let k = PROVIDERS[t].from; k < n; k++) if (!cache[t]?.[k] && !pending(t, k)) { buildSync(t, k); return true; } }
   if (modelPool()) {
     if (!dispatched) {
       dispatched = true;
@@ -1363,11 +1382,17 @@ export const SURVIVOR_LOOKS = [
   { outfit: 'biker', fem: 1, skin: 'light', hair: '#8a6a42', longHair: 1, hat: ['cap', '#202022'], eye: 'blue' },
 ];
 const scache = [];
+const lookIdx = (look) => ((look | 0) % SURVIVOR_LOOKS.length + SURVIVOR_LOOKS.length) % SURVIVOR_LOOKS.length;
+// 倖存者的外部模型(寫實角色,src/zombies/realistic.js):fn(i) 回傳已載入的變體或 null(還沒載好 → 照舊程式生成)
+let survivorProvider = null;
+export function registerSurvivorProvider(fn) { survivorProvider = fn; }
 export function survivorVariant(look) {
-  const i = ((look | 0) % SURVIVOR_LOOKS.length + SURVIVOR_LOOKS.length) % SURVIVOR_LOOKS.length;
-  return scache[i] || (scache[i] = buildVariant('survivor', 6000 + i * 7919, SURVIVOR_LOOKS[i]));
+  const i = lookIdx(look);
+  return (survivorProvider && survivorProvider(i)) || scache[i] || (scache[i] = buildVariant('survivor', 6000 + i * 7919, SURVIVOR_LOOKS[i]));
 }
-export const survivorReady = (look) => !!scache[((look | 0) % SURVIVOR_LOOKS.length + SURVIVOR_LOOKS.length) % SURVIVOR_LOOKS.length];
+export const survivorReady = (look) => !!((survivorProvider && survivorProvider(lookIdx(look))) || scache[lookIdx(look)]);
+// 這個座位的外部模型已載好(遠端玩家角色先用了程式生成的,可以換成寫實的)
+export const survivorUpgraded = (look) => !!(survivorProvider && survivorProvider(lookIdx(look)));
 // 釋放倖存者模型快取(沒有任何遠端玩家角色時才呼叫;下次 survivorVariant 會重建)
 export function disposeSurvivors() {
   for (let i = 0; i < scache.length; i++) { scache[i]?.geometry?.dispose(); scache[i] = undefined; }

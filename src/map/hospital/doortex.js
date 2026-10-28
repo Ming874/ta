@@ -1,10 +1,11 @@
 import * as THREE from 'three';
+import { buf, compose, clawSet, chips as paintChips, handModel, handPrint, drips, rng } from '../../art/stains.js';
 
 // 門的 PBR 圖集(全部程式產生,0 下載):顏色(窗洞是透明 → alphaTest 挖空)2048²、法線 1024²(由高度圖 Sobel 算)、
 // ORM 1024²(R = AO、G = 粗糙度、B = 金屬度;MeshStandardMaterial 的 aoMap/roughnessMap/metalnessMap 共用一張)。
-// 版面:七種門面各 512×1024(縱向 = 2.9m,寬 = 一扇門寬 0.985m)、右下角是門框、門邊、五金、玻璃、貼紙、門縫光。
+// 版面:七種門面各 512×1024(縱向 = 2.9m,寬 = 一扇門寬 0.962m)、右下角是門框、門邊、五金、玻璃、貼紙、門縫光。
 // 所有門扇、門框、五金共用一個材質(每層一個 BatchedMesh → 1 個 draw call),玻璃一個、門縫光一個。
-export const SPAN = 2.9, LW = 0.985;
+export const SPAN = 2.9, LW = 0.962; // 門扇寬(2m 門洞兩扇,中間留 6mm 門縫;openings.js 的 lw 與這裡一致)
 const AW = 2048, AH = 2048, NR = 1024, K = NR / AW;
 export const FACES = { ward: [0, 0], wood: [512, 0], fire: [1024, 0], cell: [1536, 0], metal: [0, 1024], swing: [512, 1024], chapel: [1024, 1024] };
 const FRAMES = ['trim_white', 'trim_gray', 'steel_dirty', 'steel_brushed', 'trim_wood', 'trim_alu'];
@@ -99,11 +100,43 @@ function scuffs(L, f, x0, x1, y0, y1, n, color = [50, 48, 44], a = 0.35) { // �
     L.O.strokeStyle = ormc(0.9, 0.75, 0, 0.6); L.O.lineWidth = 3; L.O.beginPath(); L.O.moveTo(cx, cy); L.O.lineTo(cx + Math.cos(ang) * len, cy + Math.sin(ang) * len); L.O.stroke();
   }
 }
-function scratches(L, rect, n, color, hDepth = 0.42, op = 0.5) { // 細刮痕(凹)
+function scratches(L, rect, n, color, hDepth = 0.42, op = 0.5) { // 細刮痕(凹):略彎、兩端漸尖、深淺不一;一半成束(同一次刮過)
   const [x, y, w, h] = rect;
-  clip(L.C, x, y, w, h, () => lines(L.C, n, () => { const sx = x + rnd() * w, sy = y + rnd() * h, a = rr(-0.6, 0.6) + (rnd() < 0.5 ? 0 : Math.PI / 2), l = rr(8, 70); L.C.strokeStyle = rgb(...color, rr(op * 0.4, op)); L.C.lineWidth = rr(0.6, 1.6); L.C.moveTo(sx, sy); L.C.lineTo(sx + Math.cos(a) * l, sy + Math.sin(a) * l); }));
-  clip(L.H, x, y, w, h, () => lines(L.H, n / 2, () => { const sx = x + rnd() * w, sy = y + rnd() * h, a = rr(-0.6, 0.6), l = rr(8, 70); L.H.strokeStyle = hc(hDepth, 0.7); L.H.lineWidth = 2; L.H.moveTo(sx, sy); L.H.lineTo(sx + Math.cos(a) * l, sy + Math.sin(a) * l); }));
+  const one = (sx, sy, a, l, lw, al, hd) => { // 漸尖的一道:分段畫,線寬中間粗兩端細
+    const k = rr(-0.004, 0.004), N = Math.max(3, Math.ceil(l / 6));
+    let px = sx, py = sy, aa = a;
+    for (let i = 0; i < N; i++) {
+      const t = (i + 0.5) / N, taper = Math.sin(Math.PI * t) ** 0.6, nx = px + Math.cos(aa) * (l / N), ny = py + Math.sin(aa) * (l / N);
+      L.C.strokeStyle = rgb(...color, al * taper); L.C.lineWidth = lw * (0.4 + 0.6 * taper); L.C.beginPath(); L.C.moveTo(px, py); L.C.lineTo(nx, ny); L.C.stroke();
+      L.C.strokeStyle = rgb(255, 255, 255, al * 0.25 * taper); L.C.lineWidth = lw * 0.5; L.C.beginPath(); L.C.moveTo(px + 0.8, py + 0.8); L.C.lineTo(nx + 0.8, ny + 0.8); L.C.stroke(); // 刮出來的亮邊
+      L.H.strokeStyle = hc(0.5 - (0.5 - hd) * taper, 0.8); L.H.lineWidth = Math.max(1.2, lw * 1.2); L.H.beginPath(); L.H.moveTo(px, py); L.H.lineTo(nx, ny); L.H.stroke();
+      px = nx; py = ny; aa += k * (l / N);
+    }
+  };
+  clip(L.C, x, y, w, h, () => clip(L.H, x, y, w, h, () => {
+    for (let i = 0; i < n; ) {
+      const sx = x + rnd() * w, sy = y + rnd() * h, a = rr(-0.6, 0.6) + (rnd() < 0.5 ? 0 : Math.PI / 2), l = rr(8, 70), m = rnd() < 0.5 ? 1 : 2 + ((rnd() * 4) | 0);
+      for (let j = 0; j < m && i < n; j++, i++) one(sx + j * rr(1.5, 3.5) * -Math.sin(a), sy + j * rr(1.5, 3.5) * Math.cos(a), a + rr(-0.03, 0.03), l * rr(0.7, 1.1), rr(0.6, 1.6), rr(op * 0.4, op), hDepth);
+    }
+  }));
 }
+// 把血跡畫家(src/art/stains.js)的欄位合成進三層(顏色 2048、高度/ORM 半解析度且已 setTransform):x, y = 左上(顏色圖集 px)
+function stainInto(L, x, y, B, P) {
+  const C = compose(B, P), { w, h } = C;
+  const mk = () => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+  const col = mk(); col.getContext('2d').putImageData(new ImageData(C.rgba, w, h), 0, 0);
+  const hg = mk(), og = mk(), hd = new Uint8ClampedArray(w * h * 4), od = new Uint8ClampedArray(w * h * 4);
+  for (let i = 0; i < w * h; i++) {
+    const a = C.rgba[i * 4 + 3];
+    if (!a) continue;
+    const v = Math.max(0, Math.min(255, 128 + C.hgt[i] * 70));
+    hd[i * 4] = hd[i * 4 + 1] = hd[i * 4 + 2] = v; hd[i * 4 + 3] = Math.min(255, a * 1.4);
+    od[i * 4] = 230; od[i * 4 + 1] = C.rough[i] * 255; od[i * 4 + 2] = 0; od[i * 4 + 3] = a;
+  }
+  hg.getContext('2d').putImageData(new ImageData(hd, w, h), 0, 0); og.getContext('2d').putImageData(new ImageData(od, w, h), 0, 0);
+  L.C.drawImage(col, x, y); L.H.drawImage(hg, x, y); L.O.drawImage(og, x, y);
+}
+const PPM = 512 / LW; // 門面:像素/公尺
 // 油漆鋼板:掉漆露出底漆/鋼板,鏽從缺口往下流
 function chips(L, f, n, area, paint) {
   const [x0, x1, y0, y1] = area;
@@ -186,7 +219,12 @@ const DRAW = {
     L.O.fillStyle = ormc(1, 0.48, 0); L.O.fillRect(x, y, w, h);
     scuffs(L, f, 0.62, 0.95, 0.9, 1.25, 26); // 手的高度、靠門把那側
     scuffs(L, f, 0.05, 0.95, 0.35, 0.9, 30, [35, 33, 30], 0.45); // 推床、輪椅的擦痕
-    for (let i = 0; i < 5; i++) { const cx = fx(f, rr(0.7, 0.92)), cy = fy(f, rr(1.0, 1.45)); L.C.fillStyle = rgb(60, 52, 40, 0.12); L.C.beginPath(); L.C.ellipse(cx, cy, rr(8, 14), rr(12, 20), rr(-0.4, 0.4), 0, 7); L.C.fill(); } // 手印
+    { // 推門的手垢:真實比例的掌印(油污,很淡),疊在門把那側
+      const R = rng(11), B = buf(180, 220);
+      for (let i = 0; i < 4; i++) handPrint(B, R, handModel(R, { spread: R.r(0.1, 0.4) }), { x: R.r(50, 130), y: R.r(150, 210), ang: R.r(-0.5, 0.3), ppm: PPM, thr: R.r(0.38, 0.5), ty: 0.4, seed: i * 7, load: R.r(0.25, 0.45) });
+      for (let i = 0; i < B.t.length; i++) { B.dust[i] = B.t[i] * 1.6; B.t[i] = 0; }
+      stainInto(L, fx(f, 0.6), fy(f, 1.55), B, { ppm: PPM, dustCol: [62, 52, 40], dustA: 0.22, seed: 11 });
+    }
     grime(L, f, 0.5);
     // 長窗(與 leafParts 的 ward 窗一致)+ 窗下的小貼紙位置留空
     windowCut(L, f, LW * 0.3, 1.3, LW * 0.7, 1.9);
@@ -227,9 +265,11 @@ const DRAW = {
     noise(L.C, x, y, w, h, 2.5, 0.22); noise(L.C, x, y, w, h, 0.5, 0.1, 'multiply');
     L.O.fillStyle = ormc(1, 0.55, 0.1); L.O.fillRect(x, y, w, h);
     for (let i = 0; i < 9; i++) { const cx = fx(f, rr(0.1, 0.9)), cy = fy(f, rr(0.3, 1.8)), r = rr(10, 26); const g2 = L.H.createRadialGradient(cx, cy, 1, cx, cy, r); g2.addColorStop(0, hc(0.3)); g2.addColorStop(1, hc(0.5, 0)); L.H.fillStyle = g2; L.H.beginPath(); L.H.arc(cx, cy, r, 0, 7); L.H.fill(); } // 凹痕
-    for (let s = 0; s < 4; s++) { // 四道一組的抓痕
-      const sx = fx(f, rr(0.2, 0.75)), sy = fy(f, rr(0.5, 1.35)), ang = rr(1.2, 1.9), len = rr(40, 120);
-      for (let k2 = 0; k2 < 4; k2++) for (const [g2, st, lw] of [[L.C, rgb(70, 64, 58, 0.55), 1.4], [L.H, hc(0.32), 2.4]]) { g2.strokeStyle = st; g2.lineWidth = lw; g2.beginPath(); g2.moveTo(sx + k2 * 6, sy); g2.lineTo(sx + k2 * 6 + Math.cos(ang) * len, sy + Math.sin(ang) * len); g2.stroke(); }
+    { // 指甲抓痕:幾組 3~4 道平行溝(真實指距、漸尖、顫痕),烤漆崩落露出灰色底漆,溝裡卡灰,一組有乾血
+      const R = rng(23), B = buf(400, 620), PX = new Float32Array(400 * 620);
+      for (let k2 = 0; k2 < 4; k2++) clawSet(B, R, { x: R.r(60, 300), y: R.r(20, 260), ang: R.r(-0.35, 0.35), len: R.r(18, 42), sp: R.r(1.75, 2.05), bend: R.r(-0.05, 0.05), dep: R.r(0.6, 1), n: R() < 0.3 ? 3 : 4, gw: 0.55, chipR: 0.4, blood: k2 === 1 ? 0.8 : 0 }, PPM, PX);
+      paintChips(B, PX, PPM, 23, 0.9);
+      stainInto(L, fx(f, 0.1), fy(f, 1.75), B, { ppm: PPM, age: 0.9, sub: [128, 132, 124], dustCol: [52, 48, 42], seed: 23 });
     }
     { const [ax, ay, aw] = frect(f, LW * 0.3, 0.6, LW * 0.7, 0.95); const gr = L.C.createLinearGradient(0, ay, 0, ay + fh(0.5)); gr.addColorStop(0, rgb(150, 120, 60, 0.35)); gr.addColorStop(1, rgb(150, 120, 60, 0)); L.C.fillStyle = gr; for (let i = 0; i < 7; i++) L.C.fillRect(ax + rnd() * aw, ay, rr(3, 8), fh(rr(0.15, 0.5))); }
     scratches(L, frect(f, 0, 0.2, LW, 2.0), 160, [90, 84, 76], 0.42, 0.4);
@@ -256,7 +296,13 @@ const DRAW = {
     L.O.fillStyle = ormc(1, 0.45, 0); L.O.fillRect(x, y, w, h);
     for (let i = 0; i < 70; i++) { const cx = fx(f, rr(0.02, 0.98)), cy = fy(f, rr(0.55, 1.05)), len = rr(15, 90); L.C.strokeStyle = rgb(20, 20, 20, rr(0.15, 0.5)); L.C.lineWidth = rr(1, 4); L.C.beginPath(); L.C.moveTo(cx, cy); L.C.lineTo(cx + len, cy + rr(-3, 3)); L.C.stroke(); } // 推床的黑色擦痕
     scuffs(L, f, 0.55, 0.95, 1.05, 1.45, 30, [60, 58, 52], 0.35);
-    { const [ax, ay, aw, ah] = frect(f, 0.4, 0.4, 0.95, 0.6); L.C.fillStyle = rgb(110, 30, 25, 0.25); for (let i = 0; i < 4; i++) { L.C.beginPath(); L.C.ellipse(ax + rnd() * aw, ay + rnd() * ah, rr(6, 18), rr(3, 8), rr(-0.3, 0.3), 0, 7); L.C.fill(); } } // 乾掉的血漬
+    { // 推門的血手印(推床時手按在門板上)+ 往下滑的指痕 + 垂流;不吸水的美耐板 → 乾掉會龜裂
+      const R = rng(31), B = buf(330, 520);
+      handPrint(B, R, handModel(R, { spread: 0.3 }), { x: 120, y: 190, ang: 0.25, ppm: PPM, thr: 0.34, tx: 0.2, ty: 0.3, seed: 3, load: 0.95, slide: { len: 55, ang: 0.15, pow: 1.4, end: 0.2, wob: 1 } });
+      handPrint(B, R, handModel(R, { spread: 0.4 }), { x: 230, y: 250, ang: -0.1, ppm: PPM, left: true, thr: 0.45, ty: 0.6, seed: 9, load: 0.7 });
+      drips(B, R, { n: 5, len: 160, w0: 2.4, thr: 0.35, gap: 8 });
+      stainInto(L, fx(f, 0.32), fy(f, 1.52), B, { ppm: PPM, age: 0.85, flake: 0.5, rim: 0.7, seed: 31 });
+    }
     grime(L, f, 0.45);
     windowCut(L, f, LW * 0.5 - 0.17, 1.28, LW * 0.5 + 0.17, 1.62, true);
   },
@@ -298,13 +344,11 @@ function swatches(L) {
   sticker(L, S('lblWard'), '#e8e4d8', '請隨手關門', '#2a4a3a', font(16));
 }
 
-// 高度 → 法線(切線空間,OpenGL 慣例 +Y)
-function toNormal(hgt, strength = 3.2) {
-  const g = hgt.getContext('2d'), w = hgt.width, src = g.getImageData(0, 0, w, w).data;
-  const out = document.createElement('canvas'); out.width = out.height = w;
-  const o = out.getContext('2d'), img = o.createImageData(w, w), d = img.data;
+// 高度 → 法線(切線空間,OpenGL 慣例 +Y);寫進 out 的 y0..y1 列(分段做,不佔住主執行緒)
+function toNormalRows(src, img, w, y0, y1, strength = 3.2) {
+  const d = img.data;
   const hAt = (x, y) => src[(((y + w) % w) * w + ((x + w) % w)) * 4] / 255;
-  for (let y = 0; y < w; y++) for (let x = 0; x < w; x++) {
+  for (let y = y0; y < y1; y++) for (let x = 0; x < w; x++) {
     const dx = (hAt(x + 1, y - 1) + 2 * hAt(x + 1, y) + hAt(x + 1, y + 1)) - (hAt(x - 1, y - 1) + 2 * hAt(x - 1, y) + hAt(x - 1, y + 1));
     const dy = (hAt(x - 1, y + 1) + 2 * hAt(x, y + 1) + hAt(x + 1, y + 1)) - (hAt(x - 1, y - 1) + 2 * hAt(x, y - 1) + hAt(x + 1, y - 1));
     let nx = -dx * strength, ny = dy * strength, nz = 1;
@@ -312,29 +356,45 @@ function toNormal(hgt, strength = 3.2) {
     const k = (y * w + x) * 4;
     d[k] = (nx * 0.5 + 0.5) * 255; d[k + 1] = (ny * 0.5 + 0.5) * 255; d[k + 2] = (nz * 0.5 + 0.5) * 255; d[k + 3] = 255;
   }
-  o.putImageData(img, 0, 0);
-  return out;
 }
 
 let CACHE = null;
-// 建一次(整局共用):{ map, normalMap, orm, mats: { door, glass, leak }, ms }
+// 建一次(整局共用):{ map, normalMap, orm, mats: { door, glass, leak }, ready: Promise, ms }
+// 貼圖與材質立刻建好(程式、BatchedMesh 不用等);畫圖(約 0.5 秒的 canvas 工作)切成一小段一小段在閒置時段做完,
+// 最後才一次上傳。畫完之前門是素色的(開機選單期間就畫完了)。
 export function doorAtlas() {
   if (CACHE) return CACHE;
   const t0 = performance.now();
-  seed = 20261027;
-  NT = noiseTile();
   const L = layers();
-  for (const f of Object.keys(FACES)) DRAW[f](L, f);
-  FRAMES.forEach((k, i) => frameSwatch(L, k, i));
-  EDGES.forEach((k, i) => edgeStrip(L, k, i));
-  swatches(L);
+  const nc = document.createElement('canvas'); nc.width = nc.height = NR;
+  { const g = nc.getContext('2d'); g.fillStyle = 'rgb(128,128,255)'; g.fillRect(0, 0, NR, NR); }
   const map = new THREE.CanvasTexture(L.col);
   map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 8;
-  const nrm = new THREE.CanvasTexture(toNormal(L.hgt)); nrm.colorSpace = THREE.NoColorSpace; nrm.anisotropy = 8;
+  const nrm = new THREE.CanvasTexture(nc); nrm.colorSpace = THREE.NoColorSpace; nrm.anisotropy = 8;
   const orm = new THREE.CanvasTexture(L.orm); orm.colorSpace = THREE.NoColorSpace; orm.anisotropy = 8;
   const door = new THREE.MeshStandardMaterial({ name: 'door:pbr', map, normalMap: nrm, normalScale: new THREE.Vector2(1, 1), roughnessMap: orm, metalnessMap: orm, aoMap: orm, roughness: 1, metalness: 1, alphaTest: 0.5, envMapIntensity: 0.9 });
   const glass = new THREE.MeshStandardMaterial({ name: 'door:glass', map, roughnessMap: orm, metalnessMap: orm, roughness: 1, metalness: 1, transparent: true, depthWrite: false, side: THREE.DoubleSide, envMapIntensity: 1.2 });
   const leak = new THREE.MeshBasicMaterial({ name: 'door:leak', map, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: true });
-  CACHE = { map, normalMap: nrm, orm, mats: { door, glass, leak }, ms: Math.round(performance.now() - t0) };
+  CACHE = { map, normalMap: nrm, orm, mats: { door, glass, leak }, ms: 0, slices: 0, done: false };
+  // 畫圖步驟(順序固定:亂數序列與一次畫完時相同)
+  let src = null, img = null;
+  const steps = [() => { seed = 20261027; NT = noiseTile(); }];
+  for (const f of Object.keys(FACES)) steps.push(() => DRAW[f](L, f));
+  steps.push(() => FRAMES.forEach((k, i) => frameSwatch(L, k, i)), () => EDGES.forEach((k, i) => edgeStrip(L, k, i)), () => swatches(L));
+  steps.push(() => { src = L.hgt.getContext('2d').getImageData(0, 0, NR, NR).data; img = nc.getContext('2d').createImageData(NR, NR); });
+  for (let y = 0; y < NR; y += 128) steps.push(() => toNormalRows(src, img, NR, y, y + 128));
+  steps.push(() => { nc.getContext('2d').putImageData(img, 0, 0); src = img = null; map.needsUpdate = nrm.needsUpdate = orm.needsUpdate = true; });
+  const ric = typeof requestIdleCallback === 'function' ? (cb) => requestIdleCallback(cb, { timeout: 120 }) : (cb) => setTimeout(() => cb({ didTimeout: true, timeRemaining: () => 0 }), 16);
+  let i = 0, work = 0;
+  CACHE.ready = new Promise((res) => {
+    const pump = (dl) => {
+      do { const a = performance.now(); steps[i++](); work += performance.now() - a; } while (i < steps.length && !dl.didTimeout && dl.timeRemaining() > 12);
+      CACHE.slices++;
+      if (i < steps.length) ric(pump);
+      else { CACHE.ms = Math.round(work); CACHE.done = true; CACHE.wall = Math.round(performance.now() - t0); res(CACHE); }
+    };
+    ric(pump);
+  });
+  CACHE.ms = Math.round(performance.now() - t0);
   return CACHE;
 }

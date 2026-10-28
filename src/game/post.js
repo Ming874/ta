@@ -7,10 +7,10 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 
 // 最終畫面:邊緣色差、去飽和(受傷時更明顯)、暗角、底片顆粒、受傷泛紅
 export const PostShader = {
-  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, aspect: { value: 1 }, hurt: { value: 0 } },
+  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, aspect: { value: 1 }, hurt: { value: 0 }, past: { value: 0 } }, // [ghost] past:回憶(src/horror/memories.js)
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float time; uniform float aspect; uniform float hurt;
+    uniform sampler2D tDiffuse; uniform float time; uniform float aspect; uniform float hurt; uniform float past;
     varying vec2 vUv;
     float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
     void main(){
@@ -28,6 +28,13 @@ export const PostShader = {
       c.rgb *= mix(0.45, 1.0, v);
       c.rgb += (hash(vUv * 900.0 + time) - 0.5) * 0.022;
       c.r += hurt * 0.12;
+      if (past > 0.001) { // [ghost] 回憶:舊照片(亮部褐、暗部青綠)、更重的暗角與顆粒
+        float lp = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+        vec3 sep = vec3(lp) * vec3(1.08, 0.97, 0.80) + vec3(0.0, 0.03, 0.028) * (1.0 - smoothstep(0.0, 0.5, lp));
+        c.rgb = mix(c.rgb, sep, past * 0.88);
+        c.rgb *= mix(1.0, mix(0.6, 1.0, v), past * 0.7);
+        c.rgb += (hash(vUv * 480.0 + fract(time * 7.3)) - 0.5) * 0.065 * past;
+      }
       gl_FragColor = c;
     }`,
 };

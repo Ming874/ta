@@ -88,9 +88,10 @@ export function onSurface(R, top, name, n, o = {}) {
 // 地面貼花:kind 見 art.decal;size 公尺;靜態合併(pi_decal 材質)
 export function floorDecal(R, kind, x, z, size, o = {}) {
   const v = o.v ?? R.rng.int(0, 1);
-  const rect = decal(kind, v);
+  const rect = decal(kind, v, true);
   const asp = rect.h / rect.w;
-  const t = tpl(`dec:${kind}:${v}:${size.toFixed(2)}`, (b) => b.plane(D(rect), size, size * asp, 0, 0, 0, { rx: -HALF }));
+  size *= rect.k ?? 1; // 血跡格依真實尺寸畫(手長、鞋長…):k 把舊的擺放尺寸換算成真實大小
+  const t = tpl(`dec:${kind}:${v}:f:${size.toFixed(2)}`, (b) => b.plane(D(rect), size, size * asp, 0, 0, 0, { rx: -HALF }));
   R.put(t, x, z, o.yaw ?? R.rng() * Math.PI * 2, { y: (o.y ?? R.y) + 0.004 + R.rng() * 0.002 });
 }
 // 牆面貼花(在牆段 run 的 t 位置、高度 y)
@@ -98,6 +99,7 @@ export function wallDecal(R, run, t, y, kind, size, o = {}) {
   const v = o.v ?? R.rng.int(0, 1);
   const rect = decal(kind, v);
   const asp = rect.h / rect.w;
+  size *= rect.k ?? 1;
   const tp = tpl(`wdec:${kind}:${v}:${size.toFixed(2)}`, (b) => b.plane(D(rect), size, size * asp, 0, 0, 0));
   const p = R.wallPos(run, t, 0.006 + R.rng() * 0.003);
   R.put(tp, p.x, p.z, run.yaw, { y: R.y + y, rz: o.rot ?? 0 });

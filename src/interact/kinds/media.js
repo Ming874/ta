@@ -43,7 +43,7 @@ export const radio = {
       else { sfx.loopStop('ix' + key); st.talk?.stop(); st.talk = null; ixs.switchClick(pos, false); }
     };
     const e = ix.register(pos, {
-      id: key, kind: 'radio', name: spec.label ? `收音機(${spec.label})` : '收音機', reach: 2.1, radius: 0.2, scope: 'map',
+      id: key, kind: 'radio', name: spec.label ? `收音機（${spec.label}）` : '收音機', reach: 2.1, radius: 0.2, scope: 'map',
       prompt: () => (st.on ? '調整頻率' : '打開收音機'), hold: 1.5, holdText: '轉動調頻鈕', onTap: () => set(!st.on), tapText: () => (st.on ? '關掉收音機' : '打開收音機'),
       onHoldStart: () => { if (!st.on) set(true); ixs.tuneSweep(pos); },
       onUse: () => { // 調到一個隱藏的廣播
@@ -84,7 +84,7 @@ export const carradio = {
     let talk = null, idx = 0;
     ix.after(2, () => sfx.loopStart('ix' + key, 'radio', pos)); // 一直開著(走近會越來越清楚)
     return ix.register(pos, {
-      id: key, kind: 'carradio', name: `車上的收音機${spec.label ? `(${spec.label})` : ''}`, reach: 2.2, radius: 0.5, scope: 'map', priority: 1,
+      id: key, kind: 'carradio', name: `車上的收音機${spec.label ? `（${spec.label}）` : ''}`, reach: 2.2, radius: 0.5, scope: 'map', priority: 1,
       prompt: '把收音機轉大聲',
       onUse: () => { ixs.tuneSweep(pos); talk?.stop(); const l = casts.length ? casts[idx++ % casts.length] : pickN(api.lineList('RADIO'), R); if (l) talk = api.speak(l, { filter: 'radio', pos }); ix.flags.set('h.carradio', true); },
       reset: () => { talk?.stop(); idx = 0; },
@@ -348,7 +348,7 @@ export const cassette = {
         if (st.play) { stop(); return; }
         const n = tape && api.note ? api.noteObj(tape) : null;
         sfx.tape('insert');
-        if (!n) { ix.after(0.5, () => { sfx.tape('play'); ixs.tapeLine(true); ix.after(4, () => { ixs.tapeLine(false); sfx.tape('stop'); }); }); api.say('', '(只有磁帶的嘶聲)', 3000); return; }
+        if (!n) { ix.after(0.5, () => { sfx.tape('play'); ixs.tapeLine(true); ix.after(4, () => { ixs.tapeLine(false); sfx.tape('stop'); }); }); api.say('', '（只有磁帶的嘶聲）', 3000); return; }
         const rd = api.note(n);
         ix.after(0.6, () => {
           sfx.tape('play'); ixs.tapeLine(true);

@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { registerMat, mat } from '../../materials.js';
+import { paintTextures, texturesReady } from '../../../sys/texworker.js';
+import { OUTDOOR } from '../../../art/stainset.js';
 
 // 戶外道具的額外材質(registerMat 註冊共用鍵,靜態物件才能依材質合併)與程式貼圖。
 // 貼圖集:po_decal(透明貼花:血跡/污漬/墓誌銘/車身塗裝/地面標線/塗鴉)、po_label(不透明:車牌/告示/海報/刻字)。
@@ -270,7 +272,7 @@ const DECAL_TEX = lazy(() => {
   inCell('leaves', () => { ctx.drawImage(LEAF_CARD().image, 0, 0, 256, 256); });
   inCell('butts', () => { for (let k = 0; k < 14; k++) { ctx.save(); ctx.translate(rr(20, 236), rr(20, 236)); ctx.rotate(R() * 7); ctx.fillStyle = '#d8d0c0'; ctx.fillRect(-9, -2.5, 12, 5); ctx.fillStyle = '#b07a3a'; ctx.fillRect(3, -2.5, 7, 5); ctx.fillStyle = '#222'; ctx.fillRect(-10, -2.5, 2, 5); ctx.restore(); } softBlob(ctx, 128, 128, 60, '40,40,40', 0.25); });
   // 墓誌銘(刻字:暗色字 + 亮邊)
-  const epis = [['✝', '安息主懷', '1931 — 1968'], ['', '陳 公 志 明 之 墓', '民國五十七年'], ['✝', 'R.I.P.', 'MARIA LIN'], ['', '林 氏 秀 英', '慈母 安息'], ['✝', 'IN MEMORIAM', '1955'], ['', '無名氏', '聖心醫院 代葬'], ['✝', '主內安息', '張 若 望'], ['', '愛女 小 雯', '永遠七歲']];
+  const epis = [['✝', '安息主懷', '1931 — 1968'], ['', '陳 公 志 明 之 墓', '民國五十七年'], ['✝', 'R.I.P.', 'MARIA LIN'], ['', '林 氏 秀 英', '慈母 安息'], ['✝', 'IN MEMORIAM', '1955'], ['', '無名氏', '聖心醫院 代葬'], ['✝', '主內安息', '王 若 瑟'], ['', '慈父 安息', '永遠懷念']];
   epis.forEach(([a, b, d], i) => inCell(`epi${i}`, () => {
     const eng = (s, y, sz, f) => { text(ctx, s, 129, y + 1.5, sz, { font: f, color: 'rgba(235,230,215,0.35)', weight: 'normal' }); text(ctx, s, 128, y, sz, { font: f, color: 'rgba(25,22,18,0.9)', weight: 'normal' }); };
     if (a) eng(a, 52, 54, 'serif');
@@ -330,7 +332,25 @@ const DECAL_TEX = lazy(() => {
   inCell('paw', () => { for (let k = 0; k < 6; k++) { const x = 30 + k * 38, y = 128 + (k % 2 ? 20 : -20); ctx.fillStyle = 'rgba(70,8,6,0.85)'; ctx.beginPath(); ctx.arc(x, y, 9, 0, 7); ctx.fill(); for (const a of [-0.7, -0.25, 0.25, 0.7]) { ctx.beginPath(); ctx.arc(x + Math.sin(a) * 13, y - Math.cos(a) * 13, 4, 0, 7); ctx.fill(); } } });
   inCell('water2', () => { softBlob(ctx, 128, 128, 120, '10,12,12', 0.55); });
   inCell('stain2', () => { for (let k = 0; k < 8; k++) softBlob(ctx, 128 + rr(-60, 60), 128 + rr(-60, 60), rr(30, 70), '40,30,20', 0.35); });
-  const t = tex(c, { repeat: false });
+  // 血跡格(噴濺、滴落、手印、垂流、血泊、拖痕、鞋印):寫實版在貼圖 Worker 畫好後蓋掉上面的簡圖(src/art/stainset.js OUTDOOR)。
+  // 這張 2048×2560 的畫布等血跡格畫好才第一次上傳(只上傳一次;之前材質綁的是空貼圖)
+  const t = new THREE.Texture();
+  t.anisotropy = 8; t.colorSpace = THREE.SRGBColorSpace;
+  const names = Object.keys(OUTDOOR).filter((n) => DECAL_RECTS[n]);
+  const T = paintTextures('art/stains:outdoor', { seed: 1 }, Object.fromEntries(names.map((n) => [n, { wrap: false }])));
+  texturesReady().then(() => {
+    for (const n of names) {
+      const img = T[n].image, [x, y, w, h] = DECAL_RECTS[n];
+      if (!img) continue;
+      ctx.clearRect(x, y, w, h);
+      ctx.save();
+      if (!T[n].flipY) { ctx.translate(0, y * 2 + h); ctx.scale(1, -1); } // Worker 的 ImageBitmap 已上下翻轉
+      ctx.drawImage(img, x, y, w, h);
+      ctx.restore();
+      img.close?.(); T[n].image = null; // 畫進圖集後就不需要了
+    }
+    t.image = c; t.needsUpdate = true;
+  });
   return t;
 });
 export const decalUV = (name) => { const [x, y, w, h] = DECAL_RECTS[name]; return [x / 2048, 1 - (y + h) / DH, w / 2048, h / DH]; };
@@ -380,7 +400,7 @@ const LABEL_TEX = lazy(() => {
     ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
     ctx.strokeStyle = '#8a7444'; ctx.lineWidth = 8; ctx.strokeRect(10, 10, w - 20, h - 20);
     text(ctx, '耶 穌 聖 心', w / 2, 70, 64, { font: FONT_KAI, color: '#c8b070' });
-    text(ctx, '凡勞苦擔重擔的人,可以到我這裡來,', w / 2, 140, 26, { font: FONT_KAI, color: '#b8a060', weight: 'normal' });
+    text(ctx, '凡勞苦擔重擔的人，可以到我這裡來，', w / 2, 140, 26, { font: FONT_KAI, color: '#b8a060', weight: 'normal' });
     text(ctx, '我就使你們得安息。', w / 2, 178, 26, { font: FONT_KAI, color: '#b8a060', weight: 'normal' });
     text(ctx, '— 瑪竇福音 11:28', w / 2, 218, 20, { font: FONT_KAI, color: '#a89050', weight: 'normal' });
     for (let k = 0; k < 14; k++) softBlob(ctx, rr(0, w), rr(0, h), rr(10, 60), '60,110,90', 0.45); // 銅綠
@@ -395,7 +415,7 @@ const LABEL_TEX = lazy(() => {
     ctx.fillStyle = '#2a2622'; ctx.beginPath(); ctx.moveTo(w, h); ctx.lineTo(w - rr(40, 90), h); ctx.lineTo(w, h - rr(60, 140)); ctx.fill(); // 撕掉的角
     ctx.save(); ctx.translate(w * 0.5, h * 0.55); ctx.rotate(-0.2); text(ctx, '騙 子', 0, 0, 60, { color: 'rgba(130,10,10,0.85)', weight: '900' }); ctx.restore();
   });
-  poster('poster', '用心守護您的健康', '聖心醫院 · 全年無休 24H 急診', '#9cb8c4', '#2a4a5a');
+  poster('poster', '萬嵐回神照護中心', '讓每一位家人，都回得來', '#9cb8c4', '#2a4a5a');
   poster('poster2', '捐血一袋 救人一命', '聖心醫院 捐血中心 B1', '#c4a49c', '#5a2a2a');
   inR('pay', (w, h) => { ctx.fillStyle = '#2a3440'; ctx.fillRect(0, 0, w, h); text(ctx, '繳 費 機', w / 2, 40, 38, { color: '#e8e8e8' }); text(ctx, 'PAY STATION', w / 2, 80, 22, { color: '#c8c8c8', font: 'Arial' }); ctx.fillStyle = '#0c1a10'; ctx.fillRect(40, 110, 176, 90); text(ctx, 'ERR 404', w / 2, 155, 30, { color: '#3a6a3a', font: 'monospace' }); });
   const sign = (n, a, b, bg, fg) => inR(n, (w, h) => { ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h); ctx.strokeStyle = fg; ctx.lineWidth = 6; ctx.strokeRect(6, 6, w - 12, h - 12); text(ctx, a, w / 2, h * 0.42, 44, { color: fg }); text(ctx, b, w / 2, h * 0.78, 20, { color: fg, font: 'Arial' }); grime(w, h, 0.3); });
@@ -407,7 +427,7 @@ const LABEL_TEX = lazy(() => {
   sign('nopark', '禁止停車', 'NO PARKING', '#1a3a8a', '#fff');
   sign('busstop', '聖心醫院站', '12 · 35 · 紅 7', '#2a5a9a', '#fff');
   sign('flamm', '嚴禁煙火', 'NO FLAMES', '#c01818', '#fff');
-  sign('gen_plate', '發電機 GEN-02', '380V 3Φ 250kVA', '#c8ccc8', '#222');
+  sign('gen_plate', '207 專用', '勿拔　工務 2003', '#c8ccc8', '#222');
   const gauge = (n, red) => inR(n, (w, h) => {
     ctx.fillStyle = '#ddd8c8'; ctx.beginPath(); ctx.arc(64, 64, 60, 0, 7); ctx.fill();
     ctx.strokeStyle = '#111'; ctx.lineWidth = 2;

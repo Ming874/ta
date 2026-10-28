@@ -268,6 +268,7 @@ export function createKit({ root, levelGroups = null, levelOfY = null }) {
       for (const g of groups.values()) root.remove(g);
       groups.clear(); pools.clear();
     },
+    objects() { return own.slice(); }, // 預編譯用(src/main.js warmRuntime → game.interact.warmList)
     stats() { return { meshes: own.length, pools: [...pools.values()].map((p) => `${p.name}:${p.items.length}`) }; },
   };
   return kit;
