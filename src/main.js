@@ -7,8 +7,9 @@ import { idle } from './sys/sched.js';
 import { precompile, precompilePasses, initPrograms, warmDraw, warmDrawScene, yieldNow } from './sys/warmup.js';
 import { backgroundTicker } from './sys/ticker.js';
 import { texStats, texturesReady } from './sys/texworker.js';
-import { prewarm, whenTypesReady, variantStats, getVariant, instantiate, VARIANT_TYPES } from './zombies/model.js';
+import { prewarm, whenTypesReady, variantStats, getVariant, instantiate, forceVariant, VARIANT_TYPES } from './zombies/model.js';
 import { allMaterials as allZombieMaterials } from './zombies/materials.js';
+import { loadRealistic, realisticMaterials, realisticStats } from './zombies/realistic.js'; // 寫實殭屍(載入本模組即註冊變體數,要在 prewarm 之前)
 import { stainWarmMesh } from './art/stainmat.js';
 import * as audio from './audio.js';
 import { initNet } from './net/lobby.js';
@@ -75,10 +76,13 @@ game.perf = new Perf(game); // F3 效能面板(src/sys/perf.js)
 prewarm(); // 殭屍變體:有 Worker 時立刻全部平行送到 Worker 池建模
 performance.mark('hz:game');
 window.__perfVariants = variantStats; // 測試用
+window.__forceVariant = forceVariant; // 測試用:下一隻生成的殭屍用指定變體
 window.__assets = assets; // 測試用:下載佇列進度
 window.__physLoad = physicsLoad;
 installStreaming(game); // 下載順序:玩家附近 → 同層 → 其他樓層
 assets.prepare = (root) => precompile(game, root, { instanced: true }); // 下載的模型交付前先在背景編好 shader(含實例池版本)
+loadRealistic(game); // 寫實殭屍模型排進下載佇列(低畫質不載)
+window.__realistic = realisticStats; // 測試用
 assets.hiRes = game.quality.preset !== 'low'; // 低畫質:不下載 1K 顏色圖(省頻寬與顯示記憶體)
 game.quality.on('change', (k, q) => { assets.hiRes = q.preset !== 'low'; });
 game.hospital.setQuality?.(game.quality); // 光源池大小、道具顯示距離跟著畫質
@@ -182,7 +186,7 @@ boot();
 async function warmRuntime() {
   const g = new THREE.Group();
   const inst = instantiate(getVariant('walker', 0));
-  const ZM = allZombieMaterials(), its = []; // [zombies-w3] 全部殭屍材質(含新類型的眼睛、刀刃、鏡片)
+  const ZM = [...allZombieMaterials(), ...realisticMaterials()], its = []; // [zombies-w3] 全部殭屍材質(含新類型的眼睛、刀刃、鏡片、寫實殭屍)
   inst.mesh.material = ZM; // 只編譯、不渲染
   g.add(inst.mesh);
   for (const o of game.deduce?.warmObjects?.() || []) g.add(o); // [story] 筊杯

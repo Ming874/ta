@@ -1,6 +1,6 @@
 # 聖心醫院 · 製作與授權(CREDITS)
 
-本專案只使用 **CC0(公眾領域)** 與 **CC-BY** 授權的外部素材,全部下載放在 `public/` 內(不使用外部連結)。
+本專案只使用 **CC0(公眾領域)**、**CC-BY** 與 **MIT** 授權的外部素材,全部下載放在 `public/` 內(不使用外部連結)。
 CC0 素材在法律上不需署名,以下仍逐一列出作者與來源致謝。各區的原始署名檔(`public/credits/<區域>.md`)與本檔內容相同,新增素材時兩邊都要更新。
 
 ## 程式與函式庫
@@ -9,6 +9,7 @@ CC0 素材在法律上不需署名,以下仍逐一列出作者與來源致謝。
 - Vite — MIT License — https://vite.dev
 - Rapier 物理引擎(@dimforge/rapier3d-compat)— Apache License 2.0 — https://rapier.rs
 - ws(WebSocket 伺服器)— MIT License — https://github.com/websockets/ws
+- meshoptimizer 解碼器(three.js 附帶的 meshopt_decoder)— MIT License — https://github.com/zeux/meshoptimizer
 - 遊戲程式、關卡、介面、程式生成的模型/貼圖/音效:本專案原創
 
 ## 場景結構與材質(structure)
@@ -99,7 +100,16 @@ CC0 素材在法律上不需署名,以下仍逐一列出作者與來源致謝。
 
 ## 殭屍與角色
 
-殭屍(行屍、狂奔者、爬行者、膿腫者、巨屍)與多人模式的倖存者角色,包含骨架、蒙皮、皮膚/衣物貼圖與動畫,全部為程式生成(`src/zombies/**`),沒有使用外部素材。
+殭屍與倖存者的骨架、動畫與程式生成外觀(行屍、狂奔者、爬行者、膿腫者、巨屍與第三波新類型)在 `src/zombies/**`、`src/net/avatar.js`,為本專案原創。
+
+**寫實殭屍模型(zombie-models)**:部分行屍/狂奔者變體使用 **Microsoft Rocketbox Avatar Library**(MIT License,Copyright (c) 2020 Microsoft,
+https://github.com/microsoft/Microsoft-Rocketbox)的人物,經 `tools/zombies/build.mjs` 轉換骨架並把貼圖殭屍化後放在 `public/models/zombies/`:
+Medical_Female_01(nurse)、Medical_Male_01(doctor)、Medical_Male_02(paramedic)、Security_Male_01(guard)、Construction_Male_07(worker)、
+Male_Adult_08(man)、Male_Adult_03(oldman)、Female_Adult_08(woman)、Sports_Male_04(athlete)、Sports_Female_02(jogger)。
+多人模式的倖存者角色(隊友看到的玩家)也是 Rocketbox 人物(健康外觀,`public/models/survivors/`):
+Military_Male_02(soldier)、Medical_Female_03(medic)、Construction_Male_08(builder)、Female_Adult_12(hoodie)、Police_Male_06(police)、
+Male_Adult_05(hunter)、Fire_Male_06(firefighter)、Female_Adult_04(biker)。
+MIT 授權全文與每個角色的來源網址見 `public/credits/zombie-models.md`。
 
 ## 音效與配樂(audio)
 
