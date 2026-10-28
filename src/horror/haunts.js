@@ -153,7 +153,7 @@ export function hauntKinds(h) {
       if (f.li !== c.li || !lit(f) || f.cur < 0.5 || !f.shape) continue;
       const d = dist(c, f.x, f.z);
       if (d < 3.5 || d > 9 || !c.inView(f.x, f.z, 0.6) || !c.sees(c.li, c.px, c.pz, f.x, f.z)) continue;
-      const ux = (f.x - c.px) / d, uz = (f.z - c.pz) / d, qx = c.px + ux * (d - 1.2), qz = c.pz + uz * (d - 1.2), rx = -uz, rz = ux;
+      const ux = (f.x - c.px) / d, uz = (f.z - c.pz) / d, qx = c.px + ux * (d - 0.6), qz = c.pz + uz * (d - 0.6), rx = -uz, rz = ux;
       if (!walk(c, qx, qz) || !walk(c, qx + rx * 1.6, qz + rz * 1.6) || !walk(c, qx - rx * 1.6, qz - rz * 1.6)) continue;
       const s = Math.random() < 0.5 ? 1 : -1;
       return { lx: f.x, lz: f.z, qx, qz, ax: qx + rx * 1.6 * s, az: qz + rz * 1.6 * s, bx: qx - rx * 1.6 * s, bz: qz - rz * 1.6 * s };
@@ -284,16 +284,16 @@ export function hauntKinds(h) {
     } },
     // 燈下有一個人的影子橫過地板(拿著病歷板),沒有人。阿嬤:「巡房了……十四暝,阿嬤都是這樣走過來的。」
     shadowPass: { ok: (c) => indoor(c) && !X.shadow.visible && !!shadowSpot(c), run(c) {
-      const S = shadowSpot(c), m = X.shadow, y = lv(c) + 0.02, T = 1.5;
-      m.scale.set(0.7, 1, 2.3); m.visible = true; m.material.opacity = 0;
+      const S = shadowSpot(c), m = X.shadow, y = lv(c) + 0.02, T = 1.8;
+      m.scale.set(0.85, 1, 2.6); m.visible = true; m.material.opacity = 0;
       ghost.clip({ x: S.qx, y: y + 1.1, z: S.qz });
       let t = 0;
       h.watch((dt) => {
         t += dt;
         const u = Math.min(1, t / T), px = S.ax + (S.bx - S.ax) * u, pz = S.az + (S.bz - S.az) * u;
         let dx = px - S.lx, dz = pz - S.lz; const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl; // 影子往遠離燈的方向(朝你)拉長
-        m.position.set(px + dx * 1.15, y, pz + dz * 1.15); m.rotation.y = Math.atan2(dx, dz);
-        m.material.opacity = 0.55 * Math.max(0, Math.min(1, t / 0.25, (T - t) / 0.3));
+        m.position.set(px + dx * 1.3, y, pz + dz * 1.3); m.rotation.y = Math.atan2(dx, dz);
+        m.material.opacity = 0.8 * Math.max(0, Math.min(1, t / 0.25, (T - t) / 0.3));
         if (t >= T) { m.visible = false; return false; }
         return true;
       });
@@ -306,13 +306,13 @@ export function hauntKinds(h) {
       const x = w.x + (w.axis === 'z' ? lat : 0) + G.ox * 0.03, z = w.z + (w.axis === 'z' ? 0 : lat) + G.oz * 0.03, pos = { x, y, z };
       const v = story('fog', { silent: true }), m = X.fog;
       X.setFog('', true);
-      m.position.set(x, y, z); m.rotation.set(0, G.ry, 0); m.scale.set(0.62, 0.48, 1); m.visible = true; m.material.opacity = 0;
+      m.position.set(x, y, z); m.rotation.set(0, G.ry, 0); m.scale.set(0.95, 0.72, 1); m.visible = true; m.material.opacity = 0;
       ghost.exhale(pos, 0.8);
       let t = 0, wrote = false;
       h.watch((dt) => {
         t += dt;
         if (!wrote && t > 2.2) { wrote = true; if (v?.text) { X.setFog(v.text, true); ghost.squeak(pos); } }
-        m.material.opacity = 0.75 * Math.max(0, Math.min(1, t / 1.4, (10 - t) / 3));
+        m.material.opacity = 0.55 * Math.max(0, Math.min(1, t / 1.4, (10 - t) / 3));
         if (t >= 10) { m.visible = false; return false; }
         return true;
       });
@@ -372,7 +372,7 @@ export function hauntKinds(h) {
     // 金水商行的皮球從暗處彈出來,滾到你腳邊;阿嬤:「金水仔拿來的球……你細漢上愛玩。」
     ballRoll: { ok: (c) => indoor(c) && !X.ballOn && !!ballPath(c), run(c) {
       const B = ballPath(c), y = lv(c) + 0.11, m = X.ball, pos = { x: B.sx, y, z: B.sz }, axis = new THREE.Vector3(B.dz, 0, -B.dx).normalize();
-      const L = B.d, T = (L / 1.5) * 1.6;
+      const L = B.d, T = 1.1 + L * 0.42; // 一開始快、越滾越慢
       X.ballOn = true; m.visible = true; m.material.opacity = 1; m.position.set(B.sx, y + 0.55, B.sz);
       let t = 0, ph = 0, vy = 0, yy = 0.55, nb = 0, s0 = 0, unseen = 0;
       ghost.bounce(pos, 0.8);
@@ -416,7 +416,7 @@ export function hauntKinds(h) {
       h.watch((dt) => {
         t += dt;
         const p = P(), d = Math.hypot(s.x - p.pos.x, s.z - p.pos.z);
-        if (!warned && d < 2.4 && lookDot(s.x, s.z) > 0.75) { warned = true; story('envelope'); }
+        if (!warned && d < 3.4 && lookDot(s.x, s.z) > 0.7) { warned = true; story('envelope'); }
         unseen = lookDot(s.x, s.z) < 0.2 ? unseen + dt : 0;
         if ((warned && unseen > 1.2) || unseen > 4 || t > 60 || d > 30) { m.visible = false; X.envOn = false; return false; }
         return true;
@@ -472,7 +472,7 @@ export function hauntKinds(h) {
         t += dt;
         if (t > 12 || !free()) return false;
         if (lookDot(w.x, w.z) < 0.75) return true;
-        const p = P(), G = winGeom(c, w, p.pos.x, p.pos.z), x = w.x + G.ox * 0.3, z = w.z + G.oz * 0.3, y = lv(c);
+        const p = P(), G = winGeom(c, w, p.pos.x, p.pos.z), x = w.x + G.ox * 0.22, z = w.z + G.oz * 0.22, y = lv(c);
         A.spawn({ tag: 'windowFace', fig: 'patient', pose: 'reach', look: 'pale', alpha: 0.95, x, y, z, yaw: Math.atan2(p.pos.x - x, p.pos.z - z), dur: 0.75, fadeIn: 0.03, anyLevel: true, vanish: { flash: false, look: 0, near: 0 } });
         M.hand(w.x + G.ox * 0.03 + (w.axis === 'z' ? rand(-0.2, 0.2) : 0), y + rand(1.35, 1.55), w.z + G.oz * 0.03 + (w.axis === 'z' ? 0 : rand(-0.2, 0.2)), G.nx, G.nz);
         ghost.stinger('hit', 0.8); ghost.squeak({ x: w.x, y: y + 1.5, z: w.z });
@@ -527,7 +527,7 @@ export function hauntKinds(h) {
   }
   // 燈回來時:牆上多了一筆(STORY3.darkWrite)
   function wrongWrite(c) {
-    const wa = U().wallAhead?.(now(c));
+    const n = now(c), wa = U().wallAhead?.(n) || U().wallBeside?.(n, 3.5, 1.6); // 前方的牆;走廊裡面對的是長牆時就寫在旁邊
     if (!wa) return false;
     const v = story('darkWrite', { silent: true });
     const w0 = v && WRITINGS.find((q) => q.id === v.write);
