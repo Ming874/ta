@@ -132,9 +132,9 @@ export const MEMORIES = [
     zone: 'f2_corridor', win: [37, 9], r: 5, bed: 'night', lights: 'keep', dur: 18, card: 'hc.13', gate: { act: 2 },
     cast: [
       { id: 'n', fig: 'nurse', pose: 'reach', at: [-0.6, 0], face: 'e+' },
-      { id: 'd', fig: 'patient', pose: 'stand', look: 'shade', at: [5.6, -0.7], face: 'e-', out: true, alpha: 0.5 },
-      { id: 'c', fig: 'child', pose: 'stand', at: [5.4, 0.1], face: 'e-', out: true, alpha: 0.5 },
-      { id: 'k', fig: 'man', pose: 'stand', look: 'shade', at: [7.2, 1.2], face: 'e-', out: true, alpha: 0.45 },
+      { id: 'd', fig: 'patient', pose: 'stand', look: 'shade', at: [2.9, -0.5], face: 'e-', out: true, alpha: 0.75 },
+      { id: 'c', fig: 'child', pose: 'stand', look: 'shade', at: [2.7, 0.25], face: 'e-', out: true, alpha: 0.75 },
+      { id: 'k', fig: 'man', pose: 'stand', look: 'shade', at: [4.4, 0.9], face: 'e-', out: true, alpha: 0.6 },
     ],
     beats: [
       { t: 1.6, say: '阿母——', who: '女兒', from: 'd' },
