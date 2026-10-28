@@ -415,7 +415,7 @@ const LABEL_TEX = lazy(() => {
     ctx.fillStyle = '#2a2622'; ctx.beginPath(); ctx.moveTo(w, h); ctx.lineTo(w - rr(40, 90), h); ctx.lineTo(w, h - rr(60, 140)); ctx.fill(); // 撕掉的角
     ctx.save(); ctx.translate(w * 0.5, h * 0.55); ctx.rotate(-0.2); text(ctx, '騙 子', 0, 0, 60, { color: 'rgba(130,10,10,0.85)', weight: '900' }); ctx.restore();
   });
-  poster('poster', '萬嵐回神照護中心', '讓每一位家人，都回得來', '#9cb8c4', '#2a4a5a');
+  poster('poster', '大新照護中心', '讓每一位家人，都回得來', '#9cb8c4', '#2a4a5a');
   poster('poster2', '捐血一袋 救人一命', '聖心醫院 捐血中心 B1', '#c4a49c', '#5a2a2a');
   inR('pay', (w, h) => { ctx.fillStyle = '#2a3440'; ctx.fillRect(0, 0, w, h); text(ctx, '繳 費 機', w / 2, 40, 38, { color: '#e8e8e8' }); text(ctx, 'PAY STATION', w / 2, 80, 22, { color: '#c8c8c8', font: 'Arial' }); ctx.fillStyle = '#0c1a10'; ctx.fillRect(40, 110, 176, 90); text(ctx, 'ERR 404', w / 2, 155, 30, { color: '#3a6a3a', font: 'monospace' }); });
   const sign = (n, a, b, bg, fg) => inR(n, (w, h) => { ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h); ctx.strokeStyle = fg; ctx.lineWidth = 6; ctx.strokeRect(6, 6, w - 12, h - 12); text(ctx, a, w / 2, h * 0.42, 44, { color: fg }); text(ctx, b, w / 2, h * 0.78, 20, { color: fg, font: 'Arial' }); grime(w, h, 0.3); });

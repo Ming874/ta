@@ -162,7 +162,7 @@ export class IxUI {
     const draw = () => {
       el.innerHTML = `<div class="pad"><div class="kt">${esc(o.title)}</div><div class="ks">${esc(o.sub?.() || '')}</div>
         <ul>${o.rows().map((r, i) => `<li class="${r.on ? 'on' : ''}${r.can === false ? ' no' : ''}"><kbd class="kc">${i + 1}</kbd><span>${esc(r.label)}</span><em>${r.on ? '供電中' : r.can === false ? '無法供電' : '斷電'}</em></li>`).join('')}</ul>
-        <div class="ft">${withKeys(`[1]~[${o.rows().length}] 切換迴路 · [E] 關上`)}</div></div>`;
+        <div class="ft">${withKeys(`[1]~[${o.rows().length}] 切換供電 · [E] 關上`)}</div></div>`;
     };
     const m = {
       el, kind: 'panel', keys: new Set(), redraw: draw,

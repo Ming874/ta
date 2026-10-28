@@ -170,7 +170,7 @@ export const memorial = {
       prompt: () => {
         const d = D();
         if (busy) { e.hold = 0; e.onTap = null; return { text: '擲筊中……', dim: true }; }
-        if (d && d.ready() && !d.solved()) { e.hold = THROW.hold; e.onTap = view; e.tapText = '看遺照'; e.holdText = '擲筊'; return '擲筊'; }
+        if (d && d.ready() && !d.solved()) { e.hold = THROW.hold; e.onTap = view; e.tapText = '看遺照'; e.holdText = '擲筊（問阿嬤對不對）'; return '擲筊'; }
         e.hold = 0; e.onTap = null;
         return d && !d.solved() && d.filled() > 0 ? '看阿嬤的照片（筆記本還有空格）' : '看阿嬤的照片';
       },
@@ -208,7 +208,7 @@ export const cctv = {
         api.ixs.switchClick?.(pos, true);
         api.note('h.c05');
         ix.flags.set('h.cctv.seen', true);
-        ix.after(6, () => api.game.deduce?.talk?.([['AM 1207 · 小鈴', '……快轉。我不想看人打架。', 2.8]]));
+        ix.after(6, () => api.game.deduce?.talk?.([['收音機 · 小美', '……快轉。我不想看人打架。', 2.8]]));
       },
     });
   },

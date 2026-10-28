@@ -121,7 +121,7 @@ export class Book {
     const sent = QUESTION.sentences.map((s) => `<p>${esc(s).replace(/\{(b\d)\}/g, (_, b) => slot(b))}</p>`).join('');
     const n = D.filled(), last = st.last;
     const lastTxt = last ? `上一次：${THROW.name[last.result]}${last.result === 'sheng' ? '' : `，對了 ${last.n} 個，共 ${last.m} 個`}` : '';
-    const hint = solved ? '' : n === QUESTION.m ? '<div class="dd-hint ready">已填好。到 2F 護理站阿嬤的遺照前，按住 <kbd>E</kbd> 擲筊。</div>'
+    const hint = solved ? '' : n === QUESTION.m ? '<div class="dd-hint ready">已填好。到 2F 護理站阿嬤的照片前，按住 <kbd>E</kbd> 擲筊（丟兩片筊杯問阿嬤：一正一反＝聖筊＝全對）。</div>'
       : `<div class="dd-hint">點一個空格，再從右頁挑一個詞（也可以直接拖過去）。線索越多，詞越多。</div>`;
     const truth = solved ? `<div class="dd-truth"><div class="dd-seal">聖筊</div><h3>最後一頁</h3><p>${esc(QUESTION.truth)}</p></div>` : '';
     this.el.querySelector('.dd-l').innerHTML = `<div class="dd-hd"><span>筆記本</span><span>〈207 的燈〉聖心醫院</span></div>

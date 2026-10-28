@@ -82,7 +82,7 @@ export function installOpening(game, S) {
     if (run.quiet === 4 && !run.small) {
       run.small = true;
       const h = H(), seen = (h?.seenLog || []).some((e) => e.tag === 'self') || D()?.has?.('hc.32');
-      if (!seen) X.after(17, () => { if (game.phase !== 'fighting' && game.state === 'playing' && !game.story?.busy?.()) seq(game, [['ama', '阿孫細漢的時，上愛佇護理站等阿嬤落班。', undefined, { ear: 'left' }]]); });
+      if (!seen) X.after(17, () => { if (game.phase !== 'fighting' && game.state === 'playing' && !game.story?.busy?.()) seq(game, [['ama', '阿孫小時候，最愛在護理站等阿嬤下班。', undefined, { ear: 'left' }]]); });
     }
     // 第二次靜默:把「她只在招魂燈熄的時候說話」這條規則說出來(CLARITY_PLAN §1.1)
     if (run.quiet === 2) X.after(3, () => { if (game.phase !== 'fighting' && !game.story?.busy?.()) seq(game, [['xl', '……上次燈熄的時候，有人在叫你。', 3.2], ['xl', '她好像只在招魂燈熄的時候說話。', 3.4]]); });

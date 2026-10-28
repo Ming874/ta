@@ -14,16 +14,16 @@ import { waveRoster } from '../game/waves.js';
 import { sfx, ix as ixs, ghost } from '../audio.js';
 
 const HO = {
-  id: 'ph.ho.final', who: '來電 · 何啟明', voice: 'man', ear: 'right',
+  id: 'ph.ho.final', who: '電話 · 王醫師', voice: 'man', ear: 'right',
   parts: [
-    '你好。我是何啟明。',
-    '你是鄭護理長的孫子吧。你們長得很像。',
-    '你剛剛打開的那扇門，我二十三年沒有打開過。',
-    '那天晚上，我把二樓的燈關掉。她把檯燈打開，擋在床前，說：「這間是我的病人。」',
+    '你好。我是王志明。\n以前在這間醫院，大家叫我王醫師。',
+    '林護理長是你阿嬤吧。\n你們長得很像。',
+    '你剛剛打開的那扇門，\n我二十三年沒有打開過。',
+    '那天晚上，我關掉二樓的燈。\n她打開檯燈，擋在床前。\n她說：『這間是我的病人。』',
     '針是我拿的。我拉她，針就……',
-    '這二十三年，207 的電費都是我付的。你可以去查。',
-    '枕頭裡那一頁，留在 207。燈會一直亮著。對大家都好。',
-    '關門以後，這一切都會結束。你可以回家了。',
+    '這二十三年，207 的電費，\n都是我付的。',
+    '枕頭裡那一頁，請留在 207。\n燈會一直亮著。對大家都好。',
+    '鬼門一關，這一切就結束了。\n你可以回家了。',
   ],
 };
 
@@ -45,7 +45,7 @@ export function installClimax(game, S) {
     run.touqi = true; run.knobT = game.time + 16;
     try { sfx.folk('lament', p()); } catch { /* 略 */ }
     X.flags.set('h.touqi', true);
-    X.after(3.5, () => { try { H()?.remember?.('s3.touqi', { event: 'touqi', tag: 'zheng', ghost: 'zheng' }); } catch { /* 略 */ } seq(game, [['ama', '頭七矣。……阿嬤轉來看你。', undefined, { id: 's3.touqi' }]]); });
+    X.after(3.5, () => { try { H()?.remember?.('s3.touqi', { event: 'touqi', tag: 'zheng', ghost: 'zheng' }); } catch { /* 略 */ } seq(game, [['ama', '今天是頭七……阿嬤回來看你。', undefined, { id: 's3.touqi' }]]); });
   }
   function knob() { // 阿嬤把門內的旋鈕轉開
     if (has('h.207.knob')) return;
@@ -55,7 +55,7 @@ export function installClimax(game, S) {
     try { ixs.lockerOpen?.(q); } catch { /* 略 */ }
     const far = !w || Math.abs(p().y - w.y) > 2 || Math.hypot(p().x - w.cx, p().z - w.cz) > 10;
     game.ui?.feed?.(far ? '二樓傳來很輕的一聲「喀」，像是有人從裡面轉開了門把。' : '207 的門內「喀」一聲：旋鈕自己轉開了。', { color: '#e3c98a', ms: 7000 });
-    if (!has('h.207.elock')) X.after(3, () => seq(game, [['xl', '……剛剛那一聲，是 207？鎖是從裡面開的。……外面那道電子鎖還在。', undefined, {}]]));
+    if (!has('h.207.elock')) X.after(3, () => seq(game, [['xl', '……那一聲，是 207？\n鎖是從裡面開的。\n外面的電子鎖還鎖著。', undefined, {}]]));
   }
 
   // ---------- 207 打開 → 警報 → 守燈員 ----------
@@ -70,9 +70,9 @@ export function installClimax(game, S) {
     if (run.elockSaid) return;
     run.elockSaid = true;
     if (!has('h.207.knob')) {
-      try { X.doors.lock('f2_ward_207', { text: '207 · 電子鎖開了，門把轉不動（旋鈕在門內，鎖著）' }); } catch { /* 略 */ }
+      try { X.doors.lock('f2_ward_207', { text: '207 · 電子鎖開了，可是門從裡面鎖住了' }); } catch { /* 略 */ }
       X.after(2.5, () => seq(game, [['xl', '電子鎖的紅燈熄了。……可是門把轉不動。', 3.4], ['xl', '旋鈕在裡面。有人從裡面鎖著。', 3.2]]));
-      X.after(12, () => seq(game, [['ama', '等阿嬤轉來。', undefined, { ear: 'left' }]]));
+      X.after(12, () => seq(game, [['ama', '等阿嬤回來。', undefined, { ear: 'left' }]]));
     }
   }
   function alarm() {
@@ -80,7 +80,7 @@ export function installClimax(game, S) {
     flag('h.207.open');
     const w = door207(), q = w ? { x: w.cx, y: w.y + 2.6, z: w.cz } : null;
     try { ixs.alarmStart?.('h207', q || p()); X.after(9, () => ixs.alarmStop?.('h207')); } catch { /* 略 */ }
-    seq(game, [0.8, ['pa', '207 門禁警戒。207 門禁警戒。保全人員請至二樓。', 5], ['xl', '……你開了那扇門。整棟樓都在響。', 3.2], ['xl', '有一個人醒了。穿保全制服的。……他在那扇門口坐了三年。', 5]]);
+    seq(game, [0.8, ['pa', '207 警報。207 警報。', 5], ['xl', '……你開了那扇門。整棟樓都在響。', 3.2], ['xl', '保全人員請到二樓。\n有一個人醒了，穿保全制服。\n他在那扇門口坐了三年。', 5]]);
     if (!isHost()) return;
     if (game.phase === 'fighting') run.alarmPend = true; // 這一波打完再來
     else X.after(9, () => startGuardWave());
@@ -97,7 +97,7 @@ export function installClimax(game, S) {
       q.splice(Math.floor(q.length * 0.4), 0, 'brute');
       game.queue = q; game.toSpawn = q.length;
     } else if (!game.queue.includes('brute')) { game.queue.splice(Math.floor(game.queue.length * 0.4), 0, 'brute'); game.toSpawn = game.queue.length; }
-    X.after(3.8, () => game.ui?.banner?.('207 守燈員', '萬嵐保全 · 他在 207 門口坐了三年 · 燈若熄，立刻通知董事長', 4200, 'red'));
+    X.after(3.8, () => game.ui?.banner?.('看守 207 的保全　劉家豪', '大新的保全 · 在 207 門口坐了三年 · 燈熄了就要通知董事長', 4200, 'red'));
   }
   function guardDown() {
     run.guardDead = true;
@@ -106,7 +106,7 @@ export function installClimax(game, S) {
   function onBoss10() {
     if (run.logT) return;
     run.logT = game.time;
-    X.after(1.2, () => { D()?.addCard?.('hc.29', { by: 'boss' }); game.ui?.pickup?.('守燈日誌', '#e8d9a8', { sub: '守燈員倒下的地方，掉著一本日誌' }); });
+    X.after(1.2, () => { D()?.addCard?.('hc.29', { by: 'boss' }); game.ui?.pickup?.('保全的值班紀錄', '#e8d9a8', { sub: '保全倒下的地方，掉著一本紀錄' }); });
   }
 
   // ---------- 何董的電話 ----------
@@ -153,7 +153,7 @@ export function installClimax(game, S) {
     if (run.touqi && run.knobT && game.time >= run.knobT) { run.knobT = 0; knob(); }
     // 有人在配電盤上把 207 的迴路關掉(苦結局「熄燈」是玩家自己的選擇):小鈴會冷,阿嬤只說一句
     const lit = X.flags.get('h.pwr.207') !== false;
-    if (run.lit !== undefined && run.lit && !lit && !run.offSaid) { run.offSaid = true; X.after(2, () => seq(game, [['xl', '……二樓有一盞燈熄了。', 2.4], ['xl', '我突然好冷。……你那邊也是嗎？', 3.2]])); X.after(9, () => seq(game, [['ama', '燈……莫關。伊驚烏。', undefined, { ear: 'right' }]])); }
+    if (run.lit !== undefined && run.lit && !lit && !run.offSaid) { run.offSaid = true; X.after(2, () => seq(game, [['xl', '……二樓有一盞燈熄了。', 2.4], ['xl', '我突然好冷。……你那邊也是嗎？', 3.2]])); X.after(9, () => seq(game, [['ama', '燈……不要關。她怕黑。', undefined, { ear: 'right' }]])); }
     run.lit = lit;
     // 電子鎖(鍵盤或聖筊)→ 同步給全隊
     if (X.flags.has('h.207.elock')) flag('h.207.elock');
@@ -166,7 +166,7 @@ export function installClimax(game, S) {
     // 第 5 次燈篙的巨屍 = 萬嵐照護員 夜班組長(正典 §4 首領;身上有門禁卡):給他一個名字,等門禁卡的那幾分鐘才有對象
     if (!run.lead5 && game.round === 5 && game.phase === 'fighting' && !has('h.badge')) {
       const z = game.zombies.find((q) => q.alive && q.type === 'brute' && (q.dist ?? 99) < 30);
-      if (z) { run.lead5 = true; X.after(3, () => game.ui?.banner?.('萬嵐照護員　夜班組長', '他還在巡房 · 門禁卡在他身上', 3800, 'red')); X.after(4.5, () => seq(game, [['xl', '那個穿萬嵐制服的……他胸口有一張卡。', undefined, {}]])); } // 先讓「巨屍出現」的打法提示講完
+      if (z) { run.lead5 = true; X.after(3, () => game.ui?.banner?.('大新夜班組長　陳建宏', '他以前是這裡的看護 · 門禁卡在他身上', 3800, 'red')); X.after(4.5, () => seq(game, [['xl', '穿大新制服那個……胸口有一張卡。', undefined, { gap: 3 }], ['xl', '他以前是這裡的看護。', 2.4], ['xl', '第一個打針的，就是他們。', 2.8]])); } // 先讓「巨屍出現」的打法提示講完
     }
     // 守燈員:那一波第一隻巨屍
     if (run.wave && isHost()) {

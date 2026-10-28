@@ -165,7 +165,7 @@ export function installRevive(game, S) {
     if (game.net && !game.net.mode?.pvp && !game.net.pvp) {
       wrapCoop();
       const p = game.player; // 合作倒地(等隊友):阿嬤在耳邊說一句
-      if (p.downed && !run.coopDown && game.state === 'playing') { run.coopDown = true; setTimeout(() => line(game, 'ama', '阿孫，莫睏去。……阿嬤佇遮。', { ear: 'left' }), 1200); }
+      if (p.downed && !run.coopDown && game.state === 'playing') { run.coopDown = true; setTimeout(() => line(game, 'ama', '阿孫，不要睡。……阿嬤在這裡。', { ear: 'left' }), 1200); }
       else if (!p.downed) run.coopDown = false;
     }
     return true;

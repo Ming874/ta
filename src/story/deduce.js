@@ -95,7 +95,7 @@ export function installDeduce(game) {
       if (r.result === 'sheng') {
         const s = S(), first = !s.solved;
         s.solved = true; save();
-        game.ui?.banner?.(nm, '著。……阿孫，你真巧。', 4200, 'gold');
+        game.ui?.banner?.(nm, '對了。……阿孫，你好聰明。', 4200, 'gold');
         if (silent) H()?.whisper?.('h.w.sheng', { ear: 'both', priority: 9, force: true });
         try { sfx.folk('bell', pos); } catch { /* 還沒烘焙好 */ }
         ix()?.flags?.set?.('h.q.solved', true);

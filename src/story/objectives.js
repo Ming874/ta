@@ -62,12 +62,12 @@ const STEPS = [
     hints: { deduce: 'throw', glint: (c) => c.at('h.ix.memorial') } },
   // 207 兩道鎖:電子鎖(鍵盤 0924 或聖筊)+ 門內的旋鈕(頭七那一夜阿嬤回來轉開);兩道都開了,門自己推開(src/story/climax.js)
   { id: 'h.s.unlock', act: 4, text: '打開 207', why: (c) => (c.O.has('h.207.elock') ? '門從裡面鎖著，等阿嬤回來' : '電子鎖＋門裡的旋鈕'), prog: (c) => (c.O.has('h.207.unlock') ? 2 : (c.O.has('h.207.elock') ? 1 : 0) + (c.O.has('h.207.knob') ? 1 : 0)), m: 2,
-    hints: { xl: (c) => (c.O.has('h.207.elock') ? '從裡面鎖的門，只有裡面的人開得了。……我們等。' : '監控室的鍵盤，或二樓的那張照片。兩條路都通。'),
-      ama: (c) => (c.O.has('h.207.elock') ? '等阿嬤轉來。' : '是伊來的彼一工。'), glint: (c) => (c.O.has('h.207.elock') ? null : c.at('h.ix.keypad')) } },
+    hints: { xl: (c) => (c.O.has('h.207.elock') ? '門是從裡面鎖的。\n只有裡面的人開得了。我們等。' : '輸入密碼，或去照片前擲筊。\n兩條路都能開電子鎖。'),
+      ama: (c) => (c.O.has('h.207.elock') ? '等阿嬤回來。' : '是她住進來的那一天。'), glint: (c) => (c.O.has('h.207.elock') ? null : c.at('h.ix.keypad')) } },
   { id: 'h.s.boss', act: 4, text: '打倒看守 207 的保全', why: '門一開，他就醒了', cond: (c) => c.O.has('h.boss10') },
   { id: 'h.s.enter', act: 4, text: '進 207', why: '阿嬤在枕頭裡留了東西給你', cond: (c) => c.D.has('hc.30') || (c.zone === 'f2_ward_207' && (c.run.in207 = (c.run.in207 || 0) + 0.25) > 1.5),
     onDone: (c) => c.page(),
-    hints: { xl: '頭七那天的腳印……停在床邊。', ama: '枕頭……阿嬤囥佇枕頭內底。', glint: (c) => c.at('h.ix.pillow') } },
+    hints: { xl: '頭七那天的腳印……停在床邊。', ama: '枕頭……阿嬤放在枕頭裡。', glint: (c) => c.at('h.ix.pillow') } },
   { id: 'h.s.wait', act: 5, text: '等金水伯的車', why: '他要來接你離開', onStart: (c) => c.later(2.5, () => { if (c.O.step() === 'h.s.wait' && !c.g.story?.busy?.()) c.talk([[XL, '金水伯的車要來了。', 2.2], [XL, '他會用對講機叫你。', 2.2]]); }), cond: (c) => c.O.has('h.truck') }, // 何董的電話(如果有)在這裡響;金水伯「車來囉」之後才往下
   { id: 'h.s.bay', act: 5, text: '到一樓急診車道', why: '金水伯的車在那裡', cond: (c) => c.zone === 'f1_ambulance',
     hints: { xl: '金水伯的車在急診車道，倒車燈亮著。快。' } },
@@ -126,14 +126,14 @@ export function installObjectives(game) {
     evac() { // 撐完 60 秒:結局〈天光〉(src/story/ending.js;每位玩家看自己的結局)
       if (run.evac) return; run.evac = true; O.flag('h.evac');
       if (game.story?.ending?.play) game.story.ending.play();
-      else game.ui?.banner?.('撤離', '燈猶閣光', 6000, 'gold');
+      else game.ui?.banner?.('撤離', '燈還亮著', 6000, 'gold');
     },
     // 進了 207:枕頭微微發亮(閃一下);拿起那一頁、或離開 207、或 30 秒之後 → 金水伯的車來了
     page() {
       const t0 = game.time;
       later(1.2, () => { const q = c.at('h.ix.pillow'); if (q && !D()?.has?.('hc.30')) { run.glint = q; run.glintT = 10; } });
-      later(7, () => { if (!D()?.has?.('hc.30') && c.zone === 'f2_ward_207') c.ama('枕頭……阿嬤囥佇枕頭內底。'); }); // 她要你拿到那一頁(靜默期才說)
-      const go = () => { O.flag('h.truck'); c.talk([[KS, '少年仔！車來囉！', 2.0], [KS, '急診車道，阿伯佇遐等你。緊上車！', 3.4]]); };
+      later(7, () => { if (!D()?.has?.('hc.30') && c.zone === 'f2_ward_207') c.ama('枕頭……阿嬤放在枕頭裡。'); }); // 她要你拿到那一頁(靜默期才說)
+      const go = () => { O.flag('h.truck'); c.talk([[KS, '少年仔！車來囉！', 2.0], [KS, '阿伯在急診車道等你，快上車！', 3.4]]); };
       let out = 0;
       X()?.tick?.((dt) => {
         if (run.evac || game.state !== 'playing') return false;
@@ -223,12 +223,12 @@ export function installObjectives(game) {
     const st = Dd.state(), B = QUESTION.blanks, keys = Object.keys(B);
     if (kind === 'fill' || !st.last || st.last.result === 'sheng') {
       const b = keys.find((k) => !st.fill[k]);
-      if (!b) { if (tier === 1) c.talk([[XL, '填好了就去問阿嬤。二樓護理站，她的照片前面。', 3.6]]); else if (tier >= 3) { const p = s.hints.glint?.(c); if (p) { run.glint = p; run.glintT = 14; } } return true; }
+      if (!b) { if (tier === 1) c.talk([[XL, '填好了，就去問阿嬤。\n二樓護理站，她的照片前面。', 3.6]]); else if (tier >= 3) { const p = s.hints.glint?.(c); if (p) { run.glint = p; run.glintT = 14; } } return true; }
       const cat = B[b].cat, have = new Set(Dd.words());
       const card = CARDS.find((q) => !Dd.has(q.id) && (q.words || []).some((w) => WORDS[w]?.cat === cat && !have.has(w)));
       const i = keys.indexOf(b) + 1;
-      if (tier === 1) c.talk([[XL, `本子上第 ${i} 格還空著。按 J 看看缺的是「${CATS[cat]}」。`, 3.8]]);
-      else if (tier === 2) c.ama(card ? `「${CATS[cat]}」……〈${card.title}〉內底有。` : `第 ${i} 格……阿嬤講過的話，你閣想看覓。`);
+      if (tier === 1) c.talk([[XL, `筆記本第 ${i} 格還空著。\n按 J，看缺的是「${CATS[cat]}`, 3.8]]);
+      else if (tier === 2) c.ama(card ? `「${CATS[cat]}」……〈${card.title}〉裡面有。` : `第 ${i} 格……想想阿嬤說過的話。`);
       else { Dd.hintBlank = b; if (Dd.isOpen) Dd.open(); }
       return true;
     }
@@ -236,7 +236,7 @@ export function installObjectives(game) {
     if (!wrong) return false;
     const i = keys.indexOf(wrong) + 1, card = Dd.cards().find((q) => (q.sup || []).includes(wrong)) || null;
     if (tier === 1) c.talk([[XL, card ? `第 ${i} 格……怪怪的。你再看一次〈${card.title}〉。` : `第 ${i} 格……怪怪的。再想想。`, 3.6]]);
-    else if (tier === 2) c.ama(`第 ${i} 格……毋是按呢。`);
+    else if (tier === 2) c.ama(`第 ${i} 格……不是這樣。`);
     else Dd.hintBlank = wrong;
     return true;
   }

@@ -61,10 +61,10 @@ const driedFlowers = () => tpl('r5:dried', (b) => {
 const plaqueRect = () => labRect('r5:wanlan', 160, 64, (c, w, h) => {
   c.fillStyle = '#f4f5f2'; c.fillRect(0, 0, w, h); c.fillStyle = '#1d8a86'; c.beginPath(); c.arc(30, h / 2, 16, 0, 6.28); c.fill();
   c.fillStyle = '#f4f5f2'; c.beginPath(); c.arc(35, h / 2 - 4, 10, 0, 6.28); c.fill();
-  c.fillStyle = '#16615e'; c.font = 'bold 20px sans-serif'; c.fillText('萬嵐生醫', 56, 30); c.font = '9px sans-serif'; c.fillText('WANLAN BIOMEDICAL · 回神照護中心', 56, 48);
+  c.fillStyle = '#16615e'; c.font = 'bold 20px sans-serif'; c.fillText('大新生技', 56, 30); c.font = '9px sans-serif'; c.fillText('DAXIN BIOTECH · 大新照護中心', 56, 48);
 });
 const boxRect = () => labRect('r5:confbox', 96, 48, (c, w, h) => {
-  c.fillStyle = '#e8e2d2'; c.fillRect(0, 0, w, h); c.fillStyle = '#9a1a12'; c.font = 'bold 13px sans-serif'; c.fillText('回神 臨床', 8, 20); c.fillText('機密 銷毀', 8, 38);
+  c.fillStyle = '#e8e2d2'; c.fillRect(0, 0, w, h); c.fillStyle = '#9a1a12'; c.font = 'bold 13px sans-serif'; c.fillText('喚醒針 臨床', 8, 20); c.fillText('機密 銷毀', 8, 38);
 });
 const shredder = () => tpl('r5:shred', (b) => {
   b.box('pl_dark', 0.36, 0.55, 0.26, 0, 0.275, 0, { r: 0.015 }); b.box('pl_gray', 0.38, 0.1, 0.28, 0, 0.6, 0, { r: 0.01 });
@@ -124,7 +124,7 @@ const newsRect = () => labRect('r5:news', 96, 120, (c, w, h) => {
 const newspaper = (k) => tpl(`r5:news:${k}`, (b) => b.plane(L(newsRect()), 0.38, 0.48, 0, 0.003, 0, { rx: -Math.PI / 2, rz: k }));
 const railNote = () => labRect('r5:railnote', 64, 80, (c, w, h) => {
   c.fillStyle = '#f2ecd8'; c.fillRect(0, 0, w, h); c.fillStyle = '#1f2f6e'; c.font = 'bold 11px serif';
-  ['阿爸', '收音機', '開著喔', '小鈴陪你'].forEach((t, i) => c.fillText(t, 6, 16 + i * 17));
+  ['爸爸', '收音機', '開著喔', '小美陪你'].forEach((t, i) => c.fillText(t, 6, 16 + i * 17));
 });
 
 export function roomStory(R, zone) {
