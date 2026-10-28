@@ -80,6 +80,7 @@ float surfH( int g, vec4 A, vec4 B ) {
 const FS_COLOR = /* glsl */`
 	vec2 sTc = vec2( vSF.x * vSF.z, vSF.y * vSF.w );
 	vec2 sTx = dFdx( sTc ), sTy = dFdy( sTc );
+	vec3 sWx = dFdx( vSW ), sWy = dFdy( vSW ); // 垂直流痕用(世界座標;導數放在分支外)
 	#ifdef FLAT_SHADED
 		vec3 sGN = normalize( cross( dFdx( vSW ), dFdy( vSW ) ) );
 	#else
@@ -139,6 +140,19 @@ const FS_COLOR = /* glsl */`
 		col = mix( col, vec3( surfLum( col ) ) * vec3( 1.06, 1.0, 0.86 ), grime * 0.35 ) * ( 1.0 - grime * 0.3 );
 		rough = mix( rough, min( 1.0, rough + 0.18 ), grime * 0.5 );
 		sAO = 1.0 - kick * kick * 0.45 * P3.w;
+		// 垂直面上的流痕(水漬、髒水往下流的痕跡):沿著面的水平座標 × 世界高度取纖維圖 → 直條紋
+		float vert = 1.0 - smoothstep( 0.3, 0.6, abs( sGN.y ) );
+		if ( vert > 0.01 && P3.w > 0.0 ) {
+			vec2 th = normalize( vec2( -sGN.z, sGN.x ) + 1e-5 );
+			vec2 tS = vec2( vSW.y * 0.8, dot( vSW.xz, th ) * 6.0 ) + off * 0.11;
+			vec2 sX = vec2( sWx.y * 0.8, dot( sWx.xz, th ) * 6.0 ), sY = vec2( sWy.y * 0.8, dot( sWy.xz, th ) * 6.0 );
+			float st = textureGrad( tSurfC, tS, sX, sY ).b;
+			float streak = smoothstep( 0.5, 0.85, st ) * smoothstep( 0.25, 0.75, Cm.g ) * vert * P3.w * ( 0.55 + 0.45 * kick );
+			col = mix( col, col * vec3( 0.7, 0.66, 0.6 ), streak * 0.6 );
+			rough = mix( rough, min( 1.0, rough + 0.12 ), streak );
+		}
+		// 靠近地面:鞋子、推車輪子的黑色擦痕(非金屬)
+		if ( metal < 0.5 ) col = mix( col, vec3( 0.035, 0.032, 0.03 ), A.g * kick * 0.55 * P3.w );
 		// 邊角磨損(面內座標 → 到邊的距離,公尺)
 		float dU = ( fl & 1 ) != 0 ? min( vSF.x, 1.0 - vSF.x ) * vSF.z : 9.0;
 		float dV = ( fl & 2 ) != 0 ? min( vSF.y, 1.0 - vSF.y ) * vSF.w : 9.0;
@@ -148,12 +162,15 @@ const FS_COLOR = /* glsl */`
 		float wn = C.r * 0.62 + mac * 0.38;
 		float wv = eN * 0.8 + wn * 0.62 - 0.2;
 		float wear = wt > 0 && P2.x > 0.0 ? smoothstep( 0.6, 0.66, wv ) : 0.0;
+		// 面中間的撞擊缺口/擦傷(烤漆、塗漆木、塑膠):少量、不規則
+		if ( wt == 1 || wt == 7 || wt == 2 ) { float ic = C.r * 0.45 + A.r * 0.3 + C.g * 0.25 - ( 1.0 - Cm.r ) * 0.12; wear = max( wear, smoothstep( 0.735, 0.755, ic ) * ( wt == 2 ? 0.6 : 1.0 ) ); wv = max( wv, ic - 0.14 ); }
 		if ( wt == 1 ) { // 掉漆:裸鋼 + 外圈底漆/鏽
 			float rim = clamp( smoothstep( 0.5, 0.6, wv ) - wear, 0.0, 1.0 );
 			col = mix( col, mix( vec3( 0.16, 0.13, 0.1 ), vec3( 0.2, 0.08, 0.03 ), C.g ), rim * 0.35 );
-			col = mix( col, vec3( 0.4, 0.39, 0.37 ) * ( 0.8 + 0.3 * A.r ), wear );
-			metal = mix( metal, 0.92, wear );
-			rough = mix( rough, 0.42 + 0.2 * A.r, wear );
+			float rust = smoothstep( 0.45, 0.85, C.g ); // 缺口裡:灰色底漆/鋼板,舊的地方生鏽
+			col = mix( col, mix( vec3( 0.3, 0.29, 0.28 ), vec3( 0.17, 0.075, 0.03 ), rust ) * ( 0.8 + 0.3 * A.r ), wear );
+			metal = mix( metal, 0.6 * ( 1.0 - rust ), wear );
+			rough = mix( rough, 0.5 + 0.3 * rust, wear );
 			h -= wear * 0.6; hx -= wear * 0.6; hy -= wear * 0.6;
 		} else if ( wt == 2 ) { col = mix( col, col * 1.32 + 0.03, wear * 0.75 ); rough = mix( rough, min( 1.0, rough + 0.25 ), wear ); }
 		else if ( wt == 3 ) { col *= 1.0 + 0.3 * wear; rough *= 1.0 - 0.45 * wear; }
@@ -162,7 +179,7 @@ const FS_COLOR = /* glsl */`
 		else if ( wt == 6 ) { col *= 1.0 - 0.14 * wear; rough = mix( rough, rough * 0.5, wear ); }
 		else if ( wt == 7 ) { col = mix( col, vec3( 0.2, 0.12, 0.06 ) * ( 0.75 + 0.5 * C.b ), wear ); rough = mix( rough, 0.75, wear ); h -= wear * 0.6; hx -= wear * 0.6; hy -= wear * 0.6; }
 		// 積灰(朝上的面:一層薄灰,大範圍濃淡;不做細碎顆粒 → 金屬/介電質不會混成雜訊)
-		float dust = P1.w * smoothstep( 0.55, 0.97, sGN.y ) * ( 0.3 + 0.7 * smoothstep( 0.15, 0.8, mac ) ) * 0.55;
+		float dust = P1.w * smoothstep( 0.55, 0.97, sGN.y ) * ( 0.3 + 0.7 * smoothstep( 0.15, 0.8, mac ) ) * 0.72;
 		col = mix( col, vec3( 0.26, 0.245, 0.22 ), dust * 0.75 );
 		rough = mix( rough, 0.9, dust * 0.8 );
 		metal *= 1.0 - dust * 0.7;
