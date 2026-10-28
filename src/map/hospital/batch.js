@@ -188,7 +188,7 @@ const depthMats = new Map();
 function depthFor(mat) {
   const k = (mat.side ?? 0) + '|' + (mat.shadowSide ?? '-') + '|' + (mat.map ? 'M' : '') + '|' + (mat.alphaTest > 0 ? (mat.map?.uuid || '') + (mat.alphaMap?.uuid || '') + mat.alphaTest : '');
   let d = depthMats.get(k);
-  if (!d) depthMats.set(k, (d = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking })));
+  if (!d) depthMats.set(k, (d = new THREE.MeshDepthMaterial())); // 與 three 預設的陰影深度材質同參數(program 與預熱的陰影代理共用)
   return d;
 }
 
