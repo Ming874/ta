@@ -26,7 +26,7 @@ import { installEnding } from './ending.js';
 import { installRevive } from './revive.js';
 import { installNotes } from './notes.js';
 import { installMoments } from './moments.js';
-import { voiceLock } from './voice.js';
+import { voiceLock, seq } from './voice.js';
 import * as THREE from 'three';
 
 // 提示的時間(秒,卡在同一步多久):小美 / 阿嬤 / 閃一下
@@ -120,7 +120,7 @@ export function installObjectives(game) {
       if (!h) return false;
       if (!force && !h.director?.silent) return false; // 鬼只在招魂燈熄的時候說話
       try { sfx.folk('ama', game.player.pos); } catch { /* 還沒烘焙好 */ }
-      later(1.6, () => h.whisper?.(ZH(text), { priority: 8, force: true }));
+      later(1.6, () => seq(game, [['ama', text, undefined, { ear: 'both' }]])); // 排隊(一次一個人說話)
       return true;
     },
     evac() { // 撐完 60 秒:結局〈天光〉(src/story/ending.js;每位玩家看自己的結局)

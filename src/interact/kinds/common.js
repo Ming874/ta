@@ -52,6 +52,7 @@ export function makeApi(game, ix, kit, R) {
       const hz = game.horror;
       let cancelled = false, total = 0, cur = null, sub = null;
       const stops = [];
+      let prevEnd = 0; // 一段一段依序講(前一段講完才輪到下一段;被鎖擋住時不會插隊)
       parts.forEach((p, i) => {
         const d = dur(p);
         const at = total;
@@ -59,9 +60,11 @@ export function makeApi(game, ix, kit, R) {
         let waited = 0;
         const run = () => {
           if (cancelled) return;
+          if (i > 0 && (game.time || 0) < prevEnd) { stops.push(ix.after(Math.max(0.05, prevEnd - (game.time || 0)), run)); return; }
           const V = game.story?.voice; // 聲音的鎖(src/story/voice.js):有人在說話就等(最多 8 秒),開始講就佔住
           if (V && !o.lockOk && V.busy() && waited < 8) { waited += 0.25; stops.push(ix.after(0.25, run)); return; }
           if (V && !o.lockOk) V.claim(d, 6, who || filter);
+          prevEnd = (game.time || 0) + d + 0.35;
           let used = false;
           if (hz?.whisper && !o.noHorror) { // 靈異系統的耳語/電話聲(有自己的字幕);回傳 null = 它正在說更重要的,改用我們的
             try { const h = hz.whisper(p, { ear: o.ear || line.ear || (filter === 'phone' ? 'right' : 'both'), subtitle: true, filter, priority: 7, pos: o.pos || null, who, tag: who || undefined, lockOk: true }); if (h) { used = true; cur = h; } } catch { used = false; } // 字幕標籤 = 說話的人(收音機 · 小美、電話 · 王醫師…)

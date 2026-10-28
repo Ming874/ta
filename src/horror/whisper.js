@@ -51,7 +51,7 @@ export class Whispers {
     const prio = o.priority ?? 5, t = performance.now() / 1000;
     // 聲音的鎖(src/story/voice.js):劇情的人在說話時,鬼不插嘴(電話腳本照播);沒有 force 的(隨機的鬼)前後都要安靜
     const V = this.h.game?.story?.voice;
-    if (V && !o.lockOk && (V.busy({ quiet: !o.force }) && (!o.force || (V.prio >= 9 && o.filter !== 'phone')))) return null;
+    if (V && !o.lockOk && o.filter !== 'phone' && V.busy({ quiet: !o.force })) return null; // 有人在說話:鬼不插嘴(劇情的 lockOk、電話腳本照播)
     if (this.busy && this.cur.prio >= prio && !o.force) return null;
     if (this.busy) { this.cur.kill?.(); this.h.subs.clear(); }
     const filter = o.filter ?? L.filter ?? null;

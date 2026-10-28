@@ -15,7 +15,7 @@ import { MAP, QUESTION, WORDS, CARD, CARDS, NOTE_CARD, WHISPER, LOOK, TALK, THRO
 import { Book } from './book.js';
 import * as THREE from 'three';
 import { sfx, ghost } from '../audio.js';
-import { secsOf, voiceLock, free, wait } from './voice.js';
+import { secsOf, voiceLock, free, wait, seq } from './voice.js';
 
 const KEY = 'hz.deduce.v1';
 const load = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch { return {}; } };
@@ -96,7 +96,7 @@ export function installDeduce(game) {
         const s = S(), first = !s.solved;
         s.solved = true; save();
         game.ui?.banner?.(nm, '對了。……阿孫，你好聰明。', 4200, 'gold');
-        if (silent) H()?.whisper?.('h.w.sheng', { ear: 'both', priority: 9, force: true });
+        if (silent) seq(game, [['ama', '對了。……阿孫，你好聰明。', undefined, { ear: 'both' }]]); // 排隊
         try { sfx.folk('bell', pos); } catch { /* 還沒烘焙好 */ }
         ix()?.flags?.set?.('h.q.solved', true);
         ix()?.flags?.set?.('meta.deduce.hospital.solved', true);
@@ -208,10 +208,10 @@ export function installDeduce(game) {
     const on2F = /^f2_/.test(game.hospital?.zone?.id || '');
     try { sfx.folk('ama', game.player.pos); } catch { /* 還沒烘焙好 */ }
     if (why === 'look' && on2F) {
-      X0?.after?.(6.5, () => h?.whisper?.('h.w.tc1', { ear: 'both', priority: 9, force: true })); // 一次一句,中間留 6 秒
-      X0?.after?.(13, () => h?.whisper?.('h.w.tc2', { ear: 'both', priority: 9, force: true })); // 她唯一的謊(每一局都說;M5)
-      X0?.after?.(16.4, () => h?.whisper?.('h.w.tc3', { ear: 'both', priority: 9, force: true }));
-      X0?.after?.(19.6, () => h?.whisper?.('h.w.tc4', { ear: 'both', priority: 9, force: true }));
+      X0?.after?.(6.5, () => h?.whisper?.('h.w.tc1', { ear: 'both', priority: 9, force: true, lockOk: true })); // 一次一句,中間留 6 秒
+      X0?.after?.(13, () => h?.whisper?.('h.w.tc2', { ear: 'both', priority: 9, force: true, lockOk: true })); // 她唯一的謊(每一局都說;M5)
+      X0?.after?.(16.4, () => h?.whisper?.('h.w.tc3', { ear: 'both', priority: 9, force: true, lockOk: true }));
+      X0?.after?.(19.6, () => h?.whisper?.('h.w.tc4', { ear: 'both', priority: 9, force: true, lockOk: true }));
     } else if (!D.has('hc.19')) { run.tqLate = true; ix()?.flags?.set?.('h.touqi.late', true); }
   }
 
@@ -261,7 +261,7 @@ export function installDeduce(game) {
     if (run.tqLate && m && silent) {
       const q = X.where(m);
       run.memT = Math.abs(p.pos.y - q.y) < 2 && Math.hypot(p.pos.x - q.x, p.pos.z - q.z) < 2.4 ? run.memT + step : 0;
-      if (run.memT >= 5 && !h?.whispers?.busy && h?.whisper?.('h.w.tc2', { ear: 'both', priority: 9, force: true })) { run.tqLate = false; run.memT = 0; X.after(3.4, () => h?.whisper?.('h.w.tc3', { ear: 'both', priority: 9, force: true })); X.after(6.6, () => h?.whisper?.('h.w.tc4', { ear: 'both', priority: 9, force: true })); }
+      if (run.memT >= 5 && !h?.whispers?.busy && h?.whisper?.('h.w.tc2', { ear: 'both', priority: 9, force: true, lockOk: true })) { run.tqLate = false; run.memT = 0; X.after(3.4, () => h?.whisper?.('h.w.tc3', { ear: 'both', priority: 9, force: true, lockOk: true })); X.after(6.6, () => h?.whisper?.('h.w.tc4', { ear: 'both', priority: 9, force: true, lockOk: true })); }
     }
     // 多人:受傷就收起筆記本(世界沒停)
     if (book.isOpen && game.net && p.lastHurt !== book.hurt) book.close(false);
