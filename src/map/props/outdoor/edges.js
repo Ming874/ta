@@ -261,7 +261,9 @@ function hospitalSouth(ctx, P, sd, y, rng, MW) {
   for (let k = 0; k < 4; k++) jersey(ctx, MW + 4.6 + k * 2.1, y, sd.o[1] + 4, 0); // 東街南端的拒馬
 }
 
-export function dressEdges(ctx) {
+export function dressEdges(ctx) { for (const _ of dressEdgesSteps(ctx)) { /* 同步跑完 */ } }
+// [perf] 分段版:每一側之後 yield(載入時分時執行)
+export function* dressEdgesSteps(ctx) {
   initEdges();
   const rng = mkRng(424242), P = new Parts();
   const L = ctx.L, gLi = groundLevel(L), y = L.levels[gLi].y;
@@ -273,7 +275,8 @@ export function dressEdges(ctx) {
     if (type === 'street') sideStreet(ctx, P, sd, y, rng, { cars: hospital && k === 'S' ? 0 : 3, lamps: k === 'S' ? 'mixed' : 'dead' });
     else if (hospital && k === 'W') sideForest(ctx, P, sd, y, rng);
     else sideBacks(ctx, P, sd, y, rng);
+    yield;
   }
-  if (hospital) hospitalSouth(ctx, P, sides.S, y, rng, MW);
+  if (hospital) { hospitalSouth(ctx, P, sides.S, y, rng, MW); yield; }
   put(ctx, P, 0, 0, 0);
 }

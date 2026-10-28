@@ -691,7 +691,13 @@ export class Shop {
     seed = 4242;
     this.B = new Buckets(); // 靜態、常駐
     this.D = new Buckets(); // 靜態、細節
-    this._build();
+    // [perf] opts.steps:建構改成分段(this.steps 是 generator,呼叫端 yield* 跑完;載入時分時執行)
+    const self = this, steps = (function* () { yield* self._buildSteps(); self._finishBuild(scene, opts); })();
+    if (opts.steps) { this.steps = steps; return; }
+    for (const _ of steps) { /* 同步跑完 */ }
+  }
+
+  _finishBuild(scene, opts) {
     this._flushProducts();
     this.B.flush(this.group);
     this.D.flush(this.detail, false);
@@ -708,7 +714,7 @@ export class Shop {
     this.boxes.push(this.world.addBox(cx, cz, sx, sz, h, this.y));
   }
 
-  _build() {
+  *_buildSteps() {
     const M = mats(), R = this.R, B = this.B, D = this.D;
     const back = R.back, ceil = R.ceil;
     const L = Math.min(R.leftB, 6.5), Rt = Math.min(R.rightB, 6.5);
@@ -816,16 +822,21 @@ export class Shop {
     this.group.add(this.neonGlow);
 
     // ===== 捲門(三段) =====
+    yield;
     this._shutters(cases, CW, fasciaY);
 
     // ===== 櫃台後方:武器展示牆、鐵架、層架 =====
-    this._armory(L, Rt, back, ceil, CW);
+    yield;
+    yield* this._armory(L, Rt, back, ceil, CW);
+    yield;
 
     // ===== 櫃台上:收銀機、終端機、小物 =====
     this._counterTop(CW);
 
     // ===== 顧客區:貨架、冰箱、低櫃、冰櫃 =====
+    yield;
     this._floor(R);
+    yield;
 
     // ===== 天花板燈與主光源 =====
     const fl = Math.min(R.leftF, 6), fr = Math.min(R.rightF, 6), front = Math.min(R.front, 6);
@@ -913,7 +924,7 @@ export class Shop {
     }).catch(() => {});
   }
 
-  _armory(L, Rt, back, ceil, CW) {
+  *_armory(L, Rt, back, ceil, CW) {
     const M = mats(), B = this.B, D = this.D;
     const wz = -back + 0.2; // 獨立式槽板架,離牆 20cm(不受牆面裝飾影響)
     const pw = Math.min(5, L + Rt - 1.4), pcx = (Rt - L) / 2;
@@ -948,6 +959,7 @@ export class Shop {
     this.tagSlots = [];
     const washGeo = [];
     for (const r of RACK) {
+      yield;
       const x = pcx + r.x * Math.min(1, pw / 5);
       const gun = gunOnWall(r.id);
       const len = gun ? gun.userData.size.x : r.id === 'barrett' ? 1.45 : r.id === 'shotgun' ? 1.0 : 0.85;
