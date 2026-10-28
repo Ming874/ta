@@ -10,7 +10,7 @@ import { Apparitions, models } from './ghosts.js';
 const rand = (a, b) => a + Math.random() * (b - a);
 const KEEP = new Set(['emergency', 'exit', 'beacon', 'monitor', 'candle', 'fire', 'street', 'nightlight']);
 const GAP = 100; // 兩段回憶之間(遊戲秒)
-const ECHO = 0xe9d3a8, ECHO_SHADE = 0x5d6f6a; // 回音:舊照片的褐色;窗外的人:背光的青灰
+const ECHO = 0xcdb68c, ECHO_SHADE = 0x55665f; // 回音:舊照片的褐色;窗外的人:背光的青灰
 
 export function createMemories(h) {
   const game = h.game;
@@ -109,13 +109,13 @@ export function createMemories(h) {
     return run;
   }
   function spawnEcho(run, c) {
-    const F = run.F, p0 = snap(F, c.at[0], c.at[1], c.out), y = c.out ? (L().levels[Math.max(0, F.li - 1)]?.y ?? F.y) : F.y;
+    const F = run.F, p0 = snap(F, c.at[0], c.at[1], c.out), y = F.y; // 窗外的人也在窗的高度(回憶裡的投影,看得到)
     const path = (c.path || []).map(([u, v]) => snap(F, u, v, c.out));
     if (!models.ready(c.fig)) models.want?.(c.fig);
-    const a = echoes.spawn({ tag: 'echo:' + run.m.id + ':' + c.id, fig: c.fig, pose: c.pose || 'stand', look: c.look || 'pale', alpha: c.alpha ?? 0.5, wob: 0.35,
+    const a = echoes.spawn({ tag: 'echo:' + run.m.id + ':' + c.id, fig: c.fig, pose: c.pose || 'stand', look: c.look || 'pale', alpha: c.alpha ?? 0.42, wob: 0.35,
       x: p0.x, y, z: p0.z, yaw: faceYaw(F, p0, c.face), path, speed: c.speed ?? 1, bob: !!path.length, dur: run.dur + 2, fadeIn: 0.9, anyLevel: true,
       vanish: { flash: false, look: 0, near: 0 } });
-    if (a) { run.echoes[c.id] = a; if (c.face && path.length) a.faceEnd = c.face; }
+    if (a) { run.echoes[c.id] = a; a.alpha0 = a.alpha; if (c.face && path.length) a.faceEnd = c.face; }
   }
   function posOf(run, from) {
     const F = run.F, a = run.echoes[from];
@@ -193,8 +193,12 @@ export function createMemories(h) {
     const run = S.cur;
     if (!run) return;
     run.t += dt;
-    for (const a of Object.values(run.echoes)) if (a?.arrived && a.faceEnd) { a.yaw = faceYaw(run.F, a, a.faceEnd); a.faceEnd = null; } // 走到之後轉向
     const p = P().pos, D = h.director;
+    for (const a of Object.values(run.echoes)) {
+      if (!a || a.out >= 0) continue;
+      if (a.arrived && a.faceEnd) { a.yaw = faceYaw(run.F, a, a.faceEnd); a.faceEnd = null; } // 走到之後轉向
+      const d = Math.hypot(a.x - p.x, a.z - p.z); a.alpha = (a.alpha0 ?? 0.42) * Math.max(0.12, Math.min(1, (d - 0.5) / 1.1)); // 走進人影裡:它變淡,不擋臉
+    }
     const far = Math.hypot(p.x - run.F.x, p.z - run.F.z) > (run.m.r || 5.5) + 7 || Math.abs(p.y - run.F.y) > 2.5;
     if (far) return end(run, 'away');
     if (!D.silent || D.chasing) return end(run, 'wave');
@@ -224,5 +228,6 @@ export function createMemories(h) {
     if (!o.force && !canStart()) return null;
     return start(m, o) ? m.id : null;
   }
-  return { tick, update, reset, play, end: () => S.cur && end(S.cur, 'force'), state: S, echoes, list: MEMORIES, warmList: () => [echoes.slots[0].pale, echoes.slots[0].shade] };
+  const where = (id) => { const m = MEMORIES.find((q) => q.id === id); return m ? placeOf(m) : null; };
+  return { tick, update, reset, play, where, end: () => S.cur && end(S.cur, 'force'), state: S, echoes, list: MEMORIES, warmList: () => [echoes.slots[0].pale, echoes.slots[0].shade] };
 }
