@@ -387,10 +387,20 @@ function dressSarsZone(R, zone, LY, lv, th) {
   // ---- 走廊:告示、門口的封鎖膠帶(2F 病房區 = 隔離病房)、污染區/清潔區地標、拆一半的塑膠布、口罩手套 ----
   if (th === 'corridor') {
     const wardWing = lv === '2F';
+    // 2F 北翼病房門(封院時的隔離病房):門旁牆上(走廊側、門牌上方)貼「隔離病房」牌;告示避開這些位置
+    const CELL = LY.CELL || 2, wardDoors = [];
+    if (wardWing) for (const d of R.doors) { const o = LY.zoneAt(R.li, d.c - d.nx, d.r - d.nz); if (o && o.theme === 'ward') wardDoors.push(d); }
+    const nearWardDoor = (run, t) => wardDoors.some((d) => d.nx === run.nx && d.nz === run.nz && Math.abs((run.horiz ? d.x : d.z) - t) < CELL / 2 + 1.3);
+    for (const d of wardDoors) {
+      const horiz = d.nx === 0, tc = horiz ? d.x : d.z, plane = horiz ? d.z + d.nz * CELL / 2 : d.x + d.nx * CELL / 2;
+      if (wardDoors.some((e) => e !== d && e.nx === d.nx && e.nz === d.nz && Math.abs((horiz ? e.x : e.z) - tc - CELL) < 0.01)) continue; // 雙門只貼一次(貼在 + 側那扇)
+      const run = R.walls.find((r) => r.nx === d.nx && r.nz === d.nz && Math.abs(r.plane - plane) < 0.01 && r.t0 <= tc + CELL / 2 + 0.3 && r.t1 >= tc + CELL / 2 + 0.75);
+      if (run && !R.isWindow(run, tc + CELL / 2 + 0.2, tc + CELL / 2 + 0.7)) R.atWall(posterSheet(isoPlate(), 0.36, 0.135), run, tc + CELL / 2 + 0.45, { mount: 1.74 });
+    }
     for (const run of R.walls) {
       if (run.len < 2.4) continue;
       for (let t = run.t0 + R.rand(0.8, 3); t < run.t1 - 0.6; t += R.rand(6, 12)) {
-        if (R.isWindow(run, t - 0.4, t + 0.4)) continue;
+        if (R.isWindow(run, t - 0.4, t + 0.4) || nearWardDoor(run, t)) continue;
         const k = R.rng();
         if (k < 0.3) R.atWall(sarsBoard(R.rng.int(0, 2)), run, t, { mount: 1.15 });
         else R.atWall(posterSheet(sarsSheet(R.pick(wardWing ? ['mask', 'ppe', 'family', 'sars'] : ['temp', 'mask', 'sars', 'lock'])), 0.3, 0.42, { curl: R.rand(0, 0.1) }), run, t, { mount: R.rand(1.3, 1.45) });
