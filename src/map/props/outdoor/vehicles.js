@@ -784,7 +784,7 @@ export function placeVehicle(ctx, o, kind, extra = {}) {
     // 分三段(與車身外形一致,子彈能從引擎蓋/後車廂上方飛過):車頭到引擎蓋高度(引擎擋子彈)、車廂到車頂(車門鈑金可穿)、後車廂
     const len = along ? Math.min(ex, o.sx + 0.3) : Math.min(ez, o.sz + 0.3), wid = along ? Math.min(ez, o.sz + 0.3) : Math.min(ex, o.sx + 0.3);
     const fs = (along ? Math.cos(yaw) : -Math.sin(yaw)) >= 0 ? 1 : -1, h2 = len / 2, gh = S.gh;
-    const xf = Math.min(h2, (gh.cowl[0] + gh.ws[0]) / 2), xr = Math.max(-h2, gh.flatRear ? S.cab[1] : (gh.deck[0] + gh.rr[0]) / 2);
+    const xf = Math.min(h2, gh.cowl[0] - 0.15 * (gh.cowl[0] - gh.ws[0])), xr = Math.max(-h2, gh.flatRear ? S.cab[1] : (gh.deck[0] + gh.rr[0]) / 2); // 引擎蓋到擋風玻璃底(陡的擋風玻璃不算進引擎蓋)
     const seg = (a, b, hgt, mat) => {
       if (b - a < 0.05) return;
       const m = (a + b) / 2 * fs, cx = root.position.x + (along ? m : 0), cz = root.position.z + (along ? 0 : m);
