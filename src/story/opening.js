@@ -70,6 +70,12 @@ export function installOpening(game, S) {
 
   function onSilence() {
     run.quiet++;
+    // 第 4 次靜默:如果還沒有任何「關於你是誰」的小時刻(球、鏡子、床母…),阿嬤自己說一句(依附要在高潮之前就建立)
+    if (run.quiet === 4 && !run.small) {
+      run.small = true;
+      const h = H(), seen = (h?.seenLog || []).some((e) => e.tag === 'self') || D()?.has?.('hc.32');
+      if (!seen) X.after(17, () => { if (game.phase !== 'fighting' && game.state === 'playing' && !game.story?.busy?.()) line(game, 'ama', '阿孫細漢的時，上愛佇護理站等阿嬤落班。', { ear: 'left' }); });
+    }
     if (run.quiet !== 1 || run.firstBreak) return;
     run.firstBreak = true;
     run.open?.stop?.();
