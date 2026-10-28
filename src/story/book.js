@@ -2,7 +2,7 @@ import './book.css';
 import { QUESTION, WORDS, CATS, THROW } from './clues.js';
 import { sfx, ix as ixs } from '../audio.js';
 
-// 推理本畫面(J):左頁是題目與填空句,右頁是詞庫/線索卡。
+// 筆記本畫面(J):左頁是題目與填空句,右頁是詞庫/線索卡。
 // 打開時放開滑鼠鎖定(要用滑鼠點/拖曳);單人世界暫停;多人世界不停(本機玩家不能動,受傷自動收起)。
 // [J] / [E] 收起(重新鎖定滑鼠);[Esc] 收起並叫出暫停選單;[1]~[7] 選空格;右鍵清除空格。
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);

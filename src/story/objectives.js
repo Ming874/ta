@@ -5,7 +5,7 @@
 //   game.objectives.steps()           → [{ id, act, text, done, cur }]
 //   game.objectives.done(id)          → 這一步完成了沒
 //   game.objectives.flag(name, v)     → 設劇情旗標(房主同步給全隊;回憶、事件用)
-//   game.objectives.has(name)         → 劇情旗標 / 已完成的步驟 / 推理本的卡 / 互動旗標,任一個有就是 true
+//   game.objectives.has(name)         → 劇情旗標 / 已完成的步驟 / 筆記本的卡 / 互動旗標,任一個有就是 true
 //   game.objectives.clue(id, o)       → 收線索卡(= game.deduce.addCard)
 //   game.objectives.on(ev, fn)        → 'step'(換步驟)| 'done'(某步完成)| 'flag' | 'hint'
 //   game.objectives.hint(tier)        → 立刻給目前步驟的提示(測試用)
@@ -14,7 +14,7 @@
 // - 一步一步來:目前的步驟沒完成,後面的劇情台詞、來電與區域都不會開(條件寫在 STEPS 的 cond / onDone)。
 // - 區域:packs/hospital.js 的 lock(門鎖;導航繞過鎖著的門)用旗標打開:h.area.morgue(太平間)、h.area.3f(三樓)、
 //   h.207.unlock(207)、門禁卡(監控室)。每一局重新鎖上(doors.reset)。
-// - 提示:卡在同一步太久 → 小鈴在收音機裡提一下 → 阿嬤在耳邊說得更清楚(靜默期,先哼〈望春風〉)→ 東西閃一下。簡單難度提早。
+// - 提示:卡在同一步太久 → 小美在收音機裡提一下 → 阿嬤在耳邊說得更清楚(靜默期,先哼〈望春風〉)→ 東西閃一下。簡單難度提早。
 // - 多人:房主說了算。每位玩家在本機判斷「目前這一步」的條件,滿足了就送 'objq' 給房主;房主完成這一步、
 //   設好共用旗標,再把整份狀態('objs')廣播給全隊(中途加入的人會先要一份)。目標進度只在這一局有效(每一夜重來)。
 import { sfx, ix as ixs } from '../audio.js';
@@ -29,7 +29,7 @@ import { installMoments } from './moments.js';
 import { voiceLock } from './voice.js';
 import * as THREE from 'three';
 
-// 提示的時間(秒,卡在同一步多久):小鈴 / 阿嬤 / 閃一下
+// 提示的時間(秒,卡在同一步多久):小美 / 阿嬤 / 閃一下
 const HINT_T = { easy: [40, 80, 120], normal: [90, 170, 250], hard: [150, 300, 420] };
 const XL = '收音機 · 小美', KS = '對講機 · 金水伯';
 const ZH = (text) => ({ id: null, text, ghost: 'zheng', ear: 'both' });
@@ -38,7 +38,7 @@ const ZH = (text) => ({ id: null, text, ghost: 'zheng', ear: 'both' });
 const STEPS = [
   { id: 'h.s.shop', act: 1, text: '找到金水伯的店（一樓）', why: '休息時可以買槍和藥', cond: (c) => c.zone === 'f1_store', skip: (c) => c.g.round >= 3, // 第 3 波以後不擋路
     hints: { xl: '金水伯的店在一樓。\n有在放〈少女的祈禱〉那間。', ama: '金水的店……在這邊。', glint: (c) => c.g.shop?.pos } },
-  { id: 'h.s.cyc1', act: 1, text: '撐過前兩波', why: '招魂燈把活屍叫過來了', cond: (c) => c.g.round > 2 || (c.g.round === 2 && c.g.phase !== 'fighting') }, // 阿嬤的第一句在 opening.js(第一次燈篙熄,一定會有)
+  { id: 'h.s.cyc1', act: 1, text: '撐過前兩波', why: '招魂燈把活屍叫過來了', cond: (c) => c.g.round > 2 || (c.g.round === 2 && c.g.phase !== 'fighting') }, // 阿嬤的第一句在 opening.js(第一次招魂燈熄,一定會有)
   { id: 'h.s.find207', act: 2, text: '找到 207 號房（二樓北邊）', why: '阿嬤叫你來看那盞燈', onStart: (c) => c.later(7, () => { if (c.O.step() === 'h.s.find207' && !c.g.story?.ending?.active) c.talk([[XL, '……金水伯問的那盞燈。', 2.4], [XL, '二樓北邊。我看得到那扇窗是亮的。', 3.2]]); }), cond: (c) => { const w = c.door207(); return !!w && c.near(w.cx, w.y, w.cz, 3.2); },
     onDone: (c) => { c.O.flag('h.where207'); if (c.g.story?.moments?.m3) c.g.story.moments.m3(); else c.later(2, () => c.talk([[XL, '那扇門……玻璃後面的燈是亮的。', 2.6], [XL, '先看門邊那台機器寫什麼。', 3.2]])); }, // M3:門後的聲音
     hints: { xl: '207 在二樓。北邊那一排病房，你自己數。', ama: '207……阿嬤在那裡等你。', glint: (c) => { const w = c.door207(); return w ? { x: w.cx, y: w.y + 1.4, z: w.cz } : null; } } },
@@ -68,7 +68,7 @@ const STEPS = [
   { id: 'h.s.enter', act: 4, text: '進 207', why: '阿嬤在枕頭裡留了東西給你', cond: (c) => c.D.has('hc.30') || (c.zone === 'f2_ward_207' && (c.run.in207 = (c.run.in207 || 0) + 0.25) > 1.5),
     onDone: (c) => c.page(),
     hints: { xl: '頭七那天的腳印……停在床邊。', ama: '枕頭……阿嬤放在枕頭裡。', glint: (c) => c.at('h.ix.pillow') } },
-  { id: 'h.s.wait', act: 5, text: '等金水伯的車', why: '他要來接你離開', onStart: (c) => c.later(2.5, () => { if (c.O.step() === 'h.s.wait' && !c.g.story?.busy?.()) c.talk([[XL, '金水伯的車要來了。', 2.2], [XL, '他會用對講機叫你。', 2.2]]); }), cond: (c) => c.O.has('h.truck') }, // 何董的電話(如果有)在這裡響;金水伯「車來囉」之後才往下
+  { id: 'h.s.wait', act: 5, text: '等金水伯的車', why: '他要來接你離開', onStart: (c) => c.later(2.5, () => { if (c.O.step() === 'h.s.wait' && !c.g.story?.busy?.()) c.talk([[XL, '金水伯的車要來了。', 2.2], [XL, '他會用對講機叫你。', 2.2]]); }), cond: (c) => c.O.has('h.truck') }, // 王醫師的電話(如果有)在這裡響;金水伯「車來囉」之後才往下
   { id: 'h.s.bay', act: 5, text: '到一樓急診車道', why: '金水伯的車在那裡', cond: (c) => c.zone === 'f1_ambulance',
     hints: { xl: '金水伯的車在急診車道，倒車燈亮著。快。' } },
   { id: 'h.s.hold', act: 5, text: '在車旁撐 60 秒', why: '金水伯在倒車，等你上車', prog: (c) => Math.min(60, Math.floor(c.run.holdT)), m: 60,
@@ -118,7 +118,7 @@ export function installObjectives(game) {
     ama(text, force) {
       const h = H();
       if (!h) return false;
-      if (!force && !h.director?.silent) return false; // 鬼只在燈篙熄的時候說話
+      if (!force && !h.director?.silent) return false; // 鬼只在招魂燈熄的時候說話
       try { sfx.folk('ama', game.player.pos); } catch { /* 還沒烘焙好 */ }
       later(1.6, () => h.whisper?.(ZH(text), { priority: 8, force: true }));
       return true;
@@ -138,8 +138,8 @@ export function installObjectives(game) {
       X()?.tick?.((dt) => {
         if (run.evac || game.state !== 'playing') return false;
         out = c.zone === 'f2_ward_207' ? 0 : out + dt;
-        const ho = game.story?.climax?.run, hoBusy = !!ho && !!O.has('h.boss10') && (!ho.hoRang || ho.hoState === 'ringing' || ho.hoState === 'talk') && game.time - t0 < 300; // 何董的電話先講完(他在守燈員倒下之後的第一次靜默打來;找不到電話就不等)
-        if (!hoBusy && (D()?.has?.('hc.30') || out > 4 || game.time - t0 > 30)) { later(ho?.hoRang ? 9.5 : D()?.has?.('hc.30') ? 5 : 1.5, go); return false; } // 電話之後讓小鈴先說完
+        const ho = game.story?.climax?.run, hoBusy = !!ho && !!O.has('h.boss10') && (!ho.hoRang || ho.hoState === 'ringing' || ho.hoState === 'talk') && game.time - t0 < 300; // 王醫師的電話先講完(他在看守 207 的保全倒下之後的第一次靜默打來;找不到電話就不等)
+        if (!hoBusy && (D()?.has?.('hc.30') || out > 4 || game.time - t0 > 30)) { later(ho?.hoRang ? 9.5 : D()?.has?.('hc.30') ? 5 : 1.5, go); return false; } // 電話之後讓小美先說完
         return true;
       });
     },
@@ -217,7 +217,7 @@ export function installObjectives(game) {
     }
     return false;
   }
-  // 推理本的提示:還有空格 → 哪一類的詞還缺、哪張卡會有;填錯了 → 哪一格不對、該重看哪一張卡;最後在推理本上把那一格圈起來
+  // 筆記本的提示:還有空格 → 哪一類的詞還缺、哪張卡會有;填錯了 → 哪一格不對、該重看哪一張卡;最後在筆記本上把那一格圈起來
   function deduceHint(kind, tier, s) {
     const Dd = D(); if (!Dd) return false;
     const st = Dd.state(), B = QUESTION.blanks, keys = Object.keys(B);
@@ -263,7 +263,7 @@ export function installObjectives(game) {
       if (run.glintT > 0) run.glintT -= dt;
       if (acc < 0.25) return true;
       const step = acc; acc = 0;
-      // 門禁卡:燈篙亮到最大的那一次(第 5 次)撐過去,夜班組長倒下的地方有一張卡(每位玩家各自撿;第 5 次以後的靜默才會是非戰鬥相位)
+      // 門禁卡:招魂燈亮到最大的那一次(第 5 次)撐過去,夜班組長倒下的地方有一張卡(每位玩家各自撿;第 5 次以後的靜默才會是非戰鬥相位)
       if (game.round >= 5 && game.phase !== 'fighting' && !X0.inv.has('card.security') && !run.card) {
         run.card = true; X0.inv.add('card.security'); game.ui?.pickup?.('門禁卡', '#e8d9a8', { sub: '夜班組長倒下的地方，掉著一張卡' }); sfx.pickupItem?.();
       }
@@ -282,7 +282,7 @@ export function installObjectives(game) {
         run.stuck += step;
         const T = HINT_T[diff()] || HINT_T.normal;
         const want = run.stuck >= T[2] ? 3 : run.stuck >= T[1] ? 2 : run.stuck >= T[0] ? 1 : 0;
-        // 卡住的時間一直算,可是只在聽得進去的時候說(燈篙熄、或附近 22 m 沒有活的殭屍)
+        // 卡住的時間一直算,可是只在聽得進去的時候說(招魂燈熄、或附近 22 m 沒有活的殭屍)
         const calm = game.phase !== 'fighting' || !game.zombies.some((z) => z.alive && (z.dist ?? 99) < 22);
         if (want > run.tier && calm) { if (giveHint(s, want) === false && want === 2) run.tier = 2; }
         if (run.tier >= 3 && run.glintT <= 0 && run.stuck - T[2] > 45) { run.stuck = T[2]; giveHint(s, 3); } // 還是卡著:每 45 秒再閃一次

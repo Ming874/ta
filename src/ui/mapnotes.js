@@ -37,7 +37,7 @@ export function storyNotes(x, L, li) {
     const at = tally(x, ...P(5.4, 1.65), 14, 23, 92);
     const [tx, ty] = at(6);
     arrow(x, wob(tx + 2, ty + 34, tx, ty + 7, 1.5, 9), { ...red, w: 1.4, head: 7, seed: 12 });
-    hand(x, '第七暝', tx + 6, ty + 48, 21, INK.oldRed, { seed: 77, rot: 0.04, alpha: 0.85 });
+    hand(x, '第七晚', tx + 6, ty + 48, 21, INK.oldRed, { seed: 77, rot: 0.04, alpha: 0.85 });
   } else if (id === '1F') {
     // 禮拜堂西端的廣播室:打叉,「不要相信廣播」(和她封院第 6 天寫在大廳柱子上的同一句)
     stroke(x, wob(9.2 * PX, 29.25 * PX, 11.8 * PX, 32.7 * PX, 1.5, 5), { ...red, w: 2, seed: 5 });

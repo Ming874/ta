@@ -52,7 +52,7 @@ export function sarsSheet(kind) {
       c.fillStyle = '#9cc8d8'; c.beginPath(); c.moveTo(46, 96); c.quadraticCurveTo(w / 2, 70, w - 46, 96); c.lineTo(w - 50, 150); c.quadraticCurveTo(w / 2, 172, 50, 150); c.closePath(); c.fill();
       c.strokeStyle = '#5a8a9a'; c.lineWidth = 2; for (let i = 0; i < 3; i++) { c.beginPath(); c.moveTo(52, 112 + i * 13); c.lineTo(w - 52, 112 + i * 13); c.stroke(); }
       c.strokeStyle = '#ddd'; c.lineWidth = 3; c.beginPath(); c.arc(44, 122, 18, 1.3, 4.9); c.stroke(); c.beginPath(); c.arc(w - 44, 122, 18, -1.8, 1.8); c.stroke();
-      lines(['N95 口罩', '每人每日限領一個', '領取請至護理站登記'], 196, 22, { size: 15 });
+      lines(['N95 口罩', '每人每日限領一個', '領取請到護理站登記'], 196, 22, { size: 15 });
     } else if (kind === 'ppe') {
       c.fillStyle = '#c87a1a'; c.fillRect(0, 0, w, 42);
       text(c, '穿戴防護裝備順序', w / 2, 22, { size: 19, color: '#fff' });

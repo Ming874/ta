@@ -2,7 +2,7 @@
 // 褐色的回音人影照著當年演一次(10~25 秒),字幕是他們說的話;然後回到 2026:同一個地方,已經破敗。
 // 規則:只在靜默期(不在誘集、追逐、大場面裡);導演控節奏(兩段之間至少 100 秒、與驚嚇之間 12 秒);每段一局一次;
 //       玩家一直可以動(走開 = 跳過;沒看到 60% 不算看過,之後還會再來);燈只改強度;調色是 post 的 uniform(game.post.uniforms.past)。
-// 資料在 memdata.js;每段給一張推理本的卡(game.deduce?.addCard / game.objectives?.clue),並記進 h.remember('mem.<id>')。
+// 資料在 memdata.js;每段給一張筆記本的卡(game.deduce?.addCard / game.objectives?.clue),並記進 h.remember('mem.<id>')。
 import { sfx, ghost } from '../audio.js';
 import { MEMORIES } from './memdata.js';
 import { Apparitions, models } from './ghosts.js';
@@ -144,7 +144,7 @@ export function createMemories(h) {
     }
     if (b.say) {
       const pa = b.from === 'pa', ph = b.from === 'phone';
-      h.whispers.say(b.say, { priority: 9, force: true, filter: pa ? 'pa' : ph ? 'phone' : null, pos: pa || ph ? undefined : posOf(run, b.from), tag: pa ? '院內廣播 · 2003' : b.who || '', style: 'past', mode: 'syllabic' });
+      h.whispers.say(b.say, { priority: 9, force: true, filter: pa ? 'pa' : ph ? 'phone' : null, pos: pa || ph ? undefined : posOf(run, b.from), tag: pa ? '醫院廣播 · 2003' : b.who || '', style: 'past', mode: 'syllabic' });
     }
   }
   function giveCard(run) {

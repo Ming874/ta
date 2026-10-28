@@ -3,9 +3,9 @@
 //   game.story.ending.play(variant?, { fast })  開始(預設由 objectives 的 h.s.hold 完成時呼叫;variant 省略 = 依這一局決定)
 //   game.story.ending.decide() → 'secret' | 'good' | 'dark' | 'normal'     game.story.ending.active / .state()
 //
-// 一、最後一次燈篙熄 → 黑 → 「發財車沒有開出去。它繞到後巷，停在鐵網旁邊。」→ 你站在 2003 年家人看窗的鐵網前(anchors.alleyView)
-// 二、金水伯;三、紙條(有 hc.09:〔E〕交給金水伯);四、那一頁(有 hc.30:〔E〕打開);五、小鈴陪你數到十,天一聲一聲亮起來,阿嬤在「十」加進來;
-// 六、金水伯把三個守燈的人連起來;七、窗(好/秘密:燈暗一下又亮回來 → 小鈴「我自己去關」;苦:窗是黑的);八、207 的清晨(好/秘密);
+// 一、最後一次招魂燈熄 → 黑 → 「發財車沒有開出去。它繞到後巷，停在鐵網旁邊。」→ 你站在 2003 年家人看窗的鐵網前(anchors.alleyView)
+// 二、金水伯;三、紙條(有 hc.09:〔E〕交給金水伯);四、那一頁(有 hc.30:〔E〕打開);五、小美陪你數到十,天一聲一聲亮起來,阿嬤在「十」加進來;
+// 六、金水伯把三個守燈的人連起來;七、窗(好/秘密:燈暗一下又亮回來 → 小美「我自己去關」;苦:窗是黑的);八、207 的清晨(好/秘密);
 // 九、照片的背面、標題、片尾(致敬那一行)→〔回到主選單〕〔繼續守夜〕。
 // 規則:一直可以轉頭看(槍放下了);每一個〔E〕都有時間退路;Esc 照樣暫停(劇本用遊戲時間,暫停就停);按住空白鍵略過。
 // 多人:每個人看自己的結局(本機的推理結果);不移動玩家、不清怪(房主照常推進),只放字幕、那一頁與片尾。
@@ -152,7 +152,7 @@ export function installEnding(game, S) {
     X.tick(() => { const t = game.time - t0, k = t < 0.5 ? 1 - t / 0.5 : t < 1.7 ? 0 : t < 2.4 ? (t - 1.7) / 0.7 : 1, v = 0.04 + 0.96 * k; for (const f of F) { if ('gate' in f) f.gate = v; else f.ov = v; } return t < 2.5; }); // gate:場景代理給的乘數(配電盤不會蓋掉)
     return true;
   }
-  // 結束這一夜:停波、清掉回來的人(黑畫面裡做,不給錢)、收槍
+  // 結束這一夜:停波、清掉活屍(黑畫面裡做,不給錢)、收槍
   function endNight() {
     const g = game;
     if (g.net) return; // 多人:房主照常推進
@@ -178,7 +178,7 @@ export function installEnding(game, S) {
     // 按住空白鍵略過
     X.tick(() => { if (!run || run.done) return false; const sk = q('.st-skip i'); const held = run.spaceT ? (performance.now() - run.spaceT) / 1200 : 0; sk.style.width = Math.min(1, held) * 60 + 'px'; if (held >= 1 && !run.skip) { run.skip = true; skipMotion(); } if (game.input) game.input.fireHeld = false; return true; });
     try {
-      // 一、最後一次燈篙熄
+      // 一、最後一次招魂燈熄
       run.beat = 'night';
       document.body.classList.add('st-ending');
       if (game.weaponScene) game.weaponScene.visible = false;
@@ -188,7 +188,7 @@ export function installEnding(game, S) {
       if (solo) { place(pose207()); try { W()?.anchors?.truck?.mesh && (W().anchors.truck.mesh.visible = true); } catch { /* 略 */ } }
       try { game.setMood?.('shop'); } catch { /* 略 */ }
       dawn(0);
-      await mid(solo ? ['最後一次，招魂燈熄了。', '發財車沒有開出去。它繞到後巷，停在鐵網旁邊。'] : ['最後一次燈篙熄了。'], 1.6);
+      await mid(solo ? ['最後一次，招魂燈熄了。', '發財車沒有開出去。它繞到後巷，停在鐵網旁邊。'] : ['最後一次招魂燈熄了。'], 1.6);
       bars(true);
       await black(false, 2600);
       // 二、金水伯
@@ -293,7 +293,7 @@ export function installEnding(game, S) {
     return true;
   }
 
-  // 多人的結局(短版,約 40 秒,剛好一次休息):等燈篙熄 → 金水伯 → 那一頁 → 小鈴 → 數到十(快) → 標題橫幅。HUD 與槍都在。
+  // 多人的結局(短版,約 40 秒,剛好一次休息):等招魂燈熄 → 金水伯 → 那一頁 → 小美 → 數到十(快) → 標題橫幅。HUD 與槍都在。
   async function coop(v, d) {
     run.beat = 'wait';
     while (!run.skip && game.state === 'playing' && game.phase === 'fighting') await w(1);
@@ -389,7 +389,7 @@ export function installEnding(game, S) {
     game.bookOpen = false;
     const restore = () => { q('.st-black').classList.remove('on'); try { M()?.veil?.(0, 600); } catch { /* 略 */ } };
     if (a === 'menu') { restore(); game.quitToMenu?.(); return; }
-    // 繼續守夜:天亮了,金水伯的店又開了;下一次燈篙照常
+    // 繼續守夜:天亮了,金水伯的店又開了;下一次招魂燈照常
     restore();
     if (game.weaponScene) game.weaponScene.visible = true;
     if (run.flash && !game.player.flashOn) { try { game.player.toggleFlashlight(); } catch { /* 略 */ } }

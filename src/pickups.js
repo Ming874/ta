@@ -347,7 +347,7 @@ function shared() {
     plastic: std({ color: 0x2a2c2e, roughness: 0.55 }),
     stencilS: decalMat(stencilTex([['CTG 5.56MM M855', 54, 0.27], ['840 RDS  BALL', 46, 0.53], ['LOT  LC-24K113-007', 30, 0.78]], '#d6c15a'), 0x6a5a20),
     stencilB: decalMat(stencilTex([['AMMUNITION', 66, 0.25], ['7.62MM · 5.56MM · 9MM', 36, 0.52], ['彈藥補給  M2A1', 34, 0.77]], '#dccb6a'), 0x6a5a20),
-    label: decalMat(stencilTex([['回神® 居家急救包', 46, 0.3], ['FIRST AID KIT', 60, 0.7]], '#a8121a', { bridges: false, wear: 0.35 }), 0x400004), // 正典:回神居家急救包
+    label: decalMat(stencilTex([['大新® 居家急救包', 46, 0.3], ['FIRST AID KIT', 60, 0.7]], '#a8121a', { bridges: false, wear: 0.35 }), 0x400004), // 正典:回神居家急救包
   };
   R.tex = { ring: ringTex(), beam: beamTex(), glow: glowTex() };
   R.geo = {
@@ -915,7 +915,7 @@ function supplyMats() {
     glass: std({ color: 0xcfe3e8, roughness: 0.05, transparent: true, opacity: 0.2, depthWrite: false }),
     inside: std({ color: 0x1a1d1c, roughness: 0.9 }),
     ammoPlate: std({ map: stencilPlate([['彈藥 AMMO', 92, 0.42], ['每一波每人一次', 34, 0.82]], '#d6c15a'), transparent: true, depthWrite: false, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2 }),
-    medPlate: std({ map: stencilPlate([['醫療 MEDICAL', 84, 0.42], ['每次燈篙每人一次', 34, 0.82]], '#b3121a'), transparent: true, depthWrite: false, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2 }),
+    medPlate: std({ map: stencilPlate([['醫療 MEDICAL', 84, 0.42], ['每一波每人一次', 34, 0.82]], '#b3121a'), transparent: true, depthWrite: false, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2 }),
   };
   return SM;
 }

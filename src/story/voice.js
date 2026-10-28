@@ -1,5 +1,5 @@
 // 劇情的說話與排程(開場、高潮、結局共用)。
-//   line(game, who, text, o) → 秒數:一句台詞(小鈴/金水伯/廣播/電話走互動系統的 speak;阿嬤走靈異系統的耳語)
+//   line(game, who, text, o) → 秒數:一句台詞(小美/金水伯/廣播/電話走互動系統的 speak;阿嬤走靈異系統的耳語)
 //   seq(game, lines, o) → Promise:依序播 [who, text, secs?, o?],每句之間留 gap 秒;stop() 中止
 //   wait(game, secs) → Promise:遊戲時間(暫停時不走)
 // who:'xl' 小美(收音機)| 'ks' 金水伯(對講機)| 'pa' 醫院廣播 | 'ho' 王醫師(電話)| 'ama' 阿嬤(鬼;只在招魂燈熄時)| 'n' 旁白(沒有聲音的字)

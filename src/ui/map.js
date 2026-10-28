@@ -72,7 +72,7 @@ export class MapUI {
     this._layout(g);
     const steps = [
       () => { if (!this.sheet) this._makeSheet(); },
-      () => { const c = canvas(8, 8).getContext('2d'); for (const f of ['"DFKai-SB", "BiauKai", "標楷體", "KaiTi", serif', '"Noto Serif TC", "Source Han Serif TC", "PMingLiU", serif', '"Microsoft JhengHei", sans-serif', '"Bahnschrift", sans-serif']) { c.font = `700 14px ${f}`; c.fillText('聖心醫院避難逃生路線圖燈不能熄第七暝', 0, 8); } },
+      () => { const c = canvas(8, 8).getContext('2d'); for (const f of ['"DFKai-SB", "BiauKai", "標楷體", "KaiTi", serif', '"Noto Serif TC", "Source Han Serif TC", "PMingLiU", serif', '"Microsoft JhengHei", sans-serif', '"Bahnschrift", sans-serif']) { c.font = `700 14px ${f}`; c.fillText('聖心醫院避難逃生路線圖燈不能熄第七晚', 0, 8); } },
       () => this._floor(this.L.start?.level ?? 0),
       () => { this.li = this.L.start?.level ?? 0; this.game = g; this._compose(); this.comp = null; }, // 第一次合成(字型、濾鏡、圖樣初始化)
       ...this.L.levels.map((l) => () => this._floor(l.index)),

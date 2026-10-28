@@ -1,14 +1,14 @@
-// 第四幕的高潮(STORY_v2 §4.6 頭七、§4.7 第 10 波破門、§2.5 何董;EXPERIENCE_PLAN §3.2–3.3):
+// 第四幕的高潮(STORY_v2 §4.6 頭七、§4.7 第 10 波破門、§2.5 王醫師;EXPERIENCE_PLAN §3.2–3.3):
 //
 //   207 有兩道鎖:
-//     電子鎖(萬嵐 2024 年裝的):監控室鍵盤 0924 或在遺照前擲出聖筊 → 旗標 h.207.elock
+//     電子鎖(大新 2024 年裝的):監控室鍵盤 0924 或在遺照前擲出聖筊 → 旗標 h.207.elock
 //     門內的舊旋鈕(阿嬤 2003/5/5 23:55 自己反鎖的):頭七那一夜她回來,替你轉開 → 旗標 h.207.knob
 //   兩道都開了 → h.207.unlock(門的鎖照這個旗標打開)→ 門自己推開一條縫。
-//   門一開 → 院內警報「207 門禁警戒」→ 第 10 次燈篙「207 守燈員」(還沒到第 10 次就直接跳過去;單人時人數照下一波,不會一下子暴增)。
-//   守燈員倒下 → 〈守燈日誌〉(hc.29)→ 下一次燈篙熄,離你最近的電話響:何董(hc.20)。
-//     選擇:不接 / 聽完(他的條件:「那一頁,留在 207。」)/ 中途掛斷(小鈴在你左耳:「掛掉。拜託,掛掉。」)。結局會記得。
+//   門一開 → 院內警報「207 門禁警戒」→ 第 10 次招魂燈「207 看守 207 的保全」(還沒到第 10 次就直接跳過去;單人時人數照下一波,不會一下子暴增)。
+//   看守 207 的保全倒下 → 〈守燈日誌〉(hc.29)→ 下一次招魂燈熄,離你最近的電話響:王醫師(hc.20)。
+//     選擇:不接 / 聽完(他的條件:「那一頁,留在 207。」)/ 中途掛斷(小美在你左耳:「掛掉。拜託,掛掉。」)。結局會記得。
 //   頭七保證:第 7 次靜默,幻影出不來(玩家不在室內、找不到位置)也照樣發生(哼聲 + 兩句 + 遺照前補播)。
-// 多人:旗標都走 game.objectives.flag(房主說了算、同步給全隊);守燈員那一波只有房主開;頭七與電話是本機的。
+// 多人:旗標都走 game.objectives.flag(房主說了算、同步給全隊);看守 207 的保全那一波只有房主開;頭七與電話是本機的。
 import { seq, line, wait } from './voice.js';
 import { waveRoster } from '../game/waves.js';
 import { sfx, ix as ixs, ghost } from '../audio.js';
@@ -58,7 +58,7 @@ export function installClimax(game, S) {
     if (!has('h.207.elock')) X.after(3, () => seq(game, [['xl', '……那一聲，是 207？\n鎖是從裡面開的。\n外面的電子鎖還鎖著。', undefined, {}]]));
   }
 
-  // ---------- 207 打開 → 警報 → 守燈員 ----------
+  // ---------- 207 打開 → 警報 → 看守 207 的保全 ----------
   function tryUnlock() {
     if (has('h.207.unlock') || !has('h.207.elock') || !has('h.207.knob')) return;
     if (!isHost()) return; // 房主開(旗標會同步)
@@ -92,7 +92,7 @@ export function installClimax(game, S) {
     run.wave = N; run.alarmPend = false;
     try { if (game.shopUIOpen) game.closeShop?.(); } catch { /* 略 */ }
     game.startRound(N);
-    if (!game.net && N > r0 + 2) { // 單人:直接跳到第 10 次,但人數照「下兩波」(不會一下子暴增);守燈員一定在
+    if (!game.net && N > r0 + 2) { // 單人:直接跳到第 10 次,但人數照「下兩波」(不會一下子暴增);看守 207 的保全一定在
       const q = waveRoster(Math.min(N, r0 + 2)).filter((t) => t !== 'brute');
       q.splice(Math.floor(q.length * 0.4), 0, 'brute');
       game.queue = q; game.toSpawn = q.length;
@@ -109,7 +109,7 @@ export function installClimax(game, S) {
     X.after(1.2, () => { D()?.addCard?.('hc.29', { by: 'boss' }); game.ui?.pickup?.('保全的值班紀錄', '#e8d9a8', { sub: '保全倒下的地方，掉著一本紀錄' }); });
   }
 
-  // ---------- 何董的電話 ----------
+  // ---------- 王醫師的電話 ----------
   function ringHo(force) {
     if (run.hoRang && !force) return false;
     const list = (X.phones || []).filter((P) => P.state === 'idle');
@@ -144,14 +144,14 @@ export function installClimax(game, S) {
     if (acc < 0.25) return true;
     const step = acc; acc = 0;
     const h = H(), Dr = h?.director, silent = game.phase !== 'fighting';
-    // 頭七之前:小鈴先感覺到(在二樓:叫你站著;不在二樓:叫你上去)
+    // 頭七之前:小美先感覺到(在二樓:叫你站著;不在二樓:叫你上去)
     if (!run.lead && h && h.quiet >= 7 && Dr?.silent && !run.touqi && (Dr.roundT || 0) > 2.5) { run.lead = true; const on2 = /^f2_/.test(game.hospital?.zone?.id || ''); seq(game, on2 ? [['xl', '……今天，好像是她的頭七。', 2.6], ['xl', '人走後第七天，會回家看一眼。', 3], ['xl', '不要過去，站著就好。', 2.6]] : [['xl', '……今天，好像是她的頭七。', 2.6], ['xl', '人走後第七天，會回家看一眼。', 3], ['xl', '二樓的燈，一盞一盞暗下去了。', 3], ['xl', '好像有人在等你。', 2.4]]); }
     // 頭七:第 7 次靜默還沒發生 → 退路
     if (!run.touqi && h && h.quiet >= 7 && Dr?.silent && (Dr.roundT || 0) > 14 && !h.memories?.state?.cur) touqiFallback();
     // 頭七那一次靜默久一點(單人):她回來、腳印、旋鈕,不要被下一波打斷
     if (!run.ext && h && h.quiet >= 7 && !run.touqi && game.phase === 'shop' && !game.net) { run.ext = true; game.restT += 28; }
     if (run.touqi && run.knobT && game.time >= run.knobT) { run.knobT = 0; knob(); }
-    // 有人在配電盤上把 207 的迴路關掉(苦結局「熄燈」是玩家自己的選擇):小鈴會冷,阿嬤只說一句
+    // 有人在配電盤上把 207 的迴路關掉(苦結局「熄燈」是玩家自己的選擇):小美會冷,阿嬤只說一句
     const lit = X.flags.get('h.pwr.207') !== false;
     if (run.lit !== undefined && run.lit && !lit && !run.offSaid) { run.offSaid = true; X.after(2, () => seq(game, [['xl', '……二樓有一盞燈熄了。', 2.4], ['xl', '我突然好冷。……你那邊也是嗎？', 3.2]])); X.after(9, () => seq(game, [['ama', '燈……不要關。她怕黑。', undefined, { ear: 'right' }]])); }
     run.lit = lit;
@@ -163,18 +163,18 @@ export function installClimax(game, S) {
     const w = door207();
     if (!run.alarm && has('h.207.unlock') && w && !X.doors.allClosed(w)) alarm();
     if (run.alarmPend && silent && isHost()) { run.alarmPend = false; X.after(6, () => startGuardWave()); }
-    // 第 5 次燈篙的巨屍 = 萬嵐照護員 夜班組長(正典 §4 首領;身上有門禁卡):給他一個名字,等門禁卡的那幾分鐘才有對象
+    // 第 5 次招魂燈的巨屍 = 大新照護員 夜班組長(正典 §4 首領;身上有門禁卡):給他一個名字,等門禁卡的那幾分鐘才有對象
     if (!run.lead5 && game.round === 5 && game.phase === 'fighting' && !has('h.badge')) {
       const z = game.zombies.find((q) => q.alive && q.type === 'brute' && (q.dist ?? 99) < 30);
       if (z) { run.lead5 = true; X.after(3, () => game.ui?.banner?.('大新夜班組長　陳建宏', '他以前是這裡的看護 · 門禁卡在他身上', 3800, 'red')); X.after(4.5, () => seq(game, [['xl', '穿大新制服那個……胸口有一張卡。', undefined, { gap: 3 }], ['xl', '他以前是這裡的看護。', 2.4], ['xl', '第一個打針的，就是他們。', 2.8]])); } // 先讓「巨屍出現」的打法提示講完
     }
-    // 守燈員:那一波第一隻巨屍
+    // 看守 207 的保全:那一波第一隻巨屍
     if (run.wave && isHost()) {
       if (!run.guard && game.round === run.wave) { const z = game.zombies.find((q) => q.alive && q.type === 'brute'); if (z) { run.guard = z; z._guard = true; } }
       if (run.guard && !run.guard.alive && !run.guardDead) guardDown();
       if (!run.guardDead && game.round === run.wave && silent) guardDown(); // 沒抓到(或被別的方式解決):那一波結束就算
     }
-    // 何董:守燈員倒下之後的下一次靜默
+    // 王醫師:看守 207 的保全倒下之後的下一次靜默
     if (has('h.boss10') && !run.hoRang && !has('h.evac') && !has('h.truck') && !game.story?.ending?.active && silent && game.phase === 'shop' && (Dr?.roundT ?? 9) > 5 && !h?.memories?.state?.cur && !game.net?.pvp) ringHo();
     if (run.hoState === 'ringing' && run.hoP && run.hoP.state === 'idle' && game.time - run.hoT > 2) { run.hoState = 'ignored'; flag('h.ho.ignored'); X.after(2, () => seq(game, [['xl', '……不接也好。', undefined, {}]])); }
     if (run.hoState === 'talk' && run.hoP && run.hoP._ended && run.hoP.state === 'call') { // 他說完了(聽筒還在耳邊)

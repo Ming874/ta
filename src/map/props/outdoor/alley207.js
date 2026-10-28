@@ -43,7 +43,7 @@ const signRect = () => labRect('alley:gensign', 128, 72, (c, w, h) => {
   c.fillStyle = '#1a1a1a'; c.textAlign = 'center';
   c.font = 'bold 20px sans-serif'; c.fillText('207 專用', w / 2, 26);
   c.font = 'bold 15px sans-serif'; c.fillStyle = '#9a1a12'; c.fillText('請勿關閉！', w / 2, 47);
-  c.font = '11px sans-serif'; c.fillStyle = '#333'; c.fillText('油不夠請通知 工務課', w / 2, 64);
+  c.font = '11px sans-serif'; c.fillStyle = '#333'; c.fillText('油不夠請通知 維修課', w / 2, 64);
 });
 
 // 把室內道具模板(圖集材質)併進戶外 Parts

@@ -1,9 +1,9 @@
 // 開場與第一夜的節拍(STORY_v2 §4.1 冷開場、§4.7 第一幕;EXPERIENCE_PLAN §3.1)。
-// 前 3 分鐘:我是誰(阿孫)、誰在說話(小鈴)、第一條規則(廣播不能信)、第一個問題(207 的燈)、第一次靜默(阿嬤認得你)。
+// 前 3 分鐘:我是誰(阿孫)、誰在說話(小美)、第一條規則(廣播不能信)、第一個問題(207 的燈)、第一次靜默(阿嬤認得你)。
 // - 開場劇本從 game.motion 的 'coldopen:end' 開始(沒有 motion 就從開局);第 1 波第一隻延到劇本講完才出(只有房主/單人)。
-// - 第一次燈篙熄:小鈴「數到十」(結局回收)→ 金水伯第一段對講機「207 的燈,猶閣光無？」→ 靜默最後:〈望春風〉+ 阿嬤「阿孫……你來矣。」
+// - 第一次招魂燈熄:小美「數到十」(結局回收)→ 金水伯第一段對講機「207 的燈,猶閣光無？」→ 靜默最後:〈望春風〉+ 阿嬤「阿孫……你來矣。」
 //   三個聲音之間留白,不疊在一起;阿嬤這一句不管有沒有去過補給站都一定會有。
-// - 追逐時小鈴的話每次不一樣(game.story.chaseLine;zombies/chase.js 取用)。
+// - 追逐時小美的話每次不一樣(game.story.chaseLine;zombies/chase.js 取用)。
 import { seq, wait, line } from './voice.js';
 import { sfx, ix as ixs } from '../audio.js';
 
@@ -42,7 +42,7 @@ export function installOpening(game, S) {
     run.started = true; run.t0 = game.time;
     try { H()?.reveal?.('zheng'); } catch { /* 略 */ } // 阿嬤從第一句起字幕就是「阿嬤」(懸念是發生了什麼事,不是她是誰)
     const Dr = H()?.director;
-    if (Dr?.last) Dr.last.chase = Dr.t; // 第一次追逐至少等一分鐘:先認識小鈴,再被她叫你快跑
+    if (Dr?.last) Dr.last.chase = Dr.t; // 第一次追逐至少等一分鐘:先認識小美,再被她叫你快跑
     run.open = seq(game, [1.2, ...OPEN.map((L) => (L === 'spawn' ? () => release() : typeof L === 'function' ? () => { try { ixs.tuneSweep?.(game.player.pos); sfx.radio?.(true, 0.2); X.after(1.2, () => sfx.radio?.(false)); } catch { /* 略 */ } } : L))], { alive: () => game.state === 'playing' && game.round <= 1 });
   }
   let mBound = null; // game.motion 在 main.js 裡比較晚裝:第一次 tick 才綁
@@ -61,10 +61,10 @@ export function installOpening(game, S) {
       if (!run.waitT) run.waitT = game.time;
       if (!game.motion?.on || (!game.motion.busy && game.time - run.waitT > 1.5) || game.time - run.waitT > 6) start();
     }
-    // 第 1 波:第一隻等小鈴講完(房主/單人;只延一次)
+    // 第 1 波:第一隻等小美講完(房主/單人;只延一次)
     if (game.round === 1 && game.phase === 'fighting' && !run.held && isHost()) { run.held = true; game.spawnTimer = Math.max(game.spawnTimer || 0, 90); }
     if (run.held && !run.released && (game.round > 1 || game.time - (run.t0 || run.waitT || game.time) > 75)) release(); // 保險:開場被打斷也不要卡住
-    // 第一次燈篙熄
+    // 第一次招魂燈熄
     const silent = game.phase !== 'fighting';
     if (silent && !run.wasSilent) onSilence();
     run.wasSilent = silent;

@@ -17,7 +17,7 @@ export const REST_TIME = 30; // 每回合結束後的休息(商店開放)秒數(
 const HEAL = { time: 2, amount: 50 }; // 醫療包:2 秒內回 50
 const STREAK_GAP = 4; // 連殺:兩次擊殺間隔 4 秒內
 const BONUS = { head: 0.5, melee: 1 }; // 爆頭 / 近戰額外金幣(基礎金幣倍率)
-const TYPE_NAME = { walker: '行屍', runner: '狂奔者', crawler: '爬行者', bloater: '膿腫者', brute: '巨屍' };
+const TYPE_NAME = { walker: '（建議，同 menu.js:14）活屍', runner: '快跑的', crawler: '爬的', bloater: '會爆的', brute: '巨屍' };
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 export const flowMethods = {

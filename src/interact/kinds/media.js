@@ -356,7 +356,7 @@ export const cassette = {
           let t = 0;
           const stops = [];
           lines.forEach(([who, text, secs], i) => {
-            stops.push(ix.after(t, () => { rd?.mark?.(i); api.speak({ who: / · /.test(who) ? who : `錄音帶 · ${who}`, voice: /小美|小鈴|護|修女|女|阿嬤|淑芬/.test(who) ? 'woman' : /伯|老/.test(who) ? 'old' : 'man', parts: [text] }, { filter: 'radio', pos, noHorror: true }); }));
+            stops.push(ix.after(t, () => { rd?.mark?.(i); api.speak({ who: / · /.test(who) ? who : `錄音帶 · ${who}`, voice: /小美|小美|護|修女|女|阿嬤|淑芬/.test(who) ? 'woman' : /伯|老/.test(who) ? 'old' : 'man', parts: [text] }, { filter: 'radio', pos, noHorror: true }); }));
             t += (secs || 2.5) + 0.25;
           });
           stops.push(ix.after(t + 0.5, () => { st.play = null; ixs.tapeLine(false); sfx.tape('stop'); ix.flags.set('h.tape.' + n.id, true); }));
