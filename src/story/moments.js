@@ -20,6 +20,7 @@ export function installMoments(game, S) {
   const fresh = () => ({ m2: false, m3: false, m4: false, m6: false, m6T: 0, in207: 0, look: 0, quiet: 0, wasSilent: false });
   let run = fresh();
   const flag = (k) => { try { S.flag?.(k); } catch { X.flags.set(k, true); } };
+  const hold = (sec) => { try { H()?.director?.hold?.(sec); } catch { /* 略 */ } }; // 大時刻裡靈異導演不放別的驚嚇、不開追逐
   S.moments = { get run() { return run; }, m3: () => m3(), m4: () => m4(), m6: () => m6() };
 
   // ---------- M1:開場前的三張卡(motion 的冷開場在標題卡之前 await game.motion.coldPre)----------
@@ -68,6 +69,7 @@ export function installMoments(game, S) {
     const w = X.doors?.list?.find((q) => q.lock?.door === 'f2_ward_207');
     const pos = w ? { x: w.cx, y: w.y + 1.2, z: w.cz } : null;
     const tape = '……還醒著的夜貓子，收到請回答。';
+    hold(18);
     seq(game, [
       0.6,
       () => { try { ixs.phoneVoice?.(tape, { voice: 'woman', filter: 'radio', pos, gain: 0.8 }); } catch { /* 略 */ } game.interact?.map?.api?.say?.('錄音帶 · 小美（1999）', tape, 3600, 'radio'); S.voice?.claim?.(3.2, 9, 'tape'); },
@@ -87,6 +89,7 @@ export function installMoments(game, S) {
     const h = H();
     let dark = false;
     try { dark = !!h?.event?.('lightsDie', { force: true }) || !!h?.event?.('blackoutChange', { force: true }); } catch { dark = false; }
+    hold(16); // 停電之後
     const api = game.interact?.map?.api;
     seq(game, [
       dark ? 2.2 : 0.8,
@@ -109,6 +112,7 @@ export function installMoments(game, S) {
     try { api?.note?.('H03'); } catch { /* 略 */ }
     D()?.addCard?.('hc.31', { by: 'look' });
     flag('h.m6');
+    hold(18);
     seq(game, [
       1.2,
       () => { try { sfx.radio?.(true, 0.25); X.after(3.6, () => sfx.radio?.(false)); } catch { /* 略 */ } },
