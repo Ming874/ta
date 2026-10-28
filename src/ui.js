@@ -57,7 +57,7 @@ export class UI {
   killPop(n, tag, kind) { this.hud.killPop(n, tag, kind); }
   healing(k) { this.hud.healing(k); }
   showDeath(summary) { this.menu.showDeath(summary); }
-  resetRun() { this.hud.reset(); this.tips.clearQueue(); this._lastHurt = null; this._lastHp = null; }
+  resetRun() { this.hud.reset(); this.tips.clearQueue(); this.map.resetRun(); this._lastHurt = null; this._lastHp = null; }
 
   hitMarker(head) {
     const el = $('hit');
@@ -99,6 +99,7 @@ export class UI {
     this._lastHp = p.hp;
     this.hud.update(game, dt);
     this.tips.update(dt);
+    this.map.track(game); // 地圖迷霧:只記錄走到哪一格(格子沒變就不做事)
     if (this.map.isOpen) this.map.update(game);
   }
 }
