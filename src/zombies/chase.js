@@ -207,7 +207,7 @@ class Chase {
       this.fade -= dt;
       this.endT += dt;
       // 保險:牠看得到玩家時 AI 會把 spawn 狀態搶回追逐 → 結束 5 秒後一定移除(在畫面裡就讓燈閃一下蓋過去),回合不會被卡住
-      if (this.endT > 5) { if (z.los && z.dist < 25) g.horror?.flicker?.(0.5); this._remove(); return; }
+      if (this.endT > 5) { if (z.los && z.dist < 25) g.horror?.flicker?.(z.pos, 0.5); this._remove(); return; }
       if (z.state !== 'spawn' && (this.fade <= 0 || !z.los || z.dist > 14)) z.go('spawn');
       else if (z.state === 'spawn' && z.st > 0.4) this._remove();
       return;
