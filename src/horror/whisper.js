@@ -49,6 +49,9 @@ export class Whispers {
     if (!L0 || !L0.text) return null;
     const L = L0.text.includes('{暱稱}') ? { ...L0, text: L0.text.replace(/\{暱稱\}/g, nick()) } : L0;
     const prio = o.priority ?? 5, t = performance.now() / 1000;
+    // 聲音的鎖(src/story/voice.js):劇情的人在說話時,鬼不插嘴(電話腳本照播);沒有 force 的(隨機的鬼)前後都要安靜
+    const V = this.h.game?.story?.voice;
+    if (V && !o.lockOk && (V.busy({ quiet: !o.force }) && (!o.force || (V.prio >= 9 && o.filter !== 'phone')))) return null;
     if (this.busy && this.cur.prio >= prio && !o.force) return null;
     if (this.busy) { this.cur.kill?.(); this.h.subs.clear(); }
     const filter = o.filter ?? L.filter ?? null;
@@ -71,6 +74,7 @@ export class Whispers {
     const dur = hnd ? hnd.dur : 0.55 + sy.dur + 0.9;
     const kill = () => { hnd?.kill?.(); h2?.kill?.(); };
     this.cur = { prio, end: t + dur, kill, id: L.id };
+    if (V && !o.lockOk) V.claim(dur, Math.min(8, prio), L.ghost || filter || 'ghost', L.ghost === 'zheng' ? 5 : 0); // 鬼/裝置也佔住鎖:劇情的下一句等它說完
     if (L.id) this.used.add(L.id);
     // 字幕標籤:電話/收音機 → 來源;鬼 → 「？？？」,認出之後才顯示名字(STORY.md §11.1)
     const tag = o.tag ?? (filter ? TAG[filter] : (L.ghost && this.h.known.has(L.ghost) && GHOSTS[L.ghost]?.name ? GHOSTS[L.ghost].name : '？？？'));

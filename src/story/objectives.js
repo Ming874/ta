@@ -24,6 +24,7 @@ import { installOpening } from './opening.js';
 import { installClimax } from './climax.js';
 import { installEnding } from './ending.js';
 import { installRevive } from './revive.js';
+import { voiceLock } from './voice.js';
 import * as THREE from 'three';
 
 // 提示的時間(秒,卡在同一步多久):小鈴 / 阿嬤 / 閃一下
@@ -291,6 +292,7 @@ export function installObjectives(game) {
   // 開場、高潮、結局(EXPERIENCE_PLAN §3)
   const S = (game.story ||= {});
   S.flag = (k, v = true) => O.flag(k, v);
+  voiceLock(game); // 聲音的鎖:一次只有一個人說話(CLARITY_PLAN §7.4)
   try { installOpening(game, S); } catch (e) { console.warn('[story] opening', e); }
   try { installClimax(game, S); } catch (e) { console.warn('[story] climax', e); }
   try { installEnding(game, S); } catch (e) { console.warn('[story] ending', e); }
