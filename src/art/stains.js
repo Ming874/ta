@@ -548,10 +548,20 @@ export function pool(B, R, blobs, o = {}) {
     dmin += (vnoise(x * 0.25, y * 0.25, seed + 7) - 0.5) * 1.6;
     if (sdf) sdf[y * w + x] = dmin;
     if (dmin < edge) {
-      const v = tv * sstep(edge, -edge * 1.5, dmin) + (o.center ? o.center * sstep(0, -w * 0.12, dmin) : 0);
+      // 液面不是平的:凝結的起伏與小血塊(亮面才抓得到光)
+      const und = 1 + 0.16 * (fbm(x * 0.06, y * 0.06, seed + 11, 3) - 0.5) + 0.22 * Math.max(0, vnoise(x * 0.11, y * 0.11, seed + 13) - 0.62);
+      const v = (tv * sstep(edge, -edge * 1.5, dmin) + (o.center ? o.center * sstep(0, -w * 0.12, dmin) : 0)) * und;
       const i = y * w + x;
       if (v > B.t[i]) B.t[i] = v;
     }
+  }
+  // 小血塊/氣泡:半圓頂的小凸起,亮面上會反光
+  for (let k = 0, n = o.clots ?? 0; k < n; k++) {
+    const [cx, cy, r] = blobs[(R() * blobs.length) | 0], a = R() * 6.283, d = Math.sqrt(R()) * r * 0.85;
+    const px = cx + Math.cos(a) * d, py = cy + Math.sin(a) * d, i = (py | 0) * w + (px | 0);
+    if (i < 0 || i >= w * h || B.t[i] < tv * 0.7) continue;
+    const rr = R.r(1.6, 4.5);
+    ell(B.t, w, h, px, py, rr * R.r(1, 1.6), rr, R() * 3.14, R.r(0.35, 0.8), 1, true);
   }
   return sdf;
 }

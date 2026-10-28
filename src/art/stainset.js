@@ -66,13 +66,13 @@ export const CELLS = {
   } },
   // ---- 地面 ----
   // 新鮮血泊:亮面、厚、液面邊緣微凸;旁邊的滴點
-  pool0: { w: 320, h: 320, ppm: 290, k: 1.0, floor: 1, age: 0.04, por: 0, rim: 0.15, ex: 1.6, paint(B, R, c) {
-    pool(B, R, [[160, 166, 92], [96 + R.r(-10, 10), 112, 38], [228, 226 + R.r(-10, 10), 34]], { edge: 2.2, tv: 1.6, center: 0.5, warp: 0.16 });
+  pool0: { w: 320, h: 320, ppm: 290, k: 1.0, floor: 1, age: 0.04, por: 0, rim: 0.15, ex: 3.2, paint(B, R, c) {
+    pool(B, R, [[160, 166, 92], [96 + R.r(-10, 10), 112, 38], [228, 226 + R.r(-10, 10), 34]], { edge: 2.2, tv: 1.6, center: 0.5, warp: 0.16, clots: 70 });
     for (let k = 0; k < 14; k++) { const a = R() * 6.28, d = R.r(120, 150); floorDrop(B, R, 160 + Math.cos(a) * d, 160 + Math.sin(a) * d, R.r(1.6, 4.2), 1.1, a); }
   } },
   // 放了很久的血泊:邊緣乾成深褐、龜裂,中間還黏;外圈淡黃的血清環;有人踩過走出去
-  pool1: { w: 320, h: 320, ppm: 290, k: 1.0, floor: 1, age: 0.85, por: 0, flake: 0.6, rim: 0.9, ex: 1.7, dustCol: [150, 120, 74], dustA: 0.55, paint(B, R, c) {
-    const sdf = pool(B, R, [[148, 150, 88], [208, 104, 40], [92, 214, 36]], { edge: 2.2, tv: 1.5, center: 0.6, warp: 0.18, sdf: true });
+  pool1: { w: 320, h: 320, ppm: 290, k: 1.0, floor: 1, age: 0.85, por: 0, flake: 0.6, rim: 0.9, ex: 2.6, dustCol: [150, 120, 74], dustA: 0.55, paint(B, R, c) {
+    const sdf = pool(B, R, [[148, 150, 88], [208, 104, 40], [92, 214, 36]], { edge: 2.2, tv: 1.5, center: 0.6, warp: 0.18, sdf: true, clots: 30 });
     for (let i = 0; i < sdf.length; i++) {
       const d = sdf[i];
       if (d > -1 && d < 5) B.dust[i] = Math.max(B.dust[i], 0.4 * (1 - Math.abs(d - 1.5) / 3.5));
@@ -283,7 +283,7 @@ export const OUTDOOR = {
     smear(B, R, curve([10, 8], [90, 14], [170, 4], [246, 10], 20), { wd: 12, load: () => 1, bristles: 40, dry: 0.3 });
     drips(B, R, { n: 10, y0: 2, y1: 30, len: 230, w0: 3.2, thr: 0.4, gap: 8 });
   } },
-  pool: { w: 256, h: 256, ppm: 240, age: 0.08, rim: 0.2, paint(B, R) { pool(B, R, [[128, 132, 80], [80, 90, 30], [180, 180, 28]], { edge: 2, tv: 1.6, center: 0.5, warp: 0.15 }); } },
+  pool: { w: 256, h: 256, ppm: 240, age: 0.08, rim: 0.2, paint(B, R) { pool(B, R, [[128, 132, 80], [80, 90, 30], [180, 180, 28]], { edge: 2, tv: 1.6, center: 0.5, warp: 0.15, clots: 40 }); } },
   smear: { w: 512, h: 256, ppm: 240, age: 0.75, flake: 0.25, rim: 0.6, paint(B, R) {
     const P = curve([20, 128 + R.r(-20, 20)], [180, 128 + R.r(-50, 50)], [330, 128 + R.r(-50, 50)], [492, 128 + R.r(-20, 20)], 48);
     smear(B, R, P, { wd: (u) => 110 * (1 - 0.3 * u), load: (u) => 1.25 * Math.pow(1 - u, 0.9) + 0.06, bristles: 90, clump: 0.3, dry: 0.5 });
