@@ -19,6 +19,13 @@
 const B1_LIT = ['b1_tunnel', 'b1_morgue', 'b1_autopsy', 'b1_laundry', 'b1_boiler', 'b1_supply', 'b1_archive', 'b1_pump'];
 
 const items = [
+  // ================================================================== 劇情進度才開的區域(src/story/objectives.js 設旗標;鎖著的門導航繞過)
+  // 三樓的門禁:配電盤恢復(h.gen.on)之後才有電;太平間:查出 207 的門怎麼開之後,清理隊的鎖才打得開。
+  // (監控室自己的門禁卡鎖寫在後面,會蓋掉這一條,所以要排在它前面)
+  { id: 'h.lock.3f', kind: 'lock', zone: 'f3_corridor', door: 'f3_corridor', item: null, flag: 'h.area.3f', text: '三樓 · 電子門禁沒有電',
+    why: '萬嵐的三樓門禁接在配電盤上；七月初一燈篙第一次點亮時跳電，門全鎖著。' },
+  { id: 'h.lock.morgue', kind: 'lock', zone: 'b1_morgue', door: 'b1_morgue', item: null, flag: 'h.area.morgue', text: '太平間 · 萬嵐清理隊上鎖',
+    why: '萬嵐清理隊鎖了太平間（裡面有甦醒失敗的人）；工務的保險絲備品在 5 號冰櫃。' },
   // ================================================================== 目標鏈:H 檔案
   { id: 'h.ix.h01', kind: 'note', zone: 'f1_lobby', mount: 'floor', near: null, note: 'H01', style: 'paper',
     why: '萬嵐在大廳發的回神傳單；甦醒之夜，家屬手上都拿著一張（hc.33）。' },

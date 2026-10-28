@@ -14,6 +14,7 @@ import * as audio from './audio.js';
 import { initNet } from './net/lobby.js';
 import { installHorror } from './horror/index.js';
 import { installDeduce } from './story/deduce.js';
+import { installObjectives } from './story/objectives.js';
 import { startPhysicsWorker, physicsLoad } from './physics/index.js';
 import { assets } from './sys/assets.js';
 import { installStreaming } from './sys/stream.js';
@@ -63,6 +64,7 @@ game.bindInput();
 initNet(game); // [net] 主選單的多人連線入口(src/net/lobby.js)
 installHorror(game); // [ghost] 靈異系統:驚嚇導演、耳語、幻影、靈異事件(src/horror)
 installDeduce(game); // [story] 線索卡、推理本(J)、擲筊、頭七(src/story)
+installObjectives(game); // [story] 目標鏈、區域解鎖、提示(src/story/objectives.js)
 window.__game = game; // 除錯用:在瀏覽器 console 操作 __game
 
 // ---- 效能基礎建設 ----

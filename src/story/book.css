@@ -77,3 +77,19 @@
 .dd-badge.has { opacity: .55; transform: none; }
 .dd-badge.flash { opacity: 1; transform: none; animation: dd-pulse 1.2s ease-out 2; }
 @keyframes dd-pulse { 0% { filter: brightness(1.8); } 100% { filter: none; } }
+.dd-slot.hint { box-shadow: 0 0 0 2px rgba(170,30,20,.55); border-radius: 50% / 40%; } /* 提示:這一格不對(紅筆圈起來) */
+
+/* 目標列:左上角,地點下面;細、淡、動作 + 對象 */
+.ob-line { left: 1.6em; top: 3.35em; display: flex; align-items: center; gap: .55em; max-width: 34em; font: .86em/1.4 "Noto Serif TC", "PMingLiU", serif; letter-spacing: .22em;
+  color: rgba(232,226,210,.78); text-shadow: 0 1px 3px #000, 0 0 10px rgba(0,0,0,.8); transition: opacity .6s; pointer-events: none; }
+.ob-line i { width: .42em; height: .42em; border: 1px solid rgba(214,180,120,.75); transform: rotate(45deg); flex: none; }
+.ob-line.hide { opacity: 0; }
+.ob-line.new span { animation: ob-in 2.4s ease-out; }
+@keyframes ob-in { 0% { opacity: 0; filter: blur(3px); letter-spacing: .5em; } 12% { opacity: .9; } 16% { opacity: .2; } 22% { opacity: 1; filter: none; color: #f3e2b8; } 100% { letter-spacing: .22em; } }
+/* 提示:東西閃一下 */
+.ob-glint { left: 0; top: 0; width: 26px; height: 26px; margin: -13px 0 0 -13px; opacity: 0; transition: opacity .8s; pointer-events: none;
+  background: radial-gradient(circle, rgba(255,244,214,.95) 0 8%, rgba(255,226,160,.35) 18%, transparent 55%); filter: blur(.3px); }
+.ob-glint::before, .ob-glint::after { content: ''; position: absolute; left: 50%; top: 50%; width: 30px; height: 1px; margin: -.5px 0 0 -15px; background: linear-gradient(90deg, transparent, rgba(255,240,205,.8), transparent); }
+.ob-glint::after { transform: rotate(90deg); }
+.ob-glint.on { opacity: .9; animation: ob-tw 2.2s ease-in-out infinite; }
+@keyframes ob-tw { 0%, 100% { filter: brightness(.6); } 45% { filter: brightness(1.4); } 55% { filter: brightness(.9); } }

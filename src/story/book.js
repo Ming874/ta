@@ -112,7 +112,7 @@ export class Book {
     // ---- 左頁:題目 ----
     const slot = (b) => {
       const B = QUESTION.blanks[b], w = fill[b], i = BL.indexOf(b) + 1;
-      const cls = ['dd-slot', w ? 'full' : 'empty', this.sel === b && !solved ? 'sel' : '', dragCat && dragCat === B.cat ? 'drop' : ''].filter(Boolean).join(' ');
+      const cls = ['dd-slot', w ? 'full' : 'empty', this.sel === b && !solved ? 'sel' : '', D.hintBlank === b && !solved ? 'hint' : '', dragCat && dragCat === B.cat ? 'drop' : ''].filter(Boolean).join(' ');
       return `<button class="${cls}" data-b="${b}" title="${esc(CATS[B.cat])}"><sup>${i}</sup>${w ? esc(WORDS[w].text) : `<em>${esc(CATS[B.cat])}</em>`}</button>`;
     };
     const sent = QUESTION.sentences.map((s) => `<p>${esc(s).replace(/\{(b\d)\}/g, (_, b) => slot(b))}</p>`).join('');

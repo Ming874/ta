@@ -43,7 +43,8 @@ export function setupDoors(game, ix, { leaves = [], seed = 77, lockSpecs = [] } 
     l.boxes.length = 0;
     const a = l.group.rotation.y, c = Math.cos(a), s = -Math.sin(a), th = Math.max(0.1, (l.t || 0.06) + 0.04);
     const hx = l.group.position.x, hz = l.group.position.z, y0 = l.y, h = l.lh;
-    const nav = isOpen(l) && !l.way?.lock; // 開到牆邊的門扇:導航繞過;其他(半開/關著)導航穿過,殭屍會推
+    const locked = !!(l.way?.lock && !l.way.lock.open); // [story] 解鎖之後(lock.open)就跟一般的門一樣
+    const nav = isOpen(l) && !locked; // 開到牆邊的門扇:導航繞過;其他(半開/關著)導航穿過,殭屍會推
     const aligned = Math.abs(c) < 0.1 || Math.abs(s) < 0.1;
     const n = aligned ? 1 : Math.ceil(l.lw / 0.28);
     const seg = l.lw / n;
@@ -51,7 +52,7 @@ export function setupDoors(game, ix, { leaves = [], seed = 77, lockSpecs = [] } 
       const u = (i + 0.5) * seg;
       const sx = Math.abs(c) * seg + Math.abs(s) * th, sz = Math.abs(s) * seg + Math.abs(c) * th;
       const b = world.addBox(hx + c * u, hz + s * u, sx, sz, h, y0);
-      if (!nav && !l.way?.lock) b.nav = false; // 上鎖的門例外:導航繞過(殭屍不會卡在門前)
+      if (!nav && !locked) b.nav = false; // 上鎖的門例外:導航繞過(殭屍不會卡在門前)
       b.leaf = l;
       b.pm = PEN[l.style] || 'wood'; b.mat = MATS[b.pm]?.fx || 'wood'; b.tag = 'door:' + l.style; // 子彈穿透與彈著效果
       l.boxes.push(b);
@@ -182,7 +183,7 @@ export function setupDoors(game, ix, { leaves = [], seed = 77, lockSpecs = [] } 
     pushT = 0.25;
     if (game.net && !game.net.isHost) return true;
     for (const w of list) {
-      if (w.lock || !anyShut(w)) { w.press = 0; continue; }
+      if ((w.lock && !w.lock.open) || !anyShut(w)) { w.press = 0; continue; } // [story] 解鎖之後殭屍也推得開
       let who = null, k = 0;
       for (const z of game.zombies) {
         if (!z.alive) continue;

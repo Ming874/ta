@@ -65,6 +65,7 @@ export function installDeduce(game) {
       if (!WORDS[w] || WORDS[w].cat !== B.cat || !s.words.includes(w)) return false;
       for (const [k, v] of Object.entries(s.fill)) if (v === w && k !== b) delete s.fill[k]; // 同一個詞只能放一格
       s.fill[b] = w;
+      if (D.hintBlank === b) D.hintBlank = null;
       save();
       emit('fill', { b, w });
       return true;
@@ -209,7 +210,7 @@ export function installDeduce(game) {
     // 金水伯的對講機(第 2 次以後開店;第二段要先拿到 hc.07/08/09 任一張)
     if (game.phase === 'shop' && run.lastPh !== 'shop') {
       run.shops++;
-      if (run.shops >= 2 && !D.has('hc.21') && !run.k1) { run.k1 = true; X.after(6, () => talk(TALK.kimsui1, () => D.addCard('hc.21', { by: 'call' }))); }
+      if (run.shops >= 2 && !D.has('hc.21') && !run.k1 && game.objectives?.done?.('h.s.cyc1') !== false) { run.k1 = true; X.after(6, () => talk(TALK.kimsui1, () => D.addCard('hc.21', { by: 'call' }))); }
       else if (run.shops >= 2 && D.has('hc.21') && !run.k2 && ['hc.07', 'hc.08', 'hc.09'].some(D.has) && !S().k2) { run.k2 = true; X.after(6, () => talk(TALK.kimsui2, () => { S().k2 = true; save(); D.addWords(['w.xiaoling']); game.ui?.feed?.('＋線索〈金水伯：那一扇窗〉 · 新的詞 1 個', { color: '#e3c98a', ms: 4200 }); })); }
       if (D.solved() && !run.opened207 && run.shops === 1) X.after(4, () => unlock207(true)); // 以前聖筊過:第一次靜默 207 自己打開
     }
