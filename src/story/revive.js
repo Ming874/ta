@@ -88,7 +88,7 @@ export function installRevive(game, S) {
       try { await pr; } catch { /* 略 */ }
     } else await fallbackCard(say, t);
     if (p.downed) standUp(); // 保險
-    try { M?.clear?.('down'); } catch { /* 略 */ }
+    try { M?.to?.('down', 'desat', 0, 1400, 'inOut'); M?.to?.('down', 'vig', 0, 1400, 'inOut').then(() => M?.clear?.('down')); } catch { /* 略 */ } // 顏色慢慢回來
     run.busy = false;
     run.shieldT = g.time + 3;
     afterLines(n, r, t);
