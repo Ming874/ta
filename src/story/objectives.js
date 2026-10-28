@@ -325,7 +325,7 @@ function makeHud(game, textOf) {
       const k = t + '｜' + w;
       if (k === last && !fresh) return;
       last = k;
-      if (fresh && t) { el.classList.remove('new'); void el.offsetWidth; el.classList.add('new'); try { ixs.paper?.(); } catch { /* 略 */ } }
+      if (fresh && t) { el.classList.remove('new'); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('new'))); try { ixs.paper?.(); } catch { /* 略 */ } } // 重播動畫:隔兩幀再加回(不在更新裡強迫排版)
       sp.textContent = t;
       sw.textContent = w ? '｜' + w : '';
     },

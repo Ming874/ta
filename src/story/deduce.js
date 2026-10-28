@@ -284,7 +284,7 @@ function makeBadge(game, D) {
       lab.textContent = label;
       el.classList.toggle('has', n > 0);
       el.querySelector('i').textContent = n > 0 ? String(n) : '';
-      if (flash) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); clearTimeout(t); t = setTimeout(() => el.classList.remove('flash'), 3200); try { sfx.pickupItem?.(); } catch { /* 略 */ } }
+      if (flash) { el.classList.add('flash'); clearTimeout(t); t = setTimeout(() => el.classList.remove('flash'), 3200); try { sfx.pickupItem?.(); } catch { /* 略 */ } } // 還在閃就延長(不強迫排版:在更新裡讀 offsetWidth 會卡一幀)
       void D;
     },
   };
