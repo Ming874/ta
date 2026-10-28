@@ -269,7 +269,15 @@ export class Room {
     this.count.statics++;
     const k = t.name.split(/[:#@]/)[0], u = this.st.use || (this.st.use = {});
     u[k] = (u[k] || 0) + t.tris;
+    this._index(t, M);
     return { t, x, z, yaw, y: o.y ?? this.y, M };
+  }
+  // 擺放索引(world.propIndex:截圖/材質檢查工具用來找道具;每筆只有名稱 + 包圍盒中心/尺寸)
+  _index(t, M) {
+    const w = this.ctx.world;
+    if (!w) return;
+    const c = t.bbox.getCenter(_v).applyMatrix4(M), s = t.bbox.max.clone().sub(t.bbox.min);
+    (w.propIndex || (w.propIndex = [])).push({ n: t.name, z: this.zone.id, x: +c.x.toFixed(2), y: +c.y.toFixed(2), zz: +c.z.toFixed(2), w: +s.x.toFixed(2), h: +s.y.toFixed(2), d: +s.z.toFixed(2), yaw: +Math.atan2(M.elements[8], M.elements[10]).toFixed(3) });
   }
   // 有碰撞家具:檢查 → 放置 → 登記碰撞。成功回傳放置資訊,失敗回傳 null
   tryPut(t, x, z, yaw = 0, o = {}) {
@@ -456,6 +464,8 @@ export class Room {
     };
     g.userData.kind = t.name;
     g.name = `pi_dyn_${t.name}`;
+    g.updateMatrix();
+    this._index(t, g.matrix);
     this.ctx.add(g, { static: false, collide: false });
     this.count.dyn++;
     this.st.dyn++;
