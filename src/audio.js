@@ -34,7 +34,7 @@ import { scare, SCARE_KINDS } from './audio/scares.js';
 import { setZone, loopStart, loopStop, startAmbience, ambState, LOOP_KINDS, resetAmbience, defineMood } from './audio/ambience.js';
 import { radio, pa, tape, storyState } from './audio/story.js';
 import * as AMB from './audio/ambience.js';
-import { thunder, setRain, rainState, rainGains, rainContext, rainReset } from './audio/weather.js';
+import { thunder, setRain, rainState, rainGains, rainContext, rainReset, preloadRain } from './audio/weather.js';
 import { trackState, resumeTracks, preloadStings } from './audio/tracks.js';
 import { roomInfo, resetRooms } from './audio/rooms.js';
 import * as SM from './audio/samples.js';
@@ -50,6 +50,9 @@ function boot() {
   preloadStings();
   // 閒置時間預先烘焙常用的合成層(不在遊戲當下建圖)
   setTimeout(() => { prebakeFoley(); prebakeSteps(); prebakeVoices(); prebakeBody(); }, 600);
+  // 雨聲錄音在選單時就閒置載入(開始下雨時不會先聽到合成噪音或空白太久)
+  const idle = typeof requestIdleCallback === 'function' ? requestIdleCallback : (f) => setTimeout(f, 1500);
+  idle(() => preloadRain(), { timeout: 4000 });
 }
 export function resume() {
   const c = ensure();
