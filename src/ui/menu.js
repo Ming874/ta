@@ -29,28 +29,32 @@ const SETTINGS = [
   ['toggle', 'bloom', '光暈', '燈光與火光的泛光效果'],
   ['toggle', 'dynamicRes', '動態解析度', '掉幀時自動降低解析度'],
   ['toggle', 'hurtFx', '受傷畫面效果', '受傷暈影與方向指示'],
-  ['seg', 'scare', '驚嚇強度', [['off', '關'], ['low', '低'], ['normal', '標準'], ['high', '高']], '靈異事件、耳邊低語與人影的頻率(低:沒有大場面)'],
+  ['seg', 'scare', '驚嚇強度', [['off', '關'], ['low', '低'], ['normal', '標準'], ['high', '高']], '靈異事件、耳邊低語與人影的頻率（低：沒有大場面）'],
   ['sec', '新手提示'],
-  ['toggle', 'tips', '顯示新手提示', '依情境顯示一次,按 T 關閉'],
+  ['toggle', 'tips', '顯示新手提示', '依情境顯示一次，按 T 關閉'],
   ['btn', 'tipsReset', '重新顯示所有提示', '重新顯示', '下一場遊戲重新出現'],
 ];
 export const KEYS = [
-  ['W A S D', '移動'], ['Shift', '奔跑'], ['Space', '跳躍'], ['C', '蹲下(切換)'],
-  ['滑鼠左鍵', '射擊'], ['滑鼠右鍵', '開鏡(按住)'], ['R', '換彈'], ['1–6 / 滾輪', '切換武器'],
-  ['G', '投擲手榴彈'], ['V', '小刀'], ['F', '手電筒'], ['E', '互動:商店 / 補給櫃'],
-  ['H', '使用醫療包'], ['M', '地圖'], ['N', '休息時立即開始下一回合'], ['T', '關閉提示'],
+  ['W A S D', '移動'], ['Shift', '奔跑'], ['Space', '跳躍'], ['C', '蹲下（切換）'],
+  ['滑鼠左鍵', '射擊'], ['滑鼠右鍵', '開鏡（按住）'], ['R', '換彈'], ['1–6 / 滾輪', '切換武器'],
+  ['G', '投擲手榴彈'], ['V', '小刀'], ['F', '手電筒'], ['E', '互動：金水商行／補給櫃／調查'],
+  ['H', '使用醫療包'], ['M', '地圖'], ['N', '燈篙熄時不等了，直接開始下一次'], ['T', '關閉提示'],
+  ['J', '推理本'], ['B', '吹口哨（鬼月莫亂吹）'],
   ['Esc', '暫停'], ['F3', '效能資訊'],
 ];
-const KEYS_MP = [['Tab', '計分板(多人)'], ['Enter', '聊天(多人)']];
+const KEYS_MP = [['Tab', '計分板（多人）'], ['Enter', '聊天（多人）']];
 const TIPS = [
-  '每回合結束後有 <b>30 秒休息</b>(首領回合前 40 秒),商店拉起捲門(畫面上的推車標記會指路):買槍、彈藥、改裝、防彈背心、手榴彈與醫療包。<b>購物時遊戲暫停</b>。',
-  '<b>每 5 回合是首領回合</b>,巨屍會出現;第 8、13、18… 回合是特殊回合(狂奔之夜 / 膿毒潮)。殭屍血量從第 5 回合起逐漸增加,記得升級武器。',
-  '<b>爆頭</b>造成雙倍傷害並多拿 50% 金幣;<b>近戰擊殺</b>金幣加倍。4 秒內連續擊殺會累積<b>連殺</b>,分數倍率最高 ×2,5、8、12… 連殺另有金幣獎勵。',
-  '整回合<b>毫髮無傷</b>可以拿到額外獎勵;回合結束時地上的金幣與用得到的掉落物會飛向你。',
-  '殭屍會掉落<b>彈匣</b>(橘光)、<b>醫療包</b>(綠光),偶爾掉<b>手榴彈</b>;彈藥或生命不足時掉落率會提高。靠近就會自動吸過來,約 40 秒後消失。',
-  '各樓層的<b>彈藥櫃與醫療櫃</b>每回合可用一次(按 E)。按 <b>M</b> 打開地圖找它們。',
-  '<b>膿腫者</b>死亡會爆炸並留下毒氣;<b>巨屍</b>咆哮後會衝鋒,引牠撞牆再打頭。',
-  '聲音是你最好的朋友:戴上耳機,注意腳步、低吼與遠方的動靜。',
+  '每次燈篙熄了有 <b>30 秒</b>（第 5、10… 次之前 40 秒）：金水伯把貨放在店裡，拉起鐵門（畫面上的推車標記會指路）：槍、彈藥、改裝、防彈背心、手榴彈與醫療包。<b>買東西時遊戲暫停</b>。',
+  '<b>第 5、10、15… 次燈篙會亮到最大</b>，打最多劑的巨屍會醒；第 8、13、18… 次是特別的夜（狂奔之夜／膿毒潮）。從第 5 次起他們越來越耐打，記得升級武器。',
+  '<b>爆頭</b>造成雙倍傷害並多拿 50% 錢；<b>近戰擊殺</b>錢加倍。4 秒內連續擊殺會累積<b>連殺</b>，分數倍率最高 ×2，5、8、12… 連殺另有錢獎勵。',
+  '一整次燈篙<b>毫髮無傷</b>可以拿到額外獎勵；燈篙暗下時地上的錢與用得到的掉落物會飛向你。',
+  '回來的人會掉<b>彈匣</b>（橘光）、<b>醫療包</b>（綠光），偶爾掉<b>手榴彈</b>；彈藥或生命不足時掉落率會提高。靠近就會自動吸過來，約 40 秒後消失。',
+  '各樓層的<b>彈藥櫃與醫療櫃</b>每次燈篙可用一次（按 E）。按 <b>M</b> 打開地圖找它們。',
+  '<b>膿腫者</b>死亡會爆炸並留下毒氣；<b>巨屍</b>咆哮後會衝鋒，引他撞牆再打頭。',
+  '聲音是你最好的朋友：戴上耳機，注意腳步、低吼與遠方的動靜。',
+  '<b>推理本（J）</b>：看到、撿到、聽到的線索會自己記下來。把詞填進句子，到「問的地方」<b>擲筊</b>：聖筊就是對了，笑筊、陰筊會告訴你對了幾個。',
+  '<b>三把火</b>：被嚇到、犯了鬼月禁忌會熄一把；全熄就「失魂」。到阿嬤的遺照前收驚，或站在收音機旁讓小鈴數到十。',
+  '<b>鬼月禁忌</b>：晚上莫吹口哨、有人叫你的名字莫回頭、路邊的紅包莫撿、肩膀莫讓人拍。',
 ];
 const keyGrid = (list, cls = '') => `<div class="mn-keys ${cls}">${list.map(([k, t]) => `<div><kbd>${esc(k)}</kbd><span>${esc(t)}</span></div>`).join('')}</div>`;
 
@@ -61,7 +65,7 @@ export class Menu {
     // 開始單人遊戲前依序等待的演出(例如之後的「隨機抽地圖」):async () => void。
     // 注意:滑鼠鎖定需要使用者手勢,演出超過數秒時請在演出結束時讓玩家再點一下(input.js 的 startBtn)
     this.beforeStart = [];
-    document.title = '聖心醫院 · 殭屍生存';
+    document.title = '回神 · 207 的燈';
     this._main();
     this._pause();
     this._dead();
@@ -82,14 +86,15 @@ export class Menu {
     m.classList.add('mn');
     m.innerHTML = `
       <div class="mn-wrap">
-        <div class="mn-over">${HEART}SACRED HEART HOSPITAL</div>
-        <h1 class="mn-title"><span>聖</span><span>心</span><span>醫</span><span>院</span></h1>
-        <div class="mn-sub">午夜之後,這裡<b>不再收治活人</b>。</div>
+        <div class="mn-over">${HEART}HUÍ SHÉN · SACRED HEART HOSPITAL</div>
+        <h1 class="mn-title"><span>回</span><span>神</span></h1>
+        <div class="mn-sub mn-chap">〈207 的燈〉聖心醫院</div>
+        <div class="mn-sub">午夜之後，這裡<b>不再收治活人</b>。</div>
         <div class="mn-rule"></div>
         <div class="mn-btns">
-          <button class="mn-btn primary" id="startBtn">單人生存<small>撐過一波波屍潮 · 每 5 回合首領現身</small></button>
+          <button class="mn-btn primary" id="startBtn">單人<small>撐過一次次燈篙 · 查出 207 那一夜的事</small></button>
           <button class="mn-btn" data-mode="coop">合作生存<small>2–4 人連線 · 倒地可互相救援</small></button>
-          <button class="mn-btn" data-mode="pvp">對戰死鬥<small>2–8 人 · 各自為戰,可加入殭屍騷擾</small></button>
+          <button class="mn-btn" data-mode="pvp">對戰死鬥<small>2–8 人 · 各自為戰，可加入殭屍騷擾（非正史）</small></button>
           <div id="menuModes"></div>
           <div class="mn-row">
             <button class="mn-mini" data-p="settings">設定</button>
@@ -101,7 +106,7 @@ export class Menu {
       </div>
       <div class="mn-stage" id="menuStage"></div>
       <div class="mn-side"><div class="mn-sideh">操作</div>${keyGrid(KEYS, 'compact')}</div>
-      <div class="mn-foot">建議戴上耳機並全螢幕遊玩 · 所有設定與最佳紀錄只存在這台電腦的瀏覽器<br />聖心醫院 · 一款網頁 3D 殭屍生存射擊遊戲</div>`;
+      <div class="mn-foot">建議戴上耳機並全螢幕遊玩 · 所有設定與最佳紀錄只存在這台電腦的瀏覽器<br />回神 · 一款網頁 3D 恐怖射擊遊戲</div>`;
     m.addEventListener('click', (e) => {
       const b = e.target.closest('[data-p]');
       if (b) { sfx.uiClick(); this.openPanel(b.dataset.p); return; }
@@ -145,7 +150,7 @@ export class Menu {
   showBest() {
     const b = loadBest(), el = $('menuBest');
     if (!el) return;
-    el.innerHTML = b && b.round ? `<span>最佳紀錄</span>第 <b>${b.round}</b> 回合 · 分數 <b>${(b.score || 0).toLocaleString('en-US')}</b> · 擊殺 <b>${b.kills || 0}</b>` : '';
+    el.innerHTML = b && b.round ? `<span>最佳紀錄</span>第 <b>${b.round}</b> 次燈篙 · 分數 <b>${(b.score || 0).toLocaleString('en-US')}</b> · 擊殺 <b>${b.kills || 0}</b>` : '';
   }
 
   // ---------- 暫停 ----------
@@ -181,7 +186,7 @@ export class Menu {
     d.classList.add('mn-box');
     d.innerHTML = `
       <div class="mn-card mn-dead">
-        <h1>你死了</h1>
+        <h1>你倒下了</h1>
         <div id="deadinfo"></div>
         <div class="mn-btns">
           <button class="mn-btn primary" id="restartBtn">再試一次</button>
@@ -197,9 +202,9 @@ export class Menu {
     const by = s.byType || {}, top = Math.max(1, ...Object.values(by));
     const types = TYPE_ORDER.filter((k) => by[k]).map((k) => `<div><span>${TYPE_NAMES[k]}</span><i style="--w:${(by[k] / top).toFixed(3)}"></i><b>${by[k]}</b></div>`).join('');
     const nw = s.isNew || {}, best = s.best, NEW = '<i class="mn-new">新紀錄</i>';
-    const rec = best ? `<div class="mn-best"><span>本機最佳</span>分數<b>${(best.score || 0).toLocaleString('en-US')}</b>回合<b>${best.round || 0}</b>擊殺<b>${best.kills || 0}</b>連殺<b>${best.streak || 0}</b>${best.runs ? `<em>共 ${best.runs} 場</em>` : ''}</div>` : '';
+    const rec = best ? `<div class="mn-best"><span>本機最佳</span>分數<b>${(best.score || 0).toLocaleString('en-US')}</b>燈篙<b>${best.round || 0}</b>擊殺<b>${best.kills || 0}</b>連殺<b>${best.streak || 0}</b>${best.runs ? `<em>共 ${best.runs} 場</em>` : ''}</div>` : '';
     $('deadinfo').innerHTML = `
-      <div class="mn-round">你撐到了第<b>${s.round}</b>回合${nw.round ? NEW : ''}</div>
+      <div class="mn-round">你撐到第<b>${s.round}</b>次燈篙${nw.round ? NEW : ''}</div>
       <div class="mn-score">分數<b>${(s.score || 0).toLocaleString('en-US')}</b>${nw.score ? NEW : ''}</div>
       <div class="mn-stats">
         <div><b>${s.kills}</b><small>擊殺${nw.kills ? NEW : ''}</small></div>
@@ -207,7 +212,7 @@ export class Menu {
         <div><b>${Math.round((s.accuracy || 0) * 100)}%</b><small>命中率<em>${s.hits || 0}/${s.shots || 0}</em></small></div>
         <div><b>${mmss(s.time || 0)}</b><small>存活時間</small></div>
         <div><b>${s.bestStreak}</b><small>最高連殺${nw.streak ? NEW : ''}</small></div>
-        <div><b>${s.earned}</b><small>累積金幣</small></div>
+        <div><b>${s.earned}</b><small>賺到的錢</small></div>
       </div>
       ${types ? `<div class="mn-types">${types}</div>` : ''}
       ${rec}`;
@@ -220,7 +225,7 @@ export class Menu {
     const g = this.game, el = $('pauseRun');
     if (!on || !g || !el) return;
     const S = g.stats || {};
-    el.innerHTML = g.state === 'playing' ? `第 <b>${g.round || 1}</b> 回合 · 擊殺 <b>${S.kills || 0}</b> · 分數 <b>${(S.score || 0).toLocaleString('en-US')}</b> · 金幣 <b>${g.player?.coins || 0}</b>` : '';
+    el.innerHTML = g.state === 'playing' ? `第 <b>${g.round || 1}</b> 次燈篙 · 擊殺 <b>${S.kills || 0}</b> · 分數 <b>${(S.score || 0).toLocaleString('en-US')}</b> · 錢 <b>${g.player?.coins || 0}</b>` : '';
   }
 
   // ---------- 面板 ----------
@@ -266,7 +271,7 @@ export class Menu {
       if (type === 'toggle') return `<div class="mp-row" data-k="${key}">${lab}<button class="mp-tog" aria-label="${label}"></button><output></output></div>`;
       if (type === 'btn') return `<div class="mp-row" data-k="${key}">${lab}<button class="mp-act">${r[3]}</button><output></output></div>`;
       return `<div class="mp-row" data-k="${key}">${lab}<div class="mp-seg">${r[3].map(([v, t]) => `<button data-v="${v}">${t}</button>`).join('')}</div><output></output></div>`;
-    }).join('') + '<div class="mp-note">操作、音量與提示設定存在這台電腦的瀏覽器;畫質由效能模組管理(第一次啟動時依顯示卡自動挑選)。按 F3 可以看即時幀率。</div>';
+    }).join('') + '<div class="mp-note">操作、音量與提示設定存在這台電腦的瀏覽器；畫質由效能模組管理（第一次啟動時依顯示卡自動挑選）。按 F3 可以看即時幀率。</div>';
     this.pFoot.innerHTML = '<button data-act="reset">恢復預設</button><button data-act="done">完成</button>';
     this.pFoot.querySelector('[data-act="reset"]').onclick = () => { settings.reset(); sfx.uiClick(); };
     this.pFoot.querySelector('[data-act="done"]').onclick = () => this.closePanel();
@@ -288,14 +293,14 @@ export class Menu {
       const input = row.querySelector('input'), tog = row.querySelector('.mp-tog'), seg = row.querySelector('.mp-seg'), out = row.querySelector('output');
       if (input) { if (+input.value !== v) input.value = v; out.textContent = def[6](v); }
       if (tog) { tog.classList.toggle('on', !!v); out.textContent = v ? '開' : '關'; }
-      if (seg) { for (const b of seg.children) b.classList.toggle('on', b.dataset.v === v); out.textContent = k === 'preset' && det ? `自動:${PRESET_NAME[det] || det}` : ''; }
+      if (seg) { for (const b of seg.children) b.classList.toggle('on', b.dataset.v === v); out.textContent = k === 'preset' && det ? `自動：${PRESET_NAME[det] || det}` : ''; }
     }
   }
 
   _renderHelp() {
     this.pTitle.textContent = '操作說明';
     this.pBody.innerHTML = `<div class="mp-sec">按鍵</div>${keyGrid([...KEYS, ...KEYS_MP], 'mp-keys')}
-      <div class="mp-note">蹲下用 C(不用 Ctrl,避免誤按 Ctrl+W 關掉分頁)。巴雷特開鏡時按住 Shift 屏息。</div>
+      <div class="mp-note">蹲下用 C（不用 Ctrl，避免誤按 Ctrl+W 關掉分頁）。巴雷特開鏡時按住 Shift 屏息。</div>
       <div class="mp-sec">求生守則</div><ul class="mp-tips">${TIPS.map((t) => `<li>${t}</li>`).join('')}</ul>`;
     this.pFoot.innerHTML = '<span></span><button data-act="done">知道了</button>';
     this.pFoot.querySelector('[data-act="done"]').onclick = () => this.closePanel();
@@ -306,9 +311,9 @@ export class Menu {
     this.pTitle.textContent = '製作與授權';
     const base = import.meta.env?.BASE_URL || '/';
     this.pBody.innerHTML = `<div class="mp-cred">
-      <h4>遊戲</h4><p>《聖心醫院》— 網頁 3D 殭屍生存射擊。程式、關卡、介面、程式生成的貼圖、模型與音效合成。</p>
-      <h4>引擎與函式庫</h4><p>three.js(MIT)· Vite(MIT)· Rapier 物理引擎 @dimforge/rapier3d-compat(Apache-2.0)· ws(MIT)</p>
-      <h4>外部素材</h4><p>只使用 CC0 與 CC-BY 授權的素材,完整署名如下(<a href="${base}credits/CREDITS.md" target="_blank" rel="noopener">開啟 CREDITS.md</a>)。</p>
+      <h4>遊戲</h4><p>《回神》— 網頁 3D 恐怖射擊。程式、關卡、介面、程式生成的貼圖、模型與音效合成。</p><p>謹以此紀念 1999 年與 2003 年，所有守在第一線的人。</p>
+      <h4>引擎與函式庫</h4><p>three.js（MIT）· Vite（MIT）· Rapier 物理引擎 @dimforge/rapier3d-compat（Apache-2.0）· ws（MIT）</p>
+      <h4>外部素材</h4><p>只使用 CC0 與 CC-BY 授權的素材，完整署名如下（<a href="${base}credits/CREDITS.md" target="_blank" rel="noopener">開啟 CREDITS.md</a>）。</p>
       <div class="mp-md">正在讀取授權清單…</div></div>`;
     this.pFoot.innerHTML = '<span></span><button data-act="done">關閉</button>';
     this.pFoot.querySelector('[data-act="done"]').onclick = () => this.closePanel();
@@ -323,7 +328,7 @@ export class Menu {
       }
       return '';
     };
-    tryFetch(['CREDITS.md']).then((t) => { if (box.isConnected) { if (t) box.innerHTML = md(t); else box.textContent = '無法讀取授權清單(credits/CREDITS.md)。'; } });
+    tryFetch(['CREDITS.md']).then((t) => { if (box.isConnected) { if (t) box.innerHTML = md(t); else box.textContent = '無法讀取授權清單（credits/CREDITS.md）。'; } });
   }
 }
 

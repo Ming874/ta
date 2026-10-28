@@ -43,7 +43,7 @@ export class Hud {
     this.floorEl = this.loc.children[0];
     this.zoneEl = this.loc.children[1];
     this.zoneBig = add(mk('hd hd-zonebig'));
-    this.round = add(mk('hd hd-round', '<div class="hd-rn">第 <b>1</b> 回合</div><div class="hd-rs">殭屍 <b>0</b></div>'));
+    this.round = add(mk('hd hd-round', '<div class="hd-rn">燈篙 <b>1</b></div><div class="hd-rs">還有 <b>0</b> 個</div>'));
     this.round.id = 'roundinfo'; // 對戰模式(src/net/pvp.js)會用這個 id 隱藏回合資訊
     this.roundNum = this.round.querySelector('b');
     this.roundSub = this.round.children[1];
@@ -87,7 +87,7 @@ export class Hud {
     this.warnEl = add(mk('hd hd-warn hd-hide'));
     this.healEl = add(mk('hd hd-heal hd-hide', '治療中<div class="hd-bar"><div class="fill"></div></div>'));
     this.healFill = this.healEl.querySelector('.fill');
-    this.wp = add(mk('hd hd-wp hd-hide', `<i class="arr"></i>${ICON.cart}<span></span><small>商店</small>`));
+    this.wp = add(mk('hd hd-wp hd-hide', `<i class="arr"></i>${ICON.cart}<span></span><small>金水商行</small>`));
     this.wpArr = this.wp.children[0];
     this.wpTxt = this.wp.querySelector('span');
     this.wpSub = this.wp.querySelector('small');
@@ -214,14 +214,14 @@ export class Hud {
   // ---------- 回合 ----------
   setRound(n) { this._set('round', n, (v) => { this.roundNum.textContent = v; }); }
   setZombies(n) {
-    this._set('rs', `z${n}`, () => { this.roundSub.className = 'hd-rs'; this.roundSub.innerHTML = `殭屍 <b>${n}</b>`; });
+    this._set('rs', `z${n}`, () => { this.roundSub.className = 'hd-rs'; this.roundSub.innerHTML = `還有 <b>${n}</b> 個`; });
   }
   // next = 下一回合是特殊/首領回合時的名稱
   setRest(sec, canSkip = true, next = '') {
     const s = Math.max(0, Math.ceil(sec));
     this._set('rs', `r${s}|${canSkip}|${next}`, () => {
       this.roundSub.className = `hd-rs rest${s <= 5 ? ' urgent' : ''}`;
-      this.roundSub.innerHTML = `休息 <b>${s}</b> 秒${next ? ` · 下一回合 <i class="nx">${esc(next)}</i>` : ''}${canSkip ? ` · ${withKeys('[N] 立即開始')}` : ''}`;
+      this.roundSub.innerHTML = `燈篙熄 <b>${s}</b> 秒${next ? ` · 下一次燈篙 <i class="nx">${esc(next)}</i>` : ''}${canSkip ? ` · ${withKeys('[N] 不等了')}` : ''}`;
     });
   }
   setRoundText(html) { this._set('rs', `t${html}`, () => { this.roundSub.className = 'hd-rs'; this.roundSub.innerHTML = html; }); }
@@ -375,7 +375,7 @@ export class Hud {
         if (edge) this.wpArr.style.transform = `rotate(${Math.atan2(x, y).toFixed(2)}rad)`;
         const floor = Math.abs(dy) > 2 ? (dy < 0 ? ' ↓' : ' ↑') : '';
         this._set('wpd', `${Math.round(d)}${floor}`, (v) => { this.wpTxt.textContent = `${v.replace(/ .*/, '')}m${floor}`; });
-        this._set('wps', shop.levelId || '', (v) => { this.wpSub.textContent = v ? `商店 · ${v}` : '商店'; });
+        this._set('wps', shop.levelId || '', (v) => { this.wpSub.textContent = v ? `金水商行 · ${v}` : '金水商行'; });
       }
     }
     this._set('wpshow', !!show, (v) => this.wp.classList.toggle('hd-hide', !v));
