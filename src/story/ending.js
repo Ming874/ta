@@ -80,7 +80,7 @@ export function installEnding(game, S) {
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
   async function black(on, ms = 1200) {
     const m = M();
-    if (m?.veil) { try { await m.veil(on ? 1 : 0, ms); return; } catch { /* 用自己的 */ } }
+    if (m?.veil) { try { await m.veil(on ? 1 : 0, ms, { hud: true }); return; } catch { /* 用自己的 */ } }
     const b = q('.st-black'); b.style.setProperty('--ms', ms + 'ms'); b.classList.toggle('on', on);
     await w(ms / 1000);
   }
@@ -228,10 +228,11 @@ export function installEnding(game, S) {
       run.beat = 'count';
       await talk('xl', '{暱稱}，你在發抖。', { gap: 1 });
       await talk('xl', '我跟你講。怕的時候，數到十。……我們一起數。', { gap: 1.2 });
+      const hum207 = (v === 'good' || v === 'secret') && !!W()?.anchors?.w207?.view;
       tweenDawn(0, 1, 26);
       const cnt = q('.st-count');
       for (let i = 0; i < 10 && !run.skip; i++) {
-        if (i === 6) { try { sfx.folk('ama', pose207()?.win || game.player.pos); } catch { /* 冷卻中 */ } }
+        if (i === 6 && !hum207) { try { sfx.folk('ama', pose207()?.win || game.player.pos); } catch { /* 冷卻中 */ } } // 〈望春風〉:有 207 的清晨那一拍就留到那裡(哼聲有冷卻)
         cnt.textContent = NUM[i]; cnt.classList.add('on');
         if (i < 9) { say(game, 'xl', NUM[i] + '。', { sub: () => {} }); await w(2.5); cnt.classList.remove('on'); await w(0.15); }
       }
