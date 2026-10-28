@@ -20,6 +20,22 @@ https://github.com/microsoft/Microsoft-Rocketbox
 | athlete | Sports_Male_04 | https://github.com/microsoft/Microsoft-Rocketbox/tree/master/Assets/Avatars/Professions/Sports_Male_04 |
 | jogger | Sports_Female_02 | https://github.com/microsoft/Microsoft-Rocketbox/tree/master/Assets/Avatars/Professions/Sports_Female_02 |
 
+## 多人模式的倖存者角色
+
+隊友看到的玩家角色同樣來自 Rocketbox,轉換方式相同但保留健康外觀(不做殭屍化,右手握槍、左手托護木的手指姿勢),
+放在 `public/models/survivors/<id>.glb`(進入多人房間才下載)。
+
+| 遊戲內 id(座位) | Rocketbox 角色 | 原始路徑 |
+| --- | --- | --- |
+| soldier(0) | Military_Male_02 | https://github.com/microsoft/Microsoft-Rocketbox/tree/master/Assets/Avatars/Professions/Military_Male_02 |
+| medic(1) | Medical_Female_03 | https://github.com/microsoft/Microsoft-Rocketbox/tree/master/Assets/Avatars/Professions/Medical_Female_03 |
+| builder(2) | Construction_Male_08 | https://github.com/microsoft/Microsoft-Rocketbox/tree/master/Assets/Avatars/Professions/Construction_Male_08 |
+| hoodie(3) | Female_Adult_12 | https://github.com/microsoft/Microsoft-Rocketbox/tree/master/Assets/Avatars/Adults/Female_Adult_12 |
+| police(4) | Police_Male_06 | https://github.com/microsoft/Microsoft-Rocketbox/tree/master/Assets/Avatars/Professions/Police_Male_06 |
+| hunter(5) | Male_Adult_05 | https://github.com/microsoft/Microsoft-Rocketbox/tree/master/Assets/Avatars/Adults/Male_Adult_05 |
+| firefighter(6) | Fire_Male_06 | https://github.com/microsoft/Microsoft-Rocketbox/tree/master/Assets/Avatars/Professions/Fire_Male_06 |
+| biker(7) | Female_Adult_04 | https://github.com/microsoft/Microsoft-Rocketbox/tree/master/Assets/Avatars/Adults/Female_Adult_04 |
+
 ## 授權全文(Microsoft Rocketbox,LICENSE.md)
 
 ```

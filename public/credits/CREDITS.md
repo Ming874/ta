@@ -100,12 +100,15 @@ CC0 素材在法律上不需署名,以下仍逐一列出作者與來源致謝。
 
 ## 殭屍與角色
 
-殭屍的骨架、動畫與各類型(行屍、狂奔者、爬行者、膿腫者、巨屍與第三波新類型)的程式生成外觀在 `src/zombies/**`,為本專案原創。
+殭屍與倖存者的骨架、動畫與程式生成外觀(行屍、狂奔者、爬行者、膿腫者、巨屍與第三波新類型)在 `src/zombies/**`、`src/net/avatar.js`,為本專案原創。
 
 **寫實殭屍模型(zombie-models)**:部分行屍/狂奔者變體使用 **Microsoft Rocketbox Avatar Library**(MIT License,Copyright (c) 2020 Microsoft,
 https://github.com/microsoft/Microsoft-Rocketbox)的人物,經 `tools/zombies/build.mjs` 轉換骨架並把貼圖殭屍化後放在 `public/models/zombies/`:
 Medical_Female_01(nurse)、Medical_Male_01(doctor)、Medical_Male_02(paramedic)、Security_Male_01(guard)、Construction_Male_07(worker)、
 Male_Adult_08(man)、Male_Adult_03(oldman)、Female_Adult_08(woman)、Sports_Male_04(athlete)、Sports_Female_02(jogger)。
+多人模式的倖存者角色(隊友看到的玩家)也是 Rocketbox 人物(健康外觀,`public/models/survivors/`):
+Military_Male_02(soldier)、Medical_Female_03(medic)、Construction_Male_08(builder)、Female_Adult_12(hoodie)、Police_Male_06(police)、
+Male_Adult_05(hunter)、Fire_Male_06(firefighter)、Female_Adult_04(biker)。
 MIT 授權全文與每個角色的來源網址見 `public/credits/zombie-models.md`。
 
 ## 音效與配樂(audio)
