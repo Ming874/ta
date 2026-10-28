@@ -377,7 +377,8 @@ export function installMotion(game) {
       const C = M.coldCard;
       const card = showCard({ className: 'cold', title: C.title, sub: C.sub, lines: C.line ? [C.line] : [], fadeIn: 650, hold: 1250, fadeOut: 420, z: 60 });
       setTimeout(() => off?.cancel(), 700); // 卡片的黑底蓋住之後才把 canvas 放回原狀(post 的 fade 已經是全黑)
-      const skip = (e) => { if (e.type === 'keydown' && e.repeat) return; card.skip(); };
+      // 跳過:空白鍵 / Enter / Esc / 點擊(移動鍵不算:一開始就按著 W 的人不會錯過標題)
+      const skip = (e) => { if (e.type === 'keydown' && (e.repeat || !/^(Space|Enter|NumpadEnter|Escape)$/.test(e.code))) return; card.skip(); };
       addEventListener('keydown', skip, true);
       addEventListener('mousedown', skip, true);
       setTimeout(() => msfx.thud?.(), 120);

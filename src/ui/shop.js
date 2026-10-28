@@ -81,6 +81,7 @@ class Preview {
       this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true, powerPreference: 'low-power' });
     } catch { this.renderer = null; return; }
     const r = this.renderer;
+    r.debug.checkShaderErrors = !import.meta.env?.PROD; // [motion] 正式版不查 shader 錯誤日誌(getProgramInfoLog 會同步等編譯完成,開店卡 0.6 秒)
     r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     r.outputColorSpace = THREE.SRGBColorSpace;
     r.toneMapping = THREE.ACESFilmicToneMapping;
@@ -111,6 +112,26 @@ class Preview {
       this.renderer.render(this.scene, this.camera);
     };
     this.raf = requestAnimationFrame(loop);
+  }
+
+  // [motion] 店門拉起時(還沒走到店裡)在閒置時段先建好預覽的 context,並用 compileAsync 把每種商品模型的 shader 編好:
+  // 第一次開店不再卡 0.5~1.3 秒(KHR_parallel_shader_compile:不擋主執行緒)
+  warm(list) {
+    if (this._warm) return;
+    this._warm = true;
+    const idle = (fn) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(fn, { timeout: 1500 }) : setTimeout(fn, 120));
+    const items = list || [];
+    let i = -1;
+    const step = async () => {
+      if (this.raf) return; // 商店已經開了:正常流程接手
+      if (i < 0) { this.start(); cancelAnimationFrame(this.raf); this.raf = 0; i = 0; return idle(step); }
+      const r = this.renderer;
+      if (!r || i >= items.length) { this.clear(); this.key = ''; return; }
+      this.show(items[i++]);
+      try { await r.compileAsync(this.scene, this.camera); } catch { /* 舊瀏覽器:第一次畫的時候再編 */ }
+      idle(step);
+    };
+    idle(step);
   }
 
   // [motion] 關店只停止繪製、清掉模型,保留 renderer 與 canvas(下次開店不用重建 context、重編 shader)
@@ -293,6 +314,15 @@ export class ShopUI {
       T._save();
       setTimeout(() => { if (this.isOpen) this.toast('[1]–[4] 切換分頁 · ↑↓ 選擇 · Enter 購買 · 雙擊也能購買 · E 離開', 'info', 5200); }, 450);
     }
+  }
+
+  // 店門拉起時呼叫:預覽的 shader 先在背景編好
+  warm() {
+    try {
+      const pv = [];
+      for (const t of this.game?.shopTabs?.() || []) for (const it of t.items || []) if (it.preview && !pv.some((q) => q.type === it.preview.type && q.id === it.preview.id)) pv.push(it.preview);
+      this.preview.warm(pv);
+    } catch (e) { console.warn('[shop] warm', e); }
   }
 
   close() {

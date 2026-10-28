@@ -376,6 +376,8 @@ export const flowMethods = {
     this.restT = restTime(n + 1);
     this.setMood('shop');
     this.shop?.setOpen(true);
+    if (!this.ui.shop.game) this.ui.shop.game = this;
+    this.ui.shop.warm?.(); // [motion] 商店預覽的 context 與 shader 先在背景準備好(第一次開店不卡)
     const bonus = roundBonus(n);
     const clean = this.roundClean ? cleanBonus(n) : 0;
     this.player.coins += bonus + clean;

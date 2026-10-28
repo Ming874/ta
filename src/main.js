@@ -177,7 +177,11 @@ async function boot() {
   // 殭屍與常見特效材質:每種殭屍的第一個變體一建好就在閒置時段預編譯(不等全部變體、也不等貼圖下載),
   // 第一隻殭屍出現/第一槍不會頓一下
   whenTypesReady().then(() => { performance.mark('hz:variants'); warmStage = 1; return idle(warmRuntime, 300); })
-    .catch((e) => console.warn('[warmup]', e)).finally(() => { warmStage = 4; game.warmed = true; });
+    .catch((e) => console.warn('[warmup]', e)).finally(() => {
+      warmStage = 4; game.warmed = true;
+      // [motion] 商店 3D 預覽(獨立的小 context)在選單閒置時先建好、shader 先編(含環境貼圖的 PMREM):第一次開店不卡
+      setTimeout(() => { if (!game.ui.shop.game) game.ui.shop.game = game; game.ui.shop.warm?.(); }, 2500);
+    });
 }
 boot();
 
