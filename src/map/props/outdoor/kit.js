@@ -227,6 +227,7 @@ class Pool {
       const im = new THREE.InstancedMesh(geo, resolve(m), this.cap);
       im.name = `po_${this.name}`;
       im.count = this.n;
+      im.userData.pool = this; // [draws] 場景建構器據此判斷能否烘進靜態批次(src/map/hospital/batch.js:靜態區塊池、未綁定下載模型)
       if (!geo.boundingSphere) geo.computeBoundingSphere();
       // 只有大件投影:小雜物、鏤空卡片、輪胎等不進陰影 pass
       im.castShadow = shadow && !im.material.transparent && !(im.material.alphaTest > 0) && (this.dyn || geo.boundingSphere.radius > 0.45);
@@ -240,6 +241,11 @@ class Pool {
   // 換成新的零件(例如 GLTF 載入完成)
   setParts(parts) { this.parts = parts; this.build(parts); }
   add(m) {
+    if (this.baked) { // [draws] 已烘進靜態批次(src/map/hospital/batch.js)後又加實例:改回實例池顯示(舊實例在批次裡會多畫一次,但不會缺)
+      console.warn('[props-out] 已烘焙的實例池又加入實例', this.name);
+      this.baked = false;
+      for (const im of this.meshes) if (!im.parent) this.ctx.add(im, { static: false, collide: false });
+    }
     if (this.n >= this.cap) { this.cap *= 2; this.build(this.parts); }
     const i = this.n++;
     this.mats.push(m.clone());
@@ -277,7 +283,7 @@ class RegionPool {
   sub(x, z) {
     const k = `${Math.floor(x / REGION)},${Math.floor(z / REGION)}`;
     let p = this.subs.get(k);
-    if (!p) { p = new Pool(this.ctx, `${this.name}@${k}`, this.parts, Math.max(4, Math.min(this.cap, 16)), false); this.subs.set(k, p); }
+    if (!p) { p = new Pool(this.ctx, `${this.name}@${k}`, this.parts, Math.max(4, Math.min(this.cap, 16)), false); p.owner = this; this.subs.set(k, p); }
     return p;
   }
   add(m) { const e = m.elements; return this.sub(e[12], e[14]).add(m); }

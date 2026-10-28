@@ -18,6 +18,7 @@ import { inputMethods } from './game/input.js';
 import { createPhysics } from './physics/index.js';
 import { applyTruth } from './physics/truth.js';
 import { Weather } from './map/weather.js';
+import { installProgramSort } from './sys/drawsort.js';
 
 // 遊戲主體:建立渲染器/場景/各系統,並跑主迴圈。
 // 細節分在 src/game/*:fx(粒子/血池)、combat(射擊/傷害/爆炸)、flow(回合/出怪/商店/死亡)、input(輸入)、post(後處理)
@@ -42,6 +43,7 @@ export class Game {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.15;
     this.renderer = renderer;
+    this._dsort = installProgramSort(renderer); // [draws] 不透明物件依 shader program 分組繪製(src/sys/drawsort.js)
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x050606);
@@ -76,6 +78,7 @@ export class Game {
     this.weather = new Weather(this); // 雨、濕地、低霧、閃電、暴風雲與城市剪影(src/map/weather.js;每幀掛在 hospital.update 之後)
     this.buildGameplayWorld(); // 補給站店面與補給點(碰撞盒要在 buildNav 之前登記)
     this.truth = applyTruth(this.world, this.hospital); // [physics] 碰撞高度 = 看到的高度、道具材質(src/physics/truth.js)
+    try { this.hospital.batch?.(this); } catch (e) { console.error('[hospital] 靜態批次失敗', e); } // [draws] 靜態幾何 → 每材質一個 BatchedMesh(區塊實例 + PVS)
     this.world.buildNav(); // 場景與道具的碰撞盒都登記好之後才建導航
 
     this.player = new Player(this.camera, this.world);
@@ -211,6 +214,7 @@ export class Game {
   }
 
   render() {
+    this._dsort?.tick();
     this.composer.render();
   }
 }
