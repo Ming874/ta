@@ -58,3 +58,11 @@
 body.st-ending #hud, body.st-ending #crosshair, body.st-ending #wx-reticle { visibility: hidden; }
 body.st-ending #gh-subs { visibility: hidden; }
 @media (prefers-reduced-motion: reduce) { #st-end * { transition-duration: 200ms !important; } }
+/* 阿嬤叫你回來(src/story/revive.js):她的聲音一次比一次小 → 字卡跟著變淡、變小 */
+.mo-card.ama.st-mid .t { opacity: .82; font-size: clamp(36px, 5.2vw, 76px); }
+.mo-card.ama.st-weak .t { opacity: .6; font-size: clamp(30px, 4.2vw, 62px); letter-spacing: .28em; }
+.mo-card.ama.st-faint .t { opacity: .42; font-size: clamp(26px, 3.6vw, 52px); letter-spacing: .32em; }
+.st-revive { position: fixed; inset: 0; z-index: 61; background: #000; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 500ms ease; pointer-events: none;
+  font-family: "Noto Serif TC", "Source Han Serif TC", "PMingLiU", serif; color: #efe6d2; font-size: clamp(40px, 6vw, 88px); letter-spacing: .18em; }
+.st-revive.on { opacity: 1; }
+.st-revive.mid div { opacity: .82; } .st-revive.weak div { opacity: .6; font-size: .8em; } .st-revive.faint div { opacity: .42; font-size: .7em; }
