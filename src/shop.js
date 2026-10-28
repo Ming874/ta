@@ -857,8 +857,8 @@ export class Shop {
         x.save(); x.translate(w / 2, h / 2); x.rotate(-0.04);
         x.fillStyle = 'rgba(170,20,14,.9)'; x.font = `900 ${h * 0.34}px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle';
         x.shadowColor = 'rgba(150,10,5,.8)'; x.shadowBlur = 6;
-        x.fillText('燈篙熄了才開門', 0, -h * 0.12);
-        x.font = `700 ${h * 0.17}px ${FONT}`; x.fillText('燈篙亮著　莫敲門', 0, h * 0.26);
+        x.fillText('打完這一波才開門', 0, -h * 0.12);
+        x.font = `700 ${h * 0.17}px ${FONT}`; x.fillText('招魂燈亮著　不要敲門', 0, h * 0.26);
         x.restore();
         x.globalCompositeOperation = 'destination-out';
         for (let i = 0; i < 900; i++) { x.globalAlpha = rnd() * 0.8; x.fillRect(rnd() * w, rnd() * h, rr(1, 4), rr(1, 3)); }
@@ -1063,7 +1063,7 @@ export class Shop {
         x2.fillStyle = '#b8281c'; x2.fillRect(0, 0, w, h * 0.22);
         x2.fillStyle = '#fff'; x2.font = `900 ${h * 0.15}px ${FONT}`; x2.textAlign = 'center'; x2.textBaseline = 'middle'; x2.fillText('金水商行 營業須知', w / 2, h * 0.11);
         x2.fillStyle = '#222'; x2.font = `700 ${h * 0.13}px ${FONT}`;
-        ['燈篙熄了才營業', '站在櫃台前按 E 交易', '錢無夠，阿伯予你賒 · 予人咬著的莫入來'].forEach((t, i) => x2.fillText(t, w / 2, h * (0.4 + i * 0.2), w - 12));
+        ['休息時間才營業', '站在櫃台前按 E 買東西', '錢不夠，阿伯先讓你賒 · 被咬到的不要進來'].forEach((t, i) => x2.fillText(t, w / 2, h * (0.4 + i * 0.2), w - 12));
       }, 256, 168), roughness: 0.4,
     }));
     stand.position.set(0.55, 1.08, 0.22);
@@ -1350,8 +1350,8 @@ export class Shop {
       x.fillStyle = '#ffd27a'; x.fillText('按 E 跟金水伯買東西', 14, 140);
       x.fillStyle = '#7dffa0'; x.fillText(blink ? '> _' : '>', 14, 164);
     } else {
-      x.fillStyle = '#ff6a5a'; x.fillText('金水商行 鐵門拉落來矣', 10, 12);
-      x.fillStyle = '#c98a80'; x.fillText('燈篙熄了', 10, 44); x.fillText('才會開門', 10, 64);
+      x.fillStyle = '#ff6a5a'; x.fillText('金水商行 鐵門拉下來了', 10, 12);
+      x.fillStyle = '#c98a80'; x.fillText('打完這一波', 10, 44); x.fillText('才會開門', 10, 64);
       x.fillStyle = '#ff6a5a'; x.fillText(blink ? '● LOCKED' : '  LOCKED', 10, 140);
     }
     for (let y = 0; y < h; y += 3) { x.fillStyle = 'rgba(0,0,0,.25)'; x.fillRect(0, y, w, 1); }

@@ -510,14 +510,14 @@ export const terminal = {
     kit.static(m, api.mtx(s), s.li);
     kit.static(b, L, s.li);
     if (desk) api.box(s, -0.46, 0.05, 0.46, 0.63, 0.8);
-    const H = api.LINES.HIS || { title: '萬嵐 HIS v4', entries: {}, unknown: '查無資料' };
-    const tex = canvasTex('his', 128, 96, (x, w, h) => { x.fillStyle = '#041008'; x.fillRect(0, 0, w, h); x.fillStyle = '#5aff7a'; x.font = `bold 10px ${FONT}`; x.fillText('HIS v4', 8, 16); x.font = `9px ${FONT}`; x.fillText('床號 / 病歷號查詢', 8, 32); x.fillText('> _', 8, 50); for (let i = 0; i < 24; i++) { x.fillStyle = 'rgba(90,255,122,.06)'; x.fillRect(0, i * 4, w, 1); } });
+    const H = api.LINES.HIS || { title: '大新　病歷電腦', entries: {}, unknown: '查無資料' };
+    const tex = canvasTex('his', 128, 96, (x, w, h) => { x.fillStyle = '#041008'; x.fillRect(0, 0, w, h); x.fillStyle = '#5aff7a'; x.font = `bold 10px ${FONT}`; x.fillText('病歷電腦', 8, 16); x.font = `9px ${FONT}`; x.fillText('床號 / 病歷號查詢', 8, 32); x.fillText('> _', 8, 50); for (let i = 0; i < 24; i++) { x.fillStyle = 'rgba(90,255,122,.06)'; x.fillRect(0, i * 4, w, 1); } });
     const sm = new Model(); sm.quad(texMat('his', tex, { basic: true }), 0, 0.19, 0.131, 0.28, 0.21);
     kit.static(sm, L, s.li);
     const pos = { x: 0, y: 0, z: 0 };
     { const v = new THREE.Vector3(0, 0.19, 0.15).applyMatrix4(L); pos.x = v.x; pos.y = v.y; pos.z = v.z; }
     return ix.register(pos, {
-      id: spec.id || 'his' + Math.round(pos.x), kind: 'terminal', name: H.title, reach: 1.9, radius: 0.18, scope: 'map', prompt: '使用病歷系統',
+      id: spec.id || 'his' + Math.round(pos.x), kind: 'terminal', name: H.title, reach: 1.9, radius: 0.18, scope: 'map', prompt: '用病歷電腦查資料',
       onUse: () => {
         ix.ui.keypad({
           title: H.title, sub: '輸入床號或病歷號 · [Enter] 查詢', len: 4, terminal: true,
@@ -569,7 +569,7 @@ export const fusebox = {
     for (let i = 0; i < st.n; i++) fz.set(fi[i], fm(i));
     for (const c of initial) power(c, true);
     const panel = () => ix.ui.panel({
-      title: spec.title || '配電盤', sub: () => `保險絲 ${st.n}/${slots} · 可同時供電 ${cap()} 條迴路`,
+      title: spec.title || '配電盤', sub: () => `保險絲 ${st.n}/${slots} · 可以同時供電 ${cap()} 個地方`,
       rows: () => circuits.map((c) => ({ label: c.label, on: st.on.has(c.id), can: st.on.has(c.id) || st.on.size < cap() })),
       toggle: (i) => {
         const c = circuits[i];

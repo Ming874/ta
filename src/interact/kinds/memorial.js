@@ -56,10 +56,10 @@ function photoTex() {
     for (let r = 0; r < 3; r++) for (let k = 0; k < 4; k++) { c.fillStyle = r === 1 && k === 2 ? '#fff4cc' : '#2c2b28'; c.fillRect(22 + k * 40, 26 + r * 56, 26, 38); }
     c.fillStyle = '#5a564c'; c.fillRect(110, 92, 14, 30); c.beginPath(); c.arc(117, 88, 6, 0, Math.PI * 2); c.fill(); // 窗裡的人
     c.fillStyle = '#f4f0e2'; c.fillRect(104, 100, 18, 12);
-    c.fillStyle = '#222'; c.font = `bold 5px ${FONT}`; c.fillText('莫驚', 106, 106); c.fillText('阿嬤', 106, 111);
+    c.fillStyle = '#222'; c.font = `bold 5px ${FONT}`; c.fillText('不要怕', 106, 106); c.fillText('阿嬤', 106, 111);
     for (let i = 0; i < 900; i++) { c.fillStyle = `rgba(${Math.random() < 0.5 ? '0,0,0' : '255,255,255'},${Math.random() * 0.12})`; c.fillRect(10 + Math.random() * (w - 20), 10 + Math.random() * (h - 56), 1.5, 1.5); } // 網點與雜訊
     c.fillStyle = '#2a2620'; c.font = `bold 13px ${FONT}`; c.textAlign = 'center';
-    c.fillText('護理長　鄭玉蘭', w / 2, h - 28); c.font = `11px ${FONT}`; c.fillText('1946 – 2003', w / 2, h - 12);
+    c.fillText('護理長　林秀英', w / 2, h - 28); c.font = `11px ${FONT}`; c.fillText('1946 – 2003', w / 2, h - 12);
   });
 }
 
@@ -172,7 +172,7 @@ export const memorial = {
         if (busy) { e.hold = 0; e.onTap = null; return { text: '擲筊中……', dim: true }; }
         if (d && d.ready() && !d.solved()) { e.hold = THROW.hold; e.onTap = view; e.tapText = '看遺照'; e.holdText = '擲筊'; return '擲筊'; }
         e.hold = 0; e.onTap = null;
-        return d && !d.solved() && d.filled() > 0 ? '看遺照（推理本還有空格）' : '看遺照';
+        return d && !d.solved() && d.filled() > 0 ? '看阿嬤的照片（筆記本還有空格）' : '看阿嬤的照片';
       },
       onUse: (ctx) => {
         if (busy) return false;

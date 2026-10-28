@@ -173,7 +173,7 @@ function medFridge() {
     }
     b.box('enamel_gray', 0.6, 0.2, 0.02, 0, 0.12, 0.66);
     b.plane(G(glowSwatch('fridge_led', '#ff2010')), 0.04, 0.015, 0.25, 1.78, 0.662);
-    b.plane(L(sign('2-8°C 回神注射液　冷藏', { w: 192, h: 48, bg: '#e8f0f0', fg: '#1a4a8a', size: 0.42 })), 0.24, 0.06, -0.1, 1.78, 0.662);
+    b.plane(L(sign('2-8°C 喚醒針　冷藏', { w: 192, h: 48, bg: '#e8f0f0', fg: '#1a4a8a', size: 0.42 })), 0.24, 0.06, -0.1, 1.78, 0.662);
     b.meta.coll = new THREE.Box3(new THREE.Vector3(-0.36, 0, 0), new THREE.Vector3(0.36, 1.86, 0.68));
   });
 }

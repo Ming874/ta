@@ -17,8 +17,8 @@ const bannerRect = () => labRect('story:banner', 448, 49, (c, w, h) => {
   c.fillStyle = '#1d8a86'; c.fillRect(0, 0, w, 5); c.fillRect(0, h - 5, w, 5);
   c.fillStyle = '#1d8a86'; c.beginPath(); c.arc(30, h / 2, 14, 0, PI * 2); c.fill();
   c.fillStyle = '#f3f4f1'; c.beginPath(); c.arc(34, h / 2 - 3, 9, 0, PI * 2); c.fill();
-  c.fillStyle = '#1d8a86'; c.font = 'bold 13px sans-serif'; c.textAlign = 'left'; c.fillText('萬嵐生醫', 52, h / 2 + 5);
-  c.font = 'bold 30px sans-serif'; c.textAlign = 'center'; c.fillStyle = '#16615e'; c.fillText('回神照護中心  歡迎回家', w / 2 + 40, h / 2 + 11);
+  c.fillStyle = '#1d8a86'; c.font = 'bold 13px sans-serif'; c.textAlign = 'left'; c.fillText('大新生技', 52, h / 2 + 5);
+  c.font = 'bold 30px sans-serif'; c.textAlign = 'center'; c.fillStyle = '#16615e'; c.fillText('大新照護中心  歡迎回家', w / 2 + 40, h / 2 + 11);
   c.fillStyle = 'rgba(90,80,60,0.14)'; for (let i = 0; i < 40; i++) c.fillRect((i * 97) % w, (i * 31) % h, 18, 2);
   c.restore();
 });

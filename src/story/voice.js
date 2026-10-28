@@ -6,15 +6,15 @@
 import { ix as ixs } from '../audio.js';
 
 export const WHO = {
-  xl: { tag: 'AM 1207 · 小鈴', voice: 'woman', filter: 'radio' },
+  xl: { tag: '收音機 · 小美', voice: 'woman', filter: 'radio' },
   ks: { tag: '對講機 · 金水伯', voice: 'old', filter: 'radio' },
-  pa: { tag: '院內廣播', voice: 'woman', filter: 'pa' },
+  pa: { tag: '醫院廣播', voice: 'woman', filter: 'pa' },
   ho: { tag: '來電 · 何啟明', voice: 'man', filter: 'phone' },
 };
 const nick = () => { try { const n = localStorage.getItem('hz.nick'); return n && n.trim() ? n.trim().slice(0, 12) : '阿孫'; } catch { return '阿孫'; } };
 export const fillNick = (t) => String(t).replace(/\{暱稱\}/g, nick());
 // 估計秒數(和合成語音差不多:每字 0.26 秒 + 0.9)
-export const secsOf = (t) => 0.9 + [...String(t).replace(/[，。、……？！「」\s]/g, '')].length * 0.26;
+export const secsOf = (t) => 0.7 + [...String(t).replace(/[，。、……？！「」\s]/g, '')].length * 0.19; // 約每秒 5 字(字幕好讀,不拖)
 
 export function wait(game, secs) {
   return new Promise((res) => { const X = game.interact; if (!X?.after) { setTimeout(res, secs * 1000); return; } X.after(secs, res); });
@@ -52,8 +52,12 @@ export function seq(game, lines, o = {}) {
       if (typeof L === 'function') { await L(); continue; }
       if (typeof L === 'number') { await wait(game, L); continue; }
       const [who, text, secs, lo] = L;
-      const d = line(game, who, text, { ...o, ...(lo || {}), secs });
-      await wait(game, d + (lo?.gap ?? o.gap ?? 0.5));
+      const ps = String(text).split('\n'); // 一句一行字幕(CLARITY_PLAN §5:一句不超過 18 字,長的拆成兩句依序播)
+      for (let i = 0; i < ps.length; i++) {
+        if (stopped) return false;
+        const d = line(game, who, ps[i], { ...o, ...(lo || {}), secs: ps.length > 1 ? undefined : secs });
+        await wait(game, d + (i < ps.length - 1 ? 0.35 : lo?.gap ?? o.gap ?? 0.5));
+      }
     }
     return true;
   })();

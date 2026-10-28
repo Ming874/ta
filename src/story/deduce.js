@@ -15,6 +15,7 @@ import { MAP, QUESTION, WORDS, CARD, CARDS, NOTE_CARD, WHISPER, LOOK, TALK, THRO
 import { Book } from './book.js';
 import * as THREE from 'three';
 import { sfx, ghost } from '../audio.js';
+import { secsOf } from './voice.js';
 
 const KEY = 'hz.deduce.v1';
 const load = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch { return {}; } };
@@ -134,7 +135,9 @@ export function installDeduce(game) {
     const api = ix()?.map?.api;
     if (!api || !lines?.length || game.story?.ending?.active) { cb?.(); return; } // 結局裡只有結局自己的聲音
     let t = 0;
-    for (const [who, text, secs] of lines) {
+    const ex = []; // 一句一行字幕:多行的台詞拆開依序播
+    for (const [who, text, secs] of lines) { const ps = String(text).split('\n'); for (const p of ps) ex.push([who, p, ps.length > 1 ? secsOf(p) : secs]); }
+    for (const [who, text, secs] of ex) {
       ix().after(t, () => api.speak({ who, parts: [text], voice: /小美|小鈴|阿嬤|女|淑芬/.test(who) ? 'woman' : /王醫師|男/.test(who) ? 'man' : 'old' }, { filter: o.filter || (/對講機|收音機|AM/.test(who) ? 'radio' : 'phone'), noHorror: true }));
       t += (secs || 3) + 0.3;
     }
@@ -259,7 +262,7 @@ function makeBadge(game, D) {
   const hud = game.ui?.hudEl || document.body;
   const el = document.createElement('div');
   el.className = 'hd dd-badge';
-  el.innerHTML = '<b>＋線索</b><span><kbd>J</kbd> 推理本</span><i></i>';
+  el.innerHTML = '<b>＋線索</b><span><kbd>J</kbd> 筆記本</span><i></i>';
   hud.appendChild(el);
   let t = 0;
   return {

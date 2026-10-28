@@ -40,7 +40,7 @@ export const KEYS = [
   ['滑鼠左鍵', '射擊'], ['滑鼠右鍵', '開鏡（按住）'], ['R', '換彈'], ['1–6 / 滾輪', '切換武器'],
   ['G', '投擲手榴彈'], ['V', '小刀'], ['F', '手電筒'], ['E', '互動：金水商行／補給櫃／調查'],
   ['H', '使用醫療包'], ['M', '地圖'], ['N', '休息時不等了，直接開始下一波'], ['T', '關閉提示'],
-  ['J', '推理本'], ['B', '吹口哨（鬼月莫亂吹）'],
+  ['J', '筆記本'], ['B', '吹口哨（鬼月不要亂吹）'],
   ['Esc', '暫停'], ['F3', '效能資訊'],
 ];
 const KEYS_MP = [['Tab', '計分板（多人）'], ['Enter', '聊天（多人）']];
@@ -94,10 +94,10 @@ export class Menu {
         <div class="mn-over">${HEART}HUÍ SHÉN · SACRED HEART HOSPITAL</div>
         <h1 class="mn-title"><span>回</span><span>神</span></h1>
         <div class="mn-sub mn-chap">〈207 的燈〉聖心醫院</div>
-        <div class="mn-sub">午夜之後，這裡<b>不再收治活人</b>。</div>
+        <div class="mn-sub">阿嬤死在 207 號房。今晚，<b>她打電話叫你回來</b>。</div>
         <div class="mn-rule"></div>
         <div class="mn-btns">
-          <button class="mn-btn primary" id="startBtn">單人<small>撐過一波波殭屍 · 查出 207 那一夜的事</small></button>
+          <button class="mn-btn primary" id="startBtn">單人<small>撐過一波波活屍 · 查出阿嬤在 207 守著什麼</small></button>
           <button class="mn-btn" data-mode="coop">合作生存<small>2–4 人連線 · 倒地可互相救援</small></button>
           <button class="mn-btn" data-mode="pvp">對戰死鬥<small>2–8 人 · 各自為戰，可加入殭屍騷擾（非正史）</small></button>
           <div id="menuModes"></div>

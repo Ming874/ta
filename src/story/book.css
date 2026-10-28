@@ -93,3 +93,7 @@
 .ob-glint::after { transform: rotate(90deg); }
 .ob-glint.on { opacity: .9; animation: ob-tw 2.2s ease-in-out infinite; }
 @keyframes ob-tw { 0%, 100% { filter: brightness(.6); } 45% { filter: brightness(1.4); } 55% { filter: brightness(.9); } }
+
+/* 目標列的「為什麼」(CLARITY_PLAN §7.1):淡 40%、小一號 */
+.ob-line small { opacity: .6; font-size: .84em; letter-spacing: .12em; white-space: nowrap; }
+.ob-line.new small { animation: ob-in 2.4s ease-out; }

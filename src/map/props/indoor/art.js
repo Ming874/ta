@@ -437,7 +437,7 @@ export function dosScreen(kind = 'his') {
     reseed(kind.length * 61);
     c.fillStyle = kind === 'blue' ? '#0a1a8a' : '#020402'; c.fillRect(0, 0, w, h);
     const col = kind === 'blue' ? '#e8e8f8' : '#40d860';
-    const lines = kind === 'blue' ? ['*** STOP: 0x0000007B', '', 'INACCESSIBLE_BOOT_DEVICE', '', 'PATIENT RECORD 207', 'STATUS: ????????', '', 'DO NOT RESTART'] : ['萬嵐 HIS v4', '病患查詢 >> 207', '姓名：無名氏', '入院：1999/09/24', '狀態：封存', '', '', 'C:\\>_'];
+    const lines = kind === 'blue' ? ['*** STOP: 0x0000007B', '', 'INACCESSIBLE_BOOT_DEVICE', '', 'PATIENT RECORD 207', 'STATUS: ????????', '', 'DO NOT RESTART'] : ['大新　病歷電腦', '病患查詢 >> 207', '姓名：無名氏', '入院：1999/09/24', '狀態：鎖住', '', '', 'C:\\>_'];
     lines.forEach((t, k) => text(c, t, 8, 12 + k * 16, { size: 12, color: col, align: 'left', font: 'monospace', weight: 'normal' }));
     for (let y = 0; y < h; y += 2) { c.fillStyle = 'rgba(0,0,0,0.25)'; c.fillRect(0, y, w, 1); }
   });

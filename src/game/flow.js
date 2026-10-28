@@ -193,8 +193,8 @@ export const flowMethods = {
     // [motion] 橫幅、聲音、邊緣紅光同一幀;開場演出中或戰鬥 shader 還沒預熱(先不出怪)時,等到真的開始才亮
     const show = () => {
       if (this.state !== 'playing' || this.round !== n || this.phase !== 'fighting') return;
-      if (sp) this.ui.banner(`第 ${n} 波`, `燈篙亮了，牠們被叫過來了 · ${sp.name} · ${total} 隻${tail}`, 3600, sp.cls);
-      else this.ui.banner(`第 ${n} 波`, `燈篙亮了，牠們被叫過來了 · ${total} 隻${tail}`, 3000, '');
+      if (sp) this.ui.banner(`第 ${n} 波`, `招魂燈亮了，活屍被叫過來了 · ${sp.name} · ${total} 隻${tail}`, 3600, sp.cls);
+      else this.ui.banner(`第 ${n} 波`, `招魂燈亮了，活屍被叫過來了 · ${total} 隻${tail}`, 3000, '');
       if (sp && kind !== 'boss') this.ui.feed(`${sp.name}：${sp.sub}`, { icon: 'skull', color: sp.cls === 'gold' ? '#e8c860' : '#ff6a5a', ms: 6500 });
       sfx.roundStart();
       this.motion?.beat('on', { k: sp ? 0.62 : 0.5 });
@@ -302,7 +302,7 @@ export const flowMethods = {
     if (this.phase !== 'fighting') { this._shopClosePending = false; return; }
     if (!this._shopHasPlayer()) { this._shopClosePending = false; this.shop?.setOpen(false); return; }
     const t0 = this._shopCloseT || 0, t = (this._shopCloseT = t0 + dt);
-    if (t0 === 0 || (t0 < 8 && t >= 8)) this.ui.feed(t0 === 0 ? '金水伯：「緊出來！我欲拉鐵門矣！」（快出來，要關門了）' : '金水伯：「緊咧！」（快點！）', { icon: 'warn', color: '#e8b46a', ms: 4200 });
+    if (t0 === 0 || (t0 < 8 && t >= 8)) this.ui.feed(t0 === 0 ? '金水伯：「少年仔，快出來！要拉鐵門了！」' : '金水伯：「快點啦！」', { icon: 'warn', color: '#e8b46a', ms: 4200 });
     if (t >= 20) { // 還是不出來:送到大廳,再拉下
       for (const p of this.players || [this.player]) { const q = p?.pos; if (q && p === this.player && this.world.zoneAt(q.x, q.y + 0.2, q.z)?.id === 'f1_store') { const s = this.world.layout?.start; if (s) p.place?.(s.x, s.y || 0, s.z, p.yaw); } }
       this._shopClosePending = false;
@@ -378,7 +378,7 @@ export const flowMethods = {
       sub = `擊殺 ${k} · 爆頭 ${h} · 命中率 ${acc}% · 用時 ${mmss(this.time - R.t0)}`;
       R.dur = this.time - R.t0;
     }
-    this.ui.banner('這一波結束了', `燈篙暗了 · ${sub}`, 3200, this.roundClean ? 'gold' : '');
+    this.ui.banner('這一波結束了', `招魂燈熄了 · ${sub}`, 3200, this.roundClean ? 'gold' : '');
     // 回合分數
     const pts = roundScore(n, this.roundClean);
     this._addScore(pts);
@@ -671,7 +671,7 @@ export const flowMethods = {
     }
     this.ui.prompt(prompt, dim);
     // 回合資訊
-    if (this.phase === 'fighting') { if (this.spawnHeld) this.ui.setRoundText('燈篙還沒亮……'); else this.ui.setZombies(this.zombiesLeft()); } // [motion] 預熱中先不出怪:不要說謊
+    if (this.phase === 'fighting') { if (this.spawnHeld) this.ui.setRoundText('招魂燈還沒亮……'); else this.ui.setZombies(this.zombiesLeft()); } // [motion] 預熱中先不出怪:不要說謊
     else if (this.phase === 'shop' || this.phase === 'break') this.ui.setRest(this.restT, !this.net, SPECIAL[waveKind(this.round + 1)]?.name || '');
     else if (this.phase === 'collecting') this.ui.setRoundText('撿錢中…');
     this.ui.update(this, dt);

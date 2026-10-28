@@ -402,7 +402,7 @@ export function hauntKinds(h) {
       const r = radioPick(c), pos = { x: r.x, y: (r.y ?? lv(c)) + 0.5, z: r.z };
       ghost.tune(pos, 2.4);
       h.after(2.5, () => {
-        const v = story('radio', { pos, priority: 8, force: true, tag: '收音機 · 1999' }), d = v?._hd?.dur ?? 5.5;
+        const v = story('radio', { pos, priority: 8, force: true, tag: '收音機 · 小美（1999）' }), d = v?._hd?.dur ?? 5.5;
         h.after(Math.max(1, d - 0.8), () => { ghost.stinger('sub', 0.6); P().addShake?.(0.12); ghost.tune(pos, 0.6); }); // 地鳴,斷訊
       });
       h.director.hold(12);

@@ -449,7 +449,7 @@ export function installMotion(game) {
   };
 
   // ---------- 阿嬤叫你回來(單人回神;邏輯在劇情層) ----------
-  M.revive = async ({ line = '阿孫，轉來喔！', hold = 1600 } = {}) => {
+  M.revive = async ({ line = '阿孫，回神喔！', hold = 1600 } = {}) => {
     M.busy = true;
     const v = ch('revive');
     M.hudHide(M.reduced ? 160 : 400);
@@ -468,7 +468,7 @@ export function installMotion(game) {
     const fw = document.createElement('div');
     fw.id = 'mo-fontwarm';
     fw.setAttribute('aria-hidden', 'true');
-    fw.innerHTML = `<div class="mo-card cold"><div class="in"><div class="t">${esc(COLD_CARD.title)}</div><div class="s">${esc(COLD_CARD.sub)}</div><div class="l">${esc(COLD_CARD.line)}</div></div></div><div class="mo-card ama"><div class="in"><div class="t">阿孫，轉來喔！</div></div></div>`;
+    fw.innerHTML = `<div class="mo-card cold"><div class="in"><div class="t">${esc(COLD_CARD.title)}</div><div class="s">${esc(COLD_CARD.sub)}</div><div class="l">${esc(COLD_CARD.line)}</div></div></div><div class="mo-card ama"><div class="in"><div class="t">阿孫，回神喔！</div></div></div>`;
     document.body.appendChild(fw);
     setTimeout(() => fw.remove(), 20000);
   }
