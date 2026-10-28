@@ -347,7 +347,7 @@ export function handPrint(B, R, M, o) {
   const load = o.load ?? 1;
   const sl = o.slide, slen = sl ? sl.len : 0, sang = sl ? sl.ang : 0, sdx = Math.sin(sang), sdy = Math.cos(sang);
   const y1 = Math.min(h - 1, gy0 + gh + Math.ceil(slen) + 2), x0 = Math.max(0, gx0 - Math.ceil(Math.abs(sdx) * slen) - 2), x1 = Math.min(w - 1, gx0 + gw + Math.ceil(Math.abs(sdx) * slen) + 2);
-  const ns = sl ? Math.max(2, Math.ceil(slen / 0.8)) : 1;
+  const ns = sl ? Math.max(2, Math.ceil(slen / 1.2)) : 1;
   for (let y = gy0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
     const i = y * w + x;
     let best = 0, bs = 0;
