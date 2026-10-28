@@ -308,8 +308,9 @@ export function createBatcher({ L, vis }) {
       }
       stats.instanced++;
     },
-    // 建立 BatchedMesh(每個 group 一個;實例 = 區塊)
-    build(parent) {
+    // 建立 BatchedMesh(每個 group 一個;實例 = 區塊);buildSteps 每建好一個就 yield(載入時分時執行)
+    build(parent) { const it = api.buildSteps(parent); let r; while (!(r = it.next()).done) { /* 同步跑完 */ } return r.value; },
+    *buildSteps(parent) {
       const out = [], insts = [];
       let maxInst = 0;
       for (const gr of groups.values()) maxInst = Math.max(maxInst, gr.pieces.size);
@@ -349,6 +350,7 @@ export function createBatcher({ L, vis }) {
         parent.add(bm);
         bm.updateMatrix(); bm.updateMatrixWorld(true);
         out.push(bm);
+        yield;
       }
       groups.clear();
       return { meshes: out, insts };
@@ -370,7 +372,8 @@ export function createBatchView({ meshes, insts, vis, moon, dyn = null, comp = n
   const instBM = Int32Array.from(insts.map((it) => bmIdx.get(it.bm)));
   const visCnt = new Int32Array(meshes.length);
   const cand = new Int32Array(insts.length), onList = new Int32Array(insts.length);
-  let nCand = 0, nOn = 0; // cand:want = 1 的實例(refresh 時整理);onList:目前開著的實例
+  let nCand = 0, nOn = 0, nPvs = 0;
+  const pvsList = new Int32Array(insts.length); // 通過 PVS / 樓層規則的實例(距離另外算) // cand:want = 1 的實例(refresh 時整理);onList:目前開著的實例
   let allOn = false;
   // 月光陰影:這個 pass 全部實例都要畫(其他 pass 照舊)
   for (const bm of meshes) {
@@ -397,27 +400,36 @@ export function createBatchView({ meshes, insts, vis, moon, dyn = null, comp = n
     meshes, insts,
     // li:玩家樓層;vis:各樓層群組是否顯示(地下室規則);propVis:其他樓層的道具是否可能看得到;outdoor:玩家在戶外
     // ex/ey/ez:眼睛位置;far:道具顯示距離
-    refresh(li, lvlVis, propVis, outdoor, ex, ey, ez, far) {
-      for (let j = 0; j < lvlVis.length; j++) { lvlOK[j] = lvlVis[j] ? 1 : 0; otherOK[j] = propVis[j] ? 1 : 0; }
-      const own = vis.own, col = vis.col, other = vis.other;
-      for (let i = 0; i < insts.length; i++) {
-        const it = insts[i];
-        let ok = lvlOK[it.li] === 1;
-        if (ok && it.regs) {
-          const R = it.regs;
-          ok = false;
-          if (it.kind === 'struct') { for (let k = 0; k < R.length; k++) { const r = R[k]; if (own[r] || col[r] || other[r]) { ok = true; break; } } }
-          else if (it.li === li) { for (let k = 0; k < R.length; k++) if (own[R[k]]) { ok = true; break; } }
-          else if (otherOK[it.li]) { if (outdoor) ok = true; else for (let k = 0; k < R.length; k++) if (other[R[k]] || own[R[k]]) { ok = true; break; } }
-        } else if (ok && it.kind === 'prop' && it.li !== li) ok = otherOK[it.li] === 1;
-        if (ok && it.kind === 'prop') {
-          const s = it.sphere, c = s.center, d = Math.hypot(c.x - ex, c.y - ey, c.z - ez) - s.radius;
-          ok = d < far * it.far;
+    // pvsChanged:PVS / 樓層規則有變 → 重算區塊可見(pvsOK);否則只重算道具的距離(只走 PVS 通過的道具實例)
+    refresh(li, lvlVis, propVis, outdoor, ex, ey, ez, far, pvsChanged = true) {
+      if (pvsChanged) {
+        for (let j = 0; j < lvlVis.length; j++) { lvlOK[j] = lvlVis[j] ? 1 : 0; otherOK[j] = propVis[j] ? 1 : 0; }
+        const own = vis.own, col = vis.col, other = vis.other;
+        nPvs = 0;
+        for (let i = 0; i < insts.length; i++) {
+          const it = insts[i];
+          let ok = lvlOK[it.li] === 1;
+          if (ok && it.regs) {
+            const R = it.regs;
+            ok = false;
+            if (it.kind === 'struct') { for (let k = 0; k < R.length; k++) { const r = R[k]; if (own[r] || col[r] || other[r]) { ok = true; break; } } }
+            else if (it.li === li) { for (let k = 0; k < R.length; k++) if (own[R[k]]) { ok = true; break; } }
+            else if (otherOK[it.li]) { if (outdoor) ok = true; else for (let k = 0; k < R.length; k++) if (other[R[k]] || own[R[k]]) { ok = true; break; } }
+          } else if (ok && it.kind === 'prop' && it.li !== li) ok = otherOK[it.li] === 1;
+          if (ok) pvsList[nPvs++] = i;
         }
-        want[i] = ok ? 1 : 0;
       }
+      for (let k = 0; k < nCand; k++) want[cand[k]] = 0;
       nCand = 0;
-      for (let i = 0; i < insts.length; i++) if (want[i]) cand[nCand++] = i;
+      for (let k = 0; k < nPvs; k++) {
+        const i = pvsList[k], it = insts[i];
+        if (it.kind === 'prop') {
+          const s = it.sphere, c = s.center, dx = c.x - ex, dy = c.y - ey, dz = c.z - ez, lim = far * it.far + s.radius;
+          if (dx * dx + dy * dy + dz * dz >= lim * lim) continue;
+        }
+        want[i] = 1;
+        cand[nCand++] = i;
+      }
     },
     // 每次主相機渲染前(scene.onBeforeRender):視錐剔除 + 套用
     cull(camera) {

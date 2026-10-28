@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { parseLayout } from './levels.js';
 import { createDressCtx } from './props/ctx.js';
-import { dressWorld } from './props/index.js';
+import { dressWorldSteps } from './props/index.js';
+import { prepareOutdoorSteps } from './props/outdoor.js';
 import { Buckets } from './hospital/builder.js';
 import { createShellContext, buildFloors, buildWalls, buildWindowCells, buildCeilings, buildVaults, buildPipes } from './hospital/shell.js';
 import { buildDoors, buildWindows, buildRails, buildFences, buildElevators, buildEdgeRails } from './hospital/openings.js';
@@ -24,6 +25,13 @@ import { applySurface, hasSurface } from '../mats/surface.js';
 // 細節在 src/map/hospital/*;這裡負責組裝、樓層可見性與每幀更新。
 // opts:{ poolSize }(光源池燈數,預設 8;品質設定可用 hospital.setQuality 改)
 export function buildHospital(world, layout, scene, opts = {}) {
+  const it = buildHospitalSteps(world, layout, scene, opts);
+  let r;
+  while (!(r = it.next()).done) { /* 同步跑完 */ }
+  return r.value;
+}
+// [perf] 分段版(generator):每個建構階段、每個區域的擺設、每塊合併之後 yield;載入時由 main.js 分時執行
+export function* buildHospitalSteps(world, layout, scene, opts = {}) {
   const t0 = performance.now();
   const L = layout || world?.layout || parseLayout();
   const pvs = createVis(L); // [draws] 室內可見性(格子 2D 視線 → 區塊)
@@ -43,20 +51,21 @@ export function buildHospital(world, layout, scene, opts = {}) {
   const K = createShellContext(L, B);
   K.levelGroups = levelGroups;
   K.propGroups = propGroups; // 門扇實例跟著道具群組顯示(src/map/hospital/leaves.js)
-  buildRails(K);
-  buildFloors(K);
-  buildWalls(K);
-  buildWindowCells(K);
-  buildCeilings(K);
-  buildVaults(K);
-  buildPipes(K);
-  buildDoors(K);
-  buildWindows(K);
-  buildFences(K);
-  buildElevators(K);
-  buildStairs(K);
-  buildEdgeRails(K);
+  buildRails(K); yield;
+  buildFloors(K); yield;
+  buildWalls(K); yield;
+  buildWindowCells(K); yield;
+  buildCeilings(K); yield;
+  buildVaults(K); yield;
+  buildPipes(K); yield;
+  buildDoors(K); yield;
+  buildWindows(K); yield;
+  buildFences(K); yield;
+  buildElevators(K); yield;
+  buildStairs(K); yield;
+  buildEdgeRails(K); yield;
   try { buildSigns(K); } catch (e) { console.error('[hospital] 標示建構失敗', e); }
+  yield;
   const tShell = performance.now();
 
   // ---- 道具(依樓層合併靜態網格) ----
@@ -75,11 +84,14 @@ export function buildHospital(world, layout, scene, opts = {}) {
     return res;
   };
   let propErr = null;
-  try { dressWorld(ctx); } catch (e) { propErr = e; console.error('[hospital] dressWorld 失敗', e); }
+  try { yield* prepareOutdoorSteps(); } catch (e) { console.error('[hospital] 戶外材質準備失敗', e); }
+  try { yield* dressWorldSteps(ctx); } catch (e) { propErr = e; console.error('[hospital] dressWorld 失敗', e); }
   const { lights: propLights, events: propEvents } = ctx.finalize();
+  yield;
   const chunks = []; // 合併後的道具區塊(距離剔除用)
-  const propMeshes = mergeStatics(statics, propGroups, chunks, pvs);
+  const propMeshes = yield* mergeStatics(statics, propGroups, chunks, pvs);
   const propPbr = upgradePropMaterials();
+  yield;
   // 可推動的小道具是各自獨立的物件(不能合併):離玩家 34m 以外就不畫(夜裡有霧,看不出來),省 draw call
   const dynProps = [];
   for (const g of propGroups) for (const o of g.children) if (o.userData?.dynamic && !o.isInstancedMesh) dynProps.push(o);
@@ -92,7 +104,9 @@ export function buildHospital(world, layout, scene, opts = {}) {
 
   // ---- 燈光與氛圍 ----
   const lights = buildLights(K, { root, propLights, poolSize: opts.poolSize ?? 8 });
+  yield;
   const atmo = buildAtmosphere(K, { root, scene, groundMat: surf('soil') });
+  yield;
   atmo.moon.shadow.camera.layers.enable(NO_FLASH_SHADOW_LAYER);
   K.atmo = atmo;
   onGlowFog(setGlowFog);
@@ -100,7 +114,9 @@ export function buildHospital(world, layout, scene, opts = {}) {
   // [draws] 不會移動的容器:不必每幀重算矩陣(父節點自動更新會強迫底下全部子孫每幀重算世界矩陣)
   for (const g of [root, ...levelGroups, ...propGroups]) { g.matrixAutoUpdate = false; g.updateMatrix(); }
   const tris = B.tris;
+  yield;
   const events = createEvents({ K, L, lights, propEvents, root });
+  yield;
 
   // ---- 樓層可見性:地下室只在地下或靠近往下的樓梯時才畫 ----
   const b1 = L.levels.findIndex((l) => l.id === 'B1');
@@ -218,9 +234,12 @@ export function buildHospital(world, layout, scene, opts = {}) {
       return pvsTest(oli, rs ? rs.r : null);
     },
     // [draws] 靜態批次(src/map/hospital/batch.js):結構 / 道具區塊 / 靜態實例池 → 每個材質一個 BatchedMesh,實例 = 區塊。
-    // 由 game.js 在互動物件與材質表面升級(upgradeWorldSurfaces)之後、預編譯之前呼叫一次
-    batch(game) {
+    // 由 game.js 在互動物件與材質表面升級(upgradeWorldSurfaces)之後、預編譯之前呼叫一次(分段 generator;batch() = 同步跑完)
+    batch(game) { const it = H.batchSteps(game); let r; while (!(r = it.next()).done) { /* 同步跑完 */ } return r.value; },
+    *batchSteps(game) {
       if (view) return view;
+      let busy = 0, ts = performance.now(), nY = 0;
+      const pause = function* () { busy += performance.now() - ts; nY++; yield; ts = performance.now(); };
       const t1 = performance.now();
       const Bt = createBatcher({ L, vis: pvs });
       const vcCache = new Map();
@@ -231,12 +250,14 @@ export function buildHospital(world, layout, scene, opts = {}) {
         if (!mm || !m.parent || !batchable(m.material) || !plainObj(m) || /:glass$/.test(m.name)) continue;
         Bt.addStruct(m, +mm[1]);
         used.push(m);
+        if (!(used.length % 8)) yield* pause();
       }
-      const t2 = performance.now();
+      const t2 = busy + performance.now() - ts;
       for (const m of chunks) {
         if (!m.parent || !m.userData.batch || !batchable(m.material) || !plainObj(m)) continue;
         Bt.addProp(m, m.userData.batch.li, 1, m.userData.batch.regs);
         used.push(m);
+        if (!(used.length % 64)) yield* pause();
       }
       for (const g of propGroups) for (const o of g.children) {
         if (!o.isInstancedMesh || !o.count) continue;
@@ -246,17 +267,21 @@ export function buildHospital(world, layout, scene, opts = {}) {
           Bt.addInstanced(o, pi ? 0.6 : o.castShadow ? 1 : 0.6, vcMat, pi);
           used.push(o);
           if (pool) pool.baked = true;
+          if (!(used.length % 16)) yield* pause();
         } else if (region || pool?.dyn || (/^po_anim_/.test(o.name) && !o.frustumCulled)) keep.push(o); // 其餘實例池:依區塊開關
       }
       const st = { ...Bt.stats };
-      const t3 = performance.now();
-      const built = Bt.build(root);
-      const t4 = performance.now();
+      const t3 = busy + performance.now() - ts;
+      yield* pause();
+      const built = yield* Bt.buildSteps(root);
+      const t4 = busy + performance.now() - ts;
       for (const o of used) { o.parent?.remove(o); if (!o.isInstancedMesh) o.geometry.dispose(); }
       const left = chunks.filter((m) => m.parent);
       chunks.length = 0;
       chunks.push(...left);
+      yield* pause();
       const dynB = createDynBatch({ groups: dynProps.filter((o) => /^pi_dyn_/.test(o.name)), parent: root, moon: atmo.moon });
+      yield* pause();
       comp = createCompactor({ parent: root, test: pvsTest, vis: pvs, L });
       for (const o of keep) { const pool = o.userData.pool; if (pool?.owner && !pool.dyn && plainObj(o)) comp.add(o); else track(o); }
       comp.build();
@@ -273,7 +298,8 @@ export function buildHospital(world, layout, scene, opts = {}) {
       scene0.matrixAutoUpdate = false;
       scene0.updateMatrix();
       scene0.updateMatrixWorld(true);
-      stats.batch = { ms: Math.round(performance.now() - t1), struct: Math.round(t2 - t1), props: Math.round(t3 - t2), build: Math.round(t4 - t3), batched: built.meshes.length, instances: built.insts.length, dynBatches: dynB.meshes.length, dynItems: dynB.items.length, compact: comp.count(), fromMeshes: st.meshes, fromInstanced: st.instanced, bakedInst: st.inst, tracked: tracked.length, regions: pvs.nR };
+      busy += performance.now() - ts;
+      stats.batch = { ms: Math.round(busy), wall: Math.round(performance.now() - t1), steps: nY, struct: Math.round(t2), props: Math.round(t3 - t2), build: Math.round(t4 - t3), batched: built.meshes.length, instances: built.insts.length, dynBatches: dynB.meshes.length, dynItems: dynB.items.length, compact: comp.count(), fromMeshes: st.meshes, fromInstanced: st.instanced, bakedInst: st.inst, tracked: tracked.length, regions: pvs.nR };
       console.log('[hospital] batch', JSON.stringify(stats.batch));
       return view;
     },
@@ -309,7 +335,7 @@ export function buildHospital(world, layout, scene, opts = {}) {
         const changed = pvs.update(li, p.x, p.z, nearStairs(li, p.x, p.z));
         const sig = li + (outdoor ? 'o' : 'i') + vis.join('') + propVis.join('');
         const big = changed || sig !== pvsSig;
-        if (big || ((pvsTick = (pvsTick + 1) & 3) === 0)) view.refresh(li, vis, propVis, outdoor, p.x, p.y + 1.6, p.z, H.propDistance);
+        if (big || ((pvsTick = (pvsTick + 1) & 3) === 0)) view.refresh(li, vis, propVis, outdoor, p.x, p.y + 1.6, p.z, H.propDistance, big);
         if (big) { applyTracked(); comp?.refresh(); dynTick = 11; }
         pvsSig = sig;
         if (!big) pvs.idle(0.6);
@@ -378,10 +404,11 @@ function plainBucket(mat) {
   if (!b) plainMats.set(key, (b = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: r / 5, metalness: mt / 5, side: mat.side, flatShading: mat.flatShading, envMapIntensity: mat.envMapIntensity ?? 1, name: 'plain:' + key })));
   return b;
 }
-function mergeStatics(statics, groups, chunks, pvs) {
+function* mergeStatics(statics, groups, chunks, pvs) {
   let count = 0;
   const _b = new THREE.Box3();
-  statics.forEach((list, li) => {
+  for (let li = 0; li < statics.length; li++) {
+    const list = statics[li];
     const eff = new Map(); // 原材質 → 實際合併用的材質(純色材質 → 共用頂點色材質)
     const verts = new Map(); // 合併用材質 → 這一層的頂點數
     for (const m of list) {
@@ -422,6 +449,7 @@ function mergeStatics(statics, groups, chunks, pvs) {
       byMat.set(mat, arr);
       m.parent.remove(m);
     }
+    yield;
     for (const [key, byMat] of byKey) {
       for (const [material, geos] of byMat) {
         for (let i = 0; i < geos.length; i += 400) {
@@ -438,10 +466,11 @@ function mergeStatics(statics, groups, chunks, pvs) {
           groups[li].add(mesh);
           chunks.push(mesh);
           count++;
+          yield;
         }
       }
     }
-  });
+  }
   return count;
 }
 
