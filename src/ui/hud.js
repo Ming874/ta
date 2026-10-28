@@ -256,12 +256,31 @@ export class Hud {
     });
   }
 
+  // [motion] 墨水滲開(模糊 → 清楚、微縮)、副標晚 160ms;新橫幅來時舊的先往上淡出(260ms),不硬切
   banner(text, sub = '', ms = 3500, cls = '') {
     const e = this.bannerEl;
+    const R = document.documentElement.classList.contains('mo-reduced');
+    let delay = 0;
+    const run = e.getAnimations().find((a) => a.playState === 'running');
+    if (run) {
+      const t = run.currentTime || 0, d = run.effect?.getTiming?.().duration || 0;
+      if (t > 60 && t < d - 120) { // 舊的還看得到:複製一份淡出
+        const g = e.cloneNode(true);
+        g.style.opacity = '1';
+        e.after(g);
+        g.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-.25em)' }], { duration: R ? 120 : 260, easing: 'cubic-bezier(.5,0,.75,0)', fill: 'forwards' }).onfinish = () => g.remove();
+        delay = R ? 0 : 150;
+      }
+    }
     e.className = `hd hd-banner ${cls}`;
     e.innerHTML = `${esc(text)}${sub ? `<small>${withKeys(sub)}</small>` : ''}`;
     e.getAnimations().forEach((a) => a.cancel());
-    e.animate([{ opacity: 0, transform: 'scale(1.04)' }, { opacity: 1, transform: 'none', offset: Math.min(0.3, 450 / ms) }, { opacity: 1, offset: 1 - Math.min(0.3, 700 / ms) }, { opacity: 0 }], { duration: ms, easing: 'ease-out' });
+    const inK = Math.min(0.3, 520 / ms), outK = Math.min(0.3, 700 / ms), OUT = 'cubic-bezier(.2,.7,.2,1)', IO = 'cubic-bezier(.65,0,.35,1)';
+    const kf = R
+      ? [{ opacity: 0 }, { opacity: 1, offset: inK }, { opacity: 1, offset: 1 - outK }, { opacity: 0 }]
+      : [{ opacity: 0, filter: 'blur(7px)', transform: 'scale(1.05)', easing: OUT }, { opacity: 1, filter: 'blur(0px)', transform: 'none', offset: inK },
+        { opacity: 1, filter: 'blur(0px)', transform: 'none', offset: 1 - outK, easing: IO }, { opacity: 0, filter: 'blur(3px)', transform: 'translateY(-.18em)' }];
+    e.animate(kf, { duration: ms, delay, fill: 'backwards' });
   }
 
   // 右側訊息列(多人時連線代理也會用):o = { color, icon, html }

@@ -30,7 +30,7 @@ export const combatMethods = {
     if (p !== this.player) return this.net ? this.net.damageRemote(p, amount, src, kind) : 0; // 遠端隊友交給連線層
     if (p.hp <= 0) return 0;
     const dealt = p.hurt(amount, this.time, src);
-    this.ui.damageFlash();
+    this.ui.damageFlash(dealt, src, p); // [motion] 依傷害大小與方向
     this.ui.setHP(p.hp, p.maxHp);
     if (this.ui.setArmor) this.ui.setArmor(p.armor, p.maxArmor);
     if (p.hp <= 0) this.die();

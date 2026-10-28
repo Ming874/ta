@@ -206,8 +206,8 @@ export class Game {
     // 商店、掉落物、補給點、醫療包、HUD(src/game/flow.js)
     this.updateGameplay(dt);
 
-    // 低血量心跳暗角
-    this.post.uniforms.hurt.value = p.hp < 35 ? (1 - p.hp / 35) * 0.7 + Math.sin(this.time * 6) * 0.1 : Math.max(0, 1 - (this.time - p.lastHurt) * 2) * 0.5;
+    // 低血量心跳暗角([motion] 有 game.motion 時由它合成:邊緣壓紅 + 跟著真正的心跳聲)
+    if (!this.motion) this.post.uniforms.hurt.value = p.hp < 35 ? (1 - p.hp / 35) * 0.7 + Math.sin(this.time * 6) * 0.1 : Math.max(0, 1 - (this.time - p.lastHurt) * 2) * 0.5;
   }
 
   render() {

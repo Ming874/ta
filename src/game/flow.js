@@ -161,6 +161,7 @@ export const flowMethods = {
     this.state = 'playing';
     this.paused = false;
     this.weaponScene.visible = true;
+    this.motion?.onBegin?.(); // [motion] 從倒下重來:眼睛張開
     this.startRound(1);
   },
 
@@ -186,11 +187,18 @@ export const flowMethods = {
     this.ui.setRound(n);
     const kind = waveKind(n), sp = SPECIAL[kind];
     const tail = this.queue.includes('brute') ? ` · 巨屍 ${this.queue.filter((t) => t === 'brute').length}` : '';
-    if (sp) this.ui.banner('燈篙亮了', `第 ${n} 次 · ${sp.name} · 回來的人 ${this.toSpawn} 個${tail}`, 3600, sp.cls);
-    else this.ui.banner('燈篙亮了', `第 ${n} 次 · 回來的人 ${this.toSpawn} 個${tail}`, 3000, '');
-    if (sp && kind !== 'boss') this.ui.feed(`${sp.name}：${sp.sub}`, { icon: 'skull', color: sp.cls === 'gold' ? '#e8c860' : '#ff6a5a', ms: 6500 });
+    const total = this.toSpawn;
+    // [motion] 橫幅、聲音、邊緣紅光同一幀;開場演出中或戰鬥 shader 還沒預熱(先不出怪)時,等到真的開始才亮
+    const show = () => {
+      if (this.state !== 'playing' || this.round !== n || this.phase !== 'fighting') return;
+      if (sp) this.ui.banner('燈篙亮了', `第 ${n} 次 · ${sp.name} · 回來的人 ${total} 個${tail}`, 3600, sp.cls);
+      else this.ui.banner('燈篙亮了', `第 ${n} 次 · 回來的人 ${total} 個${tail}`, 3000, '');
+      if (sp && kind !== 'boss') this.ui.feed(`${sp.name}：${sp.sub}`, { icon: 'skull', color: sp.cls === 'gold' ? '#e8c860' : '#ff6a5a', ms: 6500 });
+      sfx.roundStart();
+      this.motion?.beat('on', { k: sp ? 0.62 : 0.5 });
+    };
+    if (this.motion) this.motion.whenReady(show); else show();
     this.ui.prompt(null);
-    sfx.roundStart();
     this.updateAmmoHud();
     this.tutorial?.('round', n);
   },
@@ -353,6 +361,7 @@ export const flowMethods = {
     this._addScore(pts);
     this.setMood('break');
     sfx.roundEnd();
+    this.motion?.beat('off'); // [motion] 世界吐一口氣:暗角放開、紅退掉
     p.hp = Math.min(p.maxHp, p.hp + 20);
     this.ui.setHP(p.hp, p.maxHp);
     this.coins.collectAll();
@@ -637,7 +646,7 @@ export const flowMethods = {
     }
     this.ui.prompt(prompt, dim);
     // 回合資訊
-    if (this.phase === 'fighting') this.ui.setZombies(this.zombiesLeft());
+    if (this.phase === 'fighting') { if (this.spawnHeld) this.ui.setRoundText('燈篙還沒亮……'); else this.ui.setZombies(this.zombiesLeft()); } // [motion] 預熱中先不出怪:不要說謊
     else if (this.phase === 'shop' || this.phase === 'break') this.ui.setRest(this.restT, !this.net, SPECIAL[waveKind(this.round + 1)]?.name || '');
     else if (this.phase === 'collecting') this.ui.setRoundText('撿錢中…');
     this.ui.update(this, dt);
@@ -665,7 +674,9 @@ export const flowMethods = {
     this.input.fireHeld = false;
     this._idleT = 0;
     this.ui.tips?.clearQueue();
-    this.ui.showDeath(this.deathSummary());
+    const sum = this.deathSummary();
+    if (this.motion?.death) this.motion.death(() => { if (this.state === 'dead') this.ui.showDeath(sum); }); // [motion] 倒下的 1.8 秒:褪色、眼皮闔上,然後結算卡
+    else this.ui.showDeath(sum);
   },
 
   deathSummary() {
@@ -692,6 +703,7 @@ export const flowMethods = {
     this.ui.overlay('pause', false);
     this.ui.overlay('dead', false);
     this.ui.overlay('menu', true);
+    this.motion?.toMenu?.(); // [motion] 監視器重新開機
     if (document.pointerLockElement) document.exitPointerLock();
   },
 };

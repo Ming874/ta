@@ -20,7 +20,7 @@ export const inputMethods = {
       if (locked) {
         this.paused = false;
         this.ui.overlay('pause', false);
-        this.ui.overlay('menu', false);
+        if (!this.motion?.busy) this.ui.overlay('menu', false); // [motion] 開場演出中:選單由 motion.coldOpen 收掉(要演離場)
       }
     });
     document.addEventListener('mousemove', (e) => {
@@ -72,6 +72,8 @@ export const inputMethods = {
 
     const lock = () => { resumeAudio(); canvas.requestPointerLock(); };
     const startSingle = () => {
+      // [motion] 開場:監視器關機 → 標題卡 → 睜眼(約 3.6 秒,任何按鍵跳過;滑鼠在點擊當下就鎖定,演出中也能動)
+      if (this.motion?.coldOpen) { if (!this.motion.busy) { lock(); this.motion.coldOpen(() => this.begin()); } return; } // coldOpen 同步設 busy,鎖定事件到的時候選單還留著
       document.getElementById('menu').classList.remove('on');
       this.ui.showHud(true);
       this.begin();

@@ -7,17 +7,16 @@
   background: linear-gradient(90deg, rgba(0, 0, 0, .9) 0%, rgba(0, 0, 0, .66) 38%, rgba(0, 0, 0, .12) 75%, rgba(0, 0, 0, .3) 100%); }
 #menu.mn::before { content: ""; position: absolute; inset: 0; pointer-events: none;
   background: radial-gradient(ellipse at 70% 50%, rgba(0, 0, 0, 0) 30%, rgba(0, 0, 0, .55) 100%), repeating-linear-gradient(0deg, rgba(255, 255, 255, .018) 0 1px, transparent 1px 3px); }
-#menu.mn::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: rgba(120, 0, 0, .06); animation: mn-flick 7s infinite steps(1); }
-@keyframes mn-flick { 0%, 92%, 100% { opacity: 0; } 93% { opacity: 1; } 94% { opacity: .2; } 95% { opacity: .9; } }
+/* [motion] 不再每 7 秒閃紅光、標題不再抖(UI_ART D5:閃爍是事件,不是背景)。選單的畫面是監視器(post 的 crt)+ 7 秒呼吸的暗角 */
 .mn-wrap { position: relative; z-index: 1; display: flex; flex-direction: column; max-width: 560px; }
 .mn-over { font: 600 13px var(--mn-num); letter-spacing: 9px; color: rgba(227, 220, 203, .55); margin-bottom: 6px; display: flex; align-items: center; gap: 12px; }
 .mn-over svg { width: 26px; height: 26px; color: var(--mn-red2); filter: drop-shadow(0 0 6px rgba(224, 71, 58, .6)); }
 #menu .mn-title { margin: 0; font-size: clamp(64px, 9vw, 118px); line-height: 1; letter-spacing: .16em; font-weight: 900; color: #ddd5c2;
-  text-shadow: 0 0 2px rgba(255, 255, 255, .25), 0 0 24px rgba(179, 38, 28, .55), 0 6px 30px rgba(0, 0, 0, .9); animation: mn-title 9s infinite; }
+  text-shadow: 0 0 2px rgba(255, 255, 255, .25), 0 0 24px rgba(179, 38, 28, .55), 0 6px 30px rgba(0, 0, 0, .9); }
 #menu .mn-title span { display: inline-block; }
-#menu .mn-title span:nth-child(3) { animation: mn-glitch 6.5s infinite; }
-@keyframes mn-title { 0%, 100% { opacity: 1; } 47% { opacity: 1; } 48% { opacity: .55; } 49% { opacity: 1; } 51% { opacity: .75; } 52% { opacity: 1; } }
-@keyframes mn-glitch { 0%, 86%, 100% { transform: none; color: inherit; } 87% { transform: translate(3px, -2px) skewX(-8deg); color: #c2392d; } 88% { transform: translate(-2px, 1px); } 89% { transform: none; } }
+/* Logo 的燈:7 秒呼吸(±14%) */
+#menu .mn-title span { animation: mn-breath 7s ease-in-out infinite; }
+@keyframes mn-breath { 50% { text-shadow: 0 0 2px rgba(255, 255, 255, .2), 0 0 32px rgba(179, 38, 28, .7), 0 6px 30px rgba(0, 0, 0, .9); opacity: .86; } }
 #menu .mn-sub { margin: 14px 0 0; font-size: 17px; letter-spacing: 6px; color: rgba(227, 220, 203, .72); }
 .mn-sub b { color: var(--mn-red2); font-weight: 700; }
 .mn-rule { width: 260px; height: 2px; margin: 26px 0 30px; background: linear-gradient(90deg, var(--mn-red), rgba(179, 38, 28, 0)); }

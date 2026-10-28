@@ -68,7 +68,11 @@ class Preview {
   }
 
   start() {
-    if (this.renderer) return;
+    if (this.renderer) { // [motion] 第二次以後:沿用同一個 context(shader 已編好,開店不再卡 0.5~1.3 秒)
+      if (!this.raf) this._loop();
+      this.resize();
+      return;
+    }
     // 每次開啟都換新的 canvas(釋放後舊 canvas 的 context 已遺失)
     this.canvas?.remove();
     this.canvas = document.createElement('canvas');
@@ -85,9 +89,13 @@ class Preview {
     this.resize();
     this._onResize = () => this.resize();
     window.addEventListener('resize', this._onResize);
+    this._loop();
+  }
+
+  _loop() {
     let last = performance.now();
     const loop = (now) => {
-      if (!this.renderer) return;
+      if (!this.renderer) { this.raf = 0; return; }
       this.raf = requestAnimationFrame(loop);
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
@@ -105,8 +113,16 @@ class Preview {
     this.raf = requestAnimationFrame(loop);
   }
 
+  // [motion] 關店只停止繪製、清掉模型,保留 renderer 與 canvas(下次開店不用重建 context、重編 shader)
   stop() {
     cancelAnimationFrame(this.raf);
+    this.raf = 0;
+    this.clear();
+    this.key = '';
+  }
+
+  dispose() {
+    this.stop();
     if (this._onResize) window.removeEventListener('resize', this._onResize);
     if (this.renderer) {
       this.renderer.dispose();
@@ -115,8 +131,6 @@ class Preview {
     }
     this.canvas?.remove();
     this.canvas = null;
-    this.clear();
-    this.key = '';
   }
 
   resize() {
@@ -257,6 +271,8 @@ export class ShopUI {
   open(game) {
     this.game = game;
     this.isOpen = true;
+    clearTimeout(this._closeT);
+    this.root.classList.remove('closing');
     this.root.classList.add('on');
     this.coinShown = game.player.coins;
     this.coinEl.textContent = this.coinShown;
@@ -282,7 +298,11 @@ export class ShopUI {
   close() {
     if (!this.isOpen) return;
     this.isOpen = false;
+    // [motion] 關門:面板往下 10px 淡出(160ms),不擋操作(pointer-events:none)
+    this.root.classList.add('closing');
     this.root.classList.remove('on');
+    clearTimeout(this._closeT);
+    this._closeT = setTimeout(() => this.root.classList.remove('closing'), 170);
     this.preview.stop();
   }
 

@@ -333,7 +333,11 @@ function out(bus = 'music', hall = 0.5, pan = 0) {
   return p;
 }
 
+// [motion] 排程好的心跳(AudioContext 時間, 強度):畫面暗角跟著真正的 lub-dub 跳(src/ui/motion.js)
+export const heartBeats = [];
 function heart(t, v) {
+  heartBeats.push([t, v]);
+  if (heartBeats.length > 6) heartBeats.shift();
   const d = gain(1, A.bus.sfx);
   tone(d, t, { f: 58, f1: 40, dur: 0.16, g: 0.34 * v });
   burst(d, t, { type: 'lowpass', f: 130, dur: 0.09, g: 0.2 * v });

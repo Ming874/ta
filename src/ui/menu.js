@@ -29,6 +29,7 @@ const SETTINGS = [
   ['toggle', 'bloom', '光暈', '燈光與火光的泛光效果'],
   ['toggle', 'dynamicRes', '動態解析度', '掉幀時自動降低解析度'],
   ['toggle', 'hurtFx', '受傷畫面效果', '受傷暈影與方向指示'],
+  ['seg', 'motion', '畫面動態', [['auto', '自動'], ['full', '完整'], ['reduced', '減少']], '減少：沒有晃動、眨眼與捲動，轉場改成短淡入（自動：跟著系統設定）'],
   ['seg', 'scare', '驚嚇強度', [['off', '關'], ['low', '低'], ['normal', '標準'], ['high', '高']], '靈異事件、耳邊低語與人影的頻率（低：沒有大場面）'],
   ['sec', '新手提示'],
   ['toggle', 'tips', '顯示新手提示', '依情境顯示一次，按 T 關閉'],
@@ -83,8 +84,11 @@ export class Menu {
   // ---------- 主選單 ----------
   _main() {
     const m = $('menu');
-    m.classList.add('mn');
+    m.classList.add('mn', 'mo-boot'); // [motion] 世界建好之前只顯示開機字樣(src/ui/motion.js 拿掉 mo-boot 並依序淡入)
+    setTimeout(() => m.classList.remove('mo-boot'), 30000); // 保險:轉場模組不在時
     m.innerHTML = `
+      <div class="mn-bootmark">回神<small>暖機中</small></div>
+      <div class="mn-osd" aria-hidden="true"><span class="rec"><i></i>REC</span><span class="clk">2003/05/12 (一) 23:59:13</span><span class="cam">CAM 03 · 1F 大廳</span></div>
       <div class="mn-wrap">
         <div class="mn-over">${HEART}HUÍ SHÉN · SACRED HEART HOSPITAL</div>
         <h1 class="mn-title"><span>回</span><span>神</span></h1>

@@ -27,8 +27,8 @@
   .overlay.on { display: flex; }
   .overlay h1 { font-size: 56px; letter-spacing: 10px; margin: 0 0 8px; font-weight: 700; color: #cfd3c8; }
   .overlay p { margin: 6px 0; font-size: 17px; opacity: .85; line-height: 1.7; }
-  .boot { letter-spacing: 6px; opacity: .55; font-size: 14px; animation: boot 1.6s ease-in-out infinite; }
-  @keyframes boot { 50% { opacity: .2; } }
+  .boot { letter-spacing: 6px; opacity: .5; font-size: 13px; animation: boot 3.5s ease-in-out infinite; }
+  @keyframes boot { 50% { opacity: .22; } }
 </style>
 </head>
 <body>
@@ -42,7 +42,7 @@
 
 <div class="overlay on" id="menu">
   <h1>回神</h1>
-  <p class="boot">載入中…</p>
+  <p class="boot">暖機中</p>
   <button id="startBtn" hidden></button>
 </div>
 <div class="overlay" id="pause"><button id="resumeBtn" hidden></button></div>
