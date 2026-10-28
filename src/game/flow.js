@@ -8,6 +8,7 @@ import { settings } from '../ui/settings.js';
 import { buildInteract } from '../interact/index.js';
 import { createAmbush } from '../zombies/ambush.js';
 import { createChase } from '../zombies/chase.js'; // [zombies-w3] 追逐戰
+import { roundTail } from './roundtail.js'; // [zombies-w3] 回合收尾:卡住/走不到的搬近、最後幾隻獵殺、伏擊預留放回
 import { waveRoster, wavePace, waveKind, hpMul, SPECIAL, restTime, roundBonus, cleanBonus, POINTS, HOW_MUL, streakMul, streakTier, roundScore, saveBest } from './waves.js';
 
 // 回合流程:重開、開始/結束回合、出怪、休息與商店、補給、醫療包、擊殺獎勵、計分、死亡結算。以 mixin 方式掛到 Game 上
@@ -305,6 +306,7 @@ export const flowMethods = {
         if (this.spawnBurst > 0) { this.spawnBurst--; this.spawnTimer = 0.45; } else this.spawnTimer = this.spawnEvery * (0.7 + Math.random() * 0.6);
       }
       this._relocateStragglers(dt);
+      roundTail(this, dt, alive, lurk, held); // [zombies-w3]
       if (alive === 0 && this.toSpawn <= held) { if ((lurk || held) && this.ambush) this.ambush.hunt(); else this.endRound(); } // 只剩預留/裝死的:收尾(放回佇列、起身),回合不會卡住
     } else if (this.phase === 'collecting') {
       this.collectT -= dt;
