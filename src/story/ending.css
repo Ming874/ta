@@ -55,6 +55,6 @@
 #st-end .st-btns.on { opacity: 1; pointer-events: auto; }
 #st-end .st-btns button { pointer-events: auto; cursor: pointer; background: transparent; border: 1px solid rgba(230, 214, 180, .5); color: #efe3c6; padding: .7em 1.8em; font: inherit; font-size: 15px; letter-spacing: .3em; }
 #st-end .st-btns button:hover { background: rgba(240, 220, 180, .1); border-color: rgba(240, 220, 180, .9); }
-body.st-ending #hud, body.st-ending #crosshair { visibility: hidden; }
+body.st-ending #hud, body.st-ending #crosshair, body.st-ending #wx-reticle { visibility: hidden; }
 body.st-ending #gh-subs { visibility: hidden; }
 @media (prefers-reduced-motion: reduce) { #st-end * { transition-duration: 200ms !important; } }
