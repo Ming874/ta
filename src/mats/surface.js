@@ -179,8 +179,8 @@ const FS_COLOR = /* glsl */`
 		else if ( wt == 6 ) { col *= 1.0 - 0.14 * wear; rough = mix( rough, rough * 0.5, wear ); }
 		else if ( wt == 7 ) { col = mix( col, vec3( 0.2, 0.12, 0.06 ) * ( 0.75 + 0.5 * C.b ), wear ); rough = mix( rough, 0.75, wear ); h -= wear * 0.6; hx -= wear * 0.6; hy -= wear * 0.6; }
 		// 積灰(朝上的面:一層薄灰,大範圍濃淡;不做細碎顆粒 → 金屬/介電質不會混成雜訊)
-		float dust = P1.w * smoothstep( 0.55, 0.97, sGN.y ) * ( 0.3 + 0.7 * smoothstep( 0.15, 0.8, mac ) ) * 0.72;
-		col = mix( col, vec3( 0.26, 0.245, 0.22 ), dust * 0.75 );
+		float dust = P1.w * smoothstep( 0.55, 0.97, sGN.y ) * ( 0.15 + 0.85 * smoothstep( 0.3, 0.85, mac ) ) * 0.55;
+		col = mix( col, vec3( 0.26, 0.245, 0.22 ), dust * 0.6 );
 		rough = mix( rough, 0.9, dust * 0.8 );
 		metal *= 1.0 - dust * 0.7;
 		diffuseColor.rgb = col;
