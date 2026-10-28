@@ -1382,11 +1382,17 @@ export const SURVIVOR_LOOKS = [
   { outfit: 'biker', fem: 1, skin: 'light', hair: '#8a6a42', longHair: 1, hat: ['cap', '#202022'], eye: 'blue' },
 ];
 const scache = [];
+const lookIdx = (look) => ((look | 0) % SURVIVOR_LOOKS.length + SURVIVOR_LOOKS.length) % SURVIVOR_LOOKS.length;
+// 倖存者的外部模型(寫實角色,src/zombies/realistic.js):fn(i) 回傳已載入的變體或 null(還沒載好 → 照舊程式生成)
+let survivorProvider = null;
+export function registerSurvivorProvider(fn) { survivorProvider = fn; }
 export function survivorVariant(look) {
-  const i = ((look | 0) % SURVIVOR_LOOKS.length + SURVIVOR_LOOKS.length) % SURVIVOR_LOOKS.length;
-  return scache[i] || (scache[i] = buildVariant('survivor', 6000 + i * 7919, SURVIVOR_LOOKS[i]));
+  const i = lookIdx(look);
+  return (survivorProvider && survivorProvider(i)) || scache[i] || (scache[i] = buildVariant('survivor', 6000 + i * 7919, SURVIVOR_LOOKS[i]));
 }
-export const survivorReady = (look) => !!scache[((look | 0) % SURVIVOR_LOOKS.length + SURVIVOR_LOOKS.length) % SURVIVOR_LOOKS.length];
+export const survivorReady = (look) => !!((survivorProvider && survivorProvider(lookIdx(look))) || scache[lookIdx(look)]);
+// 這個座位的外部模型已載好(遠端玩家角色先用了程式生成的,可以換成寫實的)
+export const survivorUpgraded = (look) => !!(survivorProvider && survivorProvider(lookIdx(look)));
 // 釋放倖存者模型快取(沒有任何遠端玩家角色時才呼叫;下次 survivorVariant 會重建)
 export function disposeSurvivors() {
   for (let i = 0; i < scache.length; i++) { scache[i]?.geometry?.dispose(); scache[i] = undefined; }

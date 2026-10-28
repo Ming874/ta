@@ -137,7 +137,7 @@ async function build(ch, healthy) {
       if (P.name === 'head') ref = skinRef(M, col.data, [C.joints3.cheekL, C.joints3.cheekR]);
       const ref2 = P.name === 'body' ? handRef(M, col.data, ref) : null;
       const bn = (n) => C.bones.find((b) => b.name === n);
-      const z = zombify(col.data, M, ch.look || { seed: 1 }, { ref: ref || [0.42, 0.26, 0.2], ref2, eyes: C.eyes, mouth: C.mouth, HC: C.HC, kind, collarY: bn('neck').head.y - 0.04, tips: [bn('handL').tail, bn('handR').tail], healthy, wounds: [], drips: [], chin: null, ...pl });
+      const z = zombify(col.data, M, ch.look || { seed: 1 }, { ref: ref || [0.42, 0.26, 0.2], ref2, eyes: C.eyes, mouth: C.mouth, HC: C.HC, kind, collarY: bn('neck').head.y - 0.04, tips: [bn('handL').tail, bn('handR').tail], cheeks: [C.joints3.cheekL, C.joints3.cheekR], nose: C.joints3.nose, healthy, wounds: [], drips: [], chin: null, ...pl });
       color = z.color; skin = z.skin;
     }
     // A 通道反著存(255 = 0,128 = 1):不讓 A 接近 0 —— WebP 會改寫全透明像素的 RGB,有些瀏覽器解碼時預乘 alpha 也會吃掉低 alpha 的顏色精度
@@ -151,8 +151,8 @@ async function build(ch, healthy) {
       const sk = await sharp(Buffer.from(skin.buffer), { raw: { width: cw, height: chh, channels: 1 } }).resize(nw, nh).raw().toBuffer();
       for (let i = 0; i < nw * nh; i++) nrm.data[i * 4 + 3] = 255 - Math.round((sk[i] / 255) * 127);
     } else for (let i = 0; i < nw * nh; i++) nrm.data[i * 4 + 3] = 255;
-    P.color = await webp(color, cw, chh, { quality: 84, alphaQuality: 100, exact: true });
-    P.normal = await webp(nrm.data, nw, nh, { quality: 82, alphaQuality: 80, exact: true });
+    P.color = await webp(color, cw, chh, { quality: 80, alphaQuality: 90, exact: true });
+    P.normal = await webp(nrm.data, nw, nh, { quality: 76, alphaQuality: 70, exact: true });
     P.roughness = kind === 'gear' ? 0.6 : 0.8;
     stats[P.name] = `${kind} ${cw}x${chh}/${nw}x${nh} tris ${P.index.length / 3} verts ${P.pos.length / 3}`;
     if (process.env.HZ_DEBUG) {

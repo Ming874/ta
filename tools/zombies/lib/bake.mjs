@@ -42,13 +42,15 @@ export function raster(index, V, W, H) {
       const w0 = ((by - cy) * (x - cx) + (cx - bx) * (y - cy)) / den, w1 = ((cy - ay) * (x - cx) + (ax - cx) * (y - cy)) / den, w2 = 1 - w0 - w1;
       if (w0 < -1e-4 || w1 < -1e-4 || w2 < -1e-4) continue;
       const i = y * W + x;
+      const inn = inner[a] * w0 + inner[b] * w1 + inner[c] * w2;
+      if (M.cov[i] && inn > M.inner[i] + 0.01) continue;
       for (let k = 0; k < 3; k++) {
         M.pos[i * 3 + k] = pos[a * 3 + k] * w0 + pos[b * 3 + k] * w1 + pos[c * 3 + k] * w2;
         M.nor[i * 3 + k] = nor[a * 3 + k] * w0 + nor[b * 3 + k] * w1 + nor[c * 3 + k] * w2;
       }
       M.part[i] = w0 >= w1 && w0 >= w2 ? part[a] : w1 >= w2 ? part[b] : part[c];
       M.eye[i] = eye[a] * w0 + eye[b] * w1 + eye[c] * w2;
-      M.inner[i] = inner[a] * w0 + inner[b] * w1 + inner[c] * w2;
+      M.inner[i] = inn;
       M.cov[i] = 1;
     }
   }
@@ -92,9 +94,9 @@ export function skinRef(M, img, pts) {
 // ---------- 殭屍化 ----------
 // look:每個角色的外觀參數(characters.mjs);ctx:{ ref 皮膚參考色, eyes, mouth, HC, wounds, drips, kind: 'body'|'head'|'hair'|'gear' }
 const DEAD = { grey: '#8e9089', green: '#7f8a6c', yellow: '#998f62', blue: '#7c8090', ash: '#76736e' };
-const BLOOD = hex('#4a0605'), BLOOD_DRY = hex('#220705'), FLESH = hex('#7a1814'), FLESH_DK = hex('#260404'), NECRO = hex('#1c1416');
+const BLOOD = hex('#460605'), BLOOD_DRY = hex('#200605'), FLESH = hex('#5e1612'), FLESH_DK = hex('#1c0303'), NECRO = hex('#1c1416');
 const FAT = hex('#a88c4c'), BRUISE = hex('#3a2038'), LIVOR = hex('#4a2030'), VEIN = hex('#2a3438'), LIPS = hex('#2e2228');
-const DERMIS = hex('#6a2a26'), SOCK = hex('#3a2a34'), TEETH = hex('#8a7448'), GUM = hex('#3a1414'), MILK = hex('#b4b2a4'), DIRT = hex('#5a4a36'), STAIN = hex('#8a7448');
+const RAWLID = hex('#5a1418'), DERMIS = hex('#6a2a26'), SOCK = hex('#3a2a34'), TEETH = hex('#8a7448'), GUM = hex('#3a1414'), MILK = hex('#b4b2a4'), DIRT = hex('#5a4a36'), STAIN = hex('#8a7448');
 
 export function zombify(img, M, look, ctx) {
   const { W, H } = M, n = W * H, out = new Uint8ClampedArray(n * 4), skinOut = new Uint8Array(n);
@@ -161,7 +163,7 @@ export function zombify(img, M, look, ctx) {
       const amt = clamp((look.pale ?? 0.9) * skin, 0, 1);
       c[0] += (tmp[0] - c[0]) * amt; c[1] += (tmp[1] - c[1]) * amt; c[2] += (tmp[2] - c[2]) * amt;
       // 大理石紋(皮下血管腐敗後的網狀紋路):細、成片出現;頸、胸、肩、上臂、大腿較明顯,臉上少
-      const region = part === PART.neck ? 1 : part === PART.torso ? 0.85 : part === PART.arm ? 0.75 : part === PART.leg ? 0.7 : part === PART.head ? 0.3 : 0.35;
+      const region = part === PART.neck ? 1 : part === PART.torso ? 0.85 : part === PART.arm ? 0.75 : part === PART.leg ? 0.7 : part === PART.head ? (y > ctx.eyes[0].y && Math.abs(x) > 0.045 ? 0.6 : 0.3) : 0.35;
       const patch = sstep(0.0, 0.35, fbm(x * 2.6 + K, y * 2.6 + 3, z * 2.6, 2) + decay * 0.25);
       if (patch > 0.01) {
         const r1 = 1 - Math.abs(noise3(x * 34 + K, y * 26, z * 34)), r2 = 1 - Math.abs(noise3(x * 85, y * 70 + K, z * 85));
@@ -187,11 +189,24 @@ export function zombify(img, M, look, ctx) {
     if (part === PART.head) {
       for (const e of ctx.eyes) {
         const d = Math.hypot(x - e.x, (y - e.y) * 1.15, z - e.z);
-        const sock = (1 - sstep(0.012, 0.032, d)) * (1 - sstep(0.4, 0.7, eye)) * (look.sockets ?? 0.85);
-        mul(SOCK.map((v) => v * 3), sock * 0.85);
-        const bag = G((x - e.x) ** 2 * 0.5 + (y - e.y + 0.017) ** 2 * 3, 0.012) * (1 - sstep(0.4, 0.7, eye));
-        mul(SOCK.map((v) => v * 2.4), bag * 0.6);
+        const sock = (1 - sstep(0.013, 0.04, d)) * (1 - sstep(0.4, 0.7, eye)) * (look.sockets ?? 0.9);
+        mul(SOCK.map((v) => v * 2.1), sock * 0.95);
+        const bag = G((x - e.x) ** 2 * 0.5 + (y - e.y + 0.018) ** 2 * 3, 0.013) * (1 - sstep(0.4, 0.7, eye));
+        mul(SOCK.map((v) => v * 1.9), bag * 0.75);
+        // 下眼瞼外翻、潰爛發紅(眼球周圍一圈)
+        const lid = G((x - e.x) ** 2 * 0.7 + (y - e.y + 0.01) ** 2 * 4 + (z - e.z - 0.004) ** 2, 0.008) * (1 - sstep(0.3, 0.6, eye));
+        mixc(RAWLID, lid * 0.6);
+        wet = Math.max(wet, lid * 0.5);
       }
+      // 顴骨下凹陷的臉頰、太陽穴(臉頰骨骼往下 2cm)
+      if (ctx.cheeks) for (const ch of ctx.cheeks) {
+        const hol = G((x - ch.x) ** 2 * 1.4 + (y - ch.y + 0.024) ** 2 * 2.2 + (z - ch.z) ** 2, 0.02);
+        mul([0.6, 0.58, 0.66], hol * 0.55 * skin);
+        const tem = G((x - ch.x * 1.25) ** 2 + (y - ch.y - 0.045) ** 2 + (z - ch.z + 0.035) ** 2, 0.02);
+        mul([0.68, 0.64, 0.72], tem * 0.45 * skin);
+      }
+      // 鼻孔、鼻翼周圍發黑
+      if (ctx.nose) { const nd = G((x - ctx.nose.x) ** 2 * 0.6 + (y - ctx.nose.y + 0.016) ** 2 * 2 + (z - ctx.nose.z + 0.002) ** 2, 0.011); mul([0.45, 0.38, 0.42], nd * 0.6); }
       const lx = (x - mo.x) / 0.028, ly = (y - mo.y) / 0.012, lip = (1 - sstep(0.75, 1.15, Math.hypot(lx, ly))) * sstep(mo.z - 0.02, mo.z - 0.005, z);
       if (lip > 0) { mixc(LIPS, lip * 0.75); mul([0.6, 0.55, 0.6], lip * sstep(0.3, 0.6, noise3(x * 600, y * 300 + K, z * 600)) * 0.6); wet = Math.max(wet, lip * 0.3); }
     }
@@ -230,7 +245,7 @@ export function zombify(img, M, look, ctx) {
       } else d2 = (x - w.c.x) ** 2 + (y - w.c.y) ** 2 + (z - w.c.z) ** 2;
       if (d2 < (w.r * 6) ** 2) {
         const d = Math.sqrt(d2), q = d / w.r + fbm(x * 70 + w.k, y * 70, z * 70, 2) * 0.7;
-        soak = Math.max(soak, G(d2, w.r * 2.4) * (0.8 + fbm(x * 14 + w.k, y * 14, z * 14, 2) * 0.6));
+        soak = Math.max(soak, G(d2, w.r * 3.2) * (0.8 + fbm(x * 14 + w.k, y * 14, z * 14, 2) * 0.6));
         const core = sstep(1.0, 0.55, q), rim = clamp(sstep(1.9, 1.0, q) - core, 0, 1), halo = clamp(sstep(3.2, 1.6, q) - rim - core, 0, 1);
         if (halo > 0) { mixc(BRUISE.map((v) => v * 0.9), halo * 0.45 * skin); mixc(LIVOR, halo * 0.25 * skin); }
         if (rim > 0) { mixc(NECRO, rim * 0.88); wet = Math.max(wet, rim * 0.5); }
@@ -238,8 +253,9 @@ export function zombify(img, M, look, ctx) {
           const fib = 0.5 + 0.5 * Math.sin((x * 0.6 + z) * 900 + y * 40 + noise3(x * 40 + w.k, y * 40, z * 40) * 6);
           mixc([FLESH[0] * (1 - fib * 0.45), FLESH[1] * (1 - fib * 0.6), FLESH[2] * (1 - fib * 0.6)], core);
           mixc(FAT, core * sstep(0.62, 0.68, noise3(x * 120 + w.k, y * 120, z * 120)) * 0.5);
-          mixc(FLESH_DK, core * sstep(0.6, 0.0, q) * 0.92);
-          wet = Math.max(wet, core);
+          mixc(FLESH_DK, core * sstep(0.7, 0.0, q) * 0.95);
+          mixc(BLOOD_DRY, core * sstep(0.1, 0.35, fbm(x * 90 + w.k, y * 90, z * 90, 2)) * 0.7); // 結痂
+          wet = Math.max(wet, core * 0.9);
         }
       }
       // 傷口往下流的血
@@ -259,18 +275,33 @@ export function zombify(img, M, look, ctx) {
         const wob = noise3(x * 25 + dr.k, y * 5, z * 25) * 0.009;
         const tt = Math.max(0, dy) / dr.len, wid = dr.w * (1 - tt * 0.55);
         const broken = sstep(-0.35, 0.1, noise3(x * 90 + dr.k, y * 40, z * 90)); // 乾掉剝落的地方斷斷續續
-        bl = Math.max(bl, G((x - dr.x + wob) ** 2, wid) * (1 - tt * tt) * sstep(-0.4, 0.1, nz) * lerp(1, broken, tt));
+        const a = G((x - dr.x + wob) ** 2, wid) * (1 - tt * tt) * sstep(-0.4, 0.1, nz) * lerp(1, broken, tt) * lerp(1, 0.7, tt);
+        bl = Math.max(bl, a);
+        if (skin < 0.5) soak = Math.max(soak, G((x - dr.x + wob) ** 2, wid * 2.6) * (1 - tt) * 0.75); // 布料吸血:比皮膚上寬
       }
       if (ctx.chin) bl = Math.max(bl, G((x - ctx.chin.x) ** 2 * 0.7 + (y - ctx.chin.y) ** 2 * 1.4 + (z - ctx.chin.z) ** 2, ctx.chin.r) * (0.55 + 0.45 * fbm(x * 40, y * 40 + K, z * 40, 2)));
       // 嘴唇周圍抹開的血
       bl = Math.max(bl, G((x - mo.x) ** 2 * 0.6 + (y - mo.y + 0.006) ** 2 * 2 + (z - mo.z) ** 2, 0.016) * sstep(-0.1, 0.4, fbm(x * 60 + K, y * 60, z * 60, 2) + 0.2) * (look.mouthBlood ?? 0.6));
       // 領口/胸前吸了從嘴流下來的血
-      if (collarY && skin < 0.5) soak = Math.max(soak, G((x - mo.x) ** 2 * 0.8 + (y - collarY) ** 2 * 0.25, 0.07) * (look.mouthBlood ?? 0.6) * (0.6 + fbm(x * 12 + K, y * 12, z * 12, 2) * 0.8));
+      if (collarY && skin < 0.5) soak = Math.max(soak, G((x - mo.x) ** 2 * 0.8 + (y - collarY) ** 2 * 0.22, 0.095) * (look.mouthBlood ?? 0.6) * 1.25 * (0.6 + fbm(x * 12 + K, y * 12, z * 12, 2) * 0.8));
     }
     // 手上的血
     if (part === PART.hand) bl = Math.max(bl, sstep(-0.1, 0.3, fbm(x * 18 + K, y * 18, z * 18, 3)) * blood);
-    // 噴濺/抹痕(前面較多)
-    const spl = sstep(0.38, 0.46, fbm(x * 11 + 5 + K, y * 11, z * 11, 3)) * sstep(-0.2, 0.5, nz) * blood;
+    // 手抹過的血痕:幾道平行的指痕
+    if (ctx.smears) for (const sm of ctx.smears) {
+      const px = x - sm.a.x, py = y - sm.a.y, pz = z - sm.a.z;
+      const t = (px * sm.d.x + py * sm.d.y + pz * sm.d.z) / sm.len;
+      if (t < -0.05 || t > 1.05) continue;
+      const ox = px - sm.d.x * t * sm.len, oy = py - sm.d.y * t * sm.len, oz = pz - sm.d.z * t * sm.len;
+      const across = ox * sm.s.x + oy * sm.s.y + oz * sm.s.z, off = ox * ox + oy * oy + oz * oz - across * across;
+      if (off > 0.0016) continue; // 離表面太遠(另一側)
+      let f = 0;
+      for (let k = 0; k < sm.n; k++) f = Math.max(f, G((across - (k - (sm.n - 1) / 2) * 0.018) ** 2, 0.0055));
+      const fade = sstep(1.05, 0.55, t) * sstep(-0.05, 0.08, t) * (0.6 + 0.4 * noise3(x * 50 + sm.k, y * 50, z * 50));
+      bl = Math.max(bl, f * fade * sm.a2);
+    }
+    // 噴濺(前面較多)
+    const spl = sstep(0.34, 0.42, fbm(x * 11 + 5 + K, y * 11, z * 11, 3)) * sstep(-0.2, 0.5, nz) * blood;
     bl = Math.max(bl, spl * (y > 0.6 ? 0.85 : 0.45));
     bl = clamp(bl * (0.6 + blood * 0.5), 0, 1);
     if (bl > 0.01) {
@@ -349,9 +380,22 @@ export function plan(look, rig, verts) {
   }
   // 嘴角往下的血:沿下巴、脖子流到領口
   const mo = rig.mouth, mb = look.mouthBlood ?? 0.6, drips = [];
-  for (let k = 0, nn = 2 + Math.round(mb * 5); k < nn; k++) drips.push({ x: mo.x + r.range(-0.022, 0.022), y: mo.y - 0.004, len: r.range(0.03, 0.08 + mb * 0.24), w: r.range(0.0015, 0.003 + mb * 0.0015), k: r() * 50 });
+  for (let k = 0, nn = 2 + Math.round(mb * 5); k < nn; k++) drips.push({ x: mo.x + r.range(-0.022, 0.022), y: mo.y - 0.004, len: r.range(0.03, 0.06 + mb * 0.18), w: r.range(0.0014, 0.0026 + mb * 0.0012), k: r() * 50 });
+  // 血手抹過的痕跡:軀幹正面、大腿,往下斜拖
+  const smears = [];
+  for (let k = 0, nn = Math.round((look.smears ?? 2) * (0.6 + r() * 0.8)); k < nn; k++) {
+    const s = pick(k % 3 === 2 ? (x, y, z, p, nz) => p === PART.leg && nz > 0.4 && y > 0.6 : (x, y, z, p, nz) => p === PART.torso && nz > 0.45);
+    if (!s) continue;
+    // 拖曳方向:沿表面往下(偏左或偏右)
+    let dx = r.range(-0.5, 0.5), dy = -1, dz = 0;
+    const dn = dx * s.nx + dy * s.ny + dz * s.nz;
+    dx -= dn * s.nx; dy -= dn * s.ny; dz -= dn * s.nz;
+    const dl = Math.hypot(dx, dy, dz) || 1, d = { x: dx / dl, y: dy / dl, z: dz / dl };
+    const sx = s.ny * d.z - s.nz * d.y, sy = s.nz * d.x - s.nx * d.z, sz = s.nx * d.y - s.ny * d.x, sl = Math.hypot(sx, sy, sz) || 1;
+    smears.push({ a: { x: s.x, y: s.y, z: s.z }, d, s: { x: sx / sl, y: sy / sl, z: sz / sl }, len: r.range(0.1, 0.24), n: 3 + (r() < 0.5 ? 1 : 0), a2: r.range(0.75, 1), k: r() * 50 });
+  }
   const chin = mb > 0.2 ? { x: mo.x + r.range(-0.01, 0.01), y: mo.y - 0.03, z: mo.z - 0.005, r: 0.012 + mb * 0.018 } : null;
-  return { wounds, drips, chin };
+  return { wounds, drips, chin, smears };
 }
 
 // 身體貼圖的第二個皮膚參考色:手部像素的中位數(手臂/手常比臉曬得深);戴手套(色度差太多)就不用

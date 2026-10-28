@@ -2,6 +2,7 @@ import './lobby.css';
 import { NetClient } from './client.js';
 import { NetSession } from './session.js';
 import { survivorVariant, survivorReady } from '../zombies/model.js';
+import { loadSurvivors } from '../zombies/realistic.js';
 import { resume as resumeAudio, sfx } from '../audio.js';
 
 // 主選單的多人入口:暱稱、建立房間(合作生存 / 對戰死鬥與選項)、輸入代碼加入、公開房間列表、
@@ -271,6 +272,7 @@ class Lobby {
 
   // 預先建好房間裡每個座位的角色模型(每幀一個,避免開局卡頓)
   prebuild() {
+    loadSurvivors(); // 寫實的倖存者模型(進房間才下載)
     if (this._pb) return;
     const step = () => {
       this._pb = null;

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { registerProvider, autoHitboxes, BONES } from './model.js';
+import { registerProvider, registerSurvivorProvider, autoHitboxes, BONES } from './model.js';
 import { ZU } from './materials.js';
 import { assets } from '../sys/assets.js';
 import { idle } from '../sys/sched.js';
@@ -15,6 +15,7 @@ import { caps } from '../sys/caps.js';
 //   - 註冊在載入本模組時就完成(各端變體數一致);GLB 在資源佇列(低優先)下載完才可用,之前那些編號用程式變體代替
 //   - 低畫質不下載(維持程式生成)
 //   - 材質:兩種 program(皮膚/衣物 'zrb' 與頭髮 alphaTest),所有角色共用;暖機時用 realisticMaterials() 先編好
+// 倖存者(多人的玩家角色)也用同一套:public/models/survivors/<id>.glb(健康外觀,右手握槍的手指),進入多人房間才下載。
 //     顏色圖 A = 濕潤度(血、傷口、眼睛 → 降低粗糙度)、法線圖 A = 皮膚遮罩(次表面散射),兩者都反著存在 255..128;頂點色 A = 眼球(手電筒的眼底反光)
 
 // 類型 → 角色 id(public/models/zombies/<id>.glb)。順序就是變體編號(接在程式變體之後),只能往後加
@@ -24,7 +25,9 @@ export const BODIES = {
 };
 // 手電筒照到眼睛的反光、眼睛自發光(狂奔者的眼睛發紅光,和程式生成的一致)
 const EYES = { walker: { shine: 0x7a8a60, glow: 0x000000 }, runner: { shine: 0xff5020, glow: 0x5a0802 } };
-const BASE = `${import.meta.env?.BASE_URL ?? '/'}models/zombies/`;
+const BASE = `${import.meta.env?.BASE_URL ?? '/'}models/`;
+// 倖存者:順序 = model.js 的 SURVIVOR_LOOKS(座位)
+export const SURVIVORS = ['soldier', 'medic', 'builder', 'hoodie', 'police', 'hunter', 'firefighter', 'biker'];
 const V3 = (a) => new THREE.Vector3(a[0], a[1], a[2]);
 const LOADED = {}; // id → 已載入的外觀資料
 const FROM = {};
@@ -34,12 +37,20 @@ for (const [type, ids] of Object.entries(BODIES)) {
   FROM[type] = registerProvider(type, (t, seed, opt) => make(t, ids[opt.k - FROM[t]]), 0, { append: ids.length, ready: (k) => !!LOADED[ids[k - FROM[type]]] });
 }
 
+const SV = []; // 座位 → 倖存者變體(載好後建一次)
+registerSurvivorProvider((i) => {
+  if (SV[i]) return SV[i];
+  const S = LOADED['s:' + SURVIVORS[i]];
+  if (!S) return null;
+  return (SV[i] = { ...make('survivor', 's:' + SURVIVORS[i]), eyeKey: 'brown', k: i });
+});
+
 function make(type, id) {
   const S = LOADED[id];
   if (!S) return null;
   return {
     type, geometry: S.geometry, slots: S.slots, rig: S.rig, P: { ...S.P }, eyeKey: null, external: id,
-    legT: S.legT, legS: S.legS, hitboxes: autoHitboxes(S.rig, S.P, type), mouth: S.mouth.clone(), ownMaterials: S.materials[type],
+    legT: S.legT, legS: S.legS, hitboxes: autoHitboxes(S.rig, S.P, type), mouth: S.mouth.clone(), ownMaterials: S.materials[type] || S.materials.survivor, materials: S.materials[type] || S.materials.survivor,
   };
 }
 
@@ -150,8 +161,9 @@ function extract(gltf, id, types) {
   for (const o of parts) o.material.dispose();
   const bones = hz.bones.map(([name, parent, hx, hy, hzz, tx, ty, tz], i) => ({ name, i, parent, head: new THREE.Vector3(hx, hy, hzz), tail: new THREE.Vector3(tx, ty, tz) }));
   const index = Object.fromEntries(BONES.map((n, i) => [n, i]));
-  const rig = { bones, index, HC: V3(hz.HC), sw: Math.abs(bones[index.upperArmL].head.x), hw: Math.abs(bones[index.thighL].head.x) };
   const P = { legless: 0, ...hz.P };
+  // sw/hw 與 makeRig 相同:縮放前的半寬(使用端會乘 P.s)
+  const rig = { bones, index, HC: V3(hz.HC), sw: Math.abs(bones[index.upperArmL].head.x) / P.s, hw: Math.abs(bones[index.thighL].head.x) / P.s };
   return {
     geometry, materials, rig, P, tex, slots: kinds, mouth: V3(hz.mouth),
     legT: bones[index.thighL].head.distanceTo(bones[index.thighL].tail), legS: bones[index.shinL].head.distanceTo(bones[index.shinL].tail),
@@ -159,27 +171,36 @@ function extract(gltf, id, types) {
 }
 
 // ---------- 載入 ----------
-let started = false;
+let started = false, sStarted = false, G = null, loader = null;
+const off = () => G?.quality?.preset === 'low' || caps.flags.has('noreal'); // 低畫質(或除錯旗標 ?noreal):只用程式生成(省下載與顯示記憶體)
+function load(key, url, types, prio) {
+  const t0 = performance.now();
+  loader ||= new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+  // 回傳的不是場景物件 → 資源佇列不會拿 GLB 自帶的材質去預編譯(用的是 realisticMaterials 那兩個 program)
+  return assets.task(() => loader.loadAsync(url).then((g) => extract(g, key, types)), { meta: { zombieModel: key }, prio })
+    .then(async (S) => {
+      // 貼圖逐張在閒置時上傳 GPU(第一次畫到時才上傳會頓)
+      const r = G?.renderer;
+      if (r) for (const t of S.tex) await idle(() => r.initTexture(t), 500);
+      LOADED[key] = S;
+      stat.loaded++;
+      stat.ms = Math.round(performance.now() - t0);
+    })
+    .catch((e) => { stat.failed++; console.warn('[realistic] 模型載入失敗,維持程式生成', key, e?.message || e); });
+}
 export function loadRealistic(game) {
   if (started) return;
   started = true;
-  if (game?.quality?.preset === 'low' || caps.flags.has('noreal')) return; // 低畫質(或除錯旗標 ?noreal):只用程式生成(省下載與顯示記憶體)
-  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+  G = game;
+  if (off()) return;
   const typesOf = {};
   for (const [t, ids] of Object.entries(BODIES)) for (const id of ids) (typesOf[id] ||= []).push(t);
-  for (const id of Object.keys(typesOf)) {
-    const t0 = performance.now();
-    // 回傳的不是場景物件 → 資源佇列不會拿 GLB 自帶的材質去預編譯(用的是 realisticMaterials 那兩個 program)
-    assets.task(() => loader.loadAsync(BASE + id + '.glb').then((g) => extract(g, id, typesOf[id])), { meta: { zombieModel: id }, prio: 35 })
-      .then(async (S) => {
-        // 貼圖逐張在閒置時上傳 GPU(第一次畫到時才上傳會頓)
-        const r = game?.renderer;
-        if (r) for (const t of S.tex) await idle(() => r.initTexture(t), 500);
-        LOADED[id] = S;
-        stat.loaded++;
-        stat.ms = Math.round(performance.now() - t0);
-      })
-      .catch((e) => { stat.failed++; console.warn('[realistic] 模型載入失敗,維持程式生成', id, e?.message || e); });
-  }
+  for (const id of Object.keys(typesOf)) load(id, BASE + 'zombies/' + id + '.glb', typesOf[id], 35);
 }
-export const realisticStats = () => ({ ...stat, total: Object.values(BODIES).reduce((a, b) => a + b.length, 0) });
+// 進入多人房間時才下載倖存者模型(單人不需要);優先序高於殭屍(隊友一開局就看得到)
+export function loadSurvivors() {
+  if (sStarted || off()) return;
+  sStarted = true;
+  for (const id of SURVIVORS) load('s:' + id, BASE + 'survivors/' + id + '.glb', ['survivor'], 20);
+}
+export const realisticStats = () => ({ ...stat, total: Object.values(BODIES).reduce((a, b) => a + b.length, 0) + (sStarted ? SURVIVORS.length : 0) });
