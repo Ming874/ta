@@ -27,8 +27,8 @@ const emLight = (k = 0) => tpl(`svc:emlight:${k % 3}`, (b) => {
     if (k === 1 && sx > 0) { b.tube('pl_dark', [[sx * 0.13, 0.1, 0.03], [sx * 0.14, 0.04, 0.05], [sx * 0.15, -0.06, 0.06]], 0.003, { seg: 3, bend: 0.03 }); continue; }
     b.cyl('pl_white', 0.012, 0.03, sx * 0.13, 0.11, 0.035, { seg: 6 }); // 轉軸
     b.push(sx * 0.13, 0.135, 0.04, -0.55, sx * 0.35, 0);
-    b.cyl('pl_white', 0.042, 0.06, 0, 0, 0, { axis: 'z', seg: 12 });
-    b.cyl('glass_frosted', 0.034, 0.004, 0, 0, 0.031, { axis: 'z', seg: 12 });
+    b.cyl('pl_white', 0.042, 0.06, 0, 0, 0, { axis: 'z', seg: 8 });
+    b.cyl('glass_frosted', 0.034, 0.004, 0, 0, 0.031, { axis: 'z', seg: 8 });
     b.pop();
   }
 });
@@ -44,7 +44,7 @@ const sanRect = () => labRect('svc:sanit', 96, 72, (c, w, h) => {
 });
 const sanitizer = (k = 0) => tpl(`svc:sanit:${k % 2}`, (b) => {
   b.box('pl_white', 0.12, 0.24, 0.1, 0, 0.12, 0.05, { r: 0.014 });
-  b.box(k ? 'pl_gray' : 'pl_white', 0.1, 0.06, 0.03, 0, 0.06, 0.1, { r: 0.008, rx: 0.25 }); // 按壓板
+  b.box(k ? 'pl_gray' : 'pl_white', 0.1, 0.06, 0.03, 0, 0.06, 0.1, { rx: 0.25 }); // 按壓板
   b.box('pi_clear', 0.05, 0.08, 0.004, 0, 0.16, 0.1015); // 窗
   b.box('glass_amber', 0.044, k ? 0.012 : 0.03, 0.003, 0, k ? 0.128 : 0.137, 0.1005); // 殘餘的酒精
   b.cyl('pl_dark', 0.004, 0.012, 0, 0.012, 0.072, { seg: 6 }); // 出口
@@ -69,7 +69,7 @@ const evacRect = (dir) => glowRect(`svc:evac:${dir}`, 192, 72, (c, w, h) => {
   c.restore();
 });
 const evacSign = (dir) => tpl(`svc:evac:${dir}`, (b) => {
-  b.box('alu', 0.4, 0.16, 0.035, 0, 0.08, 0.0175, { r: 0.006 });
+  b.box('alu', 0.4, 0.16, 0.035, 0, 0.08, 0.0175);
   b.box('pl_white', 0.37, 0.13, 0.004, 0, 0.08, 0.0365);
   b.plane(G(evacRect(dir)), 0.36, 0.125, 0, 0.08, 0.0386);
 });
@@ -78,7 +78,6 @@ const evacSign = (dir) => tpl(`svc:evac:${dir}`, (b) => {
 const cornerGuard = (h, m) => tpl(`svc:corner:${h.toFixed(2)}:${m}`, (b) => {
   b.box('steel', 0.065, h, 0.0025, -m * 0.0325, h / 2, 0.00125); // 貼在原牆面
   b.box('steel', 0.0025, h, 0.065, m * 0.00125, h / 2, -0.0325); // 包到側面
-  for (const y of [0.15, h / 2, h - 0.15]) { b.cyl('chrome', 0.004, 0.002, -m * 0.04, y, 0.003, { axis: 'z', seg: 6 }); b.cyl('chrome', 0.004, 0.002, m * 0.003, y, -0.04, { axis: 'x', seg: 6 }); }
 });
 
 // ---------------------------------------------------------------- 擺放
@@ -240,4 +239,42 @@ function wetEntrance(R) {
     for (let k = 0; k < 2; k++) { const p = at(1.4 + k * 1.6, (k ? -0.35 : 0.3) * (g.n >= 2 ? 1.6 : 1)); if (R.isReach(p.x, p.z)) floorDecal(R, 'mud', p.x, p.z, 0.6, { yaw: yawIn + rng.range(-0.25, 0.25) }); }
     const p = at(0.5); if (R.isReach(p.x, p.z)) floorDecal(R, 'dirt', p.x, p.z, 1.4);
   }
+}
+
+// ---------------------------------------------------------------- 病床邊(病房最常被近看的地方)
+// 床的本地座標(medical.hospitalBed):床頭在 -Z(貼牆)、床尾 +Z、寬 ±0.46、床墊面 y≈0.69
+// 藍白拖(台灣人住院必備)、床下的臉盆、從床頭面板垂到枕邊的叫人鈴、床尾欄上掛的毛巾
+const slippers = (k) => tpl(`svc:slipper:${k % 2}`, (b) => {
+  for (const [sx, sz, ry] of [[-0.07, 0, 0.12 + k * 0.3], [0.08, 0.05 + k * 0.08, -0.2 - k * 0.5]]) {
+    b.push(sx, 0, sz, 0, ry, 0);
+    b.box('pl_white', 0.1, 0.018, 0.26, 0, 0.009, 0);
+    b.tube('pl_blue', [[-0.048, 0.016, -0.06], [-0.035, 0.05, -0.04], [0.035, 0.05, -0.04], [0.048, 0.016, -0.06]], 0.012, { seg: 4, bend: 0.02 });
+    b.box('pl_blue', 0.094, 0.006, 0.024, 0, 0.051, -0.04);
+    b.pop();
+  }
+});
+const basin = (k) => tpl(`svc:basin:${k % 2}`, (b) => {
+  b.lathe(k ? 'pl_pink' : 'pl_ltblue', [[0, 0.004], [0.1, 0], [0.13, 0.03], [0.15, 0.085], [0.165, 0.09], [0.16, 0.095], [0.14, 0.06], [0.1, 0.012], [0, 0.016]], 0, 0, 0, { seg: 10 });
+  b.box('fab_white', 0.18, 0.02, 0.12, 0.02, 0.03, 0.01, { ry: 0.4 }); // 一條毛巾
+});
+const callCord = (k) => tpl(`svc:callcord:${k % 2}`, (b) => {
+  const s = k ? -1 : 1;
+  b.tube('pl_gray', [[s * 0.28, 1.34, -0.9], [s * 0.36, 1.05, -0.86], [s * 0.42, 0.8, -0.78], [s * 0.37, 0.715, -0.66]], 0.004, { seg: 4, bend: 0.06 });
+  b.push(s * 0.34, 0.73, -0.64, 0.1, 0.3 * s, HALF);
+  b.box('pl_beige', 0.03, 0.1, 0.035, 0, 0, 0);
+  b.cyl('pl_red', 0.008, 0.006, 0, 0.02, 0.019, { axis: 'z', seg: 8 });
+  b.pop();
+});
+const railTowel = () => tpl('svc:railtowel', (b) => {
+  b.box('fab_white', 0.38, 0.012, 0.06, 0.05, 0.875, 1.06, { r: 0.004 }); // 搭在床尾欄上
+  b.box('fab_white', 0.38, 0.22, 0.008, 0.05, 0.76, 1.09, { r: 0.004, rx: 0.06 });
+  b.box('fab_white', 0.38, 0.18, 0.008, 0.05, 0.79, 1.035, { r: 0.004, rx: -0.05 });
+});
+export function bedside(R, p, k, kind) {
+  const r = R.rng;
+  if (kind === 'body') return;
+  if (r() < 0.75) R.putRel(callCord(k), p, 0, 0, 0);
+  if (r() < 0.55) R.putRel(basin(k + 1), p, (r() - 0.5) * 0.3, 0, -0.45 + r() * 0.3, 0, r() * 6);
+  if (kind !== 'stripped' && r() < 0.6) { const q = R.local(p, (r() < 0.5 ? -1 : 1) * 0.68, 0, 0.15 + r() * 0.5); if (R.freeAt(q.x, q.z, 0.1)) R.put(slippers(k), q.x, q.z, p.yaw + (r() - 0.5) * 1.2, { collide: false }); }
+  if (kind === 'made' && r() < 0.35) R.putRel(railTowel(), p, 0, 0, 0);
 }

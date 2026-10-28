@@ -7,6 +7,7 @@ import { rng as mkRng } from '../ctx.js';
 import { dress207 } from './w207.js';
 import { wardStory } from './story.js';
 import { wardStory2 } from './story5.js';
+import { bedside } from './services.js';
 
 // 病房 201-210:刻意幾乎一模一樣(迷失感)。床頭靠東西兩側牆、每床有隔簾/床頭櫃/氧氣面板/點滴架。
 // 207:一張床上有蓋白布的人形(而且只有這間的燈是正常的)。204:所有床被推到牆角堆疊。
@@ -29,6 +30,7 @@ export function dressWard(R, zone) {
       if (!p) continue;
       const bedNo = n * 10 + bays.length + 1;
       bedTags(R, p, bedNo);
+      bedside(R, p, k + (side > 0 ? 1 : 0), kind); // [scene6] 叫人鈴、床下臉盆、藍白拖、床尾毛巾
       bays.push({ p, run, bz, side, kind, id });
       // 床頭櫃 + 上面的東西
       const ns = R.atWall(nightstand(k + 1), run, bz - 0.78, { gap: 0.04 });
