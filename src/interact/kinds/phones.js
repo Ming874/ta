@@ -387,12 +387,20 @@ export function phoneDirector(api) {
       ix.after(13, () => e.remove());
     });
   };
+  // 走不到的電話不挑:捲門拉下時金水商行裡那支、劇情還鎖著的區域裡的(玩家看得到方向卻怎麼走都進不去)
+  const unreachable = (P) => {
+    const z = String(P.zone || '');
+    if (/store|shop/.test(z) && game.shop && !game.shop.open) return true;
+    try { if (z && game.interact?.doors?.isLocked?.(z)) return true; } catch { /* 沒有這個區域的門 */ }
+    return false;
+  };
   // 依路徑距離挑一支(a~b 公尺;同層 ×3、相鄰樓層 ×1、看不到 ×1.6、有劇情來電 ×2.5、90 秒內響過的不挑)
   const pick = (a = 15, b = 40) => {
     const W = game.world, L = W.layout, p = game.player.pos, li = L.levelOfY(p.y + 0.3);
     const out = [];
     for (const P of api.phones) {
       if (P.state !== 'idle' || P.ring === 'never' || game.time - P.lastRing < 90) continue;
+      if (unreachable(P)) continue;
       const dl = Math.abs(P.li - li);
       if (dl > 1) continue;
       const fy = L.levels[P.li]?.y ?? P.pos.y;

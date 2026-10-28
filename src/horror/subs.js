@@ -11,7 +11,9 @@ export class GhostSubs {
   // o:text、ear、filter、times(每個字元相對 t0 的秒數;undefined 的字元跟著前一個)、t0、clock() → 秒、hold(說完後停留秒數)、tag(小字標籤)、cap(事件字幕樣式)
   show(o) {
     const root = this._root();
-    while (this.lines.length >= 2) this._drop(this.lines[0]);
+    // 最多同時 3 行:新的一行進來時舊的變淡往上(還讀得到),不會一出現就被下一句擠掉
+    while (this.lines.length >= 3) this._drop(this.lines[0]);
+    for (const L of this.lines) L.el.classList.add('prev');
     const el = document.createElement('div');
     el.className = 'gh-line' + (o.cap ? ' cap' : '');
     if (o.ear) el.dataset.ear = o.ear;
@@ -32,7 +34,9 @@ export class GhostSubs {
     const times = [];
     let last = o.lead ?? 0.3;
     for (let i = 0; i < chars.length; i++) { const t = o.times?.[i]; if (Number.isFinite(t)) last = t; else if (!o.times) last = (o.lead ?? 0.3) + i * 0.28; times.push(last); }
-    const L = { el, chars, times, t0, clock, shown: 0, end: t0 + (times[times.length - 1] ?? 0) + (o.hold ?? 1.6), out: 0 };
+    // 停留時間至少夠讀完:字出完之後再留 1.4 秒 + 每字 0.2 秒(合成語音很快時字幕不會一閃就走)
+    const shownAt = t0 + (times[times.length - 1] ?? 0), n = chars.length;
+    const L = { el, chars, times, t0, clock, shown: 0, end: shownAt + Math.max(o.hold ?? 1.6, 1.4 + n * 0.2), out: 0 };
     this.lines.push(L);
     return L;
   }
