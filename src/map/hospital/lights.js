@@ -587,7 +587,7 @@ function storyLights(K, fixtures, add, root) {
     // 2F 北翼走廊(207 前後):「北側照明:人為切斷」→ 只剩護理站壁燈與 207 門內的光
     else if (zid === 'f2_corridor' && f.z < 30.5 && f.x > 62 && f.x < 90) { f.state = 2; f.gate = 0; }
     // [scene r5] 3F 監控室門口那一段走廊不亮:讓門裡漏出來的 CRT 藍光被看見(「被錄下來的真相」)
-    else if (zid === 'f3_corridor' && f.x > 84 && f.x < 104 && f.z < 30) { f.state = 2; f.gate = 0; }
+    else if (zid === 'f3_corridor' && f.x > 76 && f.x < 104 && f.z < 30) { f.state = 2; f.gate = 0; }
     // 金水商行:鎢絲燈的暖色(安全的地方)
     else if (f.zone?.theme === 'shop') { f.color.setHex(0xffd0a0); f.cd *= 1.05; f.dim = 1; if (f.state === 2) f.state = 0; }
   }
