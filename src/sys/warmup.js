@@ -84,7 +84,7 @@ export async function precompilePasses(game) {
   }
   const todo = [], last = c.passes.findLastIndex((x) => x.enabled);
   c.passes.forEach((p, i) => {
-    if (!p.enabled || p.isRenderPass || p.scene) return;
+    if (p.isRenderPass || p.scene) return; // 停用中的 pass(低畫質沒有 Bloom)也先編:之後打開不用現場編譯
     if (p.isOutputPass && (p._outputColorSpace !== r.outputColorSpace || p._toneMapping !== r.toneMapping)) {
       // 與 OutputPass.render 相同的 defines 先設好(否則第一幀會因 defines 改變再重編一次)
       p._outputColorSpace = r.outputColorSpace;
@@ -115,8 +115,48 @@ export async function precompilePasses(game) {
   return { created: (r.info.programs ? r.info.programs.length : 0) - before };
 }
 
-// 讓出主執行緒(Chrome 129+ 的 scheduler.yield 會保留優先權,不支援時用 setTimeout)
-export const yieldNow = () => (globalThis.scheduler && globalThis.scheduler.yield ? globalThis.scheduler.yield() : new Promise((r) => setTimeout(r, 0)));
+// ---- 讓出主執行緒 ----
+// scheduler.yield() 的接續會插在一般工作(Worker 訊息、計時器、輸入)前面:連續分批編譯時,殭屍建模 Worker 的結果
+// 要等全部批次做完才處理得到(實測 Worker 1 秒內做完,主執行緒 19 秒才收)。改用 MessageChannel 排一個普通工作
+// (先進先出、沒有 setTimeout 巢狀 4ms 下限),其他工作可以插進來
+const MC = typeof MessageChannel !== 'undefined' ? new MessageChannel() : null, mq = [];
+if (MC) MC.port1.onmessage = () => { const f = mq.shift(); if (f) f(); };
+export const yieldTask = () => new Promise((r) => { if (MC) { mq.push(r); MC.port2.postMessage(0); } else setTimeout(r, 0); });
+export const yieldNow = yieldTask; // 舊名稱
+
+// ---- GPU 行程節流 ----
+// 一次送出大量 shader(每個 program 數十 KB 原始碼)會塞滿命令緩衝區;D3D11 的 shader 翻譯/FXC 很慢,
+// 主執行緒會在下一個 GL 呼叫上同步等 GPU 行程消化 → 好幾秒的長任務。每批之後放一個 fence,
+// 等 GPU 行程追上再送下一批(fence 狀態查詢不會阻塞:WebGL2 只在工作之間更新)
+export function gpuDrain(r, maxMs = 2000) {
+  const gl = r.getContext();
+  if (typeof gl.fenceSync !== 'function') return yieldTask();
+  let s = null;
+  try { s = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0); gl.flush(); } catch { s = null; }
+  if (!s) return yieldTask();
+  const t0 = performance.now();
+  return new Promise((res) => {
+    const check = () => {
+      let done = true;
+      try { done = gl.getSyncParameter(s, gl.SYNC_STATUS) === gl.SIGNALED; } catch { /* context lost */ }
+      if (done || performance.now() - t0 > maxMs) { try { gl.deleteSync(s); } catch { /* 忽略 */ } res(); } else setTimeout(check, 4);
+    };
+    setTimeout(check, 0);
+  });
+}
+
+// 等一組 program 都編譯/連結完成(KHR_parallel_shader_compile 的狀態查詢不阻塞;沒有擴充時 isReady 一律 true)
+export function waitReady(programs, onProgress = null, maxMs = 120000) {
+  const left = new Set(programs), total = left.size, t0 = performance.now();
+  return new Promise((res) => {
+    const check = () => {
+      for (const p of left) if (!p.isReady || p.isReady()) left.delete(p);
+      onProgress?.(total ? 1 - left.size / total : 1);
+      if (!left.size || performance.now() - t0 > maxMs) res(total - left.size); else setTimeout(check, 30);
+    };
+    check();
+  });
+}
 
 // 每種「物件型態 × 幾何屬性 × 材質」挑一個代表物件(program 只依這些參數而定)
 function representatives(root) {
@@ -135,65 +175,159 @@ function representatives(root) {
 }
 // compile() 只需要 traverse / traverseVisible:用假的根節點只編譯指定的幾個物件
 const subset = (list) => ({ traverse: (fn) => { for (const o of list) fn(o); }, traverseVisible() {} });
+// instanced:一般網格另外也做「InstancedMesh 版」代理(下載的模型零件之後常被做成實例池)
+function withInstanced(root) {
+  const extra = [];
+  root.traverse((o) => { if (o.isMesh && !o.isInstancedMesh && !o.isSkinnedMesh && o.geometry) { const im = new THREE.InstancedMesh(o.geometry, o.material, 1); im.castShadow = o.castShadow; extra.push(im); } });
+  return { traverse: (fn) => { root.traverse(fn); for (const o of extra) fn(o); }, updateMatrixWorld() {} };
+}
 
-// target / camera:用哪個場景的光源與霧、哪台相機(手持武器層請傳 game.weaponScene / game.weaponCamera)
-// 編譯分批進行、每批之間讓出主執行緒(建立 program 的 CPU 工作不會變成一個好幾百 ms 的長任務)
-// instanced:一般網格另外也編「InstancedMesh 版」(下載的模型零件之後常被做成實例池)
-export async function precompile(game, root, { shadows = true, target = game.scene, camera = game.camera, budget = 12, instanced = false } = {}) {
-  const r = game.renderer, t0 = performance.now();
-  const rt = game.composer ? game.composer.readBuffer : null;
-  const parallel = !!r.extensions.get('KHR_parallel_shader_compile');
-  const before = r.info.programs ? r.info.programs.length : 0;
-  // 陰影 pass 是以「沒有霧的空場景」渲染(fog 也是 program 參數),所以代理材質編譯時暫時拿掉霧
-  const run = (obj, noFog) => {
-    const prev = r.getRenderTarget(), fog = target.fog, vis = target.visible;
+// 場景以外預編譯過的根(殭屍、特效、掉落物、下載的模型…):畫質切換(光源數/陰影)時要一起依新設定重編
+const registry = new Map(); // root → { instanced }
+export const warmRoots = () => [...registry.keys()];
+
+// 核心:把 srcs 的代表物件在 target 場景的光源/霧狀態下編譯(分批、每批等 GPU 行程追上),回傳建立/用到的 program
+// state:{ shadows, type } 只在每次 compile 的同步區段內暫時套到 renderer.shadowMap(畫質切換的預先編譯用)
+async function compileSet(game, srcs, { shadows = true, target = game.scene, camera = game.camera, budget = 10, state = null, onProgress = null, per = 2 } = {}) {
+  const r = game.renderer, rt = game.composer ? game.composer.readBuffer : null, sm = r.shadowMap;
+  const progs = new Set();
+  const shadowOn = state ? !!state.shadows : sm.enabled;
+  const run = (list, noFog) => {
+    const prev = r.getRenderTarget(), fog = target.fog, vis = target.visible, en = sm.enabled, ty = sm.type;
     r.setRenderTarget(rt); // 與 RenderPass 一樣畫進 HDR target(決定 outputColorSpace / toneMapping 參數)
-    if (noFog) target.fog = null;
-    target.visible = true; // 光源用 traverseVisible 收集:選單時隱藏的手持武器場景要當作可見,光源數才會對(否則第一槍重編)
-    try { return r.compileAsync(obj, camera, target); } finally { r.setRenderTarget(prev); target.fog = fog; target.visible = vis; }
+    if (noFog) target.fog = null; // 陰影 pass 以「沒有霧的空場景」渲染(fog 也是 program 參數)
+    target.visible = true; // 光源用 traverseVisible 收集:選單時隱藏的手持武器場景要當作可見,光源數才會對
+    if (state) { sm.enabled = !!state.shadows; if (state.type != null) sm.type = state.type; }
+    try {
+      const mats = r.compile(subset(list), camera, target);
+      for (const m of mats) {
+        const mp = r.properties.get(m), p = mp.currentProgram;
+        if (p) progs.add(p);
+        // 雙面透明材質 three 會編正反兩個 program(BackSide/FrontSide),currentProgram 只是其中一個:全部都要等、都要初始化
+        if (mp.programs) for (const q of mp.programs.values()) progs.add(q);
+        // 暫存場景(新畫質設定)編的:compile 會把材質目前的 program 換成新設定的版本。不需要光源的材質(Basic/Sprite/Line…)
+        // 在實際繪製時不會發現要換回來,會拿還沒編完的新 program 去畫 → 同步等編譯。標記版本讓下一次繪製重新挑(找到現成的舊 program)
+        if (state) mp.__version = -1;
+      }
+    } finally { r.setRenderTarget(prev); target.fog = fog; target.visible = vis; sm.enabled = en; sm.type = ty; }
   };
-  const jobs = [];
+  const reps = [], prox = [];
+  for (const s of srcs) {
+    s.root.updateMatrixWorld?.(true);
+    const src = s.instanced ? withInstanced(s.root) : s.root;
+    for (const o of representatives(src)) reps.push(o);
+    if (shadows && shadowOn) for (const o of shadowProxies(src, r, target).children) prox.push(o);
+  }
+  const all = reps.length + prox.length;
+  let done = 0;
   const chunked = async (list, noFog) => {
-    let i = 0, k = 2;
+    let i = 0;
     while (i < list.length) {
-      await yieldNow();
       const t = performance.now();
       while (i < list.length && performance.now() - t < budget) {
-        const a = performance.now();
         // three 的 compile() 同一次呼叫裡每個材質只編「第一個用到它的物件」的變體:同一批不能有共用材質的物件
         // (例如同一材質的 Mesh 與 BatchedMesh,第二個的 batching 變體會被跳過,之後第一次畫到才現場編)
         const part = [], seenM = new Set();
-        while (i < list.length && part.length < k) {
+        while (i < list.length && part.length < per) {
           const ms = [].concat(list[i].material || []);
           if (part.length && ms.some((m) => seenM.has(m))) break;
           for (const m of ms) seenM.add(m);
           part.push(list[i++]);
         }
-        jobs.push(run(subset(part), noFog));
-        const dt = performance.now() - a;
-        k = dt < budget / 3 ? Math.min(64, k * 2) : dt > budget ? Math.max(1, k >> 1) : k; // 依實際耗時調整每批數量
+        run(part, noFog);
+        done += part.length;
       }
+      onProgress?.(0.6 * Math.min(1, done / Math.max(1, all)));
+      await gpuDrain(r); // 等 GPU 行程消化這批 shader 再送下一批(主執行緒不會卡在塞滿的命令緩衝區上)
     }
   };
-  root.updateMatrixWorld(true);
-  let src = root;
-  if (instanced) {
-    const extra = [];
-    root.traverse((o) => { if (o.isMesh && !o.isInstancedMesh && !o.isSkinnedMesh && o.geometry) { const im = new THREE.InstancedMesh(o.geometry, o.material, 1); im.castShadow = o.castShadow; extra.push(im); } });
-    src = { traverse: (fn) => { root.traverse(fn); for (const o of extra) fn(o); }, updateMatrixWorld() {} };
-  }
-  const reps = representatives(src);
   await chunked(reps, false);
-  let px = null;
-  if (shadows && r.shadowMap.enabled) {
-    px = shadowProxies(src, r, target);
-    await chunked(px.children, true);
+  await chunked(prox, true);
+  await waitReady(progs, (f) => onProgress?.(0.6 + 0.4 * f));
+  return progs;
+}
+
+// target / camera:用哪個場景的光源與霧、哪台相機(手持武器層請傳 game.weaponScene / game.weaponCamera)
+// instanced:一般網格另外也編「InstancedMesh 版」
+export async function precompile(game, root, { shadows = true, target = game.scene, camera = game.camera, budget = 10, instanced = false } = {}) {
+  const r = game.renderer, t0 = performance.now();
+  const before = r.info.programs ? r.info.programs.length : 0;
+  if (root && root.isObject3D && root !== game.scene && root !== game.weaponScene && target === game.scene) registry.set(root, { instanced });
+  const programs = await compileSet(game, [{ root, instanced }], { shadows, target, camera, budget });
+  return { ms: Math.round(performance.now() - t0), programs, created: (r.info.programs ? r.info.programs.length : 0) - before, parallel: !!r.extensions.get('KHR_parallel_shader_compile') };
+}
+
+// ---- 畫質切換的預先編譯 ----
+// 光源池燈數、陰影開關/類型都是 shader 參數:直接套用會讓所有 program 在下一幀同步重編(D3D11 上數十秒)。
+// 先做一個「新設定的光源組」暫存場景(同樣的光源種類/數量/投影,池燈數換成新的),把場景與 registry 裡全部材質
+// 依新設定在背景平行編好,全部可用後才真正套用(呼叫端負責)
+export async function stageConfig(game, { lights, shadows, type, weapon = false }, onProgress = null) {
+  const scene = game.scene, cam = game.camera;
+  const st = new THREE.Scene();
+  st.fog = scene.fog; st.environment = scene.environment;
+  if (scene.environmentRotation && st.environmentRotation) st.environmentRotation.copy(scene.environmentRotation);
+  const pool = new Set((game.hospital?.lights?.pool || []).map((p) => p.light));
+  let drop = Number.isFinite(lights) ? Math.max(0, pool.size - lights) : 0, add = Number.isFinite(lights) ? Math.max(0, lights - pool.size) : 0;
+  scene.updateMatrixWorld(true);
+  scene.traverseVisible((o) => {
+    if (!o.isLight || !o.layers.test(cam.layers)) return;
+    if (pool.has(o) && drop > 0) { drop--; return; }
+    const c = o.clone(false);
+    c.layers.mask = o.layers.mask;
+    st.add(c);
+  });
+  while (add-- > 0) st.add(new THREE.PointLight(0xffffff, 0, 8, 2));
+  const srcs = [{ root: scene, instanced: false }, ...[...registry].map(([root, o]) => ({ root, instanced: o.instanced }))];
+  // 編譯期間 GPU 行程很忙,任何同步的 GL 查詢都會排在它後面等(實測 1 秒)。目前設定下還沒「第一次使用」過的 program
+  // (例如雙面透明材質的背面版本)先初始化好,編譯途中實際繪製時就不會撞上
+  const live = new Set();
+  for (const s0 of srcs) s0.root.traverse((o) => { for (const m of [].concat(o.material || [])) { const mp = m && game.renderer.properties.get(m); if (mp?.programs) for (const q of mp.programs.values()) live.add(q); } });
+  await initPrograms(live);
+  const state = { shadows, type };
+  // 遊戲進行中編:每次只編一個物件、每批 4ms,批與批之間等 GPU 行程追上(慢一點,但不搶畫面)
+  const progs = await compileSet(game, srcs, { target: st, state, budget: 4, per: 1, onProgress: (f) => onProgress?.(weapon ? f * 0.85 : f) });
+  if (weapon && game.weaponScene) { // 陰影類型也是手持武器層 program 的參數
+    for (const p of await compileSet(game, [{ root: game.weaponScene }], { target: game.weaponScene, camera: game.weaponCamera, shadows: false, state, onProgress: (f) => onProgress?.(0.85 + 0.15 * f) })) progs.add(p);
   }
-  await Promise.all(jobs);
-  // 編好的 program(之後可交給 initPrograms 在閒置時做「第一次使用」的初始化)
-  const programs = new Set();
-  for (const o of px ? reps.concat(px.children) : reps) for (const m of [].concat(o.material || [])) { const p = r.properties.get(m).currentProgram; if (p) programs.add(p); }
-  return { ms: Math.round(performance.now() - t0), programs, created: (r.info.programs ? r.info.programs.length : 0) - before, parallel };
+  await initPrograms(progs);
+  return progs.size;
+}
+// 畫質切換套用後,不在場景裡的材質(殭屍、特效…)也要標記重算 program(陰影開關不會自動觸發)
+export function warmMaterials() {
+  const out = new Set();
+  for (const root of registry.keys()) root.traverse((o) => { for (const m of [].concat(o.material || [])) if (m) out.add(m); });
+  return out;
+}
+
+// ---- 環境貼圖(PMREM)----
+// 用等距柱狀環境貼圖的材質,three 會在第一次編譯時就地做 PMREM:建立模糊 shader 立刻畫 → 同步等 shader 編譯(D3D11 1~2 秒)。
+// 先用同尺寸把 PMREM 的 shader 在背景編好(program 依 defines 共用),之後那次轉換只剩 GPU 畫幾下
+export async function warmPMREM(game, roots) {
+  const r = game.renderer, sizes = new Set();
+  for (const root of roots) root?.traverse?.((o) => {
+    for (const m of [].concat(o.material || [])) {
+      const t = m?.envMap;
+      if (t && (t.mapping === THREE.EquirectangularReflectionMapping || t.mapping === THREE.EquirectangularRefractionMapping) && t.image?.width) sizes.add(t.image.width / 4);
+    }
+  });
+  if (!sizes.size) return 0;
+  const pm = new THREE.PMREMGenerator(r);
+  if (typeof pm._setSize !== 'function' || typeof pm._allocateTargets !== 'function') { pm.dispose(); return 0; } // 不同版本的 three:放棄(照舊同步)
+  const cam = new THREE.OrthographicCamera(), progs = new Set();
+  const comp = (mat) => { if (!mat) return; const mesh = new THREE.Mesh(new THREE.BufferGeometry(), mat); for (const m of r.compile(mesh, cam)) { const p = r.properties.get(m).currentProgram; if (p) progs.add(p); } };
+  for (const s of sizes) {
+    pm._setSize(s);
+    const rt = pm._allocateTargets();
+    rt.dispose();
+    pm.compileEquirectangularShader();
+    comp(pm._equirectMaterial); comp(pm._blurMaterial); comp(pm._ggxMaterial);
+    await gpuDrain(r);
+  }
+  await waitReady(progs);
+  await initPrograms(progs);
+  // 生成器保留(它的材質持有剛編好的 program;dispose 會讓 three 回收)
+  keep.push(pm);
+  return progs.size;
 }
 
 // 真的畫一次(畫進 4x4 的離屏 target,玩家看不到):有些成本要到「第一次繪製」才發生——
@@ -213,27 +347,66 @@ export function warmDraw(game, objects) {
   try { r.setRenderTarget(warmRT); r.render(scene, game.camera); } finally { r.setRenderTarget(prev); for (const o of added) scene.remove(o); }
 }
 
-// 整個場景:每種「材質 × 頂點格式」挑一個代表物件,暫時取消剔除/隱藏畫一次(之後轉身、走到別層時不會第一次畫才頓)
-export function warmDrawScene(game) {
-  const r = game.renderer, scene = game.scene, saved = [];
-  for (const o of representatives(scene)) {
-    saved.push([o, 'frustumCulled', o.frustumCulled]);
-    o.frustumCulled = false;
-    for (let p = o; p && p !== scene; p = p.parent) if (!p.visible) { saved.push([p, 'visible', false]); p.visible = true; }
-  }
+// 整個場景:每種「材質 × 頂點格式」挑一個代表物件,離屏各畫一次(之後轉身、走到別層時不會第一次畫才頓)。
+// 分批:每批只畫 batch 個(其餘物件用圖層暫時排除),批與批之間讓出主執行緒並等 GPU 行程追上 → 不會變成一個數秒的長任務。
+// 陰影 pass 不畫(陰影深度 program 已預編譯;每批都重畫手電筒陰影太浪費)
+const WARM_LAYER = 30;
+export async function warmDrawScene(game, { batch = 12, all = false } = {}) {
+  const r = game.renderer, scene = game.scene, cam = game.camera, sm = r.shadowMap;
+  // all:每個物件都畫一次(上傳全部幾何緩衝 / VAO;開始畫面前做,第一幀與走進新區域時就不會一次上傳一大堆)
+  const reps = all ? [] : representatives(scene), lights = [];
+  if (all) scene.traverse((o) => { if ((o.isMesh || o.isLine || o.isPoints || o.isSprite) && o.material && o.geometry) reps.push(o); });
+  scene.traverse((o) => { if (o.isLight) lights.push(o); });
   warmRT = warmRT || new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType });
-  const prev = r.getRenderTarget();
-  try { r.setRenderTarget(warmRT); r.render(scene, game.camera); } finally {
-    r.setRenderTarget(prev);
-    for (let i = saved.length - 1; i >= 0; i--) saved[i][0][saved[i][1]] = saved[i][2];
+  for (let i = 0; i < reps.length; i += batch) {
+    await gpuDrain(r, 1000);
+    const list = reps.slice(i, i + batch), saved = [];
+    for (const o of list) {
+      saved.push([o, 'frustumCulled', o.frustumCulled]);
+      o.frustumCulled = false;
+      o.layers.enable(WARM_LAYER);
+      for (let p = o; p && p !== scene; p = p.parent) if (!p.visible) { saved.push([p, 'visible', false]); p.visible = true; }
+    }
+    for (const l of lights) l.layers.enable(WARM_LAYER); // 光源也要在相機圖層內,program 的光源數才會一致
+    const mask = cam.layers.mask, auto = sm.autoUpdate, prev = r.getRenderTarget();
+    cam.layers.set(WARM_LAYER);
+    sm.autoUpdate = false;
+    try { r.setRenderTarget(warmRT); r.render(scene, cam); } finally {
+      r.setRenderTarget(prev);
+      sm.autoUpdate = auto;
+      cam.layers.mask = mask;
+      for (const l of lights) l.layers.disable(WARM_LAYER);
+      for (const o of list) o.layers.disable(WARM_LAYER);
+      for (let k = saved.length - 1; k >= 0; k--) saved[k][0][saved[k][1]] = saved[k][2];
+    }
   }
-  return saved.length;
+  return reps.length;
+}
+
+// 場景材質用到的貼圖先上傳(開始畫面前,每個工作最多 budget ms;第一幀不會一次上傳全部程式貼圖)
+export async function uploadSceneTextures(game, budget = 8) {
+  const r = game.renderer, todo = [], seen = new Set();
+  const KEYS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap', 'alphaMap', 'bumpMap', 'lightMap', 'displacementMap', 'specularMap', 'gradientMap'];
+  game.scene.traverse((o) => {
+    for (const m of [].concat(o.material || [])) {
+      if (!m) continue;
+      for (const k of KEYS) { const t = m[k]; if (t && !seen.has(t) && t.image && !t.isRenderTargetTexture && t.version > 0 && r.properties.get(t).__version !== t.version) { seen.add(t); todo.push(t); } }
+      for (const v of Object.values(m.uniforms || {})) { const t = v?.value; if (t?.isTexture && !seen.has(t) && t.image && !t.isRenderTargetTexture && t.version > 0 && r.properties.get(t).__version !== t.version) { seen.add(t); todo.push(t); } }
+    }
+  });
+  let i = 0;
+  while (i < todo.length) {
+    await gpuDrain(r, 500);
+    const t0 = performance.now();
+    while (i < todo.length && performance.now() - t0 < budget) { try { r.initTexture(todo[i]); } catch { /* 略過 */ } i++; }
+  }
+  return todo.length;
 }
 
 // program 第一次被使用時,three 還要查詢 uniform/attribute 位置(每個數 ms~十數 ms 的同步呼叫)。
-// 在閒置時段先做掉(一直沒有閒置時段時,最多等 200ms 就當一般任務跑,每次一個),實際畫到時就不會卡。
+// 在閒置時段先做掉(一直沒有閒置時段時,最多等 200ms 就當一般任務跑),實際畫到時就不會卡。
 // 驅動還沒編完的(KHR_parallel_shader_compile)先跳過、下一輪再來,不會在主執行緒上同步等編譯;
-// 每個閒置時段做一小批(主執行緒忙、閒置逾時時也照樣做 ~4ms,不會一次只做一個 → 載入中也能在幾秒內做完)
+// 每個閒置時段做一小批(主執行緒忙、閒置逾時時也照樣做 ~4ms)
 export async function initPrograms(programs) {
   let list = [...programs];
   while (list.length) {

@@ -5,6 +5,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { registerProvider, registerSurvivorProvider, autoHitboxes, BONES, getVariantAt } from './model.js';
 import { ZU } from './materials.js';
 import { assets } from '../sys/assets.js';
+import { uploads } from '../sys/uploads.js';
 import { idle } from '../sys/sched.js';
 import { caps } from '../sys/caps.js';
 
@@ -179,9 +180,8 @@ function load(key, url, types, prio) {
   // 回傳的不是場景物件 → 資源佇列不會拿 GLB 自帶的材質去預編譯(用的是 realisticMaterials 那兩個 program)
   return assets.task(() => loader.loadAsync(url).then((g) => extract(g, key, types)), { meta: { zombieModel: key }, prio })
     .then(async (S) => {
-      // 貼圖逐張在閒置時上傳 GPU(第一次畫到時才上傳會頓)
-      const r = G?.renderer;
-      if (r) for (const t of S.tex) await idle(() => r.initTexture(t), 500);
+      // 貼圖逐張上傳 GPU(src/sys/uploads.js:每幀最多一張、超過 1K 先在背景縮小;第一次畫到時才上傳會頓)
+      for (const t of S.tex) await uploads.add(t);
       LOADED[key] = S;
       // 馬上建好變體(只是組裝,很快):回合進行中載好的也立刻能被挑到,不必等回合間的 prewarm
       for (const t of types) if (BODIES[t]) getVariantAt(t, FROM[t] + BODIES[t].indexOf(key));
@@ -197,7 +197,7 @@ export function loadRealistic(game) {
   if (off()) return;
   const typesOf = {};
   for (const [t, ids] of Object.entries(BODIES)) for (const id of ids) (typesOf[id] ||= []).push(t);
-  for (const id of Object.keys(typesOf)) load(id, BASE + 'zombies/' + id + '.glb', typesOf[id], 35);
+  for (const id of Object.keys(typesOf)) load(id, BASE + 'zombies/' + id + '.glb', typesOf[id], 8); // [perf] 殭屍模型決定 hz:warm(開局出怪的時間點),排在大部分貼圖前面
 }
 // 進入多人房間時才下載倖存者模型(單人不需要);優先序高於殭屍(隊友一開局就看得到)
 export function loadSurvivors() {
