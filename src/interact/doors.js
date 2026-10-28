@@ -253,7 +253,7 @@ export function setupDoors(game, ix, { leaves = [], seed = 77, lockSpecs = [], l
         if (w.lock && !unlocked(w)) return { text: w.lock.text || `${nm} · 上鎖了`, dim: true };
         if (w.bar) { e.hold = 1.6; e.onTap = null; e.holdText = '拆木板'; return '拆掉木板'; }
         const closed = allClosed(w);
-        if (closed && !ctx.mp || closed && ctx.isHost) { e.hold = 2.2; e.onTap = tap; e.holdText = '釘木板'; e.tapText = `打開${nm}`; return `釘上木板(${BARRICADE_COST} 金幣)`; }
+        if (closed && !ctx.mp || closed && ctx.isHost) { e.hold = 2.2; e.onTap = tap; e.holdText = '釘木板'; e.tapText = `打開${nm}`; return `釘上木板（${BARRICADE_COST} 元）`; }
         e.hold = 0; e.onTap = null;
         return closed ? `打開${nm}` : `關上${nm}`;
       },
@@ -262,7 +262,7 @@ export function setupDoors(game, ix, { leaves = [], seed = 77, lockSpecs = [], l
         if (w.bar) { unbar(w, false); ixs.barricadeBreak(pos(w)); return; }
         if (e.hold > 0) { // 按住完成:釘木板
           const p = game.player;
-          if ((p.coins || 0) < BARRICADE_COST) { game.ui.pickup(`需要 ${BARRICADE_COST} 金幣`, '#a3a39a'); sfx.pickupDeny(); return false; }
+          if ((p.coins || 0) < BARRICADE_COST) { game.ui.pickup(`需要 ${BARRICADE_COST} 元`, '#a3a39a'); sfx.pickupDeny(); return false; }
           p.coins -= BARRICADE_COST; game.ui.setCoins(p.coins); game.ui.spend?.(BARRICADE_COST);
           const side = sideOf(w, p.pos);
           barricade(w, side);

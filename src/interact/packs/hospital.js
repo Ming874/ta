@@ -22,9 +22,9 @@ const items = [
   // ================================================================== 劇情進度才開的區域(src/story/objectives.js 設旗標;鎖著的門導航繞過)
   // 三樓的門禁:配電盤恢復(h.gen.on)之後才有電;太平間:查出 207 的門怎麼開之後,清理隊的鎖才打得開。
   // (監控室自己的門禁卡鎖寫在後面,會蓋掉這一條,所以要排在它前面)
-  { id: 'h.lock.3f', kind: 'lock', zone: 'f3_corridor', door: 'f3_corridor', item: null, flag: 'h.area.3f', text: '三樓 · 電子門禁沒有電',
+  { id: 'h.lock.3f', kind: 'lock', zone: 'f3_corridor', door: 'f3_corridor', item: null, flag: 'h.area.3f', text: '三樓 · 電子門禁沒有電', unlockText: '',
     why: '萬嵐的三樓門禁接在配電盤上；七月初一燈篙第一次點亮時跳電，門全鎖著。' },
-  { id: 'h.lock.morgue', kind: 'lock', zone: 'b1_morgue', door: 'b1_morgue', item: null, flag: 'h.area.morgue', text: '太平間 · 萬嵐清理隊上鎖',
+  { id: 'h.lock.morgue', kind: 'lock', zone: 'b1_morgue', door: 'b1_morgue', item: null, flag: 'h.area.morgue', text: '太平間 · 萬嵐清理隊上鎖', unlockText: '',
     why: '萬嵐清理隊鎖了太平間（裡面有甦醒失敗的人）；工務的保險絲備品在 5 號冰櫃。' },
   // ================================================================== 目標鏈:H 檔案
   { id: 'h.ix.h01', kind: 'note', zone: 'f1_lobby', mount: 'floor', near: null, note: 'H01', style: 'paper',
@@ -85,7 +85,7 @@ const items = [
     why: '207 的電子鎖由監控室控制；授權碼是「她來的那一天」：1999/9/24。' },
   { id: 'h.ix.cctv', kind: 'cctv', zone: 'f3_monitor', mount: 'surface', near: null, power: 'h.pwr.monitor',
     why: '監控室主控台的錄影機，卡著 2003/5/5 CAM-07 的帶子（hc.05）。' },
-  { id: 'h.ix.lock.207', kind: 'lock', zone: 'f2_ward_207', mount: 'wall', near: 'door', door: 'f2_ward_207', item: null, flag: 'h.207.unlock', text: '電子鎖 · 封存（董事長令）',
+  { id: 'h.ix.lock.207', kind: 'lock', zone: 'f2_ward_207', mount: 'wall', near: 'door', door: 'f2_ward_207', item: null, flag: 'h.207.unlock', text: '電子鎖 · 封存（董事長令）', unlockText: '207 的電子鎖「喀」一聲，紅燈熄了。',
     why: '萬嵐 2024 年在 207 門邊加裝的電子鎖（封存）；門玻璃內側是阿嬤 2003/5/5 用口紅反寫的「莫開門」（hc.15）。' },
 
   // ================================================================== 2F 護理站(鄭玉蘭)
