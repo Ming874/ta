@@ -147,10 +147,10 @@ export const models = new Models();
 // ---------- 槽位與行為 ----------
 const _v = new THREE.Vector3(), _f = new THREE.Vector3(), _c = new THREE.Vector3();
 export class Apparitions {
-  constructor(h, scene) {
+  constructor(h, scene, n = 2) { // n:同時幾個(驚嚇用 2;回憶的回音人影用 6,同一個 shader)
     this.h = h;
     this.scene = scene;
-    this.slots = [0, 1].map(() => {
+    this.slots = Array.from({ length: n }, () => {
       const pale = makeMat(false), shade = makeMat(true);
       const mesh = new THREE.Mesh(new THREE.BufferGeometry(), pale);
       mesh.visible = false; mesh.castShadow = false; mesh.receiveShadow = false; mesh.frustumCulled = false; mesh.raycast = () => {};

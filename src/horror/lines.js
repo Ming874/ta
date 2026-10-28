@@ -220,7 +220,7 @@ export const WRITINGS = [
   // 第三輪:走廊停電之後多出來的字(kind 'story3':只由 STORY3 表指定)
   { id: 'w3.day7', kind: 'story3', text: '封院第 7 天\n正丅', style: 'marker', ghost: 'zheng', who: '鄭玉蘭(阿嬤)', why: '封院期間她每天在牆上畫一筆;第七天那一晚 207 出了事(推理題)', when: '2003 封院第 7 天', size: 0.2, h: 1.5 },
   { id: 'w3.tally', kind: 'story3', text: '正正止', style: 'scratch', who: '2003 隔離病房的病人', why: '十四天的計數;他們以為數到十四就能回家', when: '2003 封院期間', size: 0.2, h: 1.3 },
-  { id: 'w3.0147', kind: 'story3', text: '01:47', style: 'smear', who: '不明', why: '醫院裡的鐘都停在 01:47(921 那一晚,研究站倒塌、菌外洩)', when: '1999/9/21', size: 0.24, h: 1.6 },
+  { id: 'w3.0147', kind: 'story3', text: '01:47', style: 'smear', who: '不明', why: '207 床頭那支女用電子錶停在 01:47:小鈴從山上被挖出來時戴著的錶(HOSPITAL_CLUES_v2 hc.41;聖心沒有「全院的鐘都停住」)', when: '1999/9/21', size: 0.24, h: 1.6 },
   { id: 'w3.207', kind: 'story3', text: '207 的燈\n不能熄', style: 'marker', ghost: 'zheng', who: '鄭玉蘭(阿嬤)', why: '她守了 207 十四暝;燈一熄,萬嵐的人就會進去', when: '2003 封院期間', size: 0.2, h: 1.5 },
 ];
 
@@ -230,18 +230,18 @@ export const WRITINGS = [
 //   act 最早第幾幕、mem 記憶分類(zheng 看到阿嬤 / dark 停電 / taboo 禁忌 / self 關於你是誰 / clue 線索)、
 //   card:線索卡 id(HOSPITAL_CLUES_v2 出來後由劇情組填;有填就呼叫 game.objectives?.clue?.(card))、flag:另外設的 game.flags 旗標
 export const STORY3 = {
-  swing: [{ id: 's3.swing', line: 's3.swing', mem: 'zheng', card: null }],
+  swing: [{ id: 's3.swing', line: 's3.swing', mem: 'zheng', card: 'hc.34' }],
   follow: [{ id: 's3.follow', line: 's3.follow', mem: 'zheng' }],
-  bed: [{ id: 's3.bed', line: 's3.bed', mem: 'clue', card: null }],
-  flat: [{ id: 's3.flat', line: 's3.flat', mem: 'clue', card: null }],
+  bed: [{ id: 's3.bed', line: 's3.bed', mem: 'clue', card: 'hc.35' }],
+  flat: [{ id: 's3.flat', line: 's3.flat', mem: 'clue', card: 'hc.36' }],
   ball: [{ id: 's3.ball', line: 's3.ball', mem: 'self' }],
   beam: [{ id: 's3.beam', line: 's3.beam', mem: 'zheng', repeat: true }],
   tap: [{ id: 's3.tap', line: 's3.tap', mem: 'taboo' }],
   nameOk: [{ id: 's3.name.ok', line: 's3.name.ok', mem: 'taboo' }],
   nameBad: [{ id: 's3.name.bad', line: 's3.name.bad', mem: 'taboo', repeat: true }],
-  radio: [{ id: 's3.radio', line: 's3.radio', mem: 'clue', card: null }],
-  dark: [{ id: 's3.dark.know', line: 's3.dark.know', mem: 'self' }, { id: 's3.dark.day7', line: 's3.dark.day7', act: 2, mem: 'clue', card: null }, { id: 's3.dark.207', line: 's3.dark.207', act: 2, mem: 'clue', card: null }],
-  darkWrite: [{ id: 'w3.day7', write: 'w3.day7', act: 2, mem: 'clue', card: null }, { id: 'w3.0147', write: 'w3.0147', mem: 'clue', card: null }, { id: 'w3.207', write: 'w3.207', mem: 'clue', card: null }, { id: 'w3.tally', write: 'w3.tally', mem: 'clue' }],
+  radio: [{ id: 's3.radio', line: 's3.radio', mem: 'clue', card: 'hc.37' }],
+  dark: [{ id: 's3.dark.know', line: 's3.dark.know', mem: 'self' }, { id: 's3.dark.day7', line: 's3.dark.day7', act: 2, mem: 'clue', card: 'hc.38' }, { id: 's3.dark.207', line: 's3.dark.207', act: 2, mem: 'clue', card: 'hc.39' }],
+  darkWrite: [{ id: 'w3.day7', write: 'w3.day7', act: 2, mem: 'clue', card: 'hc.40' }, { id: 'w3.0147', write: 'w3.0147', mem: 'clue', card: 'hc.41' }, { id: 'w3.207', write: 'w3.207', mem: 'clue', card: 'hc.39' }, { id: 'w3.tally', write: 'w3.tally', mem: 'clue', card: 'hc.40' }],
   darkDoor: [{ id: 's3.dark.door', mem: 'dark', repeat: true }], // 燈回來時,一扇門已經開了(路打開)
   face: [{ id: 's3.face', line: 's3.face', mem: 'zheng' }],
   burst: [{ id: 's3.burst', line: 's3.burst', act: 2, mem: 'zheng' }],
@@ -250,8 +250,8 @@ export const STORY3 = {
   whistle: [{ id: 's3.whistle', line: 's3.whistle', mem: 'taboo' }],
   envelope: [{ id: 's3.envelope', line: 's3.envelope', mem: 'taboo' }],
   shadow: [{ id: 's3.shadow', line: 's3.shadow', mem: 'zheng' }],
-  fog: [{ id: 'fg.tally', text: '正正止', mem: 'clue', card: null }, { id: 'fg.home', text: '回家', mem: 'dark' }], // 從外面寫的(封院時外面的家屬)
-  frost: [{ id: 'fr.0147', text: '01:47', mem: 'clue', card: null }, { id: 'fr.207', text: '207', act: 2, mem: 'clue', card: null }, { id: 'fr.day7', text: '第七天', act: 2, mem: 'clue', card: null }, { id: 'fr.ama', text: '阿嬤在', mem: 'self', repeat: true }],
+  fog: [{ id: 'fg.tally', text: '正正止', mem: 'clue', card: 'hc.40' }, { id: 'fg.home', text: '回家', mem: 'dark' }], // 從外面寫的(封院時外面的家屬)
+  frost: [{ id: 'fr.0147', text: '01:47', mem: 'clue', card: 'hc.41' }, { id: 'fr.207', text: '207', act: 2, mem: 'clue', card: 'hc.39' }, { id: 'fr.day7', text: '第七天', act: 2, mem: 'clue', card: 'hc.40' }, { id: 'fr.ama', text: '阿嬤在', mem: 'self', repeat: true }],
 };
 
 // 事件字幕(不是低語:例如數數的人;灰色、標記「？？？」)

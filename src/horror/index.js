@@ -7,6 +7,7 @@
 //   game.horror.remember(id, { event, tag, ghost, card, text }) / seen(tag?, within = 300) → 最近一筆
 //                                                    第三輪:靈異事件的劇情回報都記在這裡(tag:zheng 看到阿嬤 | dark 停電 | taboo 禁忌 | self 你是誰 | clue 線索);
 //                                                    有 card 就 game.objectives?.clue?.(card);發 'story' 事件;電話用 need.seen 引用
+//   game.horror.memory(id, { force }) / memories.state      第四輪「回憶」:走到 2003 年封院發生過事情的地方,滑進那一段(memdata.js)
 //   game.horror.phoneCall(ctx) → script | null          接起電話:依玩家身邊的場景組一通電話(見 calls.js;互動代理呼叫)
 //   game.horror.phone({ pos, id, ringing }) → handle     (舊)接起電話:隨機一句電話台詞
 //   game.horror.radio({ pos, id }) → handle              收音機開了(收音機濾波,在收音機的位置)
@@ -30,6 +31,7 @@ import { paranormalKinds } from './paranormal.js';
 import { scareKinds } from './scares.js';
 import { createCalls } from './calls.js';
 import { hauntKinds, HauntFx } from './haunts.js';
+import { createMemories } from './memories.js';
 import { LINES, CAPTIONS } from './lines.js';
 import { precompile as warmCompile, initPrograms } from '../sys/warmup.js';
 
@@ -139,6 +141,7 @@ export function installHorror(game) {
       H.fx?.update(dt, game, H.coldK);
       H.marks?.update(dt);
       H.app?.update(dt, game);
+      H.memories?.update(dt);
       for (let i = later.length - 1; i >= 0; i--) if (game.time >= later[i][0]) { const fn = later[i][1]; later.splice(i, 1); try { fn(); } catch (e) { console.warn('[horror]', e); } }
       for (let i = watchers.length - 1; i >= 0; i--) { let keep = false; try { keep = watchers[i](dt); } catch (e) { console.warn('[horror]', e); } if (!keep) watchers.splice(i, 1); }
       if (H.ringing && game.time > H.ringing.until) H.ringing = null;
@@ -149,7 +152,7 @@ export function installHorror(game) {
       H.director.reset(); H.whispers.reset(); H.app?.clear(); H.marks?.clear(); H.fx?.clear();
       later.length = 0; watchers.length = 0; H.usedWrit.clear(); H.ringing = null; H.coldK = H.coldT = 0; H.coldUntil = 0;
       H.calls?.reset(); T.spots.clear(); H._pace = false;
-      H.hfx?.reset(); H.seenLog.length = 0; H.storyUsed.clear(); H.quiet = 0; T.touqi = false; T.quietPh = null;
+      H.memories?.reset(); H.hfx?.reset(); H.seenLog.length = 0; H.storyUsed.clear(); H.quiet = 0; T.touqi = false; T.quietPh = null;
       T.zones.clear(); T.props.clear(); T.still = 0; T.streak = 0; T.lastKill = 0; T.zonePend = null; T.next = 0;
       for (const d of H.events?.doors || []) d.primed = false;
       if (performance.now() > 40000) models.warm();
@@ -162,7 +165,7 @@ export function installHorror(game) {
       const e = { id, t: game.time, zone: zoneOf()?.id || null, event: o.event || null, tag: o.tag || null, ghost: o.ghost || null, card: o.card || null, text: o.text || null };
       H.seenLog.push(e); if (H.seenLog.length > 60) H.seenLog.shift();
       game.flags?.set?.('h.seen.' + id, true);
-      if (e.card) game.objectives?.clue?.(e.card, { by: 'ghost' });
+      if (e.card) { game.deduce?.addCard?.(e.card); game.objectives?.clue?.(e.card, { by: o.event === 'memory' ? 'memory' : 'ghost' }); }
       H.emit('story', e);
       return e;
     },
@@ -171,6 +174,7 @@ export function installHorror(game) {
       return null;
     },
     seen(tag, within) { return H.lastSeen(tag, within); },
+    memory(id, o = {}) { return H.memories?.play(id, o) ?? null; },
     stats() { return { ...H.director.stats(), whispers: H.whispers.count, wlog: H.whispers.log.slice(-8), apparitions: H.app?.count ?? 0, alog: H.app?.log.slice(-8) ?? [], active: H.app?.active ?? 0, models: models.state, events: H.events?.S.log.slice(-10) ?? [], cold: +H.coldK.toFixed(2) }; },
   };
   H.director = new Director(H);
@@ -187,6 +191,7 @@ export function installHorror(game) {
     H.hfx = new HauntFx(H, game.scene);
     E.register(paranormalKinds(H));
     E.register(scareKinds(H)); // 第二輪驚嚇庫(src/horror/scares.js)
+    H.memories = createMemories(H); // 第四輪:回憶
     E.register(hauntKinds(H)); // 第三輪:更多靈異事件、走廊熄燈、大跳嚇,每個都有劇情回報(src/horror/haunts.js)
     E.auto = false; // 驚嚇導演接手排程
     try { H.marks.placeStatic(game.hospital.K, game.hospital.layout); } catch (e) { console.warn('[horror] 牆上字跡', e); }
@@ -222,6 +227,7 @@ export function installHorror(game) {
       if (game.time > T.zonePend.until) T.zonePend = null;
       else if (D.silent && D.tension < 0.45 && !H.whispers.busy && D.request('whisper', { force: true })) { say(T.zonePend.l, { priority: 5 }); T.zonePend = null; }
     }
+    H.memories?.tick(); // 回憶:走到地點就滑進去
     // 靜默期計數;頭七:第 7 次靜默期,她回來(STORY v2;一局一次)
     if (D.silent && T.quietPh !== true) { T.quietPh = true; H.quiet++; } else if (!D.silent) T.quietPh = false;
     if (H.quiet === 7 && !T.touqi && D.silent && D.roundT > 8 && game.time - (T.touqiTry || 0) > 4) { T.touqiTry = game.time; if (H.event('touqi', { force: true })) T.touqi = true; }
@@ -337,6 +343,7 @@ function warmSet(H) {
   for (const m of [s.pale, s.shade, s.depth]) { const x = new THREE.Mesh(geo, m); x.frustumCulled = false; out.push(x); }
   for (const m of H.marks.warmList()) { const c = m.clone(); c.visible = true; c.frustumCulled = false; if (c.isInstancedMesh) c.count = 1; out.push(c); }
   out.push(H.marks.warmWriting());
+  for (const m of H.memories?.warmList() || []) { const x = new THREE.Mesh(geo, m); x.frustumCulled = false; out.push(x); } // 回憶的回音人影(同一個 shader)
   for (const m of H.hfx?.warmList() || []) { const c = m.clone(); c.visible = true; c.frustumCulled = false; out.push(c); } // 第三輪:球、紅包、影子、窗上霧氣
   const pts = H.fx.pts.clone(); pts.visible = true; out.push(pts);
   return out;

@@ -31,3 +31,6 @@
 #gh-edge.on span { opacity: 1; }
 #gh-edge[data-side="left"] span { left: 3.5vw; }
 #gh-edge[data-side="right"] span { right: 3.5vw; }
+/* 回憶(src/horror/memories.js):2003 年的人說的話,舊照片的顏色 */
+.gh-line[data-s="past"] { color: rgba(236, 214, 170, .92); font-style: normal; letter-spacing: .08em; text-shadow: 0 0 6px rgba(120, 90, 40, .45), 0 0 3px #000, 0 1px 2px #000; }
+.gh-line[data-s="past"] small { color: rgba(220, 196, 150, .8); opacity: .8; }
