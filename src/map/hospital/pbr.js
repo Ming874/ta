@@ -56,6 +56,8 @@ export const PBR_SETS = {
   carpet_dirty: { tile: 1.5, ao: 1, avg: '#352f25' },
   epoxy: { tile: 3.0, ao: 1, avg: '#4f493f' },
   ceiling_tile2: { tile: 2.4, ao: 1, avg: '#f5f5f5' },
+  // wave 3:原創程式生成(tools/textures/gen_ceiling.py):不規則裂紋孔礦纖板,3×3 片 / 2m,片緣斜角 + T-bar
+  ceiling_fissured: { tile: 2.0, ao: 1, avg: '#b8b4a9' },
 };
 // 新地圖註冊自己的貼圖組(public/textures/<name>/…):registerPbrSets({ name: { tile, ao, avg, alpha? } })
 export function registerPbrSets(defs) { Object.assign(PBR_SETS, defs); }
