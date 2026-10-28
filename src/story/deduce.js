@@ -132,7 +132,7 @@ export function installDeduce(game) {
   // ---------- 說出口的台詞(對講機、廣播):依序播,播完 cb ----------
   function talk(lines, cb, o = {}) {
     const api = ix()?.map?.api;
-    if (!api || !lines?.length) { cb?.(); return; }
+    if (!api || !lines?.length || game.story?.ending?.active) { cb?.(); return; } // 結局裡只有結局自己的聲音
     let t = 0;
     for (const [who, text, secs] of lines) {
       ix().after(t, () => api.speak({ who, parts: [text], voice: /小鈴|女/.test(who) ? 'woman' : 'old' }, { filter: o.filter || (/對講機|AM/.test(who) ? 'radio' : 'phone'), noHorror: true }));
@@ -144,26 +144,27 @@ export function installDeduce(game) {
 
   // ---------- 207 的門自己打開(聖筊;替全隊) ----------
   const door207 = () => ix()?.doors?.list?.find((w) => w.lock?.door === 'f2_ward_207') || null;
+  // 聖筊 = 萬嵐的電子鎖解開(h.207.elock);門內的舊旋鈕要等頭七阿嬤回來轉開,兩道都開了門才會推開(src/story/climax.js)
   function unlock207(send) {
     const X = ix();
     if (!X) return;
-    X.flags.set('h.207.unlock', true);
+    X.flags.set('h.207.elock', true);
     const w = door207();
     if (w && !run.opened207) {
       run.opened207 = true;
-      const p = game.player.pos, by = Math.abs(p.y - w.y) < 2 ? { x: p.x, z: p.z } : null;
-      try { X.doors.setState(w, 'open', { by }); } catch (e) { console.warn('[deduce] 207', e); }
-      game.ui?.feed?.('二樓傳來「喀」的一聲：207 的門鎖自己打開了。', { color: '#e3c98a', ms: 6500 });
+      try { ixs207(w); } catch { /* 略 */ }
+      game.ui?.feed?.('二樓傳來「嗶」的一聲：207 的電子鎖，紅燈熄了。', { color: '#e3c98a', ms: 6500 });
     }
-    if (send && game.net?.send) { try { game.net.send('ixf', ['h.207.unlock']); } catch { /* 斷線 */ } }
+    if (send && game.net?.send) { try { game.net.send('ixf', ['h.207.elock']); } catch { /* 斷線 */ } }
   }
+  const ixs207 = (w) => { try { sfx.pickupItem?.({ x: w.cx, y: w.y + 1.2, z: w.cz }); } catch { /* 略 */ } };
   D.unlock207 = unlock207;
   let netBound = null;
   const bindNet = () => {
     const s = game.net;
     if (!s || s === netBound || !s.on) return;
     netBound = s;
-    s.on('ixf', (d) => { if (Array.isArray(d) && d[0] === 'h.207.unlock') unlock207(false); });
+    s.on('ixf', (d) => { if (Array.isArray(d) && (d[0] === 'h.207.elock' || d[0] === 'h.207.unlock')) unlock207(false); });
   };
 
   // ---------- 卡片來源:互動系統 ----------
@@ -176,7 +177,7 @@ export function installDeduce(game) {
       if (!run.xl) { run.xl = true; X0.after(3, () => talk(TALK.xiaoling, () => D.addCard('hc.25', { by: 'call' }))); }
     });
     X0.on('voicemail', () => X0.after(9, () => D.addCard('hc.18', { by: 'tape' })));
-    X0.on('reset', () => { run.shops = 0; run.k1 = run.k2 = run.w02 = false; run.tq = null; run.tqLate = false; run.look.clear(); run.memT = 0; run.opened207 = false; run.xl = false; });
+    X0.on('reset', () => { run.shops = 0; run.k1 = run.k2 = run.w02 = false; run.tq = null; run.tqLate = false; run.look.clear(); run.memT = 0; run.opened207 = false; run.xl = false; run.k3 = false; });
     X0.tick((dt) => { bindNet(); if (game.state === 'playing') update(dt); return true; });
   }
   // ---------- 卡片來源:靈異系統(耳語、頭七) ----------
@@ -212,7 +213,9 @@ export function installDeduce(game) {
       run.shops++;
       if (run.shops >= 2 && !D.has('hc.21') && !run.k1 && game.objectives?.done?.('h.s.cyc1') !== false) { run.k1 = true; X.after(6, () => talk(TALK.kimsui1, () => D.addCard('hc.21', { by: 'call' }))); }
       else if (run.shops >= 2 && D.has('hc.21') && !run.k2 && ['hc.07', 'hc.08', 'hc.09'].some(D.has) && !S().k2) { run.k2 = true; X.after(6, () => talk(TALK.kimsui2, () => { S().k2 = true; save(); D.addWords(['w.xiaoling']); game.ui?.feed?.('＋線索〈金水伯：那一扇窗〉 · 新的詞 1 個', { color: '#e3c98a', ms: 4200 }); })); }
-      if (D.solved() && !run.opened207 && run.shops === 1) X.after(4, () => unlock207(true)); // 以前聖筊過:第一次靜默 207 自己打開
+      if (D.solved() && !run.opened207 && run.shops === 1) X.after(4, () => unlock207(true)); // 以前聖筊過:第一次靜默 207 的電子鎖自己解開
+      // 金水伯認出你(他說的永遠是真的;他只是不講自己的心情)
+      if (run.shops >= 3 && D.has('hc.21') && !S().k3 && !run.k3 && game.round >= 5) { run.k3 = true; X.after(9, () => talk(TALK.kimsui3, () => { S().k3 = true; save(); })); }
     }
     run.lastPh = game.phase;
     // 207 門口(3 m 內、靜默期):「燈莫關。伊驚烏。」(hc.22)

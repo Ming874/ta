@@ -81,11 +81,11 @@ const items = [
     why: '鍋爐房的柴油桶；北側後勤巷那台 207 專用發電機（2003 年解封後何董叫工務裝的）燒的就是這個（支線「207 的燈」）。' },
   { id: 'h.ix.lock.monitor', kind: 'lock', zone: 'f3_monitor', mount: 'wall', near: 'door', door: 'f3_monitor', item: 'card.security', flag: null, text: '監控室 · 請刷門禁卡',
     why: '萬嵐保全管的監控室，要門禁卡；門禁卡在第 5 波首領「萬嵐照護員　夜班組長」身上。' },
-  { id: 'h.ix.keypad', kind: 'keypad', zone: 'f3_monitor', mount: 'wall', near: null, code: '0924', title: '3F 監控室 · 207 門禁授權', sub: '提示：病人入院日', onSolve: { flag: 'h.207.unlock' }, wrong: '授權碼錯誤。', power: 'h.pwr.monitor',
+  { id: 'h.ix.keypad', kind: 'keypad', zone: 'f3_monitor', mount: 'wall', near: null, code: '0924', title: '3F 監控室 · 207 門禁授權', sub: '提示：病人入院日', onSolve: { flag: 'h.207.elock' }, // 只解開電子鎖;門內的旋鈕要等頭七(src/story/climax.js) wrong: '授權碼錯誤。', power: 'h.pwr.monitor',
     why: '207 的電子鎖由監控室控制；授權碼是「她來的那一天」：1999/9/24。' },
   { id: 'h.ix.cctv', kind: 'cctv', zone: 'f3_monitor', mount: 'surface', near: null, power: 'h.pwr.monitor',
     why: '監控室主控台的錄影機，卡著 2003/5/5 CAM-07 的帶子（hc.05）。' },
-  { id: 'h.ix.lock.207', kind: 'lock', zone: 'f2_ward_207', mount: 'wall', near: 'door', door: 'f2_ward_207', item: null, flag: 'h.207.unlock', text: '電子鎖 · 封存（董事長令）', unlockText: '207 的電子鎖「喀」一聲，紅燈熄了。',
+  { id: 'h.ix.lock.207', kind: 'lock', zone: 'f2_ward_207', mount: 'wall', near: 'door', door: 'f2_ward_207', item: null, flag: 'h.207.unlock', text: '電子鎖 · 封存（董事長令）', unlockText: '門外的電子鎖、門內的旋鈕，都開了。',
     why: '萬嵐 2024 年在 207 門邊加裝的電子鎖（封存）；門玻璃內側是阿嬤 2003/5/5 用口紅反寫的「莫開門」（hc.15）。' },
 
   // ================================================================== 2F 護理站(鄭玉蘭)
