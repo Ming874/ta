@@ -360,7 +360,7 @@ export function createBatcher({ L, vis }) {
 }
 
 // 執行期:依可見區塊 / 樓層 / 距離 / 主相機視錐開關實例;BatchedMesh 沒有任何可見實例時整個隱藏(連 setProgram 都省掉)
-export function createBatchView({ meshes, insts, vis, moon, dyn = null, comp = null }) {
+export function createBatchView({ meshes, insts, vis, moon, dyn = null, comp = null, flash = null }) {
   const moonCam = moon ? moon.shadow.camera : null;
   const nR = vis.nR;
   const lvlOK = new Uint8Array(8), otherOK = new Uint8Array(8);
@@ -375,6 +375,9 @@ export function createBatchView({ meshes, insts, vis, moon, dyn = null, comp = n
   let nCand = 0, nOn = 0, nPvs = 0;
   const pvsList = new Int32Array(insts.length); // 通過 PVS / 樓層規則的實例(距離另外算) // cand:want = 1 的實例(refresh 時整理);onList:目前開著的實例
   let allOn = false;
+  const castOrig = meshes.map((m) => m.castShadow), inCone = new Uint8Array(meshes.length);
+  const _lp = new THREE.Vector3(), _lt = new THREE.Vector3(), _ld = new THREE.Vector3();
+  let shadowCut = false;
   // 月光陰影:這個 pass 全部實例都要畫(其他 pass 照舊)
   for (const bm of meshes) {
     const proto = THREE.BatchedMesh.prototype;
@@ -447,10 +450,32 @@ export function createBatchView({ meshes, insts, vis, moon, dyn = null, comp = n
         if (on) { visCnt[instBM[i]]++; onList[nOn++] = i; }
       }
       const mo = !!moon && moon.castShadow && (moon.shadow.needsUpdate || moon.shadow.autoUpdate);
-      for (let j = 0; j < meshes.length; j++) meshes[j].visible = visCnt[j] > 0 || (mo && meshes[j].castShadow);
+      for (let j = 0; j < meshes.length; j++) meshes[j].visible = visCnt[j] > 0 || (mo && castOrig[j]);
+      // 手電筒陰影:這一幀沒有任何可見實例落在手電筒光錐(角度 + 陰影距離)裡的批次,這次 render 不進陰影 pass
+      // (castShadow 只影響陰影 pass 要不要畫它,不影響 program;render 結束時 restoreShadows() 還原)
+      const L = flash ? flash() : null;
+      if (L && !mo && L.castShadow && L.intensity > 0) {
+        L.getWorldPosition(_lp); L.target.getWorldPosition(_lt);
+        _ld.subVectors(_lt, _lp).normalize();
+        const far = L.shadow.camera.far || L.distance || 30, a = Math.min(1.5, L.angle + 0.05), tanA = Math.tan(a), secA = 1 / Math.cos(a);
+        inCone.fill(0);
+        for (let k = 0; k < nOn; k++) {
+          const i = onList[k], j = instBM[i];
+          if (inCone[j]) continue;
+          const sp = insts[i].sphere, c = sp.center, r = sp.radius;
+          const vx = c.x - _lp.x, vy = c.y - _lp.y, vz = c.z - _lp.z, t = vx * _ld.x + vy * _ld.y + vz * _ld.z;
+          if (t < -r || t > far + r) continue;
+          const d2 = vx * vx + vy * vy + vz * vz - t * t, lim = Math.max(0, t) * tanA + r * secA;
+          if (d2 <= lim * lim) inCone[j] = 1;
+        }
+        for (let j = 0; j < meshes.length; j++) meshes[j].castShadow = castOrig[j] && inCone[j] === 1;
+        shadowCut = true;
+      }
       dyn?.cull(_frustum, mo);
       comp?.cull(_frustum, mo);
     },
+    // 主相機 render 結束(scene.onAfterRender):陰影旗標還原(預編譯/預熱看到的永遠是原本的設定)
+    restoreShadows() { if (!shadowCut) return; shadowCut = false; for (let j = 0; j < meshes.length; j++) meshes[j].castShadow = castOrig[j]; },
     // 其他相機(遮雨深度圖、離屏預熱…):全部打開
     showAll() {
       if (allOn) return;
@@ -545,18 +570,30 @@ export function createDynBatch({ groups, parent, moon }) {
     };
   }
   const cnt = new Map();
+  const gstate = new Map();
+  let pass = 0;
+  for (const it of items) if (!gstate.has(it.grp)) gstate.set(it.grp, { pass: -1, shown: false, moved: false, last: it.grp.matrixWorld.clone() });
   return {
     meshes, items,
     cull(frustum, moonPending) {
       for (const bm of meshes) cnt.set(bm, 0);
+      pass++;
       for (let i = 0; i < items.length; i++) {
-        const it = items[i], mw = it.mesh.matrixWorld;
-        if (!it.last.equals(mw)) { // 被推動了:更新實例矩陣與包圍球(世界矩陣在 render 開頭已由場景更新)
+        const it = items[i], gs = gstate.get(it.grp);
+        if (gs.pass !== pass) { // 每個道具群組每幀只判斷一次:可見?被推動了?(子網格相對群組不動)
+          gs.pass = pass;
+          gs.shown = shown(it.grp);
+          gs.moved = !gs.last.equals(it.grp.matrixWorld);
+          if (gs.moved) gs.last.copy(it.grp.matrixWorld);
+        }
+        if (gs.moved || it.dirty) { // 被推動了:更新實例矩陣與包圍球(世界矩陣在 render 開頭已由場景更新)
+          const mw = it.mesh.matrixWorld;
+          it.dirty = false;
           it.last.copy(mw);
           it.bm.setMatrixAt(it.id, mw);
           it.sphere.copy(it.r0).applyMatrix4(mw);
         }
-        const on = shown(it.grp) && frustum.intersectsSphere(it.sphere);
+        const on = gs.shown && frustum.intersectsSphere(it.sphere);
         if (on !== it.on) { it.on = on; it.bm.setVisibleAt(it.id, on); }
         if (on) cnt.set(it.bm, cnt.get(it.bm) + 1);
       }
@@ -625,7 +662,10 @@ export function createCompactor({ parent, test, vis, L }) {
       }
     },
     // PVS 改變時:每個實例是否可能看得到
-    refresh() { for (const it of all) it.want = !it.dead && test(it.li, it.regs); },
+    refresh() {
+      for (const it of all) it.want = !it.dead && test(it.li, it.regs);
+      for (const gr of groups.values()) { const w = []; gr.items.forEach((it, i) => { if (it.want) w.push(i); }); gr.wantIdx = w; }
+    },
     // 每次主相機渲染前:視錐 + 寫入(清單沒變就不上傳);every = true(月光重畫、其他相機)時全部寫入
     cull(frustum, every) {
       nextPass++;
@@ -633,8 +673,9 @@ export function createCompactor({ parent, test, vis, L }) {
         if (!gr.im) continue;
         const items = gr.items, list = gr.list;
         let n = 0, same = gr.n >= 0 && !gr.dirty;
-        for (let i = 0; i < items.length; i++) {
-          const it = items[i];
+        const idx = every || !gr.wantIdx ? null : gr.wantIdx, cntI = idx ? idx.length : items.length;
+        for (let q = 0; q < cntI; q++) {
+          const i = idx ? idx[q] : q, it = items[i];
           if (it.dead || !(every || (it.want && frustum.intersectsSphere(it.sphere)))) continue;
           if (same && (n >= gr.n || list[n] !== i)) same = false;
           list[n++] = i;

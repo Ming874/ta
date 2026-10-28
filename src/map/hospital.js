@@ -98,7 +98,7 @@ export function* buildHospitalSteps(world, layout, scene, opts = {}) {
   // [draws] 可推動道具平常是靜止的:不必每幀重算矩陣;物理移動它時會自己 updateMatrix(src/physics/index.js)
   // 子網格相對群組不動 → 群組沒被移動時整棵子樹都不用走(每幀 updateMatrixWorld 少走上千個物件)
   const lazyWorld = function (force) { if (force || this.matrixWorldNeedsUpdate) THREE.Object3D.prototype.updateMatrixWorld.call(this, force); };
-  for (const o of dynProps) if (/^pi_dyn_/.test(o.name)) { o.traverse((c) => { c.updateMatrix(); c.matrixAutoUpdate = false; }); o.updateMatrixWorld = lazyWorld; }
+  for (const o of dynProps) if (/^pi_dyn_/.test(o.name) || /^dyn_/.test(o.name)) { o.traverse((c) => { c.updateMatrix(); c.matrixAutoUpdate = false; }); o.updateMatrixWorld = lazyWorld; } // dyn_*:戶外實例池的物理代理(外觀由實例池跟著畫)
   let dynTick = 0;
   const tProps = performance.now();
 
@@ -285,7 +285,7 @@ export function* buildHospitalSteps(world, layout, scene, opts = {}) {
       comp = createCompactor({ parent: root, test: pvsTest, vis: pvs, L });
       for (const o of keep) { const pool = o.userData.pool; if (pool?.owner && !pool.dyn && plainObj(o)) comp.add(o); else track(o); }
       comp.build();
-      view = createBatchView({ meshes: built.meshes, insts: built.insts, vis: pvs, moon: atmo.moon, dyn: dynB, comp });
+      view = createBatchView({ meshes: built.meshes, insts: built.insts, vis: pvs, moon: atmo.moon, dyn: dynB, comp, flash: () => H.game?.player?.flashlight || null });
       H.batches = view;
       // 主相機每次渲染前(矩陣已更新):視錐剔除 + 套用;其他相機(遮雨深度圖、離屏預熱)全部打開
       const scene0 = game?.scene || scene, cam0 = game?.camera || null;
@@ -294,6 +294,8 @@ export function* buildHospitalSteps(world, layout, scene, opts = {}) {
         prev.call(this, r, sc, cam, rt);
         if (cam === cam0 && (cam.layers.mask & 1)) view.cull(cam); else view.showAll();
       };
+      const prevA = scene0.onAfterRender;
+      scene0.onAfterRender = function (r, sc, cam) { view.restoreShadows(); prevA.call(this, r, sc, cam); };
       // 場景根節點不會動:關掉自動更新(否則每幀強迫全部物件重算世界矩陣);自己 updateMatrix 的物件照常更新
       scene0.matrixAutoUpdate = false;
       scene0.updateMatrix();
