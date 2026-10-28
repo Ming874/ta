@@ -191,6 +191,7 @@ function dressBoiler(ctx, zone) {
   for (const [x, z] of [[19.4, 14.8], [20.2, 15.2]]) barrel(ctx, x, y, z, { yaw: R() * TAU });
   propane(ctx, 35.2, y, 26.8, false);
   groundDecal(P, 'oil', 27, 20, 3, 2.2, 0.4, y + 0.006);
+  boilerFuel(ctx, P, y, zone); // [scene r5] 207 發電機的油從這裡扛出去
   finish(ctx, P);
 }
 function dressDock(ctx, zone) {
@@ -246,6 +247,7 @@ function dressIncinerator(ctx, zone) {
   for (let k = 0; k < 6; k++) trashBag(ctx, 96 + R.range(-0.6, 0.6), y, 50 + R.range(-1, 1), R() * TAU, R.range(0.8, 1.0));
   litter(P, R, 92, 60, 5, 26, ['gauze', 'glove', 'mask', 'pills', 'tag'], y + 0.009);
   groundDecal(P, 'drip', 99, 48, 1.2, 1.2, 0, y + 0.006);
+  incinGlow(ctx, P, y, zone); // [scene r5] 焚化爐門縫還有餘燼的光
   finish(ctx, P);
 }
 function dressPump(ctx, zone) {
@@ -346,4 +348,30 @@ function dockHandoff(ctx, P, y, zone) {
   P.add('steel', tor(0.07, 0.006, 4, 12), M(107.3, y + 2.43, Z - 0.13, HALF, 0, 0));
   P.add('glow_warm', sph(0.04, 8, 6), M(107.3, y + 2.42, Z - 0.13));
   ctx.light({ x: 107.3, y: y + 2.3, z: Z - 0.4, color: 0xffb468, intensity: 4.5, distance: 7, kind: 'bare_bulb', flicker: 0, zone: zone?.id, glow: 0.55 });
+}
+
+// [scene r5] 鍋爐房:一角是給 207 專用發電機加油的地方 —— 油桶、手搖泵、漏斗、紅色油桶、牆上粉筆記的加油日期;一盞暖色工作燈
+function boilerFuel(ctx, P, y, zone) {
+  const cells = ctx.cells(zone, { allowNearDoor: false });
+  let at = null;
+  for (const c of cells) if (freeAt(ctx, zone.levelIndex, c.x, c.z, 1.1)) { if (!at || c.x + c.z > at.x + at.z) at = c; }
+  if (!at) return;
+  const { x, z } = at;
+  for (const [dx, dz, f] of [[-0.5, -0.4, false], [0.2, -0.5, false], [-0.2, 0.25, true]]) barrel(ctx, x + dx, y, z + dz, { yaw: dx * 3, fallen: f });
+  P.add('cast_iron', cyl(0.025, 0.025, 1.1, 8), M(x + 0.2, y + 1.05, z - 0.5));
+  P.add('cast_iron', box(0.12, 0.08, 0.06), M(x + 0.2, y + 1.6, z - 0.5));
+  P.add('rubber', tube([new V3(x + 0.2, y + 1.5, z - 0.45), new V3(x + 0.6, y + 1.1, z - 0.1), new V3(x + 0.85, y + 0.25, z + 0.3)], 0.015, { radial: 6 }));
+  for (const [dx, dz] of [[0.9, 0.35], [1.15, 0.0]]) { P.add('plastic_red', box(0.32, 0.42, 0.18), M(x + dx, y + 0.21, z + dz, 0, 0.3, 0)); P.add('plastic_black', cyl(0.025, 0.025, 0.05, 8), M(x + dx + 0.1, y + 0.45, z + dz)); }
+  P.add('steel', cyl(0.12, 0.02, 0.18, 10, true), M(x + 0.6, y + 0.09, z + 0.6, Math.PI, 0, 0));
+  solid(ctx, x, y, z, 1.6, 1.0, 1.6, 'metal');
+  ctx.light({ x: x + 0.3, y: y + 2.3, z: z + 0.2, color: 0xffb468, intensity: 3.6, distance: 6.5, kind: 'bare_bulb', flicker: 0, zone: zone?.id, glow: 0.5 });
+}
+// [scene r5] 焚化爐:2003 的醫療廢棄物在這裡燒;爐門縫透出的暗紅餘燼光(看得到焚化爐在哪)
+function incinGlow(ctx, P, y, zone) {
+  const [c0, r0, c1] = zone.rects[0];
+  const x = (c0 + c1 + 1), z = r0 * 2 + 1.0;
+  // 爐門縫的餘燼(低處的暗紅光 + 地上一小片灰燼)
+  P.add('glow_red', box(0.9, 0.025, 0.03), M(x, y + 0.42, z + 0.05));
+  groundDecal(P, 'ashes', x, z + 0.8, 1.6, 1.1, 0.2, y + 0.006);
+  ctx.light({ x, y: y + 0.55, z: z + 0.5, color: 0xff5a1e, intensity: 4.5, distance: 7, kind: 'fire', flicker: 0, zone: zone?.id, glow: 0.45 });
 }
