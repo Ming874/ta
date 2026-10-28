@@ -463,6 +463,16 @@ export function installMotion(game) {
     M.busy = false;
   };
 
+  // ---------- 字型預熱:標題卡用的明體(大字)先在畫面外排一次版,開場時不會在黑畫面裡等字型 ----------
+  {
+    const fw = document.createElement('div');
+    fw.id = 'mo-fontwarm';
+    fw.setAttribute('aria-hidden', 'true');
+    fw.innerHTML = `<div class="mo-card cold"><div class="in"><div class="t">${esc(COLD_CARD.title)}</div><div class="s">${esc(COLD_CARD.sub)}</div><div class="l">${esc(COLD_CARD.line)}</div></div></div><div class="mo-card ama"><div class="in"><div class="t">阿孫，轉來喔！</div></div></div>`;
+    document.body.appendChild(fw);
+    setTimeout(() => fw.remove(), 20000);
+  }
+
   // ---------- 開機:選單依序淡入;第一個畫面畫出來時,監視器開機(一點 → 一條線 → 全畫面,再慢慢暖起來) ----------
   {
     const menu = $('menu');

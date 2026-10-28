@@ -116,17 +116,19 @@ class Preview {
 
   // [motion] 店門拉起時(還沒走到店裡)在閒置時段先建好預覽的 context,並用 compileAsync 把每種商品模型的 shader 編好:
   // 第一次開店不再卡 0.5~1.3 秒(KHR_parallel_shader_compile:不擋主執行緒)
-  warm(list) {
+  // ok():現在可以做嗎(選單閒置、或燈篙熄的時候;開場演出與戰鬥中不做 —— 第一個步驟含環境貼圖的 PMREM,約 0.6 秒)
+  warm(list, ok = () => true) {
     if (this._warm) return;
     this._warm = true;
-    const idle = (fn) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(fn, { timeout: 1500 }) : setTimeout(fn, 120));
+    const idle = (fn) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(fn, { timeout: 250 }) : setTimeout(fn, 60));
     const items = list || [];
     let i = -1;
     const step = async () => {
       if (this.raf) return; // 商店已經開了:正常流程接手
+      if (!ok()) { setTimeout(() => idle(step), 1000); return; }
       if (i < 0) { this.start(); cancelAnimationFrame(this.raf); this.raf = 0; i = 0; return idle(step); }
       const r = this.renderer;
-      if (!r || i >= items.length) { this.clear(); this.key = ''; return; }
+      if (!r || i >= items.length) { this.clear(); this.key = ''; this._warmDone = performance.now(); return; }
       this.show(items[i++]);
       try { await r.compileAsync(this.scene, this.camera); } catch { /* 舊瀏覽器:第一次畫的時候再編 */ }
       idle(step);
@@ -321,7 +323,8 @@ export class ShopUI {
     try {
       const pv = [];
       for (const t of this.game?.shopTabs?.() || []) for (const it of t.items || []) if (it.preview && !pv.some((q) => q.type === it.preview.type && q.id === it.preview.id)) pv.push(it.preview);
-      this.preview.warm(pv);
+      const g = this.game;
+      this.preview.warm(pv, () => !g || (g.state === 'menu' ? !g.motion?.busy && !document.hidden : g.state === 'playing' && g.phase !== 'fighting'));
     } catch (e) { console.warn('[shop] warm', e); }
   }
 

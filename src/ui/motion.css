@@ -37,6 +37,12 @@
 /* 監視器還沒開機:OSD(是監視器畫面的一部分)跟著畫面一起出來 */
 .mn-osd { transition: opacity .5s var(--mo-out) .25s; }
 #menu.mo-nosig .mn-osd { opacity: 0; transition: none; }
+/* 監視器還在等訊號(地圖與 shader 還在準備):靜靜的一行,不閃 */
+.mn-nosig { position: absolute; left: 58%; top: 46%; z-index: 0; pointer-events: none; opacity: 0; transition: opacity .25s var(--mo-in);
+  font: 400 20px/1.6 "Consolas", "Lucida Console", monospace; letter-spacing: 8px; color: rgba(214, 232, 220, .3); text-shadow: 0 0 8px rgba(160, 230, 200, .25); text-align: center; }
+.mn-nosig small { display: block; font: 400 13px "Microsoft JhengHei", sans-serif; letter-spacing: 10px; opacity: .8; }
+#menu.mo-nosig .mn-nosig { opacity: 1; transition: opacity 1.2s var(--mo-out) 1.4s; }
+@media (max-width: 900px) { .mn-nosig { display: none; } }
 /* 開場/選單/倒下時:準心與載入條不要浮在黑畫面上 */
 #hud:not(.on) ~ #wx-reticle, #hud:not(.on) ~ #wx-dot, #hud.mo-hold ~ #wx-reticle, #hud.mo-hold ~ #wx-dot, .mo-cold #wx-reticle { opacity: 0 !important; }
 .mo-cold #hzload, .mo-black #hzload, .mo-cine #hzload { opacity: 0 !important; transition: opacity .2s; }
@@ -151,3 +157,8 @@
 .overlay.mo-closing { display: flex; opacity: 0; pointer-events: none; transition: opacity .14s var(--mo-in); }
 .overlay.mo-closing .mn-card { translate: 0 6px; transition: translate .14s var(--mo-in); }
 .mo-reduced .overlay.mo-closing .mn-card { translate: none; }
+
+/* 字型預熱(畫面外,看不到) */
+#mo-fontwarm { position: fixed; left: -200vw; top: 0; width: 100vw; height: 100vh; opacity: 0; pointer-events: none; contain: strict; }
+#mo-fontwarm .mo-card { position: absolute; opacity: 1; background: none; transition: none; }
+#mo-fontwarm .mo-card .in > * { animation: none; }

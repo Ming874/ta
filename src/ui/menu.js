@@ -88,6 +88,7 @@ export class Menu {
     setTimeout(() => m.classList.remove('mo-boot'), 30000); // 保險:轉場模組不在時
     m.innerHTML = `
       <div class="mn-bootmark">回神<small>暖機中</small></div>
+      <div class="mn-nosig" aria-hidden="true">CH 03<small>無訊號</small></div>
       <div class="mn-osd" aria-hidden="true"><span class="rec"><i></i>REC</span><span class="clk">2003/05/12 (一) 23:59:13</span><span class="cam">CAM 03 · 1F 大廳</span></div>
       <div class="mn-wrap">
         <div class="mn-over">${HEART}HUÍ SHÉN · SACRED HEART HOSPITAL</div>

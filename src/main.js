@@ -180,7 +180,7 @@ async function boot() {
     .catch((e) => console.warn('[warmup]', e)).finally(() => {
       warmStage = 4; game.warmed = true;
       // [motion] 商店 3D 預覽(獨立的小 context)在選單閒置時先建好、shader 先編(含環境貼圖的 PMREM):第一次開店不卡
-      setTimeout(() => { if (!game.ui.shop.game) game.ui.shop.game = game; game.ui.shop.warm?.(); }, 2500);
+      setTimeout(() => { if (!game.ui.shop.game) game.ui.shop.game = game; game.ui.shop.warm?.(); }, 1200);
     });
 }
 boot();
