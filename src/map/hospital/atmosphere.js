@@ -190,8 +190,11 @@ export function buildAtmosphere(K, { root, scene, groundMat }) {
   const cur = { fog: new THREE.Color(0x0b0f0c), density: 0.03, ambient: 0.3, tint: new THREE.Color(0x9fb8a8), env: 0.15, out: 0 };
   const tgtC = new THREE.Color(), tgtT = new THREE.Color();
   let first = true;
+  const _dc = new THREE.Color(), _dp = new THREE.Color(0xb88a9a), _dh = new THREE.Color(0xa8b2dc);
   const api = {
     sky, moon, hemi, beams, dust, ground,
+    dawn: 0,
+    setDawn(t) { api.dawn = Math.max(0, Math.min(1, +t || 0)); },
     envIntensity: 0.14,
     update(t, dt, cam, mood, outdoor) {
       skyMat.uniforms.uTime.value = t;
@@ -214,7 +217,19 @@ export function buildAtmosphere(K, { root, scene, groundMat }) {
       hemi.color.copy(cur.tint);
       hemi.groundColor.copy(cur.tint).multiplyScalar(0.18);
       hemi.intensity = cur.ambient * (0.32 + cur.out * 0.45);
+      // [scene r4] 天亮(結局):霧/天空/半球光往冷藍帶粉的黎明色靠(t = 0 時完全不動)
+      if (api.dawn > 0) {
+        const d = api.dawn;
+        _dc.setHex(0x7a80a8).lerp(_dp, 0.4 * d);
+        if (scene.fog) { scene.fog.color.lerp(_dc, d * 0.85); scene.fog.density *= 1 - 0.25 * d; }
+        if (scene.background && scene.background.isColor) scene.background.lerp(_dc, d * 0.85);
+        skyMat.uniforms.uFog.value.lerp(_dc, d * 0.9);
+        hemi.color.lerp(_dh, d * 0.8);
+        hemi.groundColor.lerp(_dp, d * 0.15);
+        hemi.intensity += d * 0.7;
+      }
       scene.environmentIntensity = api.envIntensity * (0.35 + cur.ambient * 0.9 + cur.out * 0.5);
+      if (api.dawn > 0) scene.environmentIntensity += api.dawn * 0.25;
       beamMat.uniforms.uFogDensity.value = cur.density;
       glowFog(cur.density);
     },
@@ -259,6 +274,7 @@ function buildBeamGeometry(L, K) {
   // 窗戶斜射光:面向月光那側(南、東)的外窗,光往室內斜下 2.6m
   const hx = -MOON_DIR.x, hz = -MOON_DIR.z, hl = Math.hypot(hx, hz);
   for (const w of K.windowInfo || []) {
+    if (w.zone?.id === 'f2_ward_207') continue; // [scene r4] 207 的窗不畫月光柱:夜裡房間只有檯燈
     if (w.boarded || w.store || !(w.outA || w.outB)) continue;
     const outN = w.axis === 'z' ? [0, w.outB ? 1 : -1] : [w.outB ? 1 : -1, 0];
     const facing = (outN[0] * hx + outN[1] * hz) / hl;

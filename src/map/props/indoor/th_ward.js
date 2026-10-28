@@ -4,6 +4,7 @@ import { chairShell, sinkWall, lockers, bin, posterSheet, wallClock, framed } fr
 import { poster, calendar } from './art.js';
 import { scatter, onSurface, floorDecal, wallDecal } from './clutter.js';
 import { rng as mkRng } from '../ctx.js';
+import { dress207 } from './w207.js';
 
 // 病房 201-210:刻意幾乎一模一樣(迷失感)。床頭靠東西兩側牆、每床有隔簾/床頭櫃/氧氣面板/點滴架。
 // 207:一張床上有蓋白布的人形(而且只有這間的燈是正常的)。204:所有床被推到牆角堆疊。
@@ -12,6 +13,7 @@ export function dressWard(R, zone) {
   R.rng = mkRng(0x2071); // 所有病房同一個亂數種子 → 擺設幾乎相同
   const ceil = R.L.ceilY(R.li, R.c0, R.r0) - R.y;
   if (n === 204) return pushedToCorner(R, ceil, n);
+  if (n === 207) return dress207(R, zone, ceil); // [scene r4] 阿嬤守了十四暝的房間(w207.js)
   const W = R.run('W'), E = R.run('E');
   const z0 = R.r0 * 2, x0 = R.c0 * 2;
   const bays = [];
