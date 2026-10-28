@@ -4,6 +4,9 @@
 //
 // 公開介面(給 interact / story / ambush 代理):
 //   game.horror.whisper(lineId | text, { ear, subtitle, filter, priority, pos, mode }) → handle | null
+//   game.horror.remember(id, { event, tag, ghost, card, text }) / seen(tag?, within = 300) → 最近一筆
+//                                                    第三輪:靈異事件的劇情回報都記在這裡(tag:zheng 看到阿嬤 | dark 停電 | taboo 禁忌 | self 你是誰 | clue 線索);
+//                                                    有 card 就 game.objectives?.clue?.(card);發 'story' 事件;電話用 need.seen 引用
 //   game.horror.phoneCall(ctx) → script | null          接起電話:依玩家身邊的場景組一通電話(見 calls.js;互動代理呼叫)
 //   game.horror.phone({ pos, id, ringing }) → handle     (舊)接起電話:隨機一句電話台詞
 //   game.horror.radio({ pos, id }) → handle              收音機開了(收音機濾波,在收音機的位置)
@@ -26,6 +29,7 @@ import { ColdFx } from './fx.js';
 import { paranormalKinds } from './paranormal.js';
 import { scareKinds } from './scares.js';
 import { createCalls } from './calls.js';
+import { hauntKinds, HauntFx } from './haunts.js';
 import { LINES, CAPTIONS } from './lines.js';
 import { precompile as warmCompile, initPrograms } from '../sys/warmup.js';
 
@@ -34,21 +38,24 @@ const CATALOG = { small: [], medium: [], big: [] };
 for (const [k, v] of Object.entries(DK)) if (v.w && !v.ext && CATALOG[v.tier]) CATALOG[v.tier].push([k, v.w]);
 const APPARITION = new Set(['figure', 'window', 'child', 'nurse', 'behind', 'curtain', 'mirror', 'counter', 'peripheral', 'creeper', 'flashFlick', 'reflection']);
 const BIAS = {
-  corridor: { figure: 2, nurse: 2, lightsDie: 1.8, footprints: 1.4, child: 1.3, pace: 1.8, knockFollow: 1.3, runBehind: 1.4, peripheral: 1.5, flashFlick: 1.8, creeper: 1.5, doorSlamSeq: 2, gurneyPass: 1.5, doorOpen: 1.2 },
-  ward: { curtain: 2.5, nurse: 1.3, mirror: 1.5, handprints: 1.3, nurseCall: 2, reflection: 1.6, doorClose: 1.3, throw: 1.3, breathBehind: 1.2 },
-  nursery: { lullaby: 4, child: 2.5, handprints: 1.5 }, peds_ward: { lullaby: 3, child: 2 }, playroom: { lullaby: 3, child: 2.5 },
-  morgue: { coldBreath: 2.5, crawl: 1.5, silence: 1.5, anchor: 1.5, rollcall: 3, breathBehind: 1.5 }, autopsy: { coldBreath: 2, crawl: 1.4 }, psych_cell: { doorCreep: 2.5, behind: 1.5, cellKnock: 3 }, stairwell: { doorCreep: 2.5, crawl: 1.3, pace: 1.4, doorClose: 1.5, runBehind: 1.2 },
-  tunnel: { crawl: 2, silence: 1.5, footprints: 1.5, pace: 1.6, creeper: 1.4 }, chapel: { anchor: 2, silence: 1.5, breathBehind: 1.4 }, rehab: { mirror: 3, reflection: 1.5 }, waiting: { tvFace: 2, phoneRing: 1.5, paHijack: 1.6 }, lobby: { elevator: 1.5, figure: 1.3, paHijack: 2.5 }, psych: { cellKnock: 2, knockFollow: 1.5 },
-  monitor: { tvFace: 3 }, security: { tvFace: 3 }, icu: { tvFace: 1.5, coldBreath: 1.4 }, outdoor: { window: 0, crawl: 0, figure: 0.6, writing: 0, footprints: 0, doorCreep: 0, pace: 0, knockFollow: 0, doorOpen: 0, doorClose: 0, doorSlamSeq: 0, gurneyPass: 0, nurseCall: 0, rollcall: 0, reflection: 0, cellKnock: 0, runBehind: 0.5, creeper: 0.5, blackoutChange: 0 },
+  corridor: { figure: 2, nurse: 2, lightsDie: 1.8, footprints: 1.4, child: 1.3, pace: 1.8, knockFollow: 1.3, runBehind: 1.4, peripheral: 1.5, flashFlick: 1.8, creeper: 1.5, doorSlamSeq: 2, gurneyPass: 1.5, doorOpen: 1.2,
+    corridorOut: 2.2, darkFollow: 1.8, shadowPass: 1.5, beamFigure: 1.4, nameCall: 1.3, doorBurst: 1.3, ballRoll: 1.2 },
+  ward: { curtain: 2.5, nurse: 1.3, mirror: 1.5, handprints: 1.3, nurseCall: 2, reflection: 1.6, doorClose: 1.3, throw: 1.3, breathBehind: 1.2,
+    curtainDraw: 2.4, flatline: 1.6, windowFog: 1.4, windowFace: 1.3, swingBulb: 1.2, shoulderTap: 1.2 },
+  nursery: { lullaby: 4, child: 2.5, handprints: 1.5, ballRoll: 2 }, peds_ward: { lullaby: 3, child: 2, ballRoll: 2.5 }, playroom: { lullaby: 3, child: 2.5, ballRoll: 3 },
+  morgue: { coldBreath: 2.5, crawl: 1.5, silence: 1.5, anchor: 1.5, rollcall: 3, breathBehind: 1.5 }, autopsy: { coldBreath: 2, crawl: 1.4 }, psych_cell: { doorCreep: 2.5, behind: 1.5, cellKnock: 3, doorBurst: 2.5 }, stairwell: { doorCreep: 2.5, crawl: 1.3, pace: 1.4, doorClose: 1.5, runBehind: 1.2, whistle: 1.6, nameCall: 1.5 },
+  tunnel: { crawl: 2, silence: 1.5, footprints: 1.5, pace: 1.6, creeper: 1.4 }, chapel: { anchor: 2, silence: 1.5, breathBehind: 1.4, redEnvelope: 2 }, rehab: { mirror: 3, reflection: 1.5, mirrorRush: 2.5 }, waiting: { tvFace: 2, phoneRing: 1.5, paHijack: 1.6, windowFace: 1.5, windowFog: 1.6, radio1999: 1.5 }, lobby: { elevator: 1.5, figure: 1.3, paHijack: 2.5, windowFog: 1.5, redEnvelope: 1.4 }, psych: { cellKnock: 2, knockFollow: 1.5, doorBurst: 1.8 },
+  monitor: { tvFace: 3 }, security: { tvFace: 3 }, icu: { tvFace: 1.5, coldBreath: 1.4, flatline: 3 }, outdoor: { corridorOut: 0, darkFollow: 0, swingBulb: 0, curtainDraw: 0, shadowPass: 0, windowFog: 0, windowFace: 0, doorBurst: 0, ballRoll: 0, beamFigure: 0.6, frostEdge: 1.2, whistle: 1.4, nameCall: 1.2, window: 0, crawl: 0, figure: 0.6, writing: 0, footprints: 0, doorCreep: 0, pace: 0, knockFollow: 0, doorOpen: 0, doorClose: 0, doorSlamSeq: 0, gurneyPass: 0, nurseCall: 0, rollcall: 0, reflection: 0, cellKnock: 0, runBehind: 0.5, creeper: 0.5, blackoutChange: 0 },
 };
 // 地圖上的驚嚇點:在這些區域、這一局還沒發生過時,這些種類權重 ×3、恐懼門檻 ×0.7;發生一次就用掉
 const HOTSPOTS = [
-  { zone: 'b1_morgue', kinds: ['rollcall', 'coldBreath'] }, { zone: 'f2_nursery', kinds: ['lullaby'] }, { zone: 'f2_playroom', kinds: ['lullaby', 'anchor'] },
+  { zone: 'b1_morgue', kinds: ['rollcall', 'coldBreath'] }, { zone: 'f2_nursery', kinds: ['lullaby', 'ballRoll'] }, { zone: 'f2_playroom', kinds: ['lullaby', 'anchor', 'ballRoll'] },
+  { zone: 'f2_ward_207', kinds: ['swingBulb', 'beamFigure', 'frostEdge'] }, { theme: 'icu', kinds: ['flatline', 'curtainDraw'] }, { zone: 'b1_tunnel', kinds: ['corridorOut', 'darkFollow'] },
   { theme: 'psych_cell', kinds: ['cellKnock'] }, { zone: 'f3_corridor', kinds: ['cellKnock', 'creeper', 'knockFollow'] }, { zone: 'f1_lobby', kinds: ['paHijack', 'elevator'] },
-  { zone: 'f1_rehab', kinds: ['mirror', 'reflection'] }, { zone: 'f3_monitor', kinds: ['tvFace'] }, { zone: 'f1_security', kinds: ['tvFace'] },
-  { zone: 'f2_corridor', kinds: ['nurse', 'pace', 'nurseCall', 'doorSlamSeq'] }, { zone: 'f1_corridor', kinds: ['doorSlamSeq', 'flashFlick', 'figure'] },
-  { zone: 'b1_tunnel', kinds: ['pace', 'crawl', 'creeper'] }, { theme: 'stairwell', kinds: ['doorClose', 'runBehind'] }, { zone: 'f1_chapel', kinds: ['breathBehind', 'anchor'] },
-  { theme: 'ward', kinds: ['curtain', 'reflection', 'nurseCall', 'throw'] }, { zone: 'f2_icu', kinds: ['tvFace', 'coldBreath'] }, { zone: 'f1_waiting', kinds: ['paHijack', 'tvFace'] },
+  { zone: 'f1_rehab', kinds: ['mirror', 'reflection', 'mirrorRush'] }, { zone: 'f3_monitor', kinds: ['tvFace'] }, { zone: 'f1_security', kinds: ['tvFace'] },
+  { zone: 'f2_corridor', kinds: ['nurse', 'pace', 'nurseCall', 'doorSlamSeq', 'corridorOut', 'shadowPass'] }, { zone: 'f1_corridor', kinds: ['doorSlamSeq', 'flashFlick', 'figure', 'darkFollow', 'nameCall'] },
+  { zone: 'b1_tunnel', kinds: ['pace', 'crawl', 'creeper'] }, { theme: 'stairwell', kinds: ['doorClose', 'runBehind'] }, { zone: 'f1_chapel', kinds: ['breathBehind', 'anchor', 'redEnvelope', 'whistle'] },
+  { theme: 'ward', kinds: ['curtain', 'reflection', 'nurseCall', 'throw'] }, { zone: 'f2_icu', kinds: ['tvFace', 'coldBreath', 'flatline'] }, { zone: 'f1_waiting', kinds: ['paHijack', 'tvFace', 'windowFace', 'radio1999'] },
   { zone: 'f1_parking', kinds: ['radioOn'] }, { zone: 'f1_cemetery', kinds: ['whisper', 'figure'] }, { zone: 'f3_dorm', kinds: ['knockFollow', 'circle'] }, { zone: 'b1_archive', kinds: ['writing', 'breathBehind'] },
 ];
 const _a = new THREE.Vector3(), _b = new THREE.Vector3();
@@ -142,12 +149,28 @@ export function installHorror(game) {
       H.director.reset(); H.whispers.reset(); H.app?.clear(); H.marks?.clear(); H.fx?.clear();
       later.length = 0; watchers.length = 0; H.usedWrit.clear(); H.ringing = null; H.coldK = H.coldT = 0; H.coldUntil = 0;
       H.calls?.reset(); T.spots.clear(); H._pace = false;
+      H.hfx?.reset(); H.seenLog.length = 0; H.storyUsed.clear(); H.quiet = 0; T.touqi = false; T.quietPh = null;
       T.zones.clear(); T.props.clear(); T.still = 0; T.streak = 0; T.lastKill = 0; T.zonePend = null; T.next = 0;
       for (const d of H.events?.doors || []) d.primed = false;
       if (performance.now() > 40000) models.warm();
     },
     // main.js warmRuntime 呼叫:每種靈異材質一個代表物件(加進暖機群組 → 預編譯 + 離屏畫一次)
     warmObjects() { H.warmIn = true; return warmSet(H); },
+    // ---- 第三輪:劇情記憶(靈異事件揭露了什麼;之後的電話/台詞引用) ----
+    seenLog: [], storyUsed: new Set(), quiet: 0,
+    remember(id, o = {}) {
+      const e = { id, t: game.time, zone: zoneOf()?.id || null, event: o.event || null, tag: o.tag || null, ghost: o.ghost || null, card: o.card || null, text: o.text || null };
+      H.seenLog.push(e); if (H.seenLog.length > 60) H.seenLog.shift();
+      game.flags?.set?.('h.seen.' + id, true);
+      if (e.card) game.objectives?.clue?.(e.card, { by: 'ghost' });
+      H.emit('story', e);
+      return e;
+    },
+    lastSeen(tag, within = 300) {
+      for (let i = H.seenLog.length - 1; i >= 0; i--) { const e = H.seenLog[i]; if (game.time - e.t > within) return null; if (!tag || e.tag === tag || e.ghost === tag || e.id === tag || e.event === tag) return e; }
+      return null;
+    },
+    seen(tag, within) { return H.lastSeen(tag, within); },
     stats() { return { ...H.director.stats(), whispers: H.whispers.count, wlog: H.whispers.log.slice(-8), apparitions: H.app?.count ?? 0, alog: H.app?.log.slice(-8) ?? [], active: H.app?.active ?? 0, models: models.state, events: H.events?.S.log.slice(-10) ?? [], cold: +H.coldK.toFixed(2) }; },
   };
   H.director = new Director(H);
@@ -161,8 +184,10 @@ export function installHorror(game) {
     H.app = new Apparitions(H, game.scene);
     H.marks = new Marks(H, game.scene);
     H.fx = new ColdFx(game.scene);
+    H.hfx = new HauntFx(H, game.scene);
     E.register(paranormalKinds(H));
     E.register(scareKinds(H)); // 第二輪驚嚇庫(src/horror/scares.js)
+    E.register(hauntKinds(H)); // 第三輪:更多靈異事件、走廊熄燈、大跳嚇,每個都有劇情回報(src/horror/haunts.js)
     E.auto = false; // 驚嚇導演接手排程
     try { H.marks.placeStatic(game.hospital.K, game.hospital.layout); } catch (e) { console.warn('[horror] 牆上字跡', e); }
   }
@@ -197,6 +222,9 @@ export function installHorror(game) {
       if (game.time > T.zonePend.until) T.zonePend = null;
       else if (D.silent && D.tension < 0.45 && !H.whispers.busy && D.request('whisper', { force: true })) { say(T.zonePend.l, { priority: 5 }); T.zonePend = null; }
     }
+    // 靜默期計數;頭七:第 7 次靜默期,她回來(STORY v2;一局一次)
+    if (D.silent && T.quietPh !== true) { T.quietPh = true; H.quiet++; } else if (!D.silent) T.quietPh = false;
+    if (H.quiet === 7 && !T.touqi && D.silent && D.roundT > 8 && game.time - (T.touqiTry || 0) > 4) { T.touqiTry = game.time; if (H.event('touqi', { force: true })) T.touqi = true; }
     // 低血量
     // 用急救包(正典 §5.8#7;只在靜默期)
     if (game.healT > 0 && !T.heal) { T.heal = true; if (D.silent && !H.whispers.busy && D.request('whisper', { force: true })) { const l = H.whispers.pick('medkit', c); if (l) say(l, { priority: 6 }); } } else if (!(game.healT > 0)) T.heal = false;
@@ -309,6 +337,7 @@ function warmSet(H) {
   for (const m of [s.pale, s.shade, s.depth]) { const x = new THREE.Mesh(geo, m); x.frustumCulled = false; out.push(x); }
   for (const m of H.marks.warmList()) { const c = m.clone(); c.visible = true; c.frustumCulled = false; if (c.isInstancedMesh) c.count = 1; out.push(c); }
   out.push(H.marks.warmWriting());
+  for (const m of H.hfx?.warmList() || []) { const c = m.clone(); c.visible = true; c.frustumCulled = false; out.push(c); } // 第三輪:球、紅包、影子、窗上霧氣
   const pts = H.fx.pts.clone(); pts.visible = true; out.push(pts);
   return out;
 }
