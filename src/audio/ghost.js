@@ -296,7 +296,7 @@ export function whisper(o = {}) {
 // ---------- 其他靈異音效(即時;全部安全:沒有 context 時不做事)----------
 const out = (pos, o) => emit({ pos, cat: 'scare', bus: 'scare', prio: 5, room: 0.6, hall: 0.3, ref: 1.5, maxDist: 60, ...o });
 // 頸後呼吸:冰冷的吸吐兩三次,跟著頭(在身後)
-export function breathNeck(g = 1) {
+export function breathNeck(g = 1, ear = 'behind') { // ear:'behind'(頸後)| 'left' | 'right'(貼著那一側的耳朵)
   if (!A.ctx) return;
   const ctx = A.ctx, dur = 4.2, h = slot(7, dur);
   if (!h) return;
@@ -304,7 +304,7 @@ export function breathNeck(g = 1) {
   h.in.connect(ch.in);
   let t = h.t;
   for (let i = 0; i < pick([2, 3]); i++) { breathIn(ctx, h.in, t, 0.7, 0.28 * g); breathOut(ctx, h.in, t + 0.8, 0.9, 0.34 * g); t += rand(1.5, 1.8); }
-  const off = EAR.behind.slice(); off[0] = rand(-0.12, 0.12);
+  const off = (EAR[ear] || EAR.behind).slice(); if (!EAR[ear] || ear === 'behind') off[0] = rand(-0.12, 0.12);
   LIVE.push({ chain: ch, off, end: h.t + dur + 0.3 });
   headToWorld(off, _p); ch.setPos(_p.x, _p.y, _p.z);
 }
@@ -529,5 +529,64 @@ export async function renderBinaural(ear = 'left', text = '二〇七的燈……
   const L = rms(buf.getChannelData(0)), R = rms(buf.getChannelData(1));
   return { ear, L: +L.toFixed(5), R: +R.toFixed(5), dB: +(20 * Math.log10((L + 1e-9) / (R + 1e-9))).toFixed(1) };
 }
+// ---------- 第三輪(src/horror/haunts.js)----------
+// 總開關跳脫:「喀——咚」,燈管的嗡聲被抽掉
+export function breaker(pos) {
+  const h = out(pos, { room: 0.7, hall: 0.6, ref: 3, dur: 2.5, gain: 1.6, prio: 7, maxDist: 80 });
+  if (!h) return;
+  burst(h.in, h.t, { type: 'bandpass', f: 1400, q: 1.5, dur: 0.03, g: 0.5 });
+  metal(h.in, h.t + 0.004, rand(500, 700), 0.12, 0.25, [1, 2.2, 3.1]);
+  tone(h.in, h.t + 0.02, { f: 70, f1: 32, dur: 0.6, g: 0.5 });
+  tone(h.in, h.t, { type: 'sawtooth', f: 120, f1: 40, dur: 0.5, a: 0.002, g: 0.03 });
+}
+// 生理監視器:嗶聲越來越慢(n 聲,間隔 i0 → i1);回傳總長(秒)
+export function beeps(pos, n = 7, i0 = 0.8, i1 = 1.6) {
+  let total = 0; for (let i = 0; i < n; i++) total += i0 + (i1 - i0) * (i / Math.max(1, n - 1));
+  const h = out(pos, { room: 0.6, hall: 0.3, ref: 2, dur: total + 1, gain: 1.1, prio: 4 });
+  if (!h) return total;
+  let t = h.t;
+  for (let i = 0; i < n; i++) { tone(h.in, t, { f: 980, dur: 0.11, a: 0.004, g: 0.1 }); t += i0 + (i1 - i0) * (i / Math.max(1, n - 1)); }
+  return total;
+}
+// 收音機自己轉台:掃頻雜訊 + 外差口哨
+export function tune(pos, dur = 2.4) {
+  const h = out(pos, { room: 0.5, ref: 1.8, dur: dur + 0.5, gain: 1.3, prio: 5 });
+  if (!h) return;
+  burst(h.in, h.t, { type: 'bandpass', f: 600, f1: 2600, q: 2.5, dur: dur * 0.4, a: dur * 0.3, g: 0.08 });
+  for (let i = 0; i < 4; i++) tone(h.in, h.t + rand(0, dur * 0.8), { f: rand(900, 2400), f1: rand(400, 3000), dur: rand(0.15, 0.4), a: 0.03, g: 0.02 });
+}
+// 球滾過地板(pos 物件會被跟隨)/ 彈跳 / 輕拍
+export function roll(pos, dur = 3) {
+  const h = out(pos, { room: 0.4, ref: 1.4, dur: dur + 0.4, gain: 1.4, prio: 4 });
+  if (!h) return;
+  burst(h.in, h.t, { buf: 'brown', type: 'lowpass', f: 380, f1: 160, dur: dur * 0.85, a: 0.15, g: 0.16 });
+}
+export function bounce(pos, g = 1) {
+  const h = out(pos, { room: 0.5, ref: 1.6, dur: 0.6, gain: 1.4 * g, prio: 4 });
+  if (!h) return;
+  tone(h.in, h.t, { f: 190, f1: 120, dur: 0.09, g: 0.3 });
+  burst(h.in, h.t, { type: 'bandpass', f: 900, q: 1.2, dur: 0.04, g: 0.12 });
+}
+// 吊燈的電線/鍊子晃到盡頭(吱)
+export function chain(pos, g = 1) {
+  const h = out(pos, { room: 0.4, ref: 1.4, dur: 0.8, gain: 1.2 * g, prio: 3 });
+  if (!h) return;
+  squeal(h.in, h.t, rand(820, 980), rand(600, 720), rand(0.25, 0.4), 0.035, 16, [25, 45]);
+  metal(h.in, h.t + 0.02, rand(2400, 3200), 0.01, 0.1, [1, 1.6]);
+}
+// 玻璃外的人呼了一口氣
+export function exhale(pos, g = 1) {
+  const h = out(pos, { room: 0.3, ref: 1.2, dur: 1.8, gain: 1.4 * g, prio: 4 });
+  if (!h) return;
+  burst(h.in, h.t, { buf: 'pink', type: 'bandpass', f: 700, f1: 420, q: 0.8, dur: 1.1, a: 0.25, g: 0.1 });
+}
+// 遠處有人在吹口哨(鬼月禁忌:暗暝莫吹口哨),五聲音階、走音
+export function whistle(pos, dur = 3.2) {
+  const h = out(pos, { room: 0.8, hall: 0.7, ref: 3, dur: dur + 1.2, gain: 1.2, prio: 4, maxDist: 70 });
+  if (!h) return;
+  const notes = [1175, 1047, 880, 1047, 784, 880], n = notes.length;
+  for (let i = 0; i < n; i++) { const t = h.t + (i / n) * dur, f = notes[i] * rand(0.985, 1.01); tone(h.in, t, { f, f1: f * rand(0.97, 1.0), dur: dur / n * 0.9, a: 0.05, g: 0.045 }); }
+  burst(h.in, h.t, { buf: 'pink', type: 'bandpass', f: 1000, q: 3, dur, a: 0.2, g: 0.012 }); // 氣聲
+}
 export const ghostState = () => ({ live: LIVE.length });
-export const ghost = { whisper, track, breathNeck, stinger, silence, crawl, squeak, wetStep, scrawl, cart, elevator, tubeOff, lullaby, gust, mist, vanish, creakLong, giggle, knock, rings, callBell, flashBuzz, clip, whoosh, paGlitch, renderBinaural, syllabify, state: ghostState, EAR };
+export const ghost = { whisper, track, breathNeck, stinger, silence, crawl, squeak, wetStep, scrawl, cart, elevator, tubeOff, lullaby, gust, mist, vanish, creakLong, giggle, knock, rings, callBell, flashBuzz, clip, whoosh, paGlitch, breaker, beeps, tune, roll, bounce, chain, exhale, whistle, renderBinaural, syllabify, state: ghostState, EAR };
