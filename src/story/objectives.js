@@ -218,7 +218,7 @@ export function installObjectives(game) {
   // ---------- 每幀(互動系統的 tick;只在遊戲中、沒暫停) ----------
   const X0 = X();
   if (X0) {
-    X0.on('reset', () => { run = fresh(); hud.set(run.cur, false); setTimeout(() => setCur(STEPS[0].id), 0); });
+    X0.on('reset', () => { run = fresh(); setCur(STEPS[0].id); });
     X0.on('item', (id, n, d) => { if (id === 'fuse' && d > 0) run.fuses++; });
     X0.on('unlock', (w) => { const nm = w.lock?.door === 'f3_corridor' ? '三樓的門禁「嗶」了一聲，鎖開了。' : w.lock?.door === 'b1_morgue' ? '地下室傳來「喀」的一聲：太平間的門鎖開了。' : null; if (nm && !run['u' + w.lock.door]) { run['u' + w.lock.door] = true; game.ui?.feed?.(nm, { color: '#e3c98a', ms: 6000 }); } });
     let acc = 0;
