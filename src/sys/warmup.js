@@ -398,8 +398,8 @@ export function warmDraw(game, objects) {
 // 陰影 pass 不畫(陰影深度 program 已預編譯;每批都重畫手電筒陰影太浪費)
 const WARM_LAYER = 30;
 // 陰影圖先各畫一次(相機只看 WARM_LAYER:主 pass 什麼都不畫,只有陰影 pass)。要在 warmDrawScene 之前:
-// 陰影圖還沒建立時,陰影取樣器綁到的是格式不合的貼圖,離屏繪製會被 ANGLE 擋掉(Mismatch between texture format and sampler type),
-// 等於沒暖到 → 開始畫面第一幀透明物件/玻璃各頓 60~200ms
+// 陰影圖還沒建立時,陰影取樣器綁到格式不合的貼圖(ANGLE 報 Mismatch between texture format and sampler type),那次離屏繪製可能沒真的暖到。
+// 實測:開始畫面第一幀的慢繪製(玻璃/貼花)變少,但沒完全消失(原因未完全確認)
 export async function warmShadows(game) {
   const r = game.renderer, scene = game.scene, cam = game.camera, sm = r.shadowMap, lights = [];
   if (!sm.enabled) return;
@@ -422,7 +422,7 @@ export async function warmDrawScene(game, { batch = 12, all = false } = {}) {
   const reps = all ? [] : representatives(scene), lights = [];
   if (all) scene.traverse((o) => { if ((o.isMesh || o.isLine || o.isPoints || o.isSprite) && o.material && o.geometry) reps.push(o); });
   scene.traverse((o) => { if (o.isLight) lights.push(o); });
-  // 跟主畫面的合成 target 一樣用 MSAA(ANGLE/D3D11 對多重取樣 target 另有一份 shader 變體:沒畫過的話第一次看到透明物件會頓 60~130ms)
+  // 跟主畫面的合成 target 一樣用 MSAA(離屏繪製的狀態盡量和真的第一幀相同)
   const ns = game.composer?.renderTarget1?.samples || 0;
   if (warmRT && warmRT.samples !== ns) { warmRT.dispose(); warmRT = null; }
   warmRT = warmRT || new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: ns });

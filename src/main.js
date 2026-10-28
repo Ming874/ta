@@ -83,6 +83,14 @@ window.__game = game; // 除錯用:在瀏覽器 console 操作 __game
 if (earlyStart) { // 建構途中按過開始:現在照常開始(按鈕的處理在 bindInput 才綁上)
   const b = document.getElementById('startBtn');
   if (b) { b.classList.remove('loading'); if (b.firstChild && b.dataset.label) b.firstChild.textContent = b.dataset.label; setTimeout(() => b.onclick?.(), 0); }
+  // 不是在使用者手勢裡開局 → 瀏覽器不給滑鼠鎖定:開局後(開場演出結束)還沒鎖定就顯示暫停層,玩家點一下即鎖定繼續
+  let tries = 0;
+  const iv = setInterval(() => {
+    if (++tries > 240) { clearInterval(iv); return; }
+    if (game.state !== 'playing' || game.motion?.busy) return;
+    clearInterval(iv);
+    if (document.pointerLockElement !== game.canvas && !game.paused) { game.paused = true; game.ui.overlay('pause', true); }
+  }, 250);
 }
 
 // ---- 效能基礎建設 ----
