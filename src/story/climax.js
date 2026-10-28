@@ -21,7 +21,7 @@ const HO = {
     '你剛剛打開的那扇門，我二十三年沒有打開過。',
     '那天晚上，我把二樓的燈關掉。她把檯燈打開，擋在床前，說：「這間是我的病人。」',
     '針是我拿的。我拉她，針就……',
-    '這二十三年，207 的電費都是我付的。我每年都替他們登記，讓他們吃飽。吃飽了，就不會回來。',
+    '這二十三年，207 的電費都是我付的。你可以去查。',
     '枕頭裡那一頁，留在 207。燈會一直亮著。對大家都好。',
     '關門以後，這一切都會結束。你可以回家了。',
   ],
@@ -31,10 +31,11 @@ export function installClimax(game, S) {
   const X = game.interact, H = () => game.horror, D = () => game.deduce, O = () => game.objectives;
   const isHost = () => !game.net || !!game.net.isHost;
   const has = (k) => !!X.flags.has(k) || !!O()?.has?.(k);
-  const flag = (k) => { if (!has(k)) { if (O()?.flag) O().flag(k); else X.flags.set(k, true); } };
+  const flag = (k) => { const R = O()?.run; if (R) { if (!R.flags.has(k)) O().flag(k); } else if (!X.flags.has(k)) X.flags.set(k, true); }; // 走 objectives(房主同步給全隊)
   const fresh = () => ({ touqi: false, touqiT: 0, knobT: 0, opened: false, alarm: false, alarmPend: false, wave: 0, guard: null, guardDead: false, hoRang: false, hoState: null, hoP: null, hoT: 0, xlCut: false, elockSaid: false, logT: 0, restT0: 0 });
   let run = fresh();
   S.climax = { get run() { return run; }, startGuardWave: () => startGuardWave(true), ringHo: () => ringHo(true) };
+  S.busy = () => !!S.ending?.active || run.hoState === 'ringing' || run.hoState === 'talk'; // 重要的戲正在演:別的對講機/提示先等
   const door207 = () => X.doors?.list?.find((w) => w.lock?.door === 'f2_ward_207') || null;
   const p = () => game.player.pos;
 
@@ -119,6 +120,7 @@ export function installClimax(game, S) {
     const parts = HO.parts.map((t) => (/^枕頭裡那一頁/.test(t) && D()?.has?.('hc.30') ? '你拿了那一頁。……她的字，一直都很工整。' : t)); // 已經拿了:他知道(監視器)
     if (!best || !best.startRing({ ...HO, parts }, 45)) return false;
     run.hoRang = true; run.hoP = best; run.hoState = 'ringing'; run.hoT = game.time;
+    if (!game.net && game.phase === 'shop') game.restT = Math.max(game.restT, 48); // 單人:這通電話不要被下一波打斷
     X.after(3, () => line(game, 'xl', bd > 18 ? '……電話在響。很近。你要接嗎？' : '……旁邊那支電話。你要接嗎？'));
     return true;
   }
@@ -128,6 +130,7 @@ export function installClimax(game, S) {
     flag('h.ho.answer');
     const T = (ln.parts || HO.parts).reduce((a, t) => a + 0.9 + [...t].length * 0.26 + 0.35, 0);
     run.hoEnd = game.time + T * 0.92;
+    if (!game.net && game.phase === 'shop') game.restT = Math.max(game.restT, T + 10);
     X.after(T * 0.48, () => { if (P.state === 'call' && run.hoState === 'talk') { run.xlCut = true; line(game, 'xl', '……他在跟你講話對不對？掛掉。拜託，掛掉。', { ear: 'left' }); } });
   });
 
@@ -148,8 +151,12 @@ export function installClimax(game, S) {
     // 頭七那一次靜默久一點(單人):她回來、腳印、旋鈕,不要被下一波打斷
     if (!run.ext && h && h.quiet >= 7 && !run.touqi && game.phase === 'shop' && !game.net) { run.ext = true; game.restT += 28; }
     if (run.touqi && run.knobT && game.time >= run.knobT) { run.knobT = 0; knob(); }
+    // 有人在配電盤上把 207 的迴路關掉(苦結局「熄燈」是玩家自己的選擇):小鈴會冷,阿嬤只說一句
+    const lit = X.flags.get('h.pwr.207') !== false;
+    if (run.lit !== undefined && run.lit && !lit && !run.offSaid) { run.offSaid = true; X.after(2, () => seq(game, [['xl', '……二樓有一盞燈熄了。', 2.4], ['xl', '我突然好冷。……你那邊也是嗎？', 3.2]])); X.after(9, () => line(game, 'ama', '燈……莫關。伊驚烏。', { ear: 'right' })); }
+    run.lit = lit;
     // 電子鎖(鍵盤或聖筊)→ 同步給全隊
-    if (X.flags.has('h.207.elock') && !O()?.has?.('h.207.elock')) flag('h.207.elock');
+    if (X.flags.has('h.207.elock')) flag('h.207.elock');
     if (has('h.207.elock')) onElock();
     tryUnlock();
     // 門真的開了 → 警報

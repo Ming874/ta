@@ -109,7 +109,7 @@ export function installEnding(game, S) {
   function onKey(e) {
     if (!run || run.done) return;
     if (e.code === 'KeyE' && run.onE) { e.preventDefault(); e.stopImmediatePropagation(); if (!e.repeat) run.onE(); return; }
-    if (e.code === 'Space' && !e.repeat && !run.skip) { e.preventDefault(); run.spaceT = performance.now(); }
+    if (e.code === 'Space' && run.solo && !e.repeat && !run.skip) { e.preventDefault(); run.spaceT = performance.now(); } // 多人時空白鍵還是跳
   }
   function onKeyUp(e) { if (e.code === 'Space') run && (run.spaceT = 0); }
   window.addEventListener('keydown', onKey, true);
@@ -171,6 +171,8 @@ export function installEnding(game, S) {
     run = { variant: variant || decide(), beat: 'start', ch: {}, skip: false, fast: !!o.fast, done: false, onE: null, spaceT: 0, dawn: 0, solo: !game.net };
     const v = run.variant, solo = run.solo, d = D();
     H()?.reveal?.('zheng');
+    q('.st-skip').style.display = solo ? '' : 'none';
+    if (!solo) return coop(v, d); // 多人:不黑畫面、不收槍、不移動人(房主照常推進),只在靜默期放字幕、那一頁、數到十與標題
     const Dr = H()?.director;
     if (Dr) { Dr.bigUntil = Dr.t + 1e6; Dr.calmUntil = Dr.t + 1e6; } // 結局裡不再有驚嚇
     // 按住空白鍵略過
@@ -288,14 +290,38 @@ export function installEnding(game, S) {
     return true;
   }
 
-  async function readPage() {
+  // 多人的結局(短版,約 40 秒,剛好一次休息):等燈篙熄 → 金水伯 → 那一頁 → 小鈴 → 數到十(快) → 標題橫幅。HUD 與槍都在。
+  async function coop(v, d) {
+    run.beat = 'wait';
+    while (!run.skip && game.state === 'playing' && game.phase === 'fighting') await w(1);
+    if (game.state !== 'playing') { run.done = true; return false; }
+    run.beat = 'alley';
+    await talk('ks', '……逐暗攏光。二十三冬矣。', { gap: 1.2 });
+    if (d?.has?.('hc.30')) {
+      run.beat = 'page';
+      await readPage(0.6);
+      await talk('xl', '……有人……顧了我十四暝？', { gap: 1.2 });
+      await talk('xl', '我醒了，玉蘭姐。', { gap: 1.6 });
+    }
+    run.beat = 'count';
+    await talk('xl', '怕的時候，數到十。', { gap: 0.6 });
+    const cnt = q('.st-count');
+    for (let i = 0; i < 10 && !run.skip && game.phase !== 'fighting'; i++) { cnt.textContent = NUM[i]; cnt.classList.add('on'); try { M()?.dawn?.((i + 1) / 10); } catch { /* 略 */ } await w(1.1); cnt.classList.remove('on'); }
+    if (game.phase !== 'fighting') await talk('ama', '……十。天光矣。', { gap: 1.2 });
+    try { M()?.dawn?.(0, 4000); } catch { /* 略 */ }
+    game.ui?.banner?.('〈207 的燈〉', `「${NAME[v]}」 · 謹以此紀念 1999 年與 2003 年，所有守在第一線的人。`, 9000, 'gold');
+    run.beat = 'end'; run.done = true;
+    return true;
+  }
+
+  async function readPage(k = 1) {
     const pg = q('.st-page');
     pg.innerHTML = `<div class="hd">交班　2F 北　護理長 鄭玉蘭</div>${PAGE.map((t) => `<div class="pl">${esc(t)}</div>`).join('')}<div class="pl last">${esc(LAST)}</div>`;
     pg.classList.add('on');
     sfx.pickupItem?.();
     const pl = [...pg.querySelectorAll('.pl')];
-    for (let i = 0; i < pl.length; i++) { await w(i === pl.length - 1 ? 3.2 : 1.4); pl[i].classList.add('on'); await w(i === pl.length - 1 ? 0.4 : 2.8); }
-    await w(6);
+    for (let i = 0; i < pl.length; i++) { await w((i === pl.length - 1 ? 3.2 : 1.4) * k); pl[i].classList.add('on'); await w((i === pl.length - 1 ? 0.4 : 2.8) * k); }
+    await w(6 * k);
     pg.classList.remove('on');
     await w(1.4);
     void CARD;

@@ -35,7 +35,7 @@ const STEPS = [
   { id: 'h.s.shop', act: 1, text: '到金水商行報到', cond: (c) => c.zone === 'f1_store', skip: (c) => c.g.round >= 3, // 第 3 波以後不擋路
     hints: { xl: '金水伯的店在一樓，捲門拉起來的那一間。聽到〈少女的祈禱〉就對了。', ama: '金水仔的店……佇遮。', glint: (c) => c.g.shop?.pos } },
   { id: 'h.s.cyc1', act: 1, text: '撐過燈篙', cond: (c) => c.g.round > 2 || (c.g.round === 2 && c.g.phase !== 'fighting') }, // 阿嬤的第一句在 opening.js(第一次燈篙熄,一定會有)
-  { id: 'h.s.find207', act: 2, text: '找到 207', cond: (c) => { const w = c.door207(); return !!w && c.near(w.cx, w.y, w.cz, 3.2); },
+  { id: 'h.s.find207', act: 2, text: '找到 207', onStart: (c) => c.later(7, () => { if (c.O.step() === 'h.s.find207' && !c.g.story?.ending?.active) c.talk([[XL, '……金水伯問的那盞燈。', 2.4], [XL, '二樓北邊。我看得到那扇窗是亮的。', 3.2]]); }), cond: (c) => { const w = c.door207(); return !!w && c.near(w.cx, w.y, w.cz, 3.2); },
     onDone: (c) => { c.O.flag('h.where207'); c.later(2, () => c.talk([[XL, '那扇門……玻璃後面的燈是亮的。', 2.6], [XL, '門邊那台機器寫什麼？看清楚再說。', 3.2]])); },
     hints: { xl: '207 在二樓。北邊那一排病房，你自己數。', ama: '二〇七……阿嬤佇遐等你。', glint: (c) => { const w = c.door207(); return w ? { x: w.cx, y: w.y + 1.4, z: w.cz } : null; } } },
   { id: 'h.s.how207', act: 2, text: '查出 207 的門怎麼開', prog: (c) => [c.D.has('hc.15'), c.D.has('hc.27'), c.run.xlHow].filter(Boolean).length, m: 2,
@@ -268,7 +268,7 @@ export function installObjectives(game) {
       if (met(s)) {
         if (isHost()) complete(s.id, 'self');
         else if (game.net?.send && (game.time - (run.sentQ.get(s.id) || -9)) > 3) { run.sentQ.set(s.id, game.time); try { game.net.send('objq', s.id); } catch { /* 略 */ } }
-      } else if (s.hints && !game.story?.ending?.active) {
+      } else if (s.hints && !game.story?.busy?.()) {
         run.stuck += step;
         const T = HINT_T[diff()] || HINT_T.normal;
         const want = run.stuck >= T[2] ? 3 : run.stuck >= T[1] ? 2 : run.stuck >= T[0] ? 1 : 0;

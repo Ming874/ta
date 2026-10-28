@@ -19,7 +19,7 @@
 #st-end .st-mid p { margin: 0; opacity: 0; transition: opacity 1400ms ease; font-size: clamp(17px, 1.55vw, 24px); letter-spacing: .2em; color: #e6dcc6; }
 #st-end .st-mid p.on { opacity: 1; }
 /* 數數 */
-#st-end .st-count { position: absolute; left: 50%; top: 17%; transform: translate(-50%, -50%); font-size: clamp(54px, 7vw, 110px); letter-spacing: .1em; color: rgba(250, 238, 214, .0); text-shadow: 0 0 24px rgba(255, 210, 160, .35); transition: color 600ms ease; }
+#st-end .st-count { position: absolute; left: 50%; top: 62%; transform: translate(-50%, -50%); font-size: clamp(54px, 7vw, 110px); letter-spacing: .1em; color: rgba(250, 238, 214, .0); text-shadow: 0 0 24px rgba(255, 210, 160, .35); transition: color 600ms ease; }
 #st-end .st-count.on { color: rgba(250, 238, 214, .82); }
 /* 提示 [E] */
 #st-end .st-ask { position: absolute; left: 50%; bottom: 26vh; transform: translateX(-50%); opacity: 0; transition: opacity 600ms ease; font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", sans-serif; font-size: clamp(14px, 1.15vw, 18px); letter-spacing: .14em; color: #f2e4c0; text-shadow: 0 0 8px #000; }
