@@ -105,7 +105,7 @@ export function installOpening(game, S) {
       if (game.state !== 'playing' || run.ama1) return;
       run.ama1 = true;
       try { sfx.folk('ama', game.player.pos); } catch { /* 還沒烘焙好 */ }
-      X.after(2.2, () => { seq(game, [['ama', '阿孫……你來矣。', undefined, { id: 'h.w.come', ear: 'left' }]]); S.flag?.('h.ama.first'); });
+      X.after(2.2, () => { seq(game, [['ama', '阿孫……你來了。', undefined, { id: 'h.w.come', ear: 'left' }], () => S.moments?.m2?.()]); S.flag?.('h.ama.first'); }); // M2:接著一顆球滾過來
     });
   }
   void wait; void D;

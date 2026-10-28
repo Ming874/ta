@@ -38,7 +38,7 @@ export const EASE = {
 };
 const PROPS = ['fade', 'lid', 'tint', 'vig', 'desat', 'grain', 'crt', 'roll', 'dawn', 'beat', 'hurt'];
 const SUM = new Set(['vig', 'grain', 'roll']);
-const COLD_CARD = { title: '〈207 的燈〉', sub: '聖心醫院　·　霧港市舊港區', line: '七月初一　00:00' };
+const COLD_CARD = { title: '〈207 的燈〉', sub: '聖心醫院　·　霧港市舊港區', line: '農曆七月初一　00:00' };
 
 export function installMotion(game) {
   const U = game.post.uniforms;
@@ -373,6 +373,7 @@ export function installMotion(game) {
       game.ui.showHud(true);
       begin();
       M.emit('coldopen:start');
+      if (typeof M.coldPre === 'function') { try { await M.coldPre(); } catch (e) { console.warn('[motion] coldPre', e); } } // [story] 前情卡(src/story/moments.js M1)
       // 2) 標題卡(≤3.8 秒;任何按鍵/點擊都跳過)
       const C = M.coldCard;
       const card = showCard({ className: 'cold', title: C.title, sub: C.sub, lines: C.line ? [C.line] : [], fadeIn: 650, hold: 1250, fadeOut: 420, z: 60 });

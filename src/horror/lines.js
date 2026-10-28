@@ -186,14 +186,16 @@ export const LINES = [
   { id: 's3.face', text: '莫看窗仔外。……彼陣，個毋予阮開窗。', ghost: 'zheng', who: '鄭玉蘭(阿嬤)', why: '封院十四天,窗戶封死;外面的家屬只能隔著玻璃', when: '2003 封院期間', trig: 'story3', ear: 'right' },
   { id: 's3.burst', text: '這間……彼陣是隔離病房。', ghost: 'zheng', who: '鄭玉蘭(阿嬤)', why: '門自己開了:她讓你進去看(封院時的隔離病房)', when: '2003 封院期間', trig: 'story3' },
   { id: 's3.mirror', text: '你的目睭，佮阿嬤仝款。', ghost: 'zheng', who: '鄭玉蘭(阿嬤)', why: '鏡子裡那張臉一衝出來,接著是她溫柔的一句:她認得你(關於你是誰)', when: '現在', trig: 'story3', ear: 'both' },
-  { id: 's3.touqi', text: '頭七矣。……阿嬤轉來看你。', ghost: 'zheng', who: '鄭玉蘭(阿嬤)', why: '頭七:第七次靜默期她回來', when: '頭七', trig: 'story3', ear: 'both' },
+  { id: 's3.touqi', text: '今天是頭七……阿嬤回來看你。', ghost: 'zheng', who: '鄭玉蘭(阿嬤)', why: '頭七:第七次靜默期她回來', when: '頭七', trig: 'story3', ear: 'both' },
   { id: 's3.whistle', text: '晚上不要吹口哨……會把他們叫來。', ghost: 'zheng', who: '鄭玉蘭(阿嬤)', why: '鬼月禁忌:晚上吹口哨會把好兄弟叫來', when: '現在', trig: 'story3', ear: 'right' },
   { id: 's3.envelope', text: '路邊的紅包不要撿……那不是給你的。', ghost: 'zheng', who: '鄭玉蘭(阿嬤)', why: '鬼月禁忌:路上的紅包不要撿(冥婚)', when: '現在', trig: 'story3', ear: 'left' },
   { id: 's3.shadow', text: '十四個晚上……阿嬤都這樣巡房。', ghost: 'zheng', who: '鄭玉蘭(阿嬤)', why: '她拿著病歷板巡了十四個晚上;影子還在走同一條路', when: '2003 封院期間', trig: 'story3', ear: 'behind' },
 
   // ---- 劇情 v2(src/story/deduce.js 呼叫;HOSPITAL_CLUES_v2 §1.3、§3)----
-  { id: 'h.w.tc1', text: '阿孫……你哪會遮大漢矣？', ghost: 'zheng', who: '鄭玉蘭(阿嬤)', why: '頭七:她第一次「看見」長大的你(她只知道三歲的你)', when: '頭七', trig: 'script', ear: 'both' },
-  { id: 'h.w.tc2', text: '阿嬤無著 SARS。是阿嬤家己講的，按呢就無人敢開門。', ghost: 'zheng', who: '鄭玉蘭(阿嬤)', why: '頭七:⑥ 的關鍵來源(hc.19);她說了這輩子唯一一個謊', when: '2003/5/9', trig: 'script', ear: 'both' },
+  { id: 'h.w.tc1', text: '阿孫……你怎麼長這麼大了？', ghost: 'zheng', who: '鄭玉蘭(阿嬤)', why: '頭七:她第一次「看見」長大的你(她只知道三歲的你)', when: '頭七', trig: 'script', ear: 'both' },
+  { id: 'h.w.tc3', text: '是阿嬤自己說的。', ghost: 'zheng', who: '阿嬤', trig: 'script', ear: 'both' },
+  { id: 'h.w.tc4', text: '這樣就沒有人敢開門。', ghost: 'zheng', who: '阿嬤', trig: 'script', ear: 'both' },
+  { id: 'h.w.tc2', text: '阿嬤沒有得 SARS。', ghost: 'zheng', who: '鄭玉蘭(阿嬤)', why: '頭七:⑥ 的關鍵來源(hc.19);她說了這輩子唯一一個謊', when: '2003/5/9', trig: 'script', ear: 'both' },
   { id: 'h.w.sheng', text: '著。……阿孫，你真巧。', ghost: 'zheng', who: '鄭玉蘭(阿嬤)', why: '在她的遺照前擲出聖筊', when: '現在', trig: 'script', ear: 'both' },
   { id: 'h.w.bm', text: '床母娘娘，保庇阮孫。', ghost: 'zheng', who: '鄭玉蘭(阿嬤)', why: '新生兒室的床母(支線)', when: '2000', trig: 'script', ear: 'both' },
 

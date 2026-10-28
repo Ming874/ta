@@ -15,7 +15,7 @@ import { MAP, QUESTION, WORDS, CARD, CARDS, NOTE_CARD, WHISPER, LOOK, TALK, THRO
 import { Book } from './book.js';
 import * as THREE from 'three';
 import { sfx, ghost } from '../audio.js';
-import { secsOf } from './voice.js';
+import { secsOf, voiceLock, free, wait } from './voice.js';
 
 const KEY = 'hz.deduce.v1';
 const load = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch { return {}; } };
@@ -135,14 +135,24 @@ export function installDeduce(game) {
   function talk(lines, cb, o = {}) {
     const api = ix()?.map?.api;
     if (!api || !lines?.length || game.story?.ending?.active) { cb?.(); return; } // 結局裡只有結局自己的聲音
-    let t = 0;
     const ex = []; // 一句一行字幕:多行的台詞拆開依序播
     for (const [who, text, secs] of lines) { const ps = String(text).split('\n'); for (const p of ps) ex.push([who, p, ps.length > 1 ? secsOf(p) : secs]); }
-    for (const [who, text, secs] of ex) {
-      ix().after(t, () => api.speak({ who, parts: [text], voice: /小美|小鈴|阿嬤|女|淑芬/.test(who) ? 'woman' : /王醫師|男/.test(who) ? 'man' : 'old' }, { filter: o.filter || (/對講機|收音機|AM/.test(who) ? 'radio' : 'phone'), noHorror: true }));
-      t += (secs || 3) + 0.3;
-    }
-    if (cb) ix().after(t + 0.2, cb);
+    // 經過聲音的鎖,一句一句講(src/story/voice.js);講完才 cb
+    const V = voiceLock(game), token = {};
+    V.join(token);
+    (async () => {
+      try {
+        for (const [who, text, secs] of ex) {
+          await free(game, { token, maxWait: 40 });
+          if (game.story?.ending?.active) break;
+          const d = secs || secsOf(text);
+          V.claim(d, 8, who);
+          api.speak({ who, parts: [text], voice: /小美|小鈴|阿嬤|女|淑芬/.test(who) ? 'woman' : /王醫師|男/.test(who) ? 'man' : 'old' }, { filter: o.filter || (/對講機|收音機|AM/.test(who) ? 'radio' : 'phone'), noHorror: true, lockOk: true });
+          await wait(game, d + 0.3);
+        }
+      } finally { V.leave(token); }
+      cb?.();
+    })();
   }
   D.talk = talk;
 
@@ -199,7 +209,9 @@ export function installDeduce(game) {
     try { sfx.folk('ama', game.player.pos); } catch { /* 還沒烘焙好 */ }
     if (why === 'look' && on2F) {
       X0?.after?.(6.5, () => h?.whisper?.('h.w.tc1', { ear: 'both', priority: 9, force: true })); // 一次一句,中間留 6 秒
-      if (!D.has('hc.19')) X0?.after?.(13, () => h?.whisper?.('h.w.tc2', { ear: 'both', priority: 9, force: true }));
+      X0?.after?.(13, () => h?.whisper?.('h.w.tc2', { ear: 'both', priority: 9, force: true })); // 她唯一的謊(每一局都說;M5)
+      X0?.after?.(16.4, () => h?.whisper?.('h.w.tc3', { ear: 'both', priority: 9, force: true }));
+      X0?.after?.(19.6, () => h?.whisper?.('h.w.tc4', { ear: 'both', priority: 9, force: true }));
     } else if (!D.has('hc.19')) { run.tqLate = true; ix()?.flags?.set?.('h.touqi.late', true); }
   }
 
@@ -249,7 +261,7 @@ export function installDeduce(game) {
     if (run.tqLate && m && silent) {
       const q = X.where(m);
       run.memT = Math.abs(p.pos.y - q.y) < 2 && Math.hypot(p.pos.x - q.x, p.pos.z - q.z) < 2.4 ? run.memT + step : 0;
-      if (run.memT >= 5 && !h?.whispers?.busy && h?.whisper?.('h.w.tc2', { ear: 'both', priority: 9, force: true })) { run.tqLate = false; run.memT = 0; }
+      if (run.memT >= 5 && !h?.whispers?.busy && h?.whisper?.('h.w.tc2', { ear: 'both', priority: 9, force: true })) { run.tqLate = false; run.memT = 0; X.after(3.4, () => h?.whisper?.('h.w.tc3', { ear: 'both', priority: 9, force: true })); X.after(6.6, () => h?.whisper?.('h.w.tc4', { ear: 'both', priority: 9, force: true })); }
     }
     // 多人:受傷就收起推理本(世界沒停)
     if (book.isOpen && game.net && p.lastHurt !== book.hurt) book.close(false);

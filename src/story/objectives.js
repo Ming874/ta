@@ -25,6 +25,7 @@ import { installClimax } from './climax.js';
 import { installEnding } from './ending.js';
 import { installRevive } from './revive.js';
 import { installNotes } from './notes.js';
+import { installMoments } from './moments.js';
 import { voiceLock } from './voice.js';
 import * as THREE from 'three';
 
@@ -39,7 +40,7 @@ const STEPS = [
     hints: { xl: '金水伯的店在一樓。\n有在放〈少女的祈禱〉那間。', ama: '金水的店……在這邊。', glint: (c) => c.g.shop?.pos } },
   { id: 'h.s.cyc1', act: 1, text: '撐過前兩波', why: '招魂燈把活屍叫過來了', cond: (c) => c.g.round > 2 || (c.g.round === 2 && c.g.phase !== 'fighting') }, // 阿嬤的第一句在 opening.js(第一次燈篙熄,一定會有)
   { id: 'h.s.find207', act: 2, text: '找到 207 號房（二樓北邊）', why: '阿嬤叫你來看那盞燈', onStart: (c) => c.later(7, () => { if (c.O.step() === 'h.s.find207' && !c.g.story?.ending?.active) c.talk([[XL, '……金水伯問的那盞燈。', 2.4], [XL, '二樓北邊。我看得到那扇窗是亮的。', 3.2]]); }), cond: (c) => { const w = c.door207(); return !!w && c.near(w.cx, w.y, w.cz, 3.2); },
-    onDone: (c) => { c.O.flag('h.where207'); c.later(2, () => c.talk([[XL, '那扇門……玻璃後面的燈是亮的。', 2.6], [XL, '門邊那台機器寫什麼？看清楚再說。', 3.2]])); },
+    onDone: (c) => { c.O.flag('h.where207'); if (c.g.story?.moments?.m3) c.g.story.moments.m3(); else c.later(2, () => c.talk([[XL, '那扇門……玻璃後面的燈是亮的。', 2.6], [XL, '先看門邊那台機器寫什麼。', 3.2]])); }, // M3:門後的聲音
     hints: { xl: '207 在二樓。北邊那一排病房，你自己數。', ama: '207……阿嬤在那裡等你。', glint: (c) => { const w = c.door207(); return w ? { x: w.cx, y: w.y + 1.4, z: w.cz } : null; } } },
   { id: 'h.s.how207', act: 2, text: '查出 207 的門怎麼開', why: '門被電子鎖鎖住了', prog: (c) => [c.D.has('hc.15'), c.D.has('hc.27'), c.run.xlHow].filter(Boolean).length, m: 2,
     onStart: (c) => c.later(30, () => { if (c.O.step() !== 'h.s.how207') return; c.talk([[XL, '三樓有一間監控室。', 3.2], [XL, '207 的鎖，是從那裡管的。', 2.8]], () => { c.run.xlHow = true; }); }),
@@ -300,6 +301,7 @@ export function installObjectives(game) {
   try { installEnding(game, S); } catch (e) { console.warn('[story] ending', e); }
   try { installRevive(game, S); } catch (e) { console.warn('[story] revive', e); }
   try { installNotes(game, S); } catch (e) { console.warn('[story] notes', e); }
+  try { installMoments(game, S); } catch (e) { console.warn('[story] moments', e); }
   return O;
 }
 

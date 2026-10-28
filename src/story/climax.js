@@ -40,7 +40,7 @@ export function installClimax(game, S) {
   const p = () => game.player.pos;
 
   // ---------- 頭七 ----------
-  H()?.on?.('story', (e) => { if (e?.id === 's3.touqi' && !run.touqi) { run.touqi = true; run.knobT = game.time + 20; } }); // 她的兩句說完才轉開旋鈕
+  H()?.on?.('story', (e) => { if (e?.id === 's3.touqi' && !run.touqi) { run.touqi = true; run.knobT = game.time + 26; } }); // 她說完(你哪會…、沒有得 SARS…)才轉開旋鈕
   function touqiFallback() { // 幻影出不來:照樣發生(她不一定要被看見)
     run.touqi = true; run.knobT = game.time + 16;
     try { sfx.folk('lament', p()); } catch { /* 略 */ }
@@ -145,7 +145,7 @@ export function installClimax(game, S) {
     const step = acc; acc = 0;
     const h = H(), Dr = h?.director, silent = game.phase !== 'fighting';
     // 頭七之前:小鈴先感覺到(在二樓:叫你站著;不在二樓:叫你上去)
-    if (!run.lead && h && h.quiet >= 7 && Dr?.silent && !run.touqi && (Dr.roundT || 0) > 2.5) { run.lead = true; const on2 = /^f2_/.test(game.hospital?.zone?.id || ''); seq(game, on2 ? [['xl', '……你那邊的燈怎麼一直暗下去？', 3], ['xl', '不要過去。站著就好。', 2.6]] : [['xl', '……二樓的燈，一盞一盞暗下去了。', 3.2], ['xl', '好像有人在等你。', 2.4]]); }
+    if (!run.lead && h && h.quiet >= 7 && Dr?.silent && !run.touqi && (Dr.roundT || 0) > 2.5) { run.lead = true; const on2 = /^f2_/.test(game.hospital?.zone?.id || ''); seq(game, on2 ? [['xl', '……今天，好像是她的頭七。', 2.6], ['xl', '人走後第七天，會回家看一眼。', 3], ['xl', '不要過去，站著就好。', 2.6]] : [['xl', '……今天，好像是她的頭七。', 2.6], ['xl', '人走後第七天，會回家看一眼。', 3], ['xl', '二樓的燈，一盞一盞暗下去了。', 3], ['xl', '好像有人在等你。', 2.4]]); }
     // 頭七:第 7 次靜默還沒發生 → 退路
     if (!run.touqi && h && h.quiet >= 7 && Dr?.silent && (Dr.roundT || 0) > 14 && !h.memories?.state?.cur) touqiFallback();
     // 頭七那一次靜默久一點(單人):她回來、腳印、旋鈕,不要被下一波打斷

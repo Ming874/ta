@@ -22,13 +22,25 @@ export const fillNick = (t) => String(t).replace(/\{暱稱\}/g, nick());
 export const secsOf = (t) => 0.7 + [...String(t).replace(/[，。、……？！「」\s]/g, '')].length * 0.19; // 約每秒 5 字(字幕好讀,不拖)
 
 // ---------- 聲音的鎖 ----------
+// 一段對話(seq、對講機/提示的 talk)排隊:先到先講,一段講完才輪到下一段(不會兩段對話一句一句交錯)。
+// 單句(line)與裝置、鬼也佔住 until;排隊的人等 until 過了才開始。
 export function voiceLock(game) {
   const S = (game.story ||= {});
   if (S.voice) return S.voice;
   const now = () => game.time || 0;
   const V = {
-    until: 0, prio: 0, who: null, quietUntil: 0,
-    busy(o = {}) { const t = now(); return t < V.until || (!!o.quiet && t < Math.max(V.until + 4, V.quietUntil)); }, // quiet:阿嬤前後都要空
+    until: 0, prio: 0, who: null, quietUntil: 0, q: [], headT: 0,
+    get owner() { return V.q[0] || null; },
+    // 有人在說話,或有一段對話在講/在排隊(token = 自己那一段)
+    busy(o = {}) {
+      const t = now();
+      V.prune(t);
+      if (V.q.length && V.q[0] !== o.token) return true;
+      return t < V.until || (!!o.quiet && t < Math.max(V.until + 4, V.quietUntil)); // quiet:阿嬤前後都要空
+    },
+    join(token) { if (!V.q.includes(token)) V.q.push(token); if (V.q[0] === token) V.headT = now(); },
+    leave(token) { const i = V.q.indexOf(token); if (i >= 0) V.q.splice(i, 1); if (i === 0) V.headT = now(); },
+    prune(t) { if (V.q.length && t - V.headT > 60) { V.q.shift(); V.headT = t; } }, // 保險:卡住的對話 60 秒後放掉
     // 佔住 secs 秒;pad = 之後再空幾秒(阿嬤)
     claim(secs, prio = 5, who = null, pad = 0) {
       const t = now();
@@ -36,17 +48,17 @@ export function voiceLock(game) {
       V.quietUntil = Math.max(V.quietUntil, V.until + pad);
       V.prio = prio; V.who = who;
     },
-    reset() { V.until = V.quietUntil = 0; V.prio = 0; V.who = null; },
+    reset() { V.until = V.quietUntil = 0; V.prio = 0; V.who = null; V.q.length = 0; },
   };
   S.voice = V;
   game.interact?.on?.('reset', () => V.reset());
   return V;
 }
-// 等到沒有人說話(最多 maxWait 秒);阿嬤要前面也安靜(quiet)
+// 排到自己、而且沒有人在說話(最多 maxWait 秒);阿嬤要前面也安靜(quiet)
 export async function free(game, o = {}) {
   const V = voiceLock(game);
   const t0 = game.time || 0;
-  while (V.busy(o) && (game.time || 0) - t0 < (o.maxWait ?? 20)) await wait(game, 0.25);
+  while (V.busy(o) && (game.time || 0) - t0 < (o.maxWait ?? 60)) await wait(game, 0.25);
 }
 
 export function wait(game, secs) {
@@ -80,7 +92,12 @@ export function line(game, who, text, o = {}) {
 // 依序播;回傳 Promise(完成或中止都 resolve),帶 stop()
 export function seq(game, lines, o = {}) {
   let stopped = false;
+  const V = voiceLock(game), token = {}; // 一段對話排一次隊,講完才換下一段
+  const speaks = lines.some((L) => Array.isArray(L) && L[0] !== 'n');
+  if (speaks && !o.noWait) V.join(token);
   const p = (async () => {
+    try {
+    if (speaks && !o.noWait) await free(game, { token, maxWait: o.maxWait }); // 排到我們、而且前一個人說完
     for (const L of lines) {
       if (stopped || (o.alive && !o.alive())) return false;
       if (typeof L === 'function') { await L(); continue; }
@@ -89,13 +106,14 @@ export function seq(game, lines, o = {}) {
       const ps = String(text).split('\n'); // 一句一行字幕(CLARITY_PLAN §5:一句不超過 18 字,長的拆成兩句依序播)
       for (let i = 0; i < ps.length; i++) {
         if (stopped) return false;
-        if (!o.noWait && who !== 'n') await free(game, { quiet: who === 'ama', maxWait: o.maxWait }); // 一次一個人說話:前一句(誰的都一樣)說完才輪到這句
+        if (!o.noWait && !lo?.noWait && who !== 'n') await free(game, { quiet: who === 'ama', maxWait: 12, token }); // 自己這一段裡:等上一句(或插進來的裝置/鬼)說完
         if (stopped) return false;
         const d = line(game, who, ps[i], { ...o, ...(lo || {}), secs: ps.length > 1 ? undefined : secs });
         await wait(game, d + (i < ps.length - 1 ? 0.35 : lo?.gap ?? o.gap ?? 0.5));
       }
     }
     return true;
+    } finally { V.leave(token); }
   })();
   p.stop = () => { stopped = true; };
   return p;
