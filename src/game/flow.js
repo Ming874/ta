@@ -23,11 +23,18 @@ const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart
 export const flowMethods = {
   // 世界建構時呼叫(在 world.buildNav 之前):店面與補給點都會登記碰撞盒。位置全部來自 world(world.shop / world.supplies)。
   // 換地圖(loadMap):舊 World 還在時先 disposeGameplayWorld(),新 World 與場景建好後再呼叫這個(一樣在 buildNav 之前)
-  buildGameplayWorld() {
+  buildGameplayWorld() { for (const _ of this.buildGameplayWorldSteps()) { /* 同步跑完 */ } },
+  // [perf] 分段版:各建構之間 yield(載入時分時執行)
+  *buildGameplayWorldSteps() {
     if (this.shop || this.supplies) this.disposeGameplayWorld();
-    this.shop = new Shop(this.scene, this.world, { game: this });
+    this.shop = new Shop(this.scene, this.world, { game: this, steps: true });
+    yield* this.shop.steps;
+    this.shop.steps = null;
+    yield;
     this.supplies = new Supplies(this.scene, this.world);
+    yield;
     buildInteract(this); // 互動物件與門(src/interact;碰撞盒要在 buildNav 之前)
+    yield;
     if (this.pickups) { this.pickups.clear(); this.pickups.world = this.world; } // 掉落物改用新世界做貼地/撞牆
     if (this.coins) this.coins.world = this.world;
   },

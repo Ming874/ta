@@ -58,6 +58,13 @@ export function tex(c, { srgb = true, repeat = true, aniso = 8 } = {}) {
   return t;
 }
 export const lazy = (fn) => { let v; return () => (v ??= fn()); };
+// [perf] generator 版的 lazy:f() 同步跑完剩下的步驟;f.step() 跑一步,做完回傳 true
+export const lazySteps = (gen) => {
+  let v, it = null;
+  const f = () => { if (v === undefined) { it ??= gen(); let r; while (!(r = it.next()).done); v = r.value; } return v; };
+  f.step = () => { if (v !== undefined) return true; it ??= gen(); const r = it.next(); if (r.done) v = r.value; return r.done; };
+  return f;
+};
 export const FONT_TC = '"Microsoft JhengHei","PingFang TC","Noto Sans TC","Heiti TC",sans-serif';
 export const FONT_KAI = '"DFKai-SB","BiauKai","KaiTi","STKaiti","PMingLiU",serif';
 export const FONT_PLATE = '"Arial Narrow","Roboto Condensed","Helvetica Neue",Arial,sans-serif';
@@ -243,14 +250,18 @@ export function wear(ctx, x, y, w, h, amt, scale = 6) {
   ctx.putImageData(img, x, y);
 }
 const DH = 2560;
-const DECAL_TEX = lazy(() => {
+const DECAL_TEX = lazySteps(function* () { // [perf] 分段:每一格之後 yield(prepareOutdoorSteps 一格一格畫;直接呼叫則同步畫完)
   const [c, ctx] = canvas(2048, DH);
   const C = (n) => DECAL_RECTS[n];
   const inCell = (n, fn) => { const [x, y, w, h] = C(n); ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); ctx.translate(x, y); fn(w, h); ctx.restore(); };
   // 血跡
+  yield;
   inCell('blood1', () => { splat(ctx, 128, 128, 44, BLOOD()); softBlob(ctx, 128, 128, 30, '40,4,4', 0.5); });
+  yield;
   inCell('blood2', () => { for (let k = 0; k < 5; k++) splat(ctx, rr(70, 186), rr(70, 186), rr(10, 26), BLOOD(0.85), 8); });
+  yield;
   inCell('blood3', () => { splat(ctx, 128, 90, 30, BLOOD()); for (let k = 0; k < 6; k++) { ctx.fillStyle = BLOOD(0.85); const x = rr(100, 156), w = rr(3, 7); ctx.fillRect(x, 90, w, rr(60, 160)); ctx.beginPath(); ctx.arc(x + w / 2, 90 + rr(60, 160), w * 0.9, 0, 7); ctx.fill(); } });
+  yield;
   inCell('hand', () => {
     ctx.fillStyle = BLOOD(0.9);
     ctx.beginPath(); ctx.ellipse(128, 160, 42, 50, 0, 0, 7); ctx.fill();
@@ -259,17 +270,29 @@ const DECAL_TEX = lazy(() => {
     for (let k = 0; k < 5; k++) { const x = rr(96, 168); ctx.fillRect(x, 190, rr(3, 6), rr(20, 60)); }
     wear(ctx, 0, 0, 256, 256, 0.25, 10);
   });
+  yield;
   inCell('drip', () => { for (let k = 0; k < 9; k++) { ctx.fillStyle = BLOOD(rr(0.6, 0.95)); const x = rr(20, 236), w = rr(3, 9), l = rr(60, 240); ctx.fillRect(x, 0, w, l); ctx.beginPath(); ctx.arc(x + w / 2, l, w * 0.8, 0, 7); ctx.fill(); } });
+  yield;
   inCell('pool', () => { ctx.fillStyle = 'rgba(45,4,4,0.95)'; ctx.beginPath(); for (let a = 0; a < 6.3; a += 0.3) { const r = rr(70, 110); ctx.lineTo(128 + Math.cos(a) * r, 128 + Math.sin(a) * r * 0.8); } ctx.fill(); softBlob(ctx, 128, 128, 120, '30,2,2', 0.4); });
+  yield;
   inCell('oil', () => { softBlob(ctx, 128, 128, 120, '8,8,8', 0.75); softBlob(ctx, 110, 140, 70, '0,0,0', 0.5); for (let k = 0; k < 6; k++) softBlob(ctx, rr(40, 216), rr(40, 216), rr(10, 30), '5,5,5', 0.5); });
+  yield;
   inCell('water', () => { softBlob(ctx, 128, 128, 124, '20,20,18', 0.45); wear(ctx, 0, 0, 256, 256, 0.3, 5); });
+  yield;
   inCell('rust', () => { softBlob(ctx, 128, 128, 110, '95,45,18', 0.8); softBlob(ctx, 128, 128, 50, '70,30,10', 0.6); wear(ctx, 0, 0, 256, 256, 0.25, 8); });
+  yield;
   inCell('rustrun', () => { for (let k = 0; k < 7; k++) { const x = rr(40, 216), w = rr(8, 26); const g = ctx.createLinearGradient(0, 0, 0, 256); g.addColorStop(0, 'rgba(110,50,20,0.85)'); g.addColorStop(1, 'rgba(110,50,20,0)'); ctx.fillStyle = g; ctx.fillRect(x, 0, w, rr(120, 256)); } wear(ctx, 0, 0, 256, 256, 0.2, 10); });
+  yield;
   inCell('soot', () => { softBlob(ctx, 128, 150, 120, '10,8,6', 0.85); softBlob(ctx, 128, 60, 90, '15,12,10', 0.6); wear(ctx, 0, 0, 256, 256, 0.2, 6); });
+  yield;
   inCell('moss', () => { for (let k = 0; k < 40; k++) softBlob(ctx, rr(30, 226), rr(30, 226), rr(8, 30), `${rr(40, 60) | 0},${rr(60, 80) | 0},${rr(25, 35) | 0}`, 0.7); });
+  yield;
   inCell('mud', () => { for (let k = 0; k < 30; k++) softBlob(ctx, rr(20, 236), rr(60, 250), rr(6, 28), '60,45,30', 0.7); });
+  yield;
   inCell('crack', () => { ctx.strokeStyle = 'rgba(10,10,10,0.85)'; for (let k = 0; k < 4; k++) { let x = 128, y = 128, a = R() * 7; ctx.lineWidth = rr(1, 3); ctx.beginPath(); ctx.moveTo(x, y); for (let s = 0; s < 14; s++) { a += rr(-0.6, 0.6); x += Math.cos(a) * 10; y += Math.sin(a) * 10; ctx.lineTo(x, y); } ctx.stroke(); } });
+  yield;
   inCell('leaves', () => { ctx.drawImage(LEAF_CARD().image, 0, 0, 256, 256); });
+  yield;
   inCell('butts', () => { for (let k = 0; k < 14; k++) { ctx.save(); ctx.translate(rr(20, 236), rr(20, 236)); ctx.rotate(R() * 7); ctx.fillStyle = '#d8d0c0'; ctx.fillRect(-9, -2.5, 12, 5); ctx.fillStyle = '#b07a3a'; ctx.fillRect(3, -2.5, 7, 5); ctx.fillStyle = '#222'; ctx.fillRect(-10, -2.5, 2, 5); ctx.restore(); } softBlob(ctx, 128, 128, 60, '40,40,40', 0.25); });
   // 墓誌銘(刻字:暗色字 + 亮邊)
   const epis = [['✝', '安息主懷', '1931 — 1968'], ['', '陳 公 志 明 之 墓', '民國五十七年'], ['✝', 'R.I.P.', 'MARIA LIN'], ['', '林 氏 秀 英', '慈母 安息'], ['✝', 'IN MEMORIAM', '1955'], ['', '無名氏', '聖心醫院 代葬'], ['✝', '主內安息', '王 若 瑟'], ['', '慈父 安息', '永遠懷念']];
@@ -282,21 +305,31 @@ const DECAL_TEX = lazy(() => {
     wear(ctx, 0, 0, 256, 256, 0.18, 12);
   }));
   // 塗鴉、拖行血痕
+  yield;
   inCell('smear', (w, h) => { ctx.strokeStyle = BLOOD(0.8); ctx.lineCap = 'round'; for (let k = 0; k < 4; k++) { ctx.lineWidth = rr(18, 40); ctx.beginPath(); ctx.moveTo(20, h / 2 + rr(-30, 30)); ctx.bezierCurveTo(180, h / 2 + rr(-50, 50), 320, h / 2 + rr(-50, 50), w - 20, h / 2 + rr(-20, 20)); ctx.stroke(); } wear(ctx, 0, 0, w, h, 0.35, 16); });
   const graffiti = (n, s, size, col) => inCell(n, (w, h) => { ctx.save(); ctx.translate(w / 2, h / 2); ctx.rotate(rr(-0.08, 0.08)); text(ctx, s, 0, 0, size, { color: col, font: FONT_TC, weight: '900' }); ctx.restore(); for (let k = 0; k < 8; k++) { ctx.fillStyle = col; ctx.fillRect(rr(40, w - 40), h / 2 + size * 0.35, rr(2, 4), rr(10, 60)); } wear(ctx, 0, 0, w, h, 0.15, 10); });
   graffiti('g_help', '救 命', 150, 'rgba(120,10,8,0.92)');
   graffiti('g_dont', '別 進 去', 120, 'rgba(20,20,20,0.9)');
   graffiti('g_still', '他們還在裡面', 104, 'rgba(110,12,10,0.9)');
+  yield;
   inCell('g_tally', () => { ctx.strokeStyle = 'rgba(30,25,20,0.9)'; ctx.lineWidth = 5; for (let g = 0; g < 4; g++) { const ox = 20 + (g % 2) * 118, oy = 30 + Math.floor(g / 2) * 110; for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.moveTo(ox + k * 20, oy); ctx.lineTo(ox + k * 20 + rr(-4, 4), oy + 80); ctx.stroke(); } ctx.beginPath(); ctx.moveTo(ox - 8, oy + 70); ctx.lineTo(ox + 76, oy + 10); ctx.stroke(); } });
+  yield;
   inCell('g_eye', () => { ctx.strokeStyle = 'rgba(15,15,15,0.9)'; ctx.lineWidth = 7; ctx.beginPath(); ctx.ellipse(128, 128, 100, 52, 0, 0, 7); ctx.stroke(); ctx.fillStyle = 'rgba(110,10,8,0.9)'; ctx.beginPath(); ctx.arc(128, 128, 34, 0, 7); ctx.fill(); ctx.fillStyle = 'rgba(10,10,10,0.95)'; ctx.beginPath(); ctx.arc(128, 128, 14, 0, 7); ctx.fill(); });
   // 警車塗裝
+  yield;
   inCell('pol_text', (w, h) => text(ctx, '警 察', w / 2, h / 2 + 6, 170, { color: '#1d3f8f', weight: '900' }));
+  yield;
   inCell('pol_en', (w, h) => text(ctx, 'POLICE', w / 2, h / 2 + 4, 150, { color: '#1d3f8f', weight: '900', font: 'Arial Black,Arial,sans-serif', stretch: 0.9 }));
+  yield;
   inCell('pol_110', (w, h) => text(ctx, '110', w / 2, h / 2 + 4, 150, { color: '#1d3f8f', weight: '900', font: 'Arial Black,Arial,sans-serif', stretch: 0.8 }));
+  yield;
   inCell('pol_band', (w, h) => { ctx.fillStyle = '#1d3f8f'; ctx.fillRect(0, 70, w, 116); for (let x = 0; x < w; x += 58) { ctx.fillStyle = '#e8e8e8'; ctx.fillRect(x, 70 + ((x / 58) % 2) * 58, 58, 58); } ctx.fillStyle = '#c8a020'; ctx.fillRect(0, 60, w, 10); ctx.fillRect(0, 186, w, 10); });
   // 救護車塗裝
+  yield;
   inCell('amb_text', (w, h) => text(ctx, '救 護 車', w / 2, h / 2 + 6, 150, { color: '#c01818', weight: '900' }));
+  yield;
   inCell('amb_mirror', (w, h) => { ctx.save(); ctx.translate(w, 0); ctx.scale(-1, 1); text(ctx, '救 護 車', w / 2, h / 2 + 6, 150, { color: '#c01818', weight: '900' }); ctx.restore(); });
+  yield;
   inCell('amb_star', (w, h) => {
     ctx.save(); ctx.translate(w / 2, h / 2); ctx.fillStyle = '#1f4fb0';
     for (let k = 0; k < 3; k++) { ctx.save(); ctx.rotate((k * Math.PI) / 3); ctx.fillRect(-26, -110, 52, 220); ctx.restore(); }
@@ -304,17 +337,27 @@ const DECAL_TEX = lazy(() => {
     ctx.beginPath(); for (let t = -70; t <= 70; t += 4) ctx.lineTo(Math.sin(t * 0.12) * 18, t); ctx.stroke();
     ctx.restore();
   });
+  yield;
   inCell('amb_119', (w, h) => text(ctx, '119', w / 2, h / 2 + 4, 150, { color: '#c01818', weight: '900', font: 'Arial Black,Arial,sans-serif', stretch: 0.8 }));
+  yield;
   inCell('amb_band', (w, h) => { ctx.fillStyle = '#c01818'; ctx.fillRect(0, 80, w, 70); ctx.fillStyle = '#e8b020'; ctx.fillRect(0, 160, w, 16); for (let x = 0; x < w; x += 64) { ctx.fillStyle = '#c01818'; ctx.fillRect(x, 186, 32, 30); } });
+  yield;
   inCell('amb_hosp', (w, h) => { text(ctx, '聖心醫院', w * 0.3, h / 2, 120, { color: '#c01818', weight: '900' }); text(ctx, 'SACRED HEART HOSPITAL', w * 0.72, h / 2 + 8, 66, { color: '#c01818', weight: 'bold', font: 'Arial,sans-serif', stretch: 0.8 }); });
   // 地面標線(黃漆,磨損)
+  yield;
   inCell('road_amb', (w, h) => { text(ctx, '救護車專用', w / 2, h / 2, 150, { color: 'rgba(214,170,30,0.95)', weight: '900', stretch: 1.0 }); wear(ctx, 0, 0, w, h, 0.42, 14); });
+  yield;
   inCell('road_arrow', (w, h) => { ctx.fillStyle = 'rgba(225,225,215,0.92)'; ctx.beginPath(); ctx.moveTo(128, 18); ctx.lineTo(210, 110); ctx.lineTo(156, 110); ctx.lineTo(156, 238); ctx.lineTo(100, 238); ctx.lineTo(100, 110); ctx.lineTo(46, 110); ctx.closePath(); ctx.fill(); wear(ctx, 0, 0, w, h, 0.45, 10); });
+  yield;
   inCell('road_no', (w, h) => { text(ctx, '禁止停車', w / 2, h / 2, 160, { color: 'rgba(210,40,30,0.9)', weight: '900' }); wear(ctx, 0, 0, w, h, 0.45, 14); });
+  yield;
   inCell('road_p', (w, h) => { text(ctx, 'P', w / 2, h / 2 + 10, 220, { color: 'rgba(225,225,215,0.9)', weight: '900', font: 'Arial Black,Arial' }); wear(ctx, 0, 0, w, h, 0.45, 10); });
+  yield;
   inCell('cross_paint', () => { ctx.fillStyle = 'rgba(200,30,25,0.9)'; ctx.fillRect(98, 30, 60, 196); ctx.fillRect(30, 98, 196, 60); wear(ctx, 0, 0, 256, 256, 0.3, 10); });
   // 碎玻璃(亮點)、粉筆人形、血腳印、煞車痕
+  yield;
   inCell('shards', () => { for (let k = 0; k < 160; k++) { const x = 128 + (R() - 0.5) * 220 * R(), y = 128 + (R() - 0.5) * 220 * R(), s = rr(1.5, 6); ctx.fillStyle = `rgba(${rr(170, 235) | 0},${rr(190, 240) | 0},${rr(200, 245) | 0},${rr(0.5, 0.95)})`; ctx.beginPath(); ctx.moveTo(x, y - s); ctx.lineTo(x + s * rr(0.4, 1), y + s * rr(0.2, 0.8)); ctx.lineTo(x - s * rr(0.4, 1), y + s * rr(0.1, 0.7)); ctx.fill(); } });
+  yield;
   inCell('chalk', (w, h) => {
     ctx.strokeStyle = 'rgba(230,230,220,0.85)'; ctx.lineWidth = 6; ctx.lineJoin = 'round';
     ctx.beginPath(); ctx.ellipse(70, 120, 30, 34, 0, 0, 7); ctx.stroke(); // 頭
@@ -322,15 +365,25 @@ const DECAL_TEX = lazy(() => {
     ctx.lineTo(330, 140); ctx.lineTo(420, 210); ctx.lineTo(400, 226); ctx.lineTo(300, 150); ctx.lineTo(132, 146); ctx.lineTo(160, 220); ctx.lineTo(136, 228); ctx.lineTo(98, 140); ctx.stroke();
     splat(ctx, 70, 150, 26, 'rgba(60,8,6,0.75)', 10);
   });
+  yield;
   inCell('steps', (w, h) => { for (let k = 0; k < 7; k++) { const x = 40 + k * 64, y = h / 2 + (k % 2 ? 26 : -26); ctx.save(); ctx.translate(x, y); ctx.rotate(Math.PI / 2 + rr(-0.15, 0.15)); ctx.fillStyle = `rgba(80,8,6,${0.9 - k * 0.1})`; ctx.beginPath(); ctx.ellipse(0, -10, 13, 22, 0, 0, 7); ctx.fill(); ctx.beginPath(); ctx.ellipse(0, 22, 10, 12, 0, 0, 7); ctx.fill(); ctx.restore(); } wear(ctx, 0, 0, w, h, 0.2, 12); });
+  yield;
   inCell('skid', (w, h) => { for (const y of [70, 186]) { const g = ctx.createLinearGradient(0, 0, w, 0); g.addColorStop(0, 'rgba(8,8,8,0)'); g.addColorStop(0.25, 'rgba(8,8,8,0.7)'); g.addColorStop(1, 'rgba(8,8,8,0.85)'); ctx.fillStyle = g; ctx.fillRect(0, y - 22, w, 44); } wear(ctx, 0, 0, w, h, 0.25, 20); });
+  yield;
   inCell('bullets', () => { for (let k = 0; k < 9; k++) { const x = rr(30, 226), y = rr(30, 226); softBlob(ctx, x, y, 14, '20,18,16', 0.8); ctx.fillStyle = 'rgba(5,5,5,0.95)'; ctx.beginPath(); ctx.arc(x, y, 4, 0, 7); ctx.fill(); } });
+  yield;
   inCell('burn', () => { softBlob(ctx, 128, 128, 120, '6,5,4', 0.9); softBlob(ctx, 128, 128, 70, '0,0,0', 0.7); });
+  yield;
   inCell('vomit', () => { for (let k = 0; k < 20; k++) softBlob(ctx, 128 + rr(-70, 70), 128 + rr(-50, 50), rr(10, 40), '70,72,30', 0.7); });
+  yield;
   inCell('wax', () => { for (let k = 0; k < 14; k++) softBlob(ctx, 128 + rr(-90, 90), 128 + rr(-90, 90), rr(6, 22), '220,210,180', 0.85); });
+  yield;
   inCell('ashes', () => { for (let k = 0; k < 50; k++) { const g = rr(40, 95) | 0; softBlob(ctx, 128 + rr(-100, 100), 128 + rr(-100, 100), rr(6, 30), `${g},${g - 2},${g - 4}`, 0.7); } });
+  yield;
   inCell('paw', () => { for (let k = 0; k < 6; k++) { const x = 30 + k * 38, y = 128 + (k % 2 ? 20 : -20); ctx.fillStyle = 'rgba(70,8,6,0.85)'; ctx.beginPath(); ctx.arc(x, y, 9, 0, 7); ctx.fill(); for (const a of [-0.7, -0.25, 0.25, 0.7]) { ctx.beginPath(); ctx.arc(x + Math.sin(a) * 13, y - Math.cos(a) * 13, 4, 0, 7); ctx.fill(); } } });
+  yield;
   inCell('water2', () => { softBlob(ctx, 128, 128, 120, '10,12,12', 0.55); });
+  yield;
   inCell('stain2', () => { for (let k = 0; k < 8; k++) softBlob(ctx, 128 + rr(-60, 60), 128 + rr(-60, 60), rr(30, 70), '40,30,20', 0.35); });
   // 血跡格(噴濺、滴落、手印、垂流、血泊、拖痕、鞋印):寫實版在貼圖 Worker 畫好後蓋掉上面的簡圖(src/art/stainset.js OUTDOOR)。
   // 這張 2048×2560 的畫布等血跡格畫好才第一次上傳(只上傳一次;之前材質綁的是空貼圖)
@@ -477,6 +530,8 @@ const HAZARD = lazy(() => {
 // ---------- 註冊材質 ----------
 const std = (o) => new THREE.MeshStandardMaterial(o);
 let done = false;
+// [perf] 載入分時:這些程式貼圖可以先一張一張畫(lazy,畫過就快取),initMats 之後直接拿現成的
+export const prepaint = () => [NIGHT_ENV, GRIME, GLASS_DIRT, GLASS_CRACK, GRASS_CARD, LEAF_CARD, DECAL_TEX, LABEL_TEX, TAPE, HAZARD];
 export function initMats() {
   if (done) return;
   done = true;
