@@ -3,6 +3,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { mat } from '../../materials.js';
 import { initAtlas, surfKey, labRect, glowRect, decalRect } from './atlas.js';
+import { classOfKey } from '../../../mats/classes.js';
+import { encodeSurface, plainEligible, FLAG_V } from '../../../mats/encode.js';
 
 // 道具建模工具:B(builder)以「表面鍵」收集幾何,最後依材質合併成模板(Template)。
 // 表面鍵:道具表面名(如 'enamel_white'、'pl_beige'、'chrome')→ 經 atlas.surfKey 對應到材質庫鍵(共用材質,UV 以公尺計);
@@ -25,7 +27,7 @@ function surf(s) {
   if (r) return r;
   initAtlas();
   const m = mat(surfKey(s));
-  r = { kind: 'tile', mat: m, scale: m.userData.uvScale ?? 1 };
+  r = { kind: 'tile', mat: m, scale: m.userData.uvScale ?? 1, cls: plainEligible(m) ? classOfKey(m.name) : 0 };
   surfCache.set(s, r);
   return r;
 }
@@ -215,6 +217,9 @@ export function roundShape(pts, path = new THREE.Shape()) {
   return path;
 }
 
+// 圓柱:側面上下兩端是邊(會磨損),端蓋沒有
+const capFlags = (nx, ny, nz) => (Math.abs(ny) > Math.max(Math.abs(nx), Math.abs(nz)) ? 0 : FLAG_V);
+
 // ---------- Builder ----------
 let triCount = 0;
 export const stats = { get tris() { return triCount; } };
@@ -236,7 +241,19 @@ export class B {
   // 加入幾何(以目前座標系);uvMode: 'box'(盒狀投影)/'native'(幾何原生 UV,0..1)/'rect'(平面直接對應)
   geo(s, g, local, uvMode = 'box', nativeScale = null) {
     const S = surf(s);
+    const type = g.type;
     g = clean(g);
+    if (S.cls) {
+      // 純色表面:UV 改存表面編碼(類別、面內座標、面的尺寸;src/mats/encode.js)→ 合併後的共用材質靠它畫細節
+      const m = local ? this.top().clone().multiply(local) : this.top();
+      if (uvMode === 'native' && g.attributes.uv) encodeSurface(g, m, S.cls, { mode: 'uv', flags: type === 'CylinderGeometry' ? capFlags : () => 0 });
+      else encodeSurface(g, m, S.cls, { mode: 'box' });
+      g.applyMatrix4(m);
+      let l = this.parts.get(S.mat);
+      if (!l) this.parts.set(S.mat, (l = []));
+      l.push(g);
+      return g;
+    }
     if (S.kind === 'pal') {
       if (uvMode === 'box' || !g.attributes.uv) boxUV(g, 'unit');
       else normUV(g);

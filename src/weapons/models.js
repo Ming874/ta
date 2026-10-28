@@ -217,8 +217,39 @@ function std(o, uv = 12, env = 1) {
   m.userData.uv = uv;
   return m;
 }
-function metal(color, rough, metalness, env = 1, bump = 0.6) {
-  return std({ color, roughness: rough, metalness, roughnessMap: METAL, bumpMap: METAL, bumpScale: bump }, 9, env);
+// 邊角磨損(倒角/圓角上的三角形有 wear = 1;src/weapons/models.js markWear):
+//  金屬:表面處理(發藍、磷化、陽極、塗層)磨掉露出亮鋼,粗糙度變低;聚合物:磨亮、變淺
+//  用材質本身的粗糙度圖(拉絲/點刻紋)當破碎遮罩,不會是一條均勻的亮線。每把槍的金屬件共用同一種 program
+function wearHook(shader) {
+  shader.uniforms.uWear = this.userData.wearU;
+  shader.vertexShader = shader.vertexShader
+    .replace('#include <common>', '#include <common>\nattribute float wear;\nvarying float vWear;')
+    .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvWear = wear;');
+  shader.fragmentShader = shader.fragmentShader
+    .replace('#include <common>', '#include <common>\nvarying float vWear;\nuniform vec4 uWear;')
+    .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
+	{
+		float wN = texture2D( roughnessMap, vRoughnessMapUv * 2.3 + 0.31 ).g;
+		float w = vWear * smoothstep( 0.54, 0.68, wN ) * uWear.x; // 一段一段的磨痕,不是整條亮邊
+		if ( uWear.w < 0.5 ) {
+			diffuseColor.rgb = mix( diffuseColor.rgb, vec3( uWear.y ), w );
+			metalnessFactor = mix( metalnessFactor, 1.0, w );
+			roughnessFactor = mix( roughnessFactor, uWear.z, w );
+		} else {
+			diffuseColor.rgb = mix( diffuseColor.rgb, diffuseColor.rgb * 1.7 + 0.015, w * 0.7 );
+			roughnessFactor = mix( roughnessFactor, roughnessFactor * 0.55, w );
+		}
+	}`);
+}
+const wearKey = () => 'wwear1';
+function addWear(m, k = 0.85, bare = 0.5, rough = 0.24, poly = 0) {
+  m.userData.wearU = { value: new THREE.Vector4(k, bare, rough, poly) };
+  m.onBeforeCompile = wearHook;
+  m.customProgramCacheKey = wearKey;
+  return m;
+}
+function metal(color, rough, metalness, env = 1, bump = 0.6, wear = 0.85) {
+  return addWear(std({ color, roughness: rough, metalness, roughnessMap: METAL, bumpMap: METAL, bumpScale: bump }, 9, env), wear);
 }
 
 const M = {
@@ -230,7 +261,7 @@ const M = {
   magSteel: metal(0x383939, 0.55, 0.5, 0.9),
   usgi: metal(0x3c403c, 0.62, 0.35, 0.8),
   dark: std({ color: 0x050505, roughness: 0.9, metalness: 0 }, 12, 0.2),
-  polymer: std({ color: 0x272828, roughness: 0.82, metalness: 0, bumpMap: STIPPLE, bumpScale: 1.2, roughnessMap: STIPPLE }, 40, 0.6),
+  polymer: addWear(std({ color: 0x272828, roughness: 0.82, metalness: 0, bumpMap: STIPPLE, bumpScale: 1.2, roughnessMap: STIPPLE }, 40, 0.6), 0.7, 0, 0, 1),
   polySmooth: std({ color: 0x1c1d1e, roughness: 0.62, metalness: 0.05, bumpMap: METAL, bumpScale: 0.3 }, 14, 0.7),
   rubber: std({ color: 0x141414, roughness: 0.95, metalness: 0, bumpMap: STIPPLE, bumpScale: 0.8 }, 30, 0.3),
   white: std({ color: 0xe9e6da, roughness: 0.5, emissive: 0x2a2a26 }, 12, 0.5),
@@ -301,6 +332,22 @@ function extrudeShape(pts, depth, o) {
     depth: d, bevelEnabled: b > 0, bevelThickness: b, bevelSize: b, bevelOffset: -b, bevelSegments: o.seg ?? 2, curveSegments: o.cs ?? 5,
   });
   geo.translate(0, 0, -d / 2);
+  return markWear(geo, (nx, ny, nz) => Math.abs(nz) > 0.1 && Math.abs(nz) < 0.985); // 倒角面(法線介於側面與正面之間)= 邊角
+}
+
+// 邊角磨損標記(每個三角形一個值,存在 wear 屬性):倒角、圓角這些「邊」上的三角形 = 1
+// 在零件還是局部座標時判斷(之後的旋轉/平移不影響);合併時沒有標記的零件補 0
+function markWear(geo, isEdge) {
+  if (geo.index) geo = geo.toNonIndexed();
+  const p = geo.attributes.position.array, w = new Float32Array(p.length / 3);
+  for (let i = 0; i + 8 < p.length; i += 9) {
+    const ux = p[i + 3] - p[i], uy = p[i + 4] - p[i + 1], uz = p[i + 5] - p[i + 2], vx = p[i + 6] - p[i], vy = p[i + 7] - p[i + 1], vz = p[i + 8] - p[i + 2];
+    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const l = Math.hypot(nx, ny, nz) || 1;
+    nx /= l; ny /= l; nz /= l;
+    if (isEdge(nx, ny, nz)) w[i / 3] = w[i / 3 + 1] = w[i / 3 + 2] = 1;
+  }
+  geo.setAttribute('wear', new THREE.BufferAttribute(w, 1));
   return geo;
 }
 
@@ -328,7 +375,8 @@ function lathe(prof, seg = 24, y = 0, x = 0) {
 }
 
 function box(w, h, d, x, y, f, r = 0.0004) {
-  const geo = r > 0 ? new RoundedBoxGeometry(w, h, d, 2, Math.min(r, w / 2, h / 2, d / 2) * 0.999) : new THREE.BoxGeometry(w, h, d);
+  let geo = r > 0 ? new RoundedBoxGeometry(w, h, d, 2, Math.min(r, w / 2, h / 2, d / 2) * 0.999) : new THREE.BoxGeometry(w, h, d);
+  if (r > 0) geo = markWear(geo, (nx, ny, nz) => Math.max(Math.abs(nx), Math.abs(ny), Math.abs(nz)) < 0.985); // 圓角
   geo.translate(x, y, -f);
   return geo;
 }
@@ -392,7 +440,8 @@ function boxUV(g, s) {
 
 function prep(g) {
   if (g.index) g = g.toNonIndexed();
-  for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal') g.deleteAttribute(k);
+  for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'wear') g.deleteAttribute(k);
+  if (!g.attributes.wear) g.setAttribute('wear', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count), 1));
   g.clearGroups();
   g.scale(100, 100, 100); // toCreasedNormals 以 0.01 單位量化頂點,先放大避免毫米級零件被合併
   g = toCreasedNormals(g, 0.62);

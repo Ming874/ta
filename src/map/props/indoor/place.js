@@ -3,6 +3,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { rng as mkRng } from '../ctx.js';
 import { compose } from './geo.js';
 import { registerMat } from '../../materials.js';
+import { applySurface } from '../../../mats/surface.js';
+import { seedSurface } from '../../../mats/encode.js';
 
 // 房間擺設規劃器:每個區域一個 Room。
 //  - 細網格(0.25m)記錄牆、家具足跡;每次放有碰撞的家具前做可達性檢查(從門口 BFS,殭屍半徑膨脹),
@@ -20,7 +22,7 @@ const DYN_MATS = {
   gloss: new THREE.MeshStandardMaterial({ name: 'pi_dyn_gloss', vertexColors: true, roughness: 0.38, metalness: 0.05 }),
   matte: new THREE.MeshStandardMaterial({ name: 'pi_dyn_matte', vertexColors: true, roughness: 0.82, metalness: 0 }),
 };
-for (const m of Object.values(DYN_MATS)) registerMat(m.name, m); // 進材質庫(三平面 PBR 升級會走訪到)
+for (const m of Object.values(DYN_MATS)) registerMat(m.name, applySurface(m)); // 表面細節(src/mats;模板 UV 帶表面編碼)
 const dynCache = new Map();
 function dynParts(t) {
   let out = dynCache.get(t.name);
@@ -259,8 +261,9 @@ export class Room {
   // 靜態模板 → 區域合併包
   put(t, x, z, yaw = 0, o = {}) {
     const M = o.m || placeM(x, o.y ?? this.y, z, yaw, o.rx || 0, o.rz || 0, o.s ?? 1);
+    const seed = (Math.imul(Math.round(M.elements[12] * 97) ^ Math.round(M.elements[14] * 131) ^ Math.round(M.elements[13] * 53), 0x9e3779b1) >>> 28) & 15; // 每次擺放的細節亂數
     for (const { mat, geo } of t.parts) {
-      const g = geo.clone().applyMatrix4(M);
+      const g = seedSurface(geo.clone().applyMatrix4(M), seed);
       let l = this.kit.get(mat);
       if (!l) this.kit.set(mat, (l = []));
       l.push(g);
@@ -269,7 +272,15 @@ export class Room {
     this.count.statics++;
     const k = t.name.split(/[:#@]/)[0], u = this.st.use || (this.st.use = {});
     u[k] = (u[k] || 0) + t.tris;
+    this._index(t, M);
     return { t, x, z, yaw, y: o.y ?? this.y, M };
+  }
+  // 擺放索引(world.propIndex:截圖/材質檢查工具用來找道具;每筆只有名稱 + 包圍盒中心/尺寸)
+  _index(t, M) {
+    const w = this.ctx.world;
+    if (!w) return;
+    const c = t.bbox.getCenter(_v).applyMatrix4(M), s = t.bbox.max.clone().sub(t.bbox.min);
+    (w.propIndex || (w.propIndex = [])).push({ n: t.name, z: this.zone.id, x: +c.x.toFixed(2), y: +c.y.toFixed(2), zz: +c.z.toFixed(2), w: +s.x.toFixed(2), h: +s.y.toFixed(2), d: +s.z.toFixed(2), yaw: +Math.atan2(M.elements[8], M.elements[10]).toFixed(3) });
   }
   // 有碰撞家具:檢查 → 放置 → 登記碰撞。成功回傳放置資訊,失敗回傳 null
   tryPut(t, x, z, yaw = 0, o = {}) {
@@ -456,6 +467,8 @@ export class Room {
     };
     g.userData.kind = t.name;
     g.name = `pi_dyn_${t.name}`;
+    g.updateMatrix();
+    this._index(t, g.matrix);
     this.ctx.add(g, { static: false, collide: false });
     this.count.dyn++;
     this.st.dyn++;
