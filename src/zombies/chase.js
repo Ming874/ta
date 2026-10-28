@@ -278,7 +278,7 @@ class Chase {
       g.motion?.beat('chase'); // [motion] 邊緣一口紅 + 暗角收緊(追逐結束時放開)
       g.ui?.banner?.('快逃！', '他殺不死 · 跑向閃著綠光的金水商行，或甩掉他躲起來', 3200, 'red');
       const H = g.horror;
-      H?.subs?.show?.({ text: line || '快跑！往綠燈那邊——金水伯的店！', tag: line ? '電話' : 'AM 1207 · 小鈴', cap: true, hold: 2.4 });
+      H?.subs?.show?.({ text: line || g.story?.chaseLine?.() || '快跑！往綠燈那邊——金水伯的店！', tag: line ? '電話' : 'AM 1207 · 小鈴', cap: true, hold: 2.4 }); // [story] 小鈴每次說的不一樣
       sfx.radio?.(true);
       setTimeout(() => sfx.radio?.(false), 2800);
     } else g.ui?.feed?.('追獵者出現了 · 他在追你的隊友', { icon: 'skull', color: '#ff6a5a', ms: 3500 });
