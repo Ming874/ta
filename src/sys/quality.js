@@ -137,6 +137,7 @@ export class Quality {
     this.probe = null;
     this.scale = this.startScale();
     this.commit(before);
+    this.applyGfx(); // 同一個預設檔再選一次也要清掉自動調整加上去的效果等級
     return true;
   }
   set(key, value) {
@@ -247,7 +248,7 @@ export class Quality {
       }
     }
     if (has('bloom') && g.bloom) g.bloom.enabled = !!this.get('bloom');
-    if (has('msaa') && g.composer) {
+    if (has('msaa') && g.composer && !g.gfx) {
       const n = this.get('msaa');
       for (const rt of [g.composer.renderTarget1, g.composer.renderTarget2]) if (rt && rt.samples !== n) { rt.samples = n; rt.dispose(); }
     }
@@ -277,6 +278,7 @@ export class Quality {
         tp.__currentAnisotropy = a;
       }
     }
+    if (!first && has('dynamicRes') && !this.get('dynamicRes') && this.level !== 0) { this.level = 0; this.probe = null; this.applyGfx(); } // 關掉自動調整:回到預設檔的效果等級
     if (first || has('pixelMin') || has('pixelMax') || has('dynamicRes')) this.setScale(this.get('dynamicRes') ? this.scale : this.startScale(), true);
   }
 
@@ -306,6 +308,9 @@ export class Quality {
     if (!g.gfx) return;
     const boost = this.level >= 1 ? 1 : this.level <= -3 ? -1 : 0;
     g.gfx.configure({ ao: this.get('ao') | 0, ssr: this.get('ssr') | 0, vol: this.get('vol') | 0, taa: !!this.get('taa'), msaa: this.get('msaa') | 0, boost });
+    // composer 緩衝:GfxPass 有效果時手持武器在它的多重取樣輸出裡畫 → 之後的全螢幕 pass 不需要 MSAA
+    const n = g.gfx.any ? 0 : this.get('msaa') | 0;
+    if (g.composer) for (const rt of [g.composer.renderTarget1, g.composer.renderTarget2]) if (rt && rt.samples !== n) { rt.samples = n; rt.dispose(); }
     g.pcss?.(!!this.get('pcss'));
   }
 

@@ -20,7 +20,8 @@ vec2 vproj( vec3 P ) { return ( P.xy / ( uProjInfo.xy * - P.z ) - uProjInfo.zw )
 float ign( vec2 p ) { return fract( 52.9829189 * fract( dot( p, vec2( 0.06711056, 0.00583715 ) ) ) ); }
 float bayer4( vec2 p ) { ivec2 q = ivec2( mod( p, 4.0 ) ); int i = q.x + q.y * 4;
   int b[ 16 ] = int[ 16 ]( 0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5 ); return ( float( b[ i ] ) + 0.5 ) / 16.0; }
-vec3 sanitize( vec3 c ) { return vec3( c.r >= 0.0 && c.r < 60.0 ? c.r : 0.0, c.g >= 0.0 && c.g < 60.0 ? c.g : 0.0, c.b >= 0.0 && c.b < 60.0 ? c.b : 0.0 ); }
+// NaN/Inf/負值 → 0;極亮(手電筒貼牆)夾到 59,不再整個變黑(舊的 SanitizeShader 會把 ≥ 60 當成無效值)
+vec3 sanitize( vec3 c ) { return vec3( c.r >= 0.0 && c.r < 1e4 ? min( c.r, 59.0 ) : 0.0, c.g >= 0.0 && c.g < 1e4 ? min( c.g, 59.0 ) : 0.0, c.b >= 0.0 && c.b < 1e4 ? min( c.b, 59.0 ) : 0.0 ); }
 `;
 
 // ---- 半解析度準備:棋盤式取深度(交錯取最近/最遠,邊緣兩邊都有代表)+ 由全解析度深度重建法線 → RGBA16F(距離, 視空間法線)

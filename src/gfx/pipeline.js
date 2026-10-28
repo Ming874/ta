@@ -84,6 +84,11 @@ export class GfxPass extends Pass {
     this.volRT = [rt(2, 2), rt(2, 2)];
     this.compRT = rt(4, 4, NEAREST);
     this.histRT = [rt(4, 4), rt(4, 4)];
+    // 輸出(多重取樣 + 深度):合成/TAA 結果寫進來,手持武器畫在上面(武器的 MSAA 邊緣)→ 複製到 composer 的緩衝。
+    // 這樣 composer 的 rt1/rt2 不用多重取樣:之後清 NaN、鏡頭雨滴、Bloom、PostShader 每一道都少寫 4 倍樣本 + 解析
+    this.outRT = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4, stencilBuffer: false });
+    this.outRT.resolveDepthBuffer = false;
+    this.outRT.texture.name = 'gfx.out';
     this.noise = noise3D();
     this.quad = new FullScreenQuad(null);
     this.pm0 = new THREE.Matrix4(); // 沒抖動的投影
@@ -125,7 +130,8 @@ export class GfxPass extends Pass {
       uInvView: this.mSSR.uniforms.uInvView, uVP: { value: this.vp }, uPrevVP: { value: this.prevVP }, uReset: { value: 1 }, uAlpha: { value: 0.1 },
     }, 'gfx.taa');
     this.mCopy = mk(S.COPY, { tSrc: tex(null), uSharp: { value: 0.18 } }, 'gfx.copy');
-    this.materials = [this.mPrep, this.mAO, this.mAOBlur, this.mDown, this.mSSR, this.mVol, this.mComp, this.mTAA, this.mCopy];
+    this.mBlit = mk(S.COPY, { tSrc: tex(this.outRT.texture), uSharp: { value: 0 } }, 'gfx.blit');
+    this.materials = [this.mPrep, this.mAO, this.mAOBlur, this.mDown, this.mSSR, this.mVol, this.mComp, this.mTAA, this.mCopy, this.mBlit];
     this.configure({});
   }
 
@@ -136,7 +142,7 @@ export class GfxPass extends Pass {
     const before = this.live.taa;
     this.live = { ao: lv('ao'), ssr: lv('ssr'), vol: lv('vol'), taa: !!c.taa };
     if (this.live.taa !== before) this.reset = 2;
-    if (this.sceneRT.samples !== (c.msaa | 0)) { this.sceneRT.samples = c.msaa | 0; this.sceneRT.dispose(); }
+    for (const t of [this.sceneRT, this.outRT]) if (t.samples !== (c.msaa | 0)) { t.samples = c.msaa | 0; t.dispose(); }
     const A = LEVELS.ao[this.live.ao], R = LEVELS.ssr[this.live.ssr], V = LEVELS.vol[this.live.vol];
     if (A) { const u = this.mAO.uniforms; u.uSlices.value = A.slices; u.uSteps.value = A.steps; u.uRadius.value = A.radius; }
     if (R) { const u = this.mSSR.uniforms; u.uSteps.value = R.steps; u.uMaxDist.value = R.dist; u.uMaxRough.value = R.rough; }
@@ -154,7 +160,7 @@ export class GfxPass extends Pass {
     const hw = Math.ceil(w / 2), hh = Math.ceil(h / 2);
     this.sceneRT.setSize(w, h);
     for (const t of [this.prepRT, this.aoRT, this.aoBlurRT, this.pyrRT, this.ssrRT, ...this.volRT]) t.setSize(hw, hh);
-    for (const t of [this.compRT, ...this.histRT]) t.setSize(w, h);
+    for (const t of [this.compRT, this.outRT, ...this.histRT]) t.setSize(w, h);
     this.U.uFull.value.set(w, h);
     this.U.uHalf.value.set(hw, hh);
     this.mSSR.uniforms.uPyrMax.value = Math.max(0, Math.floor(Math.log2(Math.max(hw, hh))) - 2);
@@ -162,7 +168,7 @@ export class GfxPass extends Pass {
   }
 
   dispose() {
-    for (const t of [this.sceneRT, this.prepRT, this.aoRT, this.aoBlurRT, this.pyrRT, this.ssrRT, this.compRT, ...this.volRT, ...this.histRT]) t.dispose();
+    for (const t of [this.sceneRT, this.outRT, this.prepRT, this.aoRT, this.aoBlurRT, this.pyrRT, this.ssrRT, this.compRT, ...this.volRT, ...this.histRT]) t.dispose();
     for (const m of this.materials) m.dispose();
     this.noise.dispose();
   }
@@ -229,6 +235,7 @@ export class GfxPass extends Pass {
     const g = this.game, cam = g.camera, prof = g.quality?.gpu, L = this.live, U = this.U;
     const ac = renderer.autoClear;
     renderer.autoClear = false;
+    if (g.weaponPass) g.weaponPass.enabled = !this.any; // 有效果時手持武器在這個 pass 裡畫(見 outRT)
     // 不需要任何效果(低畫質):直接畫進 composer 的緩衝,省掉一次複製與解析
     if (!this.any) {
       renderer.setRenderTarget(readBuffer);
@@ -292,7 +299,8 @@ export class GfxPass extends Pass {
     cu.uSSR.value = L.ssr ? this.cfg.ssrStrength : 0;
     cu.uVol.value = L.vol ? 1 : 0;
     cu.uDebug.value = this.debug | 0; // game.gfx.debug = 1 AO / 2 SSR / 3 體積光(除錯)
-    draw(this.mComp, L.taa ? this.compRT : readBuffer);
+    const out = this.outRT;
+    draw(this.mComp, L.taa ? this.compRT : out);
     if (L.taa) {
       prof?.pass('gfx:taa');
       const i = this.frame & 1, tu = this.mTAA.uniforms;
@@ -301,8 +309,17 @@ export class GfxPass extends Pass {
       draw(this.mTAA, this.histRT[i]);
       this.mCopy.uniforms.tSrc.value = this.histRT[i].texture;
       this.mCopy.uniforms.uSharp.value = this.cfg.sharp;
-      draw(this.mCopy, readBuffer);
+      draw(this.mCopy, out);
     }
+    // 手持武器:畫在 AO/SSR/體積光/TAA 之後(不受影響),自己的深度、多重取樣邊緣
+    if (g.weaponScene && g.weaponCamera) {
+      prof?.pass('weapon');
+      renderer.setRenderTarget(out);
+      renderer.clearDepth();
+      renderer.render(g.weaponScene, g.weaponCamera);
+    }
+    prof?.pass('gfx:out');
+    draw(this.mBlit, readBuffer);
     this.prevVP.copy(this.vp);
     if (this.reset > 0) this.reset--;
     renderer.autoClear = ac;

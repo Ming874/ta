@@ -123,6 +123,7 @@ export function setupPost(game) {
   wp.clear = false;
   wp.clearDepth = true;
   composer.addPass(wp);
+  game.weaponPass = wp; // 有 GPU 效果時停用(手持武器改在 GfxPass 的多重取樣輸出裡畫,composer 緩衝就不用 MSAA)
   const san = new ShaderPass(SanitizeShader);
   san.hzName = 'sanitize';
   composer.addPass(san);
