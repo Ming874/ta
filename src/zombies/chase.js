@@ -403,7 +403,7 @@ class Chase {
     const behind = _pv.z > 1;
     let x = behind ? -_pv.x : _pv.x, y = behind ? -_pv.y : _pv.y;
     const inView = !behind && Math.abs(x) < 0.9 && Math.abs(y) < 0.86;
-    if (!inView) { const k = 0.84 / Math.max(Math.abs(x), Math.abs(y), 1e-3); x *= k; y *= k; }
+    if (!inView) { const k = Math.min(0.7 / Math.max(Math.abs(x), 1e-3), 0.78 / Math.max(Math.abs(y), 1e-3)); x *= k; y *= k; } // 邊緣:留出文字的寬度(不被切掉)
     const dl = L ? L.levelOfY(S.y + 0.3) - L.levelOfY(p.pos.y + 0.3) : 0;
     const txt = `安全處 · ${KIND_NAME[S.kind] || KIND_NAME.cabinet} · ${Math.max(1, Math.round(m.fd))}m${dl > 0 ? ' ↑樓上' : dl < 0 ? ' ↓樓下' : ''}`;
     if (txt !== m.txt) { m.txt = txt; m.lab.textContent = txt; }
