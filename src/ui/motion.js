@@ -191,8 +191,8 @@ export function installMotion(game) {
       }
     }
     U.fade.value = 1 - keep;
-    const black = U.fade.value > 0.97; // 全黑時:準心、載入條不要浮在黑畫面上
-    if (black !== M._black) { M._black = black; root.classList.toggle('mo-black', black); }
+    const isBlack = U.fade.value > 0.97; // 全黑時:準心、載入條不要浮在黑畫面上
+    if (isBlack !== M._black) { M._black = isBlack; root.classList.toggle('mo-black', isBlack); }
     U.fadeCol.value.setRGB(fadeCol[0], fadeCol[1], fadeCol[2]);
     U.tint.value = tintMax;
     if (tintCol) U.tintCol.value.setRGB(tintCol[0], tintCol[1], tintCol[2]);
