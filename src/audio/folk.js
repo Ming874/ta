@@ -20,7 +20,7 @@
 //   宗教與喪葬的聲音:稀少、低調、完整演出,不拿來當跳嚇,不變調取笑。
 import { A, onTick, emit, gain, filter, tone, burst, metal, rand, pick, clamp, bake, shaper, distTo, around } from './core.js';
 
-const SR = 22050;
+const SR = 22050; // 預設烘焙取樣率;頻寬窄的(收音機、哼唱、誦經)用更低的取樣率省記憶體(配方的 sr)
 
 // ---------- 旋律(簡譜) ----------
 // 記號:1~7 音級、0 休止;' 高八度、, 低八度;- 延長一拍、_ 減半、. 附點;| 只是小節線
@@ -50,8 +50,8 @@ export const MEL = {
   jcn: { name: '一隻鳥仔哮啾啾', pd: '傳統民謠', bpm: 60, key: 62, s: '6, 1 2 3 | 2 1 6,- | 5, 6, 1 2 | 3--- | 5 3 2 1 | 2 3 1 6, | 5, 6, 1 2 | 6,---' },
   bg: { name: '北管風短句', pd: '原創', bpm: 120, key: 74, s: "5 6 1' 6 | 5 3 5- | 3 5 3 2 | 1---" },
   wail: { name: '追逐的嗩吶', pd: '原創', bpm: 144, key: 74, s: "1'- 6_ 5_ 3-" },
-  lament: { name: '哀歌(牽亡歌風)', pd: '原創', bpm: 54, key: 69, s: '6-- 5 | 3- 2 1 | 2-- 3 | 6,--- | 1 2 3- | 5 3 2 1 | 2 1 6,- | 6,---' },
-  jingle: { name: 'AM 1207 台呼', pd: '原創', bpm: 132, key: 72, s: "5 1' 3' 2'- 1'--" },
+  lament: { sr: 16000, name: '哀歌(牽亡歌風)', pd: '原創', bpm: 54, key: 69, s: '6-- 5 | 3- 2 1 | 2-- 3 | 6,--- | 1 2 3- | 5 3 2 1 | 2 1 6,- | 6,---' },
+  jingle: { sr: 12000, name: 'AM 1207 台呼', pd: '原創', bpm: 132, key: 72, s: "5 1' 3' 2'- 1'--" },
 };
 for (const k in MEL) MEL[k].n = parse(MEL[k].s);
 const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
@@ -99,7 +99,7 @@ function iBox(d, t0, N, o = {}) { // 音樂盒:簧片 + 泛音 + 滾筒的小喀
     const f = n.f * (1 - sag * u * u) * ct(rand(-det, det)), g = 0.07 * (1 - 0.35 * u);
     tone(d, t, { f, dur: 1.5, a: 0.002, g });
     tone(d, t, { f: f * 4.07, dur: 0.28, a: 0.001, g: g * 0.28 });
-    if (f * 6.8 < SR * 0.45) tone(d, t, { f: f * 6.8, dur: 0.08, a: 0.001, g: g * 0.11 });
+    if (f * 6.8 < A.ctx.sampleRate * 0.45) tone(d, t, { f: f * 6.8, dur: 0.08, a: 0.001, g: g * 0.11 });
     burst(d, t, { type: 'highpass', f: 4500, dur: 0.006, g: 0.02 });
     if (n.b >= 2 || i % 4 === 1) tone(d, t + 0.003, { f: f / 2, dur: 1.2, a: 0.002, g: g * 0.4 });
   }
@@ -127,6 +127,11 @@ function iCassette(d, t0, N, o = {}) { // 卡帶裡的電子琴伴奏帶:抖音(
   let last = t0;
   for (const tt of ts) { if (tt < last + 0.5) continue; const w = rand(0.06, 0.25), v = rand(0.08, 0.35); drop.gain.setValueAtTime(1, tt); drop.gain.linearRampToValueAtTime(v, tt + 0.025); drop.gain.setValueAtTime(v, tt + 0.025 + w); drop.gain.linearRampToValueAtTime(1, tt + 0.07 + w); last = tt + 0.1 + w; }
 }
+function trem(d, t, f, dur, rate, g, type = 'triangle', decay = 18) {
+  const o = osc(type, f), e = gain(0, d), n = Math.max(8, Math.ceil(dur * 200)), c = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const u = (i / n) * dur, ph = (u * rate) % 1; c[i] = g * Math.exp((-ph * decay) / rate) * (1 - (0.5 * u) / dur); }
+  o.connect(e); e.gain.setValueCurveAtTime(c, t, dur); o.start(t); o.stop(t + dur + 0.05);
+}
 function pluck(d, t, f, g) { tone(d, t, { type: 'triangle', f, dur: 0.4, a: 0.002, g }); tone(d, t, { f: f * 2, dur: 0.14, a: 0.001, g: g * 0.5 }); burst(d, t, { type: 'bandpass', f: 2600, q: 1.5, dur: 0.01, g: g * 0.4 }); }
 function iRadio(d, t0, N) { // AM 收音機裡的老唱片:大廣弦(拉弦,鼻音重)+ 月琴(撥弦、長音滾奏),頻寬只有 380~2700Hz
   const end = t0 + N.len + 1.5;
@@ -142,7 +147,7 @@ function iRadio(d, t0, N) { // AM 收音機裡的老唱片:大廣弦(拉弦,鼻�
     env.gain.setTargetAtTime(0.32, t, 0.02); env.gain.setTargetAtTime(0.22, t + 0.1, 0.12);
     if (!nx || nx.t - (n.t + n.d) > 0.01) env.gain.setTargetAtTime(0, t + n.d - 0.06, 0.03);
     pluck(hp, t, n.f / 2, 0.05);
-    if (n.b >= 2) for (let k = 1; k < n.b * 5; k++) pluck(hp, t + k * 0.1, n.f / 2, 0.022);
+    if (n.b >= 2) trem(hp, t + 0.1, n.f / 2, n.d - 0.15, 10, 0.022); // 月琴長音的滾奏
   });
   chords(N, (tt, root, minor, b) => { if (b === 0 || b === 2) pluck(hp, t0 + tt, hz(N.key - 24 + root + (b === 2 ? 7 : 0)), 0.04); });
   s.start(t0); s.stop(end);
@@ -202,7 +207,7 @@ function woodfish(d, t, g = 0.3) { tone(d, t, { f: 540, f1: 500, glide: 0.05, du
 function bowl(d, t, g = 0.15) { metal(d, t, 690, g, 4.5, [1, 2.71, 5.15, 8.2]); }
 function handbell(d, t, g = 0.12, n = 9) { for (let i = 0; i < n; i++) metal(d, t + i * 0.075 + rand(0, 0.012), 2150 * rand(0.997, 1.003), g * (1 - i / (n * 1.4)), 0.9, [1, 1.52, 2.37, 3.3]); }
 function bowed(d, t, f, dur, g) { // 拉奏的金屬(弓擦鐵片):非諧波分音慢慢長出來
-  [1, 2.41, 3.93, 5.4].forEach((r, i) => { if (f * r < SR * 0.42) tone(d, t + i * 0.2, { f: f * r * rand(0.998, 1.002), a: dur * 0.45, hold: dur * 0.15, dur: dur * 0.5, g: g / (1 + i) }); });
+  [1, 2.41, 3.93, 5.4].forEach((r, i) => { if (f * r < A.ctx.sampleRate * 0.42) tone(d, t + i * 0.2, { f: f * r * rand(0.998, 1.002), a: dur * 0.45, hold: dur * 0.15, dur: dur * 0.5, g: g / (1 + i) }); });
   burst(d, t, { buf: 'pink', type: 'bandpass', f: f * 2.41, q: 25, a: dur * 0.5, dur: dur * 0.5, g: g * 1.5 });
 }
 function prep(d, t, f, g = 0.12) { // 預置鋼琴的低音:不和諧泛音 + 螺絲的嗡嗡震動
@@ -307,7 +312,7 @@ function bedChase(d, t0) { // 追逐:北管通鼓的急促節奏 + 大鑼、低�
     if (bar % 4 === 0) gongBig(d, tb, 0.4, 86);
     if (bar % 4 === 2) cymbal(d, tb, 0.12, 0.9);
     for (let k = 0; k < 8; k++) { const f = hz(38 + OST[k] + (bar >= 4 && k % 4 === 2 ? 12 : 0)); for (const dt of [-8, 8]) tone(ost, tb + (k * sp) / 2, { type: 'sawtooth', f, detune: dt, a: 0.005, hold: sp * 0.25, dur: 0.12, g: 0.05 }); }
-    if (bar >= 4) for (let k = 0; k < 16; k++) for (const f of [587.3, 622.3, 830.6]) tone(hi, tb + k * s16, { type: 'triangle', f: f * rand(0.998, 1.002), a: 0.003, dur: 0.08, g: 0.006 + (bar - 4) * 0.002 });
+    if (bar === 4) for (const f of [587.3, 622.3, 830.6]) trem(hi, tb, f * rand(0.998, 1.002), 16 * sp, 1 / s16, 0.012, 'triangle', 30); // 高音顫音群(後四小節)
   }
   iSuona(d, t0 + 13 * sp, seq('wail'), { g: 0.22, lp: 4500 });
   iSuona(d, t0 + 29 * sp, seq('wail', { key: 73 }), { g: 0.22, lp: 4500 });
@@ -352,35 +357,36 @@ function bedTouqi(d, t0, len, T) { // 頭七:很低的嗡鳴、遠處的低鑼�
 // len 渲染長度(秒);loop:循環床(多渲染 T 秒尾巴疊回開頭);rms 正規化目標
 const RX = {
   box_wcf: { len: () => seq('wcf').len * 1.6 + 2, fn: (d, t) => iBox(d, t, seq('wcf'), { wind: 0.55, det: 12, sag: 0.025 }), rms: 0.06 },
-  cas_uyh: { len: () => seq('uyh').len + 2.5, fn: (d, t) => iCassette(d, t, seq('uyh')), rms: 0.07 },
-  radio_ssk: { len: () => seq('ssk').len + 2, fn: (d, t) => iRadio(d, t, seq('ssk')), rms: 0.07 },
-  radio_dtt: { len: () => seq('dtt').len + 2, fn: (d, t) => iRadio(d, t, seq('dtt')), rms: 0.07 },
-  radio_thgd: { len: () => seq('thgd').len + 2, fn: (d, t) => iRadio(d, t, seq('thgd')), rms: 0.07 },
-  radio_lyml: { len: () => seq('lyml').len + 2, fn: (d, t) => iRadio(d, t, seq('lyml')), rms: 0.07 },
-  radio_uyh: { len: () => seq('uyh', { key: 64 }).len + 2, fn: (d, t) => iRadio(d, t, seq('uyh', { key: 64 })), rms: 0.07 },
+  cas_uyh: { sr: 16000, len: () => seq('uyh').len + 2.5, fn: (d, t) => iCassette(d, t, seq('uyh')), rms: 0.07 },
+  radio_ssk: { sr: 12000, len: () => seq('ssk').len + 2, fn: (d, t) => iRadio(d, t, seq('ssk')), rms: 0.07 },
+  radio_dtt: { sr: 12000, len: () => seq('dtt').len + 2, fn: (d, t) => iRadio(d, t, seq('dtt')), rms: 0.07 },
+  radio_thgd: { sr: 12000, len: () => seq('thgd').len + 2, fn: (d, t) => iRadio(d, t, seq('thgd')), rms: 0.07 },
+  radio_lyml: { sr: 12000, len: () => seq('lyml').len + 2, fn: (d, t) => iRadio(d, t, seq('lyml')), rms: 0.07 },
+  radio_uyh: { sr: 12000, len: () => seq('uyh', { key: 64 }).len + 2, fn: (d, t) => iRadio(d, t, seq('uyh', { key: 64 })), rms: 0.07 },
   jingle: { len: () => 4, fn: (d, t) => { const N = seq('jingle'); iCassette(filter('highpass', 380, 0.8, filter('lowpass', 2800, 0.8, d)), t, N, { wow: 22 }); for (const n of N.notes) metal(d, t + n.t, n.f * 2, 0.02, 1.2, [1, 2.76, 5.4]); }, rms: 0.07 },
-  hum_thh: { len: () => seq('thh', { bpm: 78 }).len + 1.5, fn: (d, t) => iHum(d, t, seq('thh', { bpm: 78 }), { vib: 14, shaky: 10, lp: 1100, f1: 330, f2: 1250, breath: 0.04, fade: 0.5 }), rms: 0.05 },
-  hum_hkk: { len: () => seq('hkk', { bpm: 72 }).len + 1.5, fn: (d, t) => iHum(d, t, seq('hkk', { bpm: 72 }), { vib: 14, shaky: 10, lp: 1100, f1: 330, f2: 1250, breath: 0.04, fade: 0.5 }), rms: 0.05 },
-  hum_wcf: { len: () => seq('wcf', { key: 60, bpm: 56, bars: 4 }).len + 1.5, fn: (d, t) => iHum(d, t, seq('wcf', { key: 60, bpm: 56, bars: 4 }), { vib: 34, vr: 5.9, shaky: 16, lp: 800, f1: 260, f2: 950, breath: 0.09, det: 18, port: 0.06 }), rms: 0.05 },
-  sicmi: { len: () => seq('jcn').len + 2, fn: (d, t) => iSicmi(d, t, seq('jcn')), rms: 0.07 },
+  hum_thh: { sr: 16000, len: () => seq('thh', { bpm: 78 }).len + 1.5, fn: (d, t) => iHum(d, t, seq('thh', { bpm: 78 }), { vib: 14, shaky: 10, lp: 1100, f1: 330, f2: 1250, breath: 0.04, fade: 0.5 }), rms: 0.05 },
+  hum_hkk: { sr: 16000, len: () => seq('hkk', { bpm: 72 }).len + 1.5, fn: (d, t) => iHum(d, t, seq('hkk', { bpm: 72 }), { vib: 14, shaky: 10, lp: 1100, f1: 330, f2: 1250, breath: 0.04, fade: 0.5 }), rms: 0.05 },
+  hum_wcf: { sr: 16000, len: () => seq('wcf', { key: 60, bpm: 56, bars: 4 }).len + 1.5, fn: (d, t) => iHum(d, t, seq('wcf', { key: 60, bpm: 56, bars: 4 }), { vib: 34, vr: 5.9, shaky: 16, lp: 800, f1: 260, f2: 950, breath: 0.09, det: 18, port: 0.06 }), rms: 0.05 },
+  sicmi: { sr: 16000, len: () => seq('jcn').len + 2, fn: (d, t) => iSicmi(d, t, seq('jcn')), rms: 0.07 },
   beiguan: { len: () => (60 / 132 / 2) * 64 + 4, fn: (d, t) => iBeiguan(d, t), rms: 0.08 },
   bell: { len: () => 9, fn: (d, t) => { for (let k = 0; k < 4; k++) handbell(d, t + k * 2.2, 0.12, 8 + k); }, rms: 0.05 },
   lament: { len: () => seq('lament').len + 4, fn: (d, t) => iLament(d, t, seq('lament')), rms: 0.06 },
-  chant: { loop: true, len: () => (60 / 100) * 32, T: 3, fn: (d, t) => iChant(d, t, 32, 0.6), rms: 0.06 },
+  chant: { sr: 16000, loop: true, len: () => (60 / 100) * 32, T: 3, fn: (d, t) => iChant(d, t, 32, 0.6), rms: 0.06 },
   bed_chase: { loop: true, len: () => (60 / 144) * 32, T: 4, fn: (d, t) => bedChase(d, t), rms: 0.1 },
-  bed_blackout: { loop: true, len: () => 24, T: 4, fn: (d, t, L, T) => bedBlackout(d, t, L, T), rms: 0.05 },
-  bed_dread: { loop: true, len: () => 32, T: 5, fn: (d, t, L, T) => bedDread(d, t, L, T), rms: 0.06 },
-  bed_safe: { loop: true, len: () => seq('lyml').len, T: 3, fn: (d, t) => bedSafe(d, t), rms: 0.07 },
+  bed_blackout: { sr: 16000, loop: true, len: () => 24, T: 4, fn: (d, t, L, T) => bedBlackout(d, t, L, T), rms: 0.05 },
+  bed_dread: { sr: 16000, loop: true, len: () => 32, T: 5, fn: (d, t, L, T) => bedDread(d, t, L, T), rms: 0.06 },
+  bed_safe: { sr: 16000, loop: true, len: () => seq('lyml').len, T: 3, fn: (d, t) => bedSafe(d, t), rms: 0.07 },
   bed_touqi: { loop: true, len: () => 24, T: 4, fn: (d, t, L, T) => bedTouqi(d, t, L, T), rms: 0.05 },
 };
 export const FOLK_KEYS = Object.keys(RX);
 
 // ---------- 烘焙快取 ----------
 const FC = new Map(); // key → { b, used, live }
+const PIN = new Set(['bed_chase', 'box_wcf', 'hum_wcf']); // 常駐:事件一來就要能放(共約 5 MB)
 const FQ = [];
 let busy = false;
 const now = () => (A.ctx ? A.ctx.currentTime : 0);
-const idle = (fn) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(fn, { timeout: 300 }) : setTimeout(fn, 30));
+const idle = (fn) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(fn, { timeout: 1500 }) : setTimeout(fn, 30)); // 等真正的閒置時間(建圖一次 2~15ms)
 function post(b, R, len) { // 循環:尾巴疊回開頭;一次性:去掉尾端靜音;最後正規化到目標 RMS(峰值限制在 0.9)
   const sr = b.sampleRate;
   let n = b.length;
@@ -405,8 +411,9 @@ function pumpF() {
     const len = R.len(), T = R.T ?? 0;
     let p;
     const c0 = performance.now();
-    try { p = bake(len + T + (R.loop ? 0 : 0.5), (d, t) => R.fn(d, t, len, T), 1, SR); } catch (err) { if (import.meta.env?.DEV) console.warn('[folk]', key, err); FC.delete(key); busy = false; pumpF(); return; }
-    FS.bakeMs += performance.now() - c0;
+    try { p = bake(len + T + (R.loop ? 0 : 0.5), (d, t) => R.fn(d, t, len, T), 1, R.sr || SR); } catch (err) { if (import.meta.env?.DEV) console.warn('[folk]', key, err); FC.delete(key); busy = false; pumpF(); return; }
+    const ms = performance.now() - c0;
+    FS.bakeMs += ms; FS.ms[key] = +ms.toFixed(1);
     p.then((b) => { if (FC.get(key) === e && A.ctx) { e.b = post(b, R, len); FS.baked++; } busy = false; pumpF(); }, () => { FC.delete(key); busy = false; pumpF(); });
   });
 }
@@ -459,7 +466,7 @@ export function stopFolk(L, sec = 1.2, wind = false) {
 function farPos(dist, ang = rand(0, Math.PI * 2)) { const L = A.L; return { x: L.x + Math.cos(ang) * dist, y: L.y + rand(0, 4), z: L.z + Math.sin(ang) * dist }; }
 
 // ---------- 情境 ----------
-export const FS = { blackUntil: -1, touqiUntil: -1, baked: 0, bakeMs: 0, cues: [], last: {} };
+export const FS = { blackUntil: -1, touqiUntil: -1, baked: 0, bakeMs: 0, ms: {}, cues: [], last: {} };
 const BLACK = new Set(['blackout', 'lightsDie', 'corridorOut', 'blackoutChange', 'darkFollow']);
 const C = { H: null, off: null, next: {}, t: 0, zone: null, theme: '', chant: null, cas: null, hum: null };
 const CD = { hum: [150, 230], ama: [80, 120], cassette: [240, 380], chant: [200, 320], beiguan: [260, 400], sicmi: [480, 720], bell: [200, 320] };
@@ -560,7 +567,15 @@ function scene(n) {
   if (!g || g.state !== 'playing' || !d || d.level === 'off' || (g.net && g.net.pvp)) { chantStop(1.5); return; }
   const quiet = d.silent && !d.chasing && !d.bigActive && d.tension < 0.3;
   const z = zoneHere(), th = (z && z.theme) || '';
+  if (th !== C.theme) { // 換區域:先烘焙這裡可能用到的(閒置時間、低優先權)
+    if (RE.ward.test(th)) folkPrebake(['hum_thh', 'hum_hkk']);
+    else if (RE.chant.test(th)) folkPrebake(['chant']);
+    else if (A.outdoor || RE.outdoor.test(th)) folkPrebake(['beiguan', 'bell', 'sicmi']);
+  }
   C.zone = z; C.theme = th;
+  const H = g.horror;
+  if (H && H.quiet >= 5 && !C.warmT) { C.warmT = true; folkPrebake(['lament', 'bed_touqi']); } // 頭七快到了
+  if (d.act >= 2 && !C.warmB) { C.warmB = true; folkPrebake(['bed_blackout']); }
   // 誦經:人在太平間/納骨堂/禮拜堂、安靜時才有;離開、開打或追逐就淡出
   if (C.chant && (!quiet || !z || z.id !== C.chant.zone)) { chantStop(quiet ? 3 : 1.2); cool('chant', n); }
   if (!quiet) { if (C.cas && !d.silent) { stopFolk(C.cas, 1.5); C.cas = null; } return; }
@@ -605,7 +620,7 @@ onTick((n) => {
   C.t = n;
   bind();
   try { scene(n); } catch (e) { if (import.meta.env?.DEV) console.warn('[folk scene]', e); }
-  if (((n | 0) % 10) === 0) for (const [k, e] of FC) if (e.b && !e.live && n - e.used > 150) FC.delete(k); // 150 秒沒用就釋放
+  if (((n | 0) % 10) === 0) for (const [k, e] of FC) if (e.b && !e.live && !PIN.has(k) && n - e.used > 150) FC.delete(k); // 150 秒沒用就釋放
 });
 
 // 換地圖 / 重開:停掉所有正在播的、清掉冷卻
@@ -613,11 +628,11 @@ export function folkReset() {
   for (const L of LIVE) stopFolk(L, 0.2);
   LIVE.length = 0;
   chantStop(0.3);
-  C.cas = null; C.next = {};
+  C.cas = null; C.next = {}; C.warmT = C.warmB = false;
   FS.blackUntil = FS.touqiUntil = -1;
 }
 export const folkTheme = () => C.theme;
-export const folkState = () => ({ cache: [...FC].map(([k, e]) => `${k}${e.b ? `:${e.b.duration.toFixed(1)}s` : '(烘焙中)'}${e.live ? `×${e.live}` : ''}`), queued: FQ.length, live: LIVE.filter((L) => !L.done).map((L) => L.tag), chant: !!C.chant, cassette: !!C.cas, theme: C.theme, cues: FS.cues.slice(-8), blackout: FS.blackUntil > now(), touqi: FS.touqiUntil > now(), baked: FS.baked, bakeMs: +FS.bakeMs.toFixed(1) });
+export const folkState = () => ({ cache: [...FC].map(([k, e]) => `${k}${e.b ? `:${e.b.duration.toFixed(1)}s` : '(烘焙中)'}${e.live ? `×${e.live}` : ''}`), queued: FQ.length, live: LIVE.filter((L) => !L.done).map((L) => L.tag), chant: !!C.chant, cassette: !!C.cas, theme: C.theme, cues: FS.cues.slice(-8), ms: FS.ms, blackout: FS.blackUntil > now(), touqi: FS.touqiUntil > now(), baked: FS.baked, bakeMs: +FS.bakeMs.toFixed(1) });
 // 讓其他模組(劇情)直接放:kind 'ama' | 'child' | 'box' | 'lament' | 'bell' | 'beiguan' | 'sicmi' | 'cassette'
 export function folkCue(kind, pos) {
   if (kind === 'ama') return !!ama(pos);
