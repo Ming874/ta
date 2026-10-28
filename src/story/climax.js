@@ -113,7 +113,7 @@ export function installClimax(game, S) {
   function ringHo(force) {
     if (run.hoRang && !force) return false;
     const list = (X.phones || []).filter((P) => P.state === 'idle');
-    if (!list.length) return false;
+    if (!list.length) { if (!force) { run.hoRang = true; run.hoState = 'none'; } return false; } // 沒有電話可以響:不讓金水伯一直等
     const q = p();
     let best = null, bd = Infinity;
     for (const P of list) { let d = Math.hypot(P.pos.x - q.x, P.pos.z - q.z) + Math.abs(P.pos.y - q.y) * 6; try { const f = game.world.flowDistance(P.pos.x, P.pos.y, P.pos.z); if (Number.isFinite(f)) d = Math.min(d, f + Math.abs(P.pos.y - q.y) * 2); } catch { /* 略 */ } if (d < bd) { bd = d; best = P; } }
@@ -170,7 +170,7 @@ export function installClimax(game, S) {
       if (!run.guardDead && game.round === run.wave && silent) guardDown(); // 沒抓到(或被別的方式解決):那一波結束就算
     }
     // 何董:守燈員倒下之後的下一次靜默
-    if (has('h.boss10') && !run.hoRang && !has('h.evac') && !game.story?.ending?.active && silent && game.phase === 'shop' && (Dr?.roundT ?? 9) > 5 && !h?.memories?.state?.cur && !game.net?.pvp) ringHo();
+    if (has('h.boss10') && !run.hoRang && !has('h.evac') && !has('h.truck') && !game.story?.ending?.active && silent && game.phase === 'shop' && (Dr?.roundT ?? 9) > 5 && !h?.memories?.state?.cur && !game.net?.pvp) ringHo();
     if (run.hoState === 'ringing' && run.hoP && run.hoP.state === 'idle' && game.time - run.hoT > 2) { run.hoState = 'ignored'; flag('h.ho.ignored'); X.after(2, () => line(game, 'xl', '……不接也好。')); }
     if (run.hoState === 'talk' && run.hoP && run.hoP._ended && run.hoP.state === 'call') { // 他說完了(聽筒還在耳邊)
       run.hoState = 'heard'; flag('h.ho.heard'); D()?.addCard?.('hc.20', { by: 'call' });

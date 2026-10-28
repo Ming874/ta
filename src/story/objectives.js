@@ -134,7 +134,7 @@ export function installObjectives(game) {
       X()?.tick?.((dt) => {
         if (run.evac || game.state !== 'playing') return false;
         out = c.zone === 'f2_ward_207' ? 0 : out + dt;
-        const ho = game.story?.climax?.run, hoBusy = !!ho && !!O.has('h.boss10') && (!ho.hoRang || ho.hoState === 'ringing' || ho.hoState === 'talk') && game.time - t0 < 120; // 何董的電話先講完
+        const ho = game.story?.climax?.run, hoBusy = !!ho && !!O.has('h.boss10') && (!ho.hoRang || ho.hoState === 'ringing' || ho.hoState === 'talk') && game.time - t0 < 300; // 何董的電話先講完(他在守燈員倒下之後的第一次靜默打來;找不到電話就不等)
         if (!hoBusy && (D()?.has?.('hc.30') || out > 4 || game.time - t0 > 30)) { later(ho?.hoRang ? 9.5 : D()?.has?.('hc.30') ? 5 : 1.5, go); return false; } // 電話之後讓小鈴先說完
         return true;
       });
