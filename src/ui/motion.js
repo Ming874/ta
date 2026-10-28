@@ -82,6 +82,7 @@ export function installMotion(game) {
     },
     letterbox(on, ms = 900) {
       const lb = ensureLetterbox();
+      root.classList.toggle('mo-cine', !!on); // 電影模式:準心收起來
       lb.style.setProperty('--mo-lb-ms', `${M.reduced ? Math.min(ms, 160) : ms}ms`);
       lb.classList.toggle('on', !!on);
       return M.wait(ms);
@@ -190,6 +191,8 @@ export function installMotion(game) {
       }
     }
     U.fade.value = 1 - keep;
+    const black = U.fade.value > 0.97; // 全黑時:準心、載入條不要浮在黑畫面上
+    if (black !== M._black) { M._black = black; root.classList.toggle('mo-black', black); }
     U.fadeCol.value.setRGB(fadeCol[0], fadeCol[1], fadeCol[2]);
     U.tint.value = tintMax;
     if (tintCol) U.tintCol.value.setRGB(tintCol[0], tintCol[1], tintCol[2]);
@@ -281,8 +284,9 @@ export function installMotion(game) {
     [...inner.children].forEach((c, i) => c.style.setProperty('--i', i));
     document.body.appendChild(el);
     const R = M.reduced;
-    const fadeIn = R ? 160 : o.fadeIn ?? 1200, fadeOut = R ? 160 : o.fadeOut ?? 800;
-    const hold = o.hold ?? Math.max(3500, ((o.title || '').length + (o.sub || '').length + (o.lines || []).reduce((s, l) => s + (typeof l === 'string' ? l.length : 20), 0)) * 250);
+    const ms = (v) => (v != null && v < 50 ? v * 1000 : v); // 秒或毫秒都收(< 50 視為秒)
+    const fadeIn = R ? 160 : ms(o.fadeIn) ?? 1200, fadeOut = R ? 160 : ms(o.fadeOut) ?? 800;
+    const hold = ms(o.hold) ?? Math.max(3500, ((o.title || '').length + (o.sub || '').length + (o.lines || []).reduce((s, l) => s + (typeof l === 'string' ? l.length : 20), 0)) * 250);
     el.style.setProperty('--mo-cin', `${fadeIn}ms`);
     el.style.setProperty('--mo-outms', `${fadeOut}ms`);
     let done, timer = 0, gone = false;

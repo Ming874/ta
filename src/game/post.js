@@ -60,11 +60,12 @@ export const PostShader = {
         c.rgb *= mix(1.0, mix(0.6, 1.0, v), past * 0.7);
         c.rgb += (hash(vUv * 480.0 + fract(time * 7.3)) - 0.5) * 0.065 * past;
       }
-      if (dawn > 0.001) { // 天亮:先冷(藍灰),再暖(粉金)、暗部抬起
+      if (dawn > 0.001) { // 天亮:先冷(藍灰的天光),再暖:亮部金、暗部抬成淡紫藍(不是紅褐),整體亮一點
         float ld = dot(c.rgb, vec3(0.299, 0.587, 0.114));
         float a = smoothstep(0.0, 0.45, dawn), b = smoothstep(0.35, 1.0, dawn);
-        c.rgb = mix(c.rgb, c.rgb * vec3(0.84, 0.93, 1.14), a * (1.0 - b));
-        c.rgb = mix(c.rgb, c.rgb * vec3(1.22, 1.06, 0.95) + vec3(0.035, 0.018, 0.022) * (1.0 - ld), b);
+        c.rgb = mix(c.rgb, c.rgb * vec3(0.86, 0.94, 1.12) + vec3(0.0, 0.006, 0.016), a * (1.0 - b));
+        vec3 warm = c.rgb * mix(vec3(1.04, 1.02, 1.04), vec3(1.16, 1.04, 0.9), smoothstep(0.12, 0.65, ld)) + vec3(0.022, 0.024, 0.04) * (1.0 - ld);
+        c.rgb = mix(c.rgb, warm * 1.08, b);
       }
       if (crt > 0.001) { // 掃描線 + 映像管的亮部暈開
         float sl = 0.5 + 0.5 * cos(gl_FragCoord.y * 2.0944);

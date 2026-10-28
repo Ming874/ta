@@ -39,7 +39,8 @@
 #menu.mo-nosig .mn-osd { opacity: 0; transition: none; }
 /* 開場/選單/倒下時:準心與載入條不要浮在黑畫面上 */
 #hud:not(.on) ~ #wx-reticle, #hud:not(.on) ~ #wx-dot, #hud.mo-hold ~ #wx-reticle, #hud.mo-hold ~ #wx-dot, .mo-cold #wx-reticle { opacity: 0 !important; }
-.mo-cold #hzload { opacity: 0 !important; transition: opacity .2s; }
+.mo-cold #hzload, .mo-black #hzload, .mo-cine #hzload { opacity: 0 !important; transition: opacity .2s; }
+.mo-black #wx-reticle, .mo-black #wx-dot, .mo-cine #wx-reticle, .mo-cine #wx-dot { opacity: 0 !important; }
 @keyframes mo-rise { from { opacity: 0; translate: 0 10px; } }
 @keyframes mo-fade { from { opacity: 0; } }
 @keyframes mo-rule { from { opacity: 0; scale: 0 1; } }
