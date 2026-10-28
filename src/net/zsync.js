@@ -278,7 +278,7 @@ export class ZombieSync {
     this.byId.set(id, z);
     const info = this.info.get(id);
     if (info) this.applyInfo(z, info);
-    if (type === 'brute') g.ui.banner('巨屍出現', '牠會咆哮後衝鋒 · 引牠撞牆再攻擊頭部', 3500, 'red');
+    if (type === 'brute') g.ui.banner('巨屍出現', '他會咆哮後衝鋒 · 引他撞牆再打頭', 3500, 'red');
     return z;
   }
   toProxy(z) {

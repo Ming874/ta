@@ -287,8 +287,8 @@ export class NetSession {
     // 重新連上:伺服器在 welcome 告訴我們座位有沒有保住(超過保留時間就結束這場);保住的話緊接著送 joined(房間現況)
     on('reconnected', (m) => {
       clearTimeout(this._resumeT);
-      if (!m.resumed) { this.lobby.matchLost('重新連線失敗:座位已釋出'); return; }
-      this._resumeT = setTimeout(() => { if (this.active) this.lobby.matchLost('重新連線失敗:座位已釋出'); }, 5000);
+      if (!m.resumed) { this.lobby.matchLost('重新連線失敗：座位已釋出'); return; }
+      this._resumeT = setTimeout(() => { if (this.active) this.lobby.matchLost('重新連線失敗：座位已釋出'); }, 5000);
     });
     on('joined', (m) => {
       if (!m.resumed || !this.active) return;
@@ -370,7 +370,7 @@ export class NetSession {
     this.hostSlot = id;
     this.room.host = id;
     if (this.isHost && !wasHost) {
-      this.hud.feed('你成為新的房主(接手模擬殭屍與回合)', 'host');
+      this.hud.feed('你成為新的房主（接手模擬殭屍與回合）', 'host');
       this.zs.becomeHost();
       this.mode.becomeHost?.();
     } else if (!this.isHost && wasHost) {
