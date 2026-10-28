@@ -4,6 +4,7 @@ import { createKit } from './kit.js';
 import { setupDoors } from './doors.js';
 import { placeAll } from './place.js';
 import { TIP_TEXT } from '../ui/tips.js';
+import { upgradeWorldSurfaces, updateSurfaces } from '../mats/surface.js';
 
 // 互動系統入口:flow.js buildGameplayWorld() 呼叫(在 world.buildNav 之前 → 互動物件的碰撞盒會進導航)。
 // 換地圖時 disposeGameplayWorld() → game.interact.disposeMap(),再重新 buildInteract。
@@ -39,6 +40,8 @@ export function buildInteract(game) {
   try { doors = setupDoors(game, ix, { leaves: H.doorLeaves || [], leafApi: H.leaves || null, fixtures: H.lights?.fixtures || null, lockSpecs: (pack?.items || []).filter((i) => i.kind === 'lock') }); } catch (e) { console.warn('[interact] doors', e); }
   try { placed = placeAll(game, ix, kit, pack); } catch (e) { console.warn('[interact] place', e); }
   const nStatic = kit.finish();
+  try { upgradeWorldSurfaces(game); } catch (e) { console.warn('[mats]', e); } // 道具合併後的共用材質加上表面細節(預編譯之前)
+  ix.tick((dt) => { updateSurfaces(game, dt); return true; }); // 室內反射亮度跟著附近的燈(src/mats/surface.js)
   ix.map = { kit, doors, api: placed?.api, stats: placed?.stats, pack, nStatic };
   ix.tick(() => { if (game.state === 'playing' && game.phase === 'shop' && !ix.flags.has('h.shop.open')) ix.flags.set('h.shop.open', true); return true; }); // 本局第一次開店(補給站的電話會響)
   ix.doors = doors;

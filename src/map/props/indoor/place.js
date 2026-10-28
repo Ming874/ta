@@ -3,6 +3,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { rng as mkRng } from '../ctx.js';
 import { compose } from './geo.js';
 import { registerMat } from '../../materials.js';
+import { applySurface } from '../../../mats/surface.js';
+import { seedSurface } from '../../../mats/encode.js';
 
 // 房間擺設規劃器:每個區域一個 Room。
 //  - 細網格(0.25m)記錄牆、家具足跡;每次放有碰撞的家具前做可達性檢查(從門口 BFS,殭屍半徑膨脹),
@@ -20,7 +22,7 @@ const DYN_MATS = {
   gloss: new THREE.MeshStandardMaterial({ name: 'pi_dyn_gloss', vertexColors: true, roughness: 0.38, metalness: 0.05 }),
   matte: new THREE.MeshStandardMaterial({ name: 'pi_dyn_matte', vertexColors: true, roughness: 0.82, metalness: 0 }),
 };
-for (const m of Object.values(DYN_MATS)) registerMat(m.name, m); // 進材質庫(三平面 PBR 升級會走訪到)
+for (const m of Object.values(DYN_MATS)) registerMat(m.name, applySurface(m)); // 表面細節(src/mats;模板 UV 帶表面編碼)
 const dynCache = new Map();
 function dynParts(t) {
   let out = dynCache.get(t.name);
@@ -259,8 +261,9 @@ export class Room {
   // 靜態模板 → 區域合併包
   put(t, x, z, yaw = 0, o = {}) {
     const M = o.m || placeM(x, o.y ?? this.y, z, yaw, o.rx || 0, o.rz || 0, o.s ?? 1);
+    const seed = (Math.imul(Math.round(M.elements[12] * 97) ^ Math.round(M.elements[14] * 131) ^ Math.round(M.elements[13] * 53), 0x9e3779b1) >>> 28) & 15; // 每次擺放的細節亂數
     for (const { mat, geo } of t.parts) {
-      const g = geo.clone().applyMatrix4(M);
+      const g = seedSurface(geo.clone().applyMatrix4(M), seed);
       let l = this.kit.get(mat);
       if (!l) this.kit.set(mat, (l = []));
       l.push(g);

@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { CLASS } from '../mats/classes.js';
+import { encodeSurface, seedSurface, FLAG_V } from '../mats/encode.js';
+import { applySurface } from '../mats/surface.js';
 
 // 互動物件的建模工具:零件用局部座標描述(公尺;原點在地面/牆面,+Z 朝房間內),顏色烘進頂點色。
 //  靜態零件 → 依「樓層 × 材質」合併成少數幾個網格(整層互動物件的外殼 ≈ 6 個 draw call)
@@ -25,9 +28,12 @@ export const G = {
 const col = (c) => (c instanceof THREE.Color ? c : new THREE.Color(c));
 
 // ---------- 零件收集器 ----------
+// 材質別名(wood/paint/gloss/rust)合併時歸到基本材質(draw call 不變),但保留表面類別(src/mats:木紋、掉漆、亮面、鏽)
+const ixBase = (mat) => mat?.userData?.ixBase || mat;
+const ixCls = (mat) => mat?.userData?.ixCls || 0;
 export class Model {
   constructor() { this.parts = []; }
-  add(mat, color, g, m) { this.parts.push({ mat, color: col(color), g, m }); return this; }
+  add(mat, color, g, m) { this.parts.push({ mat: ixBase(mat), cls: ixCls(mat), color: col(color), g, m }); return this; }
   // 方塊:中心 (x,y,z)、尺寸 (sx,sy,sz)、旋轉 (rx,ry,rz)
   box(mat, color, x, y, z, sx, sy, sz, rx = 0, ry = 0, rz = 0) { return this.add(mat, color, G.box(), T(x, y, z, rx, ry, rz, sx, sy, sz)); }
   // 底對齊的方塊(y0 = 底面)
@@ -49,9 +55,18 @@ export class Model {
   }
   mats() { return [...new Set(this.parts.map((p) => p.mat))]; }
 }
+// 單位零件的表面編碼方式:盒子/平面 = 原生 UV 四邊都是邊;圓柱 = 側面上下兩端是邊、端蓋沒有;球/環 = 沒有邊
+const capFlags = (nx, ny, nz) => (Math.abs(ny) > Math.max(Math.abs(nx), Math.abs(nz)) ? 0 : FLAG_V);
+const flagsOf = (g) => (g.type === 'BoxGeometry' || g.type === 'PlaneGeometry' ? null : g.type === 'CylinderGeometry' ? capFlags : () => 0);
 function bake(p, m) {
   const g = (p.g.index ? p.g.toNonIndexed() : p.g.clone());
   for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
+  if (p.cls && g.attributes.uv) {
+    const f = flagsOf(p.g);
+    encodeSurface(g, m, p.cls, { mode: 'uv', flags: f || ((nx, ny, nz) => 3) });
+    const e = m.elements;
+    seedSurface(g, (Math.imul(Math.round(e[12] * 97) ^ Math.round(e[14] * 131), 0x9e3779b1) >>> 28) & 15);
+  }
   g.applyMatrix4(m);
   const n = g.attributes.position.count, c = new Float32Array(n * 3);
   for (let i = 0; i < n * 3; i += 3) { c[i] = p.color.r; c[i + 1] = p.color.g; c[i + 2] = p.color.b; }
@@ -118,12 +133,15 @@ export const HAND = '"DFKai-SB", "BiauKai", "KaiTi", "Microsoft JhengHei", serif
 let MATS = null;
 export function mats() {
   if (MATS) return MATS;
-  const std = (o) => new THREE.MeshStandardMaterial({ vertexColors: true, ...o });
+  const std = (o) => applySurface(new THREE.MeshStandardMaterial({ vertexColors: true, ...o }));
   const matte = std({ roughness: 0.82, metalness: 0, name: 'ix:matte' }); // 木頭、布、紙、粗塑膠
   const plastic = std({ roughness: 0.42, metalness: 0, name: 'ix:plastic' }); // 塑膠殼、烤漆、亮面
   const metal = std({ roughness: 0.45, metalness: 0.72, name: 'ix:metal' }); // 不鏽鋼、鐵件、生鏽的鐵
+  // 別名:同一個基本材質(合併/BatchedMesh 照舊),表面類別不同;直接拿來建網格也可以(同一個 program)
+  const alias = (base, cls, name) => { const a = applySurface(base.clone()); a.name = name; a.userData.ixBase = base; a.userData.ixCls = CLASS[cls]; return a; };
+  matte.userData.ixCls = CLASS.matte; plastic.userData.ixCls = CLASS.plastic; metal.userData.ixCls = CLASS.ixmetal;
   MATS = {
-    matte, wood: matte, plastic, paint: plastic, gloss: plastic, metal, rust: metal,
+    matte, wood: alias(matte, 'wood', 'ix:wood'), plastic, paint: alias(plastic, 'enamel', 'ix:paint'), gloss: alias(plastic, 'gloss', 'ix:gloss'), metal, rust: alias(metal, 'rust', 'ix:rust'),
     glass: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.06, metalness: 0.1, transparent: true, opacity: 0.32, depthWrite: false, name: 'ix:glass' }),
     glow: new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: true, name: 'ix:glow' }), // 常亮的小燈(不會變)
     led: new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: true, name: 'ix:led' }), // 指示燈池:亮度用 instanceColor
@@ -152,7 +170,7 @@ function uvPlane(uv) { // 單位平面,UV 換成圖集區塊
 // 每個零件一個實例(矩陣 + 顏色),逐實例視錐剔除。建好時每個實例都先寫一次顏色 → shader 一開始就是「有實例顏色」版本(開機預編譯,不會執行期重編)。
 export class Pool {
   constructor(kit, name, model, mat, { shadow = false } = {}) {
-    this.kit = kit; this.name = name; this.model = model; this.mat = mat; this.shadow = shadow;
+    this.kit = kit; this.name = name; this.model = model; this.mat = ixBase(mat); this.shadow = shadow;
     this.items = []; // { li, m: Matrix4, c: Color|null, bm: BatchedMesh, k: 實例 id }
     this.geo = null;
   }
