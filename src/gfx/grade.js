@@ -111,7 +111,9 @@ export function installGrade(game, pass) {
       tgt.multiplyScalar(1 / s);
       w.lerp(tgt, 1 - Math.exp(-dt * 1.4));
       u.uLutW.value.copy(w);
-      u.uLut.value = st.enabled ? st.lut : 0;
+      // 回憶(past)與結局天亮(dawn)有自己設計好的調色:那時候分區 LUT 淡出,不疊上去
+      const P0 = game.post?.uniforms, own = P0 ? Math.max(P0.past?.value || 0, (P0.dawn?.value || 0) * 0.8) : 0;
+      u.uLut.value = st.enabled ? st.lut * (1 - Math.min(1, own)) : 0;
       u.uGrain.value = st.enabled ? st.grain : 0;
       u.uTime.value = (game.time || 0) % 100;
       u.toneMappingExposure.value = game.renderer.toneMappingExposure;
