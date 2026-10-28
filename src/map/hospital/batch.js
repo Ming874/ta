@@ -11,6 +11,14 @@ import { ENC_MIN } from '../../mats/encode.js';
 
 const _v = new THREE.Vector3(), _n = new THREE.Vector3(), _m3 = new THREE.Matrix3(), _box = new THREE.Box3(), _sph = new THREE.Sphere();
 const _frustum = new THREE.Frustum(), _pm = new THREE.Matrix4();
+// 視錐測試多留 CULL_PAD 公尺:鏡頭小幅晃動(呼吸、後座力、走路)時實例清單不會每幀變動
+// (每次變動都要重建 multi-draw 清單 / 重寫實例矩陣並上傳);多畫的只是畫面邊緣外一點點
+const CULL_PAD = 2.5;
+function inFrustum(f, s) {
+  const c = s.center, r = -(s.radius + CULL_PAD), P = f.planes;
+  for (let i = 0; i < 6; i++) { const p = P[i]; if (p.normal.x * c.x + p.normal.y * c.y + p.normal.z * c.z + p.constant < r) return false; }
+  return true;
+}
 
 class GrowF {
   constructor(n = 256) { this.a = new Float32Array(n); this.n = 0; }
@@ -445,7 +453,7 @@ export function createBatchView({ meshes, insts, vis, moon, dyn = null, comp = n
       nOn = 0;
       for (let k = 0; k < nCand; k++) {
         const i = cand[k], it = insts[i];
-        const on = _frustum.intersectsSphere(it.sphere);
+        const on = inFrustum(_frustum, it.sphere);
         if (on !== it.on) { it.on = on; it.bm.setVisibleAt(it.id, on); }
         if (on) { visCnt[instBM[i]]++; onList[nOn++] = i; }
       }
@@ -593,7 +601,7 @@ export function createDynBatch({ groups, parent, moon }) {
           it.bm.setMatrixAt(it.id, mw);
           it.sphere.copy(it.r0).applyMatrix4(mw);
         }
-        const on = gs.shown && frustum.intersectsSphere(it.sphere);
+        const on = gs.shown && inFrustum(frustum, it.sphere);
         if (on !== it.on) { it.on = on; it.bm.setVisibleAt(it.id, on); }
         if (on) cnt.set(it.bm, cnt.get(it.bm) + 1);
       }
@@ -676,7 +684,7 @@ export function createCompactor({ parent, test, vis, L }) {
         const idx = every || !gr.wantIdx ? null : gr.wantIdx, cntI = idx ? idx.length : items.length;
         for (let q = 0; q < cntI; q++) {
           const i = idx ? idx[q] : q, it = items[i];
-          if (it.dead || !(every || (it.want && frustum.intersectsSphere(it.sphere)))) continue;
+          if (it.dead || !(every || (it.want && inFrustum(frustum, it.sphere)))) continue;
           if (same && (n >= gr.n || list[n] !== i)) same = false;
           list[n++] = i;
         }
