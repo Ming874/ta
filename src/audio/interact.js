@@ -23,6 +23,7 @@
 import { A, emit, onTick, gain, filter, burst, tone, metal, bubble, shaper, playBuf, curve, duck, baked, rand, pick, clamp, distTo, levelOf } from './core.js';
 import { click, clack, slide, squeal } from './foley.js';
 import * as S from './samples.js';
+import { MEL as FMEL } from './folk.js';
 
 const DEV = import.meta.env?.DEV;
 const warn = (e) => { if (DEV) console.warn('[audio/ix]', e); };
@@ -512,7 +513,7 @@ function speak(h, segs, V, F) {
 }
 
 // ---------- 樂器 ----------
-const MEL = [[7, 1], [12, 1], [11, 1], [7, 1], [8, 1], [7, 1], [3, 1], [5, 1], [7, 1], [5, 1], [3, 1], [2, 1], [3, 1], [-1, 1], [0, 2]]; // A 小調的哀傷小曲(半音,拍)
+const MEL = FMEL.wcf.n.filter((x) => x[0] !== null).map(([st, b]) => [st - 5, b]); // 《望春風》(鄧雨賢 1933,只用旋律;半音、拍)
 const LUL = [[4, 0.5], [4, 0.5], [7, 2], [4, 0.5], [4, 0.5], [7, 2], [4, 0.5], [7, 0.5], [12, 1], [11, 1.5], [9, 0.5], [9, 1], [7, 1]]; // 布拉姆斯搖籃曲開頭
 function combNote(d, t, f, g) { // 音梳簧片:基音 + 兩個不諧和的高次振動
   tone(d, t, { f, dur: 1.1, a: 0.002, g });

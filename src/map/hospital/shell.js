@@ -108,16 +108,33 @@ export function buildFloors(K) {
       const t = xf(zone, key);
       const x0 = c * L.CELL, z0 = r * L.CELL, x1 = x0 + L.CELL, z1 = z0 + L.CELL;
       const tint = zone ? zoneTint(zone, { up: key }) : [1, 1, 1];
-      const edge = (px, pz) => { // 角點旁四格有牆 → 暗一點(灰塵積在牆邊,走道中央被踩亮)
-        const cc = Math.round(px / 2), rr = Math.round(pz / 2);
-        let n = 0;
-        for (const [dc, dr] of [[-1, -1], [0, -1], [-1, 0], [0, 0]]) if (WALLISH(L.charAt(li, cc + dc, rr + dr))) n++;
-        return n ? 0.78 : 1;
+      // 烘焙的接觸陰影:貼牆 0.4m 內漸暗(牆角兩面相乘更暗),也是灰塵堆積的地方;有牆的格子切成 3×3 小塊才有窄的漸層
+      const solid = (dc, dr) => { const ch2 = L.charAt(li, c + dc, r + dr); return WALLISH(ch2) || (ch2 === '=' && K.railSolid && K.railSolid(li, c + dc, r + dr)); };
+      const sW = solid(-1, 0), sE = solid(1, 0), sN = solid(0, -1), sS = solid(0, 1);
+      const cNW = !sW && !sN && solid(-1, -1), cNE = !sE && !sN && solid(1, -1), cSW = !sW && !sS && solid(-1, 1), cSE = !sE && !sS && solid(1, 1);
+      const E = 0.42, ao = (px, pz) => {
+        const f = (d) => 0.5 + 0.5 * Math.min(1, Math.max(0, d / E)) ** 0.8;
+        let k = 1;
+        if (sW) k *= f(px - x0); if (sE) k *= f(x1 - px); if (sN) k *= f(pz - z0); if (sS) k *= f(z1 - pz);
+        if (cNW) k *= f(Math.hypot(px - x0, pz - z0)); if (cNE) k *= f(Math.hypot(x1 - px, pz - z0));
+        if (cSW) k *= f(Math.hypot(px - x0, z1 - pz)); if (cSE) k *= f(Math.hypot(x1 - px, z1 - pz));
+        return k;
       };
-      const col = [[x0, z1], [x1, z1], [x1, z0], [x0, z0]].map(([px, pz]) => mulc(tint, vnoise(px, y, pz) * 0.97 * edge(px, pz)));
+      const cornerCol = (px, pz) => mulc(tint, vnoise(px, y, pz) * 0.97 * ao(px, pz));
       B.wear = zone ? zoneWear(zone, lv.id) : lv.id === 'B1' ? 0.85 : 0.5;
       const yy = key === 'metal_grate' ? y - 0.02 : y;
-      B.flat(li, key, x0, z0, x1, z1, yy, true, { rot: t.rot, uOff: t.uOff, vOff: t.vOff, col });
+      const outdoorCell = (L.flagsAt(li, c, r) & L.F.OUTDOOR) !== 0;
+      if (key === 'metal_grate' || outdoorCell || !(sW || sE || sN || sS || cNW || cNE || cSW || cSE)) {
+        const col = [[x0, z1], [x1, z1], [x1, z0], [x0, z0]].map(([px, pz]) => cornerCol(px, pz));
+        B.flat(li, key, x0, z0, x1, z1, yy, true, { rot: t.rot, uOff: t.uOff, vOff: t.vOff, col });
+      } else {
+        const xs = [x0, x0 + E, x1 - E, x1], zs = [z0, z0 + E, z1 - E, z1];
+        for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) {
+          const a0 = xs[i], a1 = xs[i + 1], b0 = zs[j], b1 = zs[j + 1];
+          const col = [[a0, b1], [a1, b1], [a1, b0], [a0, b0]].map(([px, pz]) => cornerCol(px, pz));
+          B.flat(li, key, a0, b0, a1, b1, yy, true, { rot: t.rot, uOff: t.uOff, vOff: t.vOff, col });
+        }
+      }
       if (key === 'metal_grate') B.flat(li, 'trim_dark', x0, z0, x1, z1, yy - 0.001, false, {}); // 由下往上看也看得到格柵
     }
   }
@@ -298,6 +315,7 @@ export function buildCeilings(K) {
         const sx = x0 + i * t, sz = z0 + j * t;
         if (!miss.has(j * 3 + i)) { B.flat(li, key, sx, sz, sx + t, sz + t, yC, false, { col: col[0] }); continue; }
         B.box(li, 'trim_plenum', sx, yC, sz, sx + t, yC + 0.55, sz + t, { skip: 'D' });
+        plenumGuts(B, li, R, sx, sz, t, yC);
         if (R() < 0.4) { // 下垂的板:沿一邊鉸著,另一邊垂下 20~55°
           const ang = R.r(0.35, 0.95), side = (R() * 4) | 0, d = t * Math.sin(ang), h = t * Math.cos(ang);
           const P = [[sx, sz], [sx + t, sz], [sx + t, sz + t], [sx, sz + t]].map(([px, pz]) => [px, yC - 0.005, pz]);
@@ -378,6 +396,35 @@ export function buildCeilings(K) {
       B.flat(li, boundary ? 'trim_stone' : 'trim_concrete', x0 - (boundary ? 0.06 : 0), z0 - (boundary ? 0.06 : 0), x0 + 2 + (boundary ? 0.06 : 0), z0 + 2 + (boundary ? 0.06 : 0), lv.y + h + (boundary ? 0.08 : 0), true, {});
       if (boundary) B.box(li, 'trim_stone', x0 - 0.06, lv.y + h, z0 - 0.06, x0 + 2.06, lv.y + h + 0.08, z0 + 2.06, { skip: 'UD' });
     }
+  }
+}
+
+// 掉了天花板的洞裡:鍍鋅風管/保溫管/線槽,幾條電線垂下來(都在夾層內,合併進既有材質,不增加 draw call)
+const _gm = new THREE.Matrix4(), _gq = new THREE.Quaternion(), _ge = new THREE.Euler(), _gp = new THREE.Vector3(), _gs = new THREE.Vector3();
+const _box1 = new THREE.BoxGeometry(1, 1, 1);
+function plenumGuts(B, li, R, sx, sz, t, yC) {
+  const along = R() < 0.5, k = R();
+  if (k < 0.55) { // 方形風管橫越洞口(兩端藏在天花板後)
+    const w = R.r(0.34, 0.5), h = R.r(0.2, 0.28), off = R.r(-0.12, 0.12), yb = yC + R.r(0.12, 0.2);
+    if (along) B.box(li, 'steel_dirty', sx - 0.5, yb, sz + t / 2 + off - w / 2, sx + t + 0.5, yb + h, sz + t / 2 + off + w / 2, {});
+    else B.box(li, 'steel_dirty', sx + t / 2 + off - w / 2, yb, sz - 0.5, sx + t / 2 + off + w / 2, yb + h, sz + t + 0.5, {});
+  } else if (k < 0.8) { // 包保溫棉的水管 + 吊架
+    const r = R.r(0.06, 0.1), off = R.r(-0.18, 0.18), yy = yC + R.r(0.18, 0.3);
+    pipe(B, li, R() < 0.5 ? 'trim_cream' : 'trim_white', along ? 'x' : 'z', along ? sx + t / 2 : sx + t / 2 + off, yy, along ? sz + t / 2 + off : sz + t / 2, t + 1.0, r, [0.85, 0.82, 0.74]);
+  } else { // 線槽
+    const off = R.r(-0.2, 0.2), yy = yC + 0.35;
+    if (along) B.box(li, 'trim_gray', sx - 0.5, yy, sz + t / 2 + off - 0.15, sx + t + 0.5, yy + 0.06, sz + t / 2 + off + 0.15, {});
+    else B.box(li, 'trim_gray', sx + t / 2 + off - 0.15, yy, sz - 0.5, sx + t / 2 + off + 0.15, yy + 0.06, sz + t + 0.5, {});
+  }
+  // 垂下來的電線(1~3 條,有的末端還接著斷掉的燈座)
+  const n = 1 + ((R() * 2.6) | 0);
+  for (let i = 0; i < n; i++) {
+    const len = R.r(0.25, 1.05), x = sx + R.r(0.12, t - 0.12), z = sz + R.r(0.12, t - 0.12);
+    _ge.set(R.r(-0.18, 0.18), 0, R.r(-0.18, 0.18));
+    _gq.setFromEuler(_ge);
+    _gm.compose(_gp.set(x, yC + 0.4 - len / 2, z), _gq, _gs.set(0.012, len + 0.4, 0.012));
+    B.geo(li, R() < 0.6 ? 'trim_black' : 'trim_red', _box1, _gm);
+    if (R() < 0.25) { _gm.compose(_gp.set(x + Math.sin(_ge.z) * len * 0.5, yC - len + 0.2, z - Math.sin(_ge.x) * len * 0.5), _gq, _gs.set(0.07, 0.05, 0.07)); B.geo(li, 'trim_white', _box1, _gm); }
   }
 }
 

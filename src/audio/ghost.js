@@ -9,6 +9,7 @@
 import { A, gain, filter, rand, pick, clamp, emit, burst, tone, metal, duck, shaper, curve } from './core.js';
 import { vocal } from './voices.js';
 import { knockAt, musicBox } from './ambience.js';
+import { boxAt } from './folk.js';
 import { squeal } from './foley.js';
 import * as SM from './samples.js';
 import { scare } from './scares.js';
@@ -418,8 +419,9 @@ export function tubeOff(pos) {
   burst(h.in, h.t, { type: 'bandpass', f: 1800, q: 1, dur: 0.03, g: 0.18 });
   metal(h.in, h.t + rand(0.05, 0.2), rand(3200, 4300), 0.01, 0.2, [1, 2.4]);
 }
-// 搖籃曲:音樂盒 + 很輕的女聲哼唱(閉口「嗯」)
+// 搖籃曲:音樂盒《望春風》(阿嬤在 207 病房哼給病人聽的那首;走近 3 公尺就發條鬆掉停下);還沒烘焙好時用合成的小曲 + 很輕的女聲哼唱
 export function lullaby(pos) {
+  if (pos && boxAt(pos)) return;
   const h = out(pos, { room: 0.8, hall: 0.6, ref: 2, dur: 12, gain: 1.3, prio: 5 });
   if (!h) return;
   const end = musicBox(h.in, h.t, 10, 0.045, 0.993);

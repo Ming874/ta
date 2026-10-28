@@ -135,7 +135,46 @@ function dressTunnel(ctx, zone) {
   }
   const cells = ctx.cells(zone);
   for (let k = 0; k < 4 && cells.length; k++) { const c = cells[(R() * cells.length) | 0]; if (freeAt(ctx, li, c.x, c.z, 0.3)) trashBag(ctx, c.x + R.range(-0.5, 0.5), y, c.z + R.range(-0.5, 0.5), R() * TAU, R.range(0.8, 1.1)); }
+  tunnelSars(ctx, zone, P, R, li, y);
   finish(ctx, P);
+}
+// [scene v3] 2003 封院:醫療廢棄物從病房經地下隧道推去焚化爐 → 沿牆的紅/黃感染性廢棄物袋堆、拖在地上的電纜與延長線、
+// 碎水泥塊與灰塵堆(全部用既有共用材質,依材質合併,不增加 draw call)
+function tunnelSars(ctx, zone, P, R, li, y) {
+  const spots = ctx.wallSpots(zone, { allowNearDoor: false });
+  // 沿牆的電纜(每面牆一段,稍微彎曲;有些是白色延長線接到插座盒)
+  for (const s of spots) {
+    if (R() > 0.45) continue;
+    const tx = -s.nz, tz = s.nx, d = 0.1 + R() * 0.12, pts = [];
+    for (let i = 0; i <= 4; i++) { const t = (i / 4 - 0.5) * 2.02; pts.push(new V3(s.x + s.nx * (d + Math.sin(i * 1.7 + s.x) * 0.04) + tx * t, y + 0.012, s.z + s.nz * (d + Math.sin(i * 1.3 + s.z) * 0.04) + tz * t)); }
+    const ext = R() < 0.3;
+    P.add(ext ? 'plastic_white' : 'rubber', tube(pts, ext ? 0.006 : 0.014, { radial: 5 }));
+    if (ext && R() < 0.5) P.add('plastic_white', rbox(0.2, 0.04, 0.06, 0.008), M(pts[4].x, y + 0.02, pts[4].z, 0, Math.atan2(tx, tz), 0));
+  }
+  // 感染性廢棄物袋堆(紅/黃,束口),靠牆、不擋路
+  let piles = 0;
+  for (const s of spots) {
+    if (piles >= 6 || R() > 0.14) continue;
+    const cx = s.x + s.nx * 0.45, cz = s.z + s.nz * 0.45;
+    if (!freeAt(ctx, li, cx, cz, 0.45)) continue;
+    const n = 2 + ((R() * 4) | 0);
+    for (let k = 0; k < n; k++) {
+      const r = R.range(0.2, 0.3), ox = R.range(-0.45, 0.45), oz = R.range(-0.18, 0.18), top = k >= 3;
+      const key = R() < 0.65 ? 'plastic_red' : 'plastic_yellow';
+      P.add(key, sph(r, 10, 7), M(cx - s.nz * ox + s.nx * oz, y + r * 0.8 + (top ? 0.32 : 0), cz + s.nx * ox + s.nz * oz, R.range(-0.2, 0.2), R() * TAU, R.range(-0.2, 0.2), 1, 0.78, 0.9));
+      P.add(key, cyl(0.02, 0.05, 0.1, 6), M(cx - s.nz * ox + s.nx * oz, y + r * 1.55 + (top ? 0.32 : 0), cz + s.nx * ox + s.nz * oz));
+    }
+    solid(ctx, cx, y, cz, Math.abs(s.nz) > 0.5 ? 1.2 : 0.7, 0.75, Math.abs(s.nz) > 0.5 ? 0.7 : 1.2);
+    piles++;
+  }
+  // 碎水泥塊與灰塵(天花板剝落)
+  const cells = ctx.cells(zone, { allowNearDoor: true });
+  for (const c of cells) {
+    if (R() > 0.08) continue;
+    const n = 3 + ((R() * 6) | 0);
+    for (let k = 0; k < n; k++) { const r = R.range(0.03, 0.09); P.add('concrete_wall', new THREE.DodecahedronGeometry(r, 0), M(c.x + R.range(-0.5, 0.5), y + r * 0.5, c.z + R.range(-0.5, 0.5), R() * 3, R() * 3, R() * 3, 1, 0.6, 1)); }
+    groundDecal(P, R.pick(['ashes', 'water2', 'steps']), c.x, c.z, 1.1, 0.8, R() * TAU, y + 0.006);
+  }
 }
 function dressBoiler(ctx, zone) {
   const R = zrng(zone), P = new Parts(), li = zone.levelIndex, y = ctx.L.levels[li].y;
