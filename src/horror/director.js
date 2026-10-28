@@ -26,7 +26,6 @@ export const KINDS = {
   // 外部(伏擊代理、新殭屍)
   ambush: { tier: 'medium', cd: 28, jump: true, ext: true, act: 1, cat: 'host' },
   ceilingDrop: { tier: 'medium', cd: 40, jump: true, ext: true, act: 1, cat: 'host' },
-  chase: { tier: 'medium', cd: 200, jump: true, ext: true, act: 1, cat: 'host' }, // [zombies-w3] 追逐戰(src/zombies/chase.js;約每幕一次)
   // ---- small ----
   whisper: { tier: 'small', cd: 14, act: 1, cat: 'voice', w: 1.1 },
   ambient: { tier: 'small', cd: 35, act: 1, cat: 'sound', w: 0.8 },

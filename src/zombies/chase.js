@@ -144,7 +144,7 @@ class Chase {
     Object.assign(this, { z, tgt, safe, active: true, t: 0, lost: 0, fade: 0, reason: o.reason || 'api' });
     this.count++;
     this.log.push(`${(g.time || 0).toFixed(1)}:start:${this.reason}`);
-    g.horror?.director?.notify?.('chase', { pos: z.pos });
+    g.horror?.director?.notify?.('chase', { pos: z.pos, dur: MAX_T + 5 }); // 整段追逐都鎖住其他驚嚇(結束時 chaseEnd 解鎖)
     const s = g.net;
     if (s && s.isHost && s.send) try { s.send('zch', [1, tgt === g.player ? s.me : tgt.id, +safe.x.toFixed(2), +safe.y.toFixed(2), +safe.z.toFixed(2)]); } catch { /* 連線中斷 */ }
     this._presStart(tgt === g.player, safe, o.line);
@@ -243,7 +243,8 @@ class Chase {
     if (z.alive) { z._retreat = true; z.go('recover'); }
     // 喘息:暫緩出怪與其他驚嚇
     g.spawnTimer = Math.max(g.spawnTimer || 0, CALM);
-    g.horror?.director?.hold?.(CALM);
+    const dr = g.horror?.director;
+    if (dr?.chaseEnd) dr.chaseEnd({ calm: CALM }); else dr?.hold?.(CALM);
     const s = g.net;
     if (s && s.isHost && s.send) try { s.send('zch', [0, REASON.indexOf(reason), this.tgt === g.player ? s.me : this.tgt?.id ?? 255]); } catch { /* 連線中斷 */ }
     this._presStop(reason, this.tgt === g.player);
