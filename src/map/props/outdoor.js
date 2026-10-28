@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { initMats } from './outdoor/mats.js';
+import { initMats, prepaint } from './outdoor/mats.js';
 import { initGround } from './outdoor/ground.js';
 import { initNature } from './outdoor/nature.js';
 import { initPlay } from './outdoor/play.js';
@@ -26,6 +26,11 @@ export const OUTDOOR_THEMES = new Set([
 ]);
 
 function initAll() { initMats(); initGround(); initNature(); initPlay(); initCamp(); initFurniture(); }
+// [perf] 分段版(載入時由 hospital 建構呼叫):程式貼圖一張一步、各模組的材質初始化各一步(全部都有「做過就略過」)
+export function* prepareOutdoorSteps() {
+  for (const f of prepaint()) { f(); yield; }
+  for (const f of [initMats, initGround, initNature, initPlay, initCamp, initFurniture]) { f(); yield; }
+}
 // 每個新的擺設 ctx(= 每次建世界/換地圖)只做一次:歸零模組計數器(同地圖、同種子 → 每個客戶端結果相同)、外圍景
 const begun = new WeakSet(), spent = new WeakMap(); // 每個 ctx 的戶外擺設耗時(ms)
 function begin(ctx) {

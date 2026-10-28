@@ -4,7 +4,7 @@ import { Quality } from './sys/quality.js';
 import { Perf } from './sys/perf.js';
 import { caps } from './sys/caps.js';
 import { idle } from './sys/sched.js';
-import { precompile, precompilePasses, initPrograms, warmDraw, warmDrawScene, warmPMREM, uploadSceneTextures, yieldNow } from './sys/warmup.js';
+import { precompile, precompilePasses, initPrograms, warmDraw, warmDrawScene, warmPMREM, uploadSceneTextures, yieldNow, runSliced } from './sys/warmup.js';
 import { backgroundTicker } from './sys/ticker.js';
 import { texStats, texturesReady } from './sys/texworker.js';
 import { prewarm, whenTypesReady, variantStats, getVariant, instantiate, forceVariant, VARIANT_TYPES } from './zombies/model.js';
@@ -46,6 +46,7 @@ await new Promise((resolve) => {
   };
   tick();
 });
+let buildSteps = 0, built = false; // 世界分段建構的進度(載入條用)
 const loading = loadUI(() => {
   const p = game?.physics, v = variantStats(), a = assets.progress, ph = physicsLoad.state;
   const physOK = !p ? 0 : p.ready || p.failed || ph === 'off' || ph === 'failed' ? 1 : ph === 'wasm' || ph === 'main' ? 0.55 : 0.15;
@@ -53,6 +54,7 @@ const loading = loadUI(() => {
   return {
     playing: game?.state === 'playing',
     steps: [
+      ['世界', built ? 1 : Math.min(0.95, buildSteps / 260), built ? '' : '建構中', 2],
       ['物理', physOK, ph === 'wasm' ? '編譯中' : ph === 'main' ? '載入中' : '下載中'],
       ['殭屍', v.ready / v.total, `${v.ready}/${v.total}`],
       ['著色器', warmStage / 4, warmStage ? '編譯中' : '等待中'],
@@ -61,7 +63,15 @@ const loading = loadUI(() => {
   };
 });
 
-game = new Game(document.getElementById('game'));
+// 世界分段建構(src/game.js buildSteps):每段之後讓出主執行緒 → 建構期間選單可操作、載入條會動、Worker 結果照常處理。
+// 建構中按「開始」:先記下,建好後再開始(spawn 仍等 hz:warm)
+game = new Game(document.getElementById('game'), { deferred: true });
+let earlyStart = false;
+const onEarlyStart = (e) => { if (!built && e.target?.closest?.('#startBtn')) { earlyStart = true; e.stopPropagation(); const b = e.target.closest('#startBtn'); b.classList.add('loading'); b.dataset.label ||= b.firstChild?.textContent || ''; if (b.firstChild) b.firstChild.textContent = '載入中…'; } };
+document.addEventListener('click', onEarlyStart, true);
+await runSliced(game.buildSteps(), { budget: 12, onStep: (n) => { buildSteps = n; } });
+built = true;
+document.removeEventListener('click', onEarlyStart, true);
 game.warmed = false; // hz:warm 之前開局:先不出怪(flow.updateRound),第一隻殭屍出現時不會現場編譯 shader
 game.bindInput();
 initNet(game); // [net] 主選單的多人連線入口(src/net/lobby.js)
@@ -70,6 +80,10 @@ installDeduce(game); // [story] 線索卡、推理本(J)、擲筊、頭七(src/s
 installObjectives(game); // [story] 目標鏈、區域解鎖、提示(src/story/objectives.js)
 installMotion(game); // [motion] 轉場與手感:開機、開場、燈篙節拍、受傷、倒下、暫停(src/ui/motion.js;全部是 post 的 uniform)
 window.__game = game; // 除錯用:在瀏覽器 console 操作 __game
+if (earlyStart) { // 建構途中按過開始:現在照常開始(按鈕的處理在 bindInput 才綁上)
+  const b = document.getElementById('startBtn');
+  if (b) { b.classList.remove('loading'); if (b.firstChild && b.dataset.label) b.firstChild.textContent = b.dataset.label; setTimeout(() => b.onclick?.(), 0); }
+}
 
 // ---- 效能基礎建設 ----
 game.renderer.info.autoReset = false; // 一幀內多個 pass 的 draw call 合計(主迴圈每幀歸零)

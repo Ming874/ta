@@ -124,6 +124,19 @@ if (MC) MC.port1.onmessage = () => { const f = mq.shift(); if (f) f(); };
 export const yieldTask = () => new Promise((r) => { if (MC) { mq.push(r); MC.port2.postMessage(0); } else setTimeout(r, 0); });
 export const yieldNow = yieldTask; // 舊名稱
 
+// ---- 分時執行 generator(載入時的世界建構)----
+// 每一步跑完若已超過 budget ms 就讓出主執行緒(選單、載入條、Worker 結果照常處理);yield 出 Promise 時等它完成
+export async function runSliced(gen, { budget = 12, onStep = null } = {}) {
+  let t = performance.now(), r, n = 0;
+  while (!(r = gen.next()).done) {
+    n++;
+    const v = r.value;
+    if (v && typeof v.then === 'function') { await v; t = performance.now(); continue; }
+    if (performance.now() - t > budget) { onStep?.(n); await yieldTask(); t = performance.now(); }
+  }
+  return r.value;
+}
+
 // ---- GPU 行程節流 ----
 // 一次送出大量 shader(每個 program 數十 KB 原始碼)會塞滿命令緩衝區;D3D11 的 shader 翻譯/FXC 很慢,
 // 主執行緒會在下一個 GL 呼叫上同步等 GPU 行程消化 → 好幾秒的長任務。每批之後放一個 fence,
@@ -302,8 +315,8 @@ export function warmMaterials() {
 // ---- 環境貼圖(PMREM)----
 // 用等距柱狀環境貼圖的材質,three 會在第一次編譯時就地做 PMREM:建立模糊 shader 立刻畫 → 同步等 shader 編譯(D3D11 1~2 秒)。
 // 先用同尺寸把 PMREM 的 shader 在背景編好(program 依 defines 共用),之後那次轉換只剩 GPU 畫幾下
-export async function warmPMREM(game, roots) {
-  const r = game.renderer, sizes = new Set();
+export async function warmPMREM(game, roots, { sizes: extra = [] } = {}) {
+  const r = game.renderer, sizes = new Set(extra);
   for (const root of roots) root?.traverse?.((o) => {
     for (const m of [].concat(o.material || [])) {
       const t = m?.envMap;
@@ -314,13 +327,15 @@ export async function warmPMREM(game, roots) {
   const pm = new THREE.PMREMGenerator(r);
   if (typeof pm._setSize !== 'function' || typeof pm._allocateTargets !== 'function') { pm.dispose(); return 0; } // 不同版本的 three:放棄(照舊同步)
   const cam = new THREE.OrthographicCamera(), progs = new Set();
-  const comp = (mat) => { if (!mat) return; const mesh = new THREE.Mesh(new THREE.BufferGeometry(), mat); for (const m of r.compile(mesh, cam)) { const p = r.properties.get(m).currentProgram; if (p) progs.add(p); } };
+  // PMREM 是畫進 HalfFloat 的 render target(線性、不做色調映射):編譯時也要設成 render target,參數才會一樣(畫到螢幕的版本是另一個 program)
+  let target = null;
+  const comp = (mat) => { if (!mat) return; const mesh = new THREE.Mesh(new THREE.BufferGeometry(), mat), prev = r.getRenderTarget(); r.setRenderTarget(target); try { for (const m of r.compile(mesh, cam)) { const p = r.properties.get(m).currentProgram; if (p) progs.add(p); } } finally { r.setRenderTarget(prev); } };
   for (const s of sizes) {
     pm._setSize(s);
-    const rt = pm._allocateTargets();
-    rt.dispose();
-    pm.compileEquirectangularShader();
-    comp(pm._equirectMaterial); comp(pm._blurMaterial); comp(pm._ggxMaterial);
+    target = pm._allocateTargets();
+    pm.compileEquirectangularShader(); pm.compileCubemapShader?.();
+    comp(pm._equirectMaterial); comp(pm._cubemapMaterial); comp(pm._blurMaterial); comp(pm._ggxMaterial);
+    target.dispose();
     await gpuDrain(r);
   }
   await waitReady(progs);

@@ -477,6 +477,8 @@ const HAZARD = lazy(() => {
 // ---------- 註冊材質 ----------
 const std = (o) => new THREE.MeshStandardMaterial(o);
 let done = false;
+// [perf] 載入分時:這些程式貼圖可以先一張一張畫(lazy,畫過就快取),initMats 之後直接拿現成的
+export const prepaint = () => [NIGHT_ENV, GRIME, GLASS_DIRT, GLASS_CRACK, GRASS_CARD, LEAF_CARD, DECAL_TEX, LABEL_TEX, TAPE, HAZARD];
 export function initMats() {
   if (done) return;
   done = true;
