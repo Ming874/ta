@@ -82,7 +82,7 @@ float ckSeg( vec2 p, vec2 a, vec2 b, float sd, float aa, inout vec2 pert ) {
 	vec2 t = ab / L, n = vec2( - t.y, t.x );
 	float s = dot( p - a, t );
 	if ( s < 0.0 || s > L ) return 0.0;
-	float off = 0.006 * sin( s * 41.0 + sd * 7.0 ) + 0.003 * sin( s * 113.0 + sd * 3.0 );
+	float off = 0.0035 * sin( s * 37.0 + sd * 7.0 ) + 0.0015 * sin( s * 131.0 + sd * 3.0 );
 	float dist = abs( dot( p - a, n ) - off );
 	float m = 1.0 - smoothstep( 0.0003, 0.0003 + aa, dist );
 	float tj = ckH( vec2( floor( s * 40.0 ), sd ) ) - 0.5;
@@ -192,12 +192,12 @@ const FRAG_EMIT = /* glsl */`
 				vec3 dl = spotLights[ i ].position - ckPv;
 				float dd = length( dl );
 				float sf = smoothstep( spotLights[ i ].coneCos, spotLights[ i ].penumbraCos, dot( dl / dd, spotLights[ i ].direction ) );
-				ckAcc += spotLights[ i ].color * sf * 0.3 / ( 1.0 + dd * dd * 0.35 );
+				ckAcc += spotLights[ i ].color * sf * 0.1 / ( 1.0 + dd * dd * 0.35 );
 			}
 		}
 		#pragma unroll_loop_end
 		#endif
-		totalEmissiveRadiance += min( ckAcc * ckL * 0.4, vec3( 1.5 ) );
+		totalEmissiveRadiance += min( ckAcc * ckL * 0.4, vec3( 0.9 ) );
 	}
 `;
 
