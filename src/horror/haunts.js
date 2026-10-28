@@ -52,7 +52,8 @@ export class HauntFx {
     }
     const el = this.edgeEl;
     el.dataset.side = side; el.firstChild.textContent = text || '';
-    el.classList.remove('fast'); el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
+    // 重播 CSS 動畫:下一幀再加回 'on'(不用 offsetWidth 強制排版;第一次結霜曾因此卡 0.95 秒)
+    el.classList.remove('fast'); el.classList.remove('on'); requestAnimationFrame(() => el.classList.add('on'));
   }
   edgeOut(fast) { const el = this.edgeEl; if (!el) return; el.classList.toggle('fast', !!fast); el.classList.remove('on'); }
   reset() { this.restore(); for (const m of this.meshes) m.visible = false; this.ballOn = false; this.envOn = false; this.edgeOut(true); }
