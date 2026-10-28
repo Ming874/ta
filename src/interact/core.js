@@ -162,7 +162,7 @@ export class Interact {
   // 不能用的原因(字串)或 null
   denyOf(e, ctx) {
     const g = this.game, nm = e.name || '';
-    if (e.once === 'round' && e.usedRound === g.round) return e.usedText || `${nm} · 下一次燈篙再來`;
+    if (e.once === 'round' && e.usedRound === g.round) return e.usedText || `${nm} · 下一波再來`;
     if (e.once && e.once !== 'round' && e.used) return e.usedText || `${nm} · 已經用過了`;
     if (e.cdUntil > g.time) return e.cdText || `${nm} · 稍後再試`;
     const rq = e.require;

@@ -43,7 +43,7 @@ export class Hud {
     this.floorEl = this.loc.children[0];
     this.zoneEl = this.loc.children[1];
     this.zoneBig = add(mk('hd hd-zonebig'));
-    this.round = add(mk('hd hd-round', '<div class="hd-rn">燈篙 <b>1</b></div><div class="hd-rs">還有 <b>0</b> 個</div>'));
+    this.round = add(mk('hd hd-round', '<div class="hd-rn">第 <b>1</b> 波</div><div class="hd-rs">還有 <b>0</b> 隻</div>'));
     this.round.id = 'roundinfo'; // 對戰模式(src/net/pvp.js)會用這個 id 隱藏回合資訊
     this.roundNum = this.round.querySelector('b');
     this.roundSub = this.round.children[1];
@@ -220,14 +220,14 @@ export class Hud {
   // ---------- 回合 ----------
   setRound(n) { this._set('round', n, (v) => { this.roundNum.textContent = v; }); }
   setZombies(n) {
-    this._set('rs', `z${n}`, () => { this.roundSub.className = 'hd-rs'; this.roundSub.innerHTML = `還有 <b>${n}</b> 個`; });
+    this._set('rs', `z${n}`, () => { this.roundSub.className = 'hd-rs'; this.roundSub.innerHTML = `還有 <b>${n}</b> 隻`; });
   }
   // next = 下一回合是特殊/首領回合時的名稱
   setRest(sec, canSkip = true, next = '') {
     const s = Math.max(0, Math.ceil(sec));
     this._set('rs', `r${s}|${canSkip}|${next}`, () => {
       this.roundSub.className = `hd-rs rest${s <= 5 ? ' urgent' : ''}`;
-      this.roundSub.innerHTML = `燈篙熄 <b>${s}</b> 秒${next ? ` · 下一次燈篙 <i class="nx">${esc(next)}</i>` : ''}${canSkip ? ` · ${withKeys('[N] 不等了')}` : ''}`;
+      this.roundSub.innerHTML = `休息 <b>${s}</b> 秒${next ? ` · 下一波 <i class="nx">${esc(next)}</i>` : ''}${canSkip ? ` · ${withKeys('[N] 不等了')}` : ''}`;
     });
   }
   setRoundText(html) { this._set('rs', `t${html}`, () => { this.roundSub.className = 'hd-rs'; this.roundSub.innerHTML = html; }); }

@@ -131,7 +131,7 @@ export const vending = {
       id: spec.id || `vend${Math.round(pos.x)}_${Math.round(pos.z)}`, kind: 'vending', name: '自動販賣機', reach: 2.0, radius: 0.35, scope: 'map', cooldown: 2.2,
       prompt: () => `投 ${price} 元買一罐飲料`,
       when: () => {
-        if (st.round === game.round && st.n >= per) return '自動販賣機 · 賣完了（下一次燈篙補貨）';
+        if (st.round === game.round && st.n >= per) return '自動販賣機 · 賣完了（下一波補貨）';
         if ((game.player.coins || 0) < price) return `自動販賣機 · 需要 ${price} 元`;
         return true;
       },
@@ -297,7 +297,7 @@ export const alarm = {
     const st = { on: false, t: 0, run: null, bonus: 0, t0: 0 };
     return ix.register(pos, {
       id: key, kind: 'alarm', name: '火警警報', reach: 1.8, radius: 0.1, scope: 'map', once: 'round', hold: 0.8, holdText: '拉下警報', prompt: '拉下火警警報',
-      usedText: '火警警報 · 拉桿卡住了（下一次燈篙）',
+      usedText: '火警警報 · 拉桿卡住了（下一波）',
       onUse: () => {
         lev.set(li, lm.clone().multiply(T(0, -0.05, 0)));
         ixs.alarmPull(pos);

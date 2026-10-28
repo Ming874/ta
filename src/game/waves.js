@@ -13,7 +13,7 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 // ---------- 回合類型 ----------
 export const SPECIAL = {
-  boss: { name: '燈篙亮到最大', sub: '最老的醒了 · 引他撞牆，再打頭', cls: 'red' },
+  boss: { name: '最大的一波', sub: '最老的醒了 · 引他撞牆，再打頭', cls: 'red' },
   rush: { name: '狂奔之夜', sub: '剛打第一針的人跑得最快 · 背靠牆角，別被包夾', cls: 'red' },
   swarm: { name: '膿毒潮', sub: '悶熱的晚上，脹氣的會出來 · 在遠處引爆膿腫者', cls: 'gold' },
 };

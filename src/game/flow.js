@@ -191,8 +191,8 @@ export const flowMethods = {
     // [motion] 橫幅、聲音、邊緣紅光同一幀;開場演出中或戰鬥 shader 還沒預熱(先不出怪)時,等到真的開始才亮
     const show = () => {
       if (this.state !== 'playing' || this.round !== n || this.phase !== 'fighting') return;
-      if (sp) this.ui.banner('燈篙亮了', `第 ${n} 次 · ${sp.name} · 回來的人 ${total} 個${tail}`, 3600, sp.cls);
-      else this.ui.banner('燈篙亮了', `第 ${n} 次 · 回來的人 ${total} 個${tail}`, 3000, '');
+      if (sp) this.ui.banner(`第 ${n} 波`, `燈篙亮了，牠們被叫過來了 · ${sp.name} · ${total} 隻${tail}`, 3600, sp.cls);
+      else this.ui.banner(`第 ${n} 波`, `燈篙亮了，牠們被叫過來了 · ${total} 隻${tail}`, 3000, '');
       if (sp && kind !== 'boss') this.ui.feed(`${sp.name}：${sp.sub}`, { icon: 'skull', color: sp.cls === 'gold' ? '#e8c860' : '#ff6a5a', ms: 6500 });
       sfx.roundStart();
       this.motion?.beat('on', { k: sp ? 0.62 : 0.5 });
@@ -355,7 +355,7 @@ export const flowMethods = {
       sub = `擊殺 ${k} · 爆頭 ${h} · 命中率 ${acc}% · 用時 ${mmss(this.time - R.t0)}`;
       R.dur = this.time - R.t0;
     }
-    this.ui.banner('燈篙暗了', sub, 3200, this.roundClean ? 'gold' : '');
+    this.ui.banner('這一波結束了', `燈篙暗了 · ${sub}`, 3200, this.roundClean ? 'gold' : '');
     // 回合分數
     const pts = roundScore(n, this.roundClean);
     this._addScore(pts);
@@ -389,8 +389,8 @@ export const flowMethods = {
     if (clean) this.ui.feed(`毫髮無傷 <b>+${clean}</b>`, { icon: 'heal', color: '#7fe08f', html: true });
     const where = [this.shop?.levelId, this.shop?.zoneName].filter(Boolean).join(' ') || '金水商行';
     const next = waveKind(n + 1), sp = SPECIAL[next];
-    const warn = sp ? ` · 下一次燈篙：${sp.name}` : '';
-    this.ui.banner('金水商行開門了', `燈篙熄 ${this.restT} 秒 · 到 ${where} 按 [E] 買東西 · [N] 不等了${warn}`, 5200, 'gold');
+    const warn = sp ? ` · 下一波：${sp.name}` : '';
+    this.ui.banner('金水商行開門了', `休息 ${this.restT} 秒 · 到 ${where} 按 [E] 買東西 · [N] 直接開始下一波${warn}`, 5200, 'gold');
     this.ui.feed('金水商行開門了', { icon: 'cart', color: '#ffb347' });
     this.tutorial?.('shop');
   },
@@ -555,7 +555,7 @@ export const flowMethods = {
         if (this.interact?.press()) return; // 互動物件(看著的電話、門、開關…;與商店/補給櫃的優先順序在 interact.pick)
         const s = this.shop?.interact(this.player);
         if (s === 'open') { this.openShop(); return; }
-        if (s === 'closed') { this.ui.pickup('金水商行只在燈篙熄的時候開門', '#a3a39a'); sfx.pickupDeny(); return; }
+        if (s === 'closed') { this.ui.pickup('金水商行只在休息時間開門（打完這一波）', '#a3a39a'); sfx.pickupDeny(); return; }
         const st = this.supplies?.nearest(this.player);
         if (st) this.supplies.use(st, this);
         return;
@@ -597,7 +597,7 @@ export const flowMethods = {
     const T = this.ui.tips;
     if (!T || this.state !== 'playing') return;
     if (id === 'round') {
-      if (n === 1) { T.show('move', 1.5); T.show('shoot', 4); }
+      if (n === 1) { T.show('move', 1.5); T.show('lantern', 9); T.show('shoot', 4); }
       else if (n === 2) T.show('map', 5);
     } else T.show(id, id === 'shop' ? 2.5 : 0);
   },
@@ -640,7 +640,7 @@ export const flowMethods = {
     else if (!(this.healT > 0)) {
       const s = this.shop?.interact(p);
       if (s === 'open') prompt = '按 [E] 進金水商行';
-      else if (s === 'closed') { prompt = '金水商行 · 燈篙熄了才開門'; dim = true; }
+      else if (s === 'closed') { prompt = '金水商行 · 打完這一波才開門'; dim = true; }
       else {
         const st = this.supplies?.nearest(p);
         if (st) ({ text: prompt, dim } = this.supplies.promptFor(st, p));
