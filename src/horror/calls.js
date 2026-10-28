@@ -69,7 +69,7 @@ export function createCalls(h) {
       propBehind: (near || []).filter((n) => n.side === 'behind' && n.obj && n.dist > 1 && n.dist < 6).sort((a, b) => a.dist - b.dist)[0] || null,
     };
   }
-  const okNeed = (n, sc) => !n || ((!n.closedDoorBehind || (sc.closedBehind && !game.net)) && (!n.openDoorBehind || (sc.openBehind && !game.net)) && (!n.window || sc.win) && (!n.propBehind || (sc.propBehind && game.physics?.ready)) && (!n.behindFree || sc.behindFree) && (!n.lit || sc.lit) && (!n.flash || game.player.flashOn));
+  const okNeed = (n, sc) => !n || ((!n.closedDoorBehind || (sc.closedBehind && !game.net)) && (!n.openDoorBehind || (sc.openBehind && !game.net)) && (!n.window || sc.win) && (!n.propBehind || (sc.propBehind && game.physics?.ready)) && (!n.behindFree || sc.behindFree) && (!n.lit || sc.lit) && (!n.flash || game.player.flashOn) && (!n.seen || !!h.lastSeen?.(n.seen, n.within ?? 300)));
   // ---- 挑一通 ----
   function choose(ctx, sc) {
     const D = h.director, ghostOK = D.silent && D.level !== 'off';
