@@ -146,6 +146,56 @@ function instPool(geo, mat, n, name) {
 }
 const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _s = new THREE.Vector3(), _p = new THREE.Vector3();
 
+// ---- 第三輪的痕跡:各自一個小畫家(上面那些貼圖不動;src/horror/haunts.js 用) ----
+// 一個人的影子(貼地):腳在畫布上緣、頭在下緣;手上拿著病歷板
+export function shadowTexture() {
+  const c = document.createElement('canvas'); c.width = 64; c.height = 192;
+  const g = c.getContext('2d');
+  g.filter = 'blur(5px)'; g.fillStyle = '#000';
+  for (const [x, y, rx, ry, r] of [[26, 42, 7, 32, 0.05], [38, 42, 7, 32, -0.05], [32, 100, 16, 32, 0], [32, 156, 11, 14, 0], [44, 118, 8, 20, 0.5]]) { g.beginPath(); g.ellipse(x, y, rx, ry, r, 0, 6.29); g.fill(); }
+  return c;
+}
+// 窗玻璃外的一口霧氣;text 是手指在霧上抹出來的字(mirror:從外面寫的,裡面看是反的)
+export function drawFog(c, text = '', mirror = true) {
+  const g = c.getContext('2d'), W = c.width, H = c.height;
+  g.clearRect(0, 0, W, H);
+  const gr = g.createRadialGradient(W / 2, H / 2, 6, W / 2, H / 2, W * 0.48);
+  gr.addColorStop(0, 'rgba(255,255,255,0.85)'); gr.addColorStop(0.55, 'rgba(255,255,255,0.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  for (let i = 0; i < 260; i++) { g.fillStyle = 'rgba(255,255,255,' + (Math.random() * 0.25).toFixed(2) + ')'; const r = Math.random() * 2.2, a = Math.random() * 6.28, d = Math.random() * W * 0.42; g.fillRect(W / 2 + Math.cos(a) * d, H / 2 + Math.sin(a) * d * 0.8, r, r); }
+  if (text) {
+    g.save(); g.globalCompositeOperation = 'destination-out';
+    g.translate(W / 2, H / 2); if (mirror) g.scale(-1, 1);
+    const lines = String(text).split('\n'), fs = Math.min(64, (W * 0.82) / Math.max(...lines.map((l) => [...l].length)));
+    g.font = '700 ' + fs + 'px "Noto Sans TC", "Microsoft JhengHei", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.filter = 'blur(1.2px)'; g.lineWidth = fs * 0.12; g.strokeStyle = '#000'; g.fillStyle = '#000';
+    lines.forEach((l, i) => { const y = (i - (lines.length - 1) / 2) * fs * 1.15; g.strokeText(l, 0, y); g.fillText(l, 0, y); });
+    g.restore();
+  }
+  return c;
+}
+// 金水商行的小皮球(等距柱狀貼圖)
+export function ballTexture() {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = '#b8352b'; g.fillRect(0, 0, 256, 128);
+  g.fillStyle = '#e9e2cf'; g.fillRect(0, 50, 256, 28);
+  g.fillStyle = '#b8352b'; g.font = '700 20px "Noto Sans TC", "Microsoft JhengHei", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('金水商行', 64, 64); g.fillText('金水商行', 192, 64);
+  g.fillStyle = 'rgba(0,0,0,0.18)'; for (let i = 0; i < 40; i++) g.fillRect(Math.random() * 256, Math.random() * 128, 2, 1);
+  return c;
+}
+// 地上的紅包(鬼月禁忌:紅包不要撿)
+export function envelopeTexture() {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 64;
+  const g = c.getContext('2d');
+  g.fillStyle = '#a8191c'; g.fillRect(0, 0, 128, 64);
+  g.strokeStyle = '#d9a640'; g.lineWidth = 3; g.strokeRect(5, 5, 118, 54);
+  g.fillStyle = '#d9a640'; g.beginPath(); g.arc(64, 32, 11, 0, 6.29); g.fill();
+  g.fillStyle = 'rgba(0,0,0,0.25)'; for (let i = 0; i < 30; i++) g.fillRect(Math.random() * 128, Math.random() * 64, 3, 1);
+  return c;
+}
+
 export class Marks {
   constructor(h, scene) {
     this.h = h; this.scene = scene;
