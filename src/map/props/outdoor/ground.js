@@ -143,7 +143,7 @@ const LITTER_TEX = lazy(() => {
   const cellAt = (n, fn) => { const i = LIT.indexOf(n), x = (i % 4) * 128, y = Math.floor(i / 4) * 128; ctx.save(); ctx.beginPath(); ctx.rect(x, y, 128, 128); ctx.clip(); ctx.translate(x, y); fn(); ctx.restore(); };
   const sheet = (bg, fn) => { ctx.fillStyle = bg; ctx.fillRect(6, 4, 116, 120); fn(); softBlob(ctx, rr(20, 100), rr(20, 100), 60, '90,80,60', 0.3); };
   const lines = (y0, y1, x0 = 14, x1 = 114, a = 0.55) => { ctx.fillStyle = `rgba(40,40,40,${a})`; for (let y = y0; y < y1; y += 6) ctx.fillRect(x0, y, rr(x1 - x0 - 30, x1 - x0), 2); };
-  cellAt('news', () => sheet('#cfcbbd', () => { text(ctx, '疫情失控', 64, 18, 18, { color: '#111', weight: '900' }); ctx.fillStyle = '#555'; ctx.fillRect(14, 30, 48, 34); lines(30, 66, 66, 114); lines(70, 120); }));
+  cellAt('news', () => sheet('#cfcbbd', () => { text(ctx, '霧港封城', 64, 18, 18, { color: '#111', weight: '900' }); ctx.fillStyle = '#555'; ctx.fillRect(14, 30, 48, 34); lines(30, 66, 66, 114); lines(70, 120); }));
   cellAt('flyer', () => sheet('#e8e4d4', () => { ctx.fillStyle = '#b01818'; ctx.fillRect(6, 4, 116, 26); text(ctx, '疏散通知', 64, 18, 18, { color: '#fff', weight: '900' }); lines(38, 118, 14, 114, 0.6); }));
   cellAt('missing', () => sheet('#e4e0d0', () => { text(ctx, '尋 人', 64, 16, 18, { color: '#111', weight: '900' }); ctx.fillStyle = '#6a6458'; ctx.fillRect(34, 28, 60, 50); ctx.fillStyle = '#3a3630'; ctx.beginPath(); ctx.arc(64, 48, 12, 0, TAU); ctx.fill(); ctx.fillRect(48, 60, 32, 18); lines(84, 120); }));
   cellAt('form', () => sheet('#dde0dc', () => { ctx.strokeStyle = 'rgba(40,60,90,0.6)'; for (let y = 14; y < 120; y += 12) { ctx.strokeRect(12, y, 104, 10); } text(ctx, '病歷', 30, 10, 10, { color: '#234' }); }));

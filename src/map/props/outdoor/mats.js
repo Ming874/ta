@@ -270,7 +270,7 @@ const DECAL_TEX = lazy(() => {
   inCell('leaves', () => { ctx.drawImage(LEAF_CARD().image, 0, 0, 256, 256); });
   inCell('butts', () => { for (let k = 0; k < 14; k++) { ctx.save(); ctx.translate(rr(20, 236), rr(20, 236)); ctx.rotate(R() * 7); ctx.fillStyle = '#d8d0c0'; ctx.fillRect(-9, -2.5, 12, 5); ctx.fillStyle = '#b07a3a'; ctx.fillRect(3, -2.5, 7, 5); ctx.fillStyle = '#222'; ctx.fillRect(-10, -2.5, 2, 5); ctx.restore(); } softBlob(ctx, 128, 128, 60, '40,40,40', 0.25); });
   // 墓誌銘(刻字:暗色字 + 亮邊)
-  const epis = [['✝', '安息主懷', '1931 — 1968'], ['', '陳 公 志 明 之 墓', '民國五十七年'], ['✝', 'R.I.P.', 'MARIA LIN'], ['', '林 氏 秀 英', '慈母 安息'], ['✝', 'IN MEMORIAM', '1955'], ['', '無名氏', '聖心醫院 代葬'], ['✝', '主內安息', '張 若 望'], ['', '愛女 小 雯', '永遠七歲']];
+  const epis = [['✝', '安息主懷', '1931 — 1968'], ['', '陳 公 志 明 之 墓', '民國五十七年'], ['✝', 'R.I.P.', 'MARIA LIN'], ['', '林 氏 秀 英', '慈母 安息'], ['✝', 'IN MEMORIAM', '1955'], ['', '無名氏', '聖心醫院 代葬'], ['✝', '主內安息', '王 若 瑟'], ['', '慈父 安息', '永遠懷念']];
   epis.forEach(([a, b, d], i) => inCell(`epi${i}`, () => {
     const eng = (s, y, sz, f) => { text(ctx, s, 129, y + 1.5, sz, { font: f, color: 'rgba(235,230,215,0.35)', weight: 'normal' }); text(ctx, s, 128, y, sz, { font: f, color: 'rgba(25,22,18,0.9)', weight: 'normal' }); };
     if (a) eng(a, 52, 54, 'serif');
@@ -380,7 +380,7 @@ const LABEL_TEX = lazy(() => {
     ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
     ctx.strokeStyle = '#8a7444'; ctx.lineWidth = 8; ctx.strokeRect(10, 10, w - 20, h - 20);
     text(ctx, '耶 穌 聖 心', w / 2, 70, 64, { font: FONT_KAI, color: '#c8b070' });
-    text(ctx, '凡勞苦擔重擔的人,可以到我這裡來,', w / 2, 140, 26, { font: FONT_KAI, color: '#b8a060', weight: 'normal' });
+    text(ctx, '凡勞苦擔重擔的人，可以到我這裡來，', w / 2, 140, 26, { font: FONT_KAI, color: '#b8a060', weight: 'normal' });
     text(ctx, '我就使你們得安息。', w / 2, 178, 26, { font: FONT_KAI, color: '#b8a060', weight: 'normal' });
     text(ctx, '— 瑪竇福音 11:28', w / 2, 218, 20, { font: FONT_KAI, color: '#a89050', weight: 'normal' });
     for (let k = 0; k < 14; k++) softBlob(ctx, rr(0, w), rr(0, h), rr(10, 60), '60,110,90', 0.45); // 銅綠
@@ -395,7 +395,7 @@ const LABEL_TEX = lazy(() => {
     ctx.fillStyle = '#2a2622'; ctx.beginPath(); ctx.moveTo(w, h); ctx.lineTo(w - rr(40, 90), h); ctx.lineTo(w, h - rr(60, 140)); ctx.fill(); // 撕掉的角
     ctx.save(); ctx.translate(w * 0.5, h * 0.55); ctx.rotate(-0.2); text(ctx, '騙 子', 0, 0, 60, { color: 'rgba(130,10,10,0.85)', weight: '900' }); ctx.restore();
   });
-  poster('poster', '用心守護您的健康', '聖心醫院 · 全年無休 24H 急診', '#9cb8c4', '#2a4a5a');
+  poster('poster', '萬嵐回神照護中心', '讓每一位家人，都回得來', '#9cb8c4', '#2a4a5a');
   poster('poster2', '捐血一袋 救人一命', '聖心醫院 捐血中心 B1', '#c4a49c', '#5a2a2a');
   inR('pay', (w, h) => { ctx.fillStyle = '#2a3440'; ctx.fillRect(0, 0, w, h); text(ctx, '繳 費 機', w / 2, 40, 38, { color: '#e8e8e8' }); text(ctx, 'PAY STATION', w / 2, 80, 22, { color: '#c8c8c8', font: 'Arial' }); ctx.fillStyle = '#0c1a10'; ctx.fillRect(40, 110, 176, 90); text(ctx, 'ERR 404', w / 2, 155, 30, { color: '#3a6a3a', font: 'monospace' }); });
   const sign = (n, a, b, bg, fg) => inR(n, (w, h) => { ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h); ctx.strokeStyle = fg; ctx.lineWidth = 6; ctx.strokeRect(6, 6, w - 12, h - 12); text(ctx, a, w / 2, h * 0.42, 44, { color: fg }); text(ctx, b, w / 2, h * 0.78, 20, { color: fg, font: 'Arial' }); grime(w, h, 0.3); });
@@ -407,7 +407,7 @@ const LABEL_TEX = lazy(() => {
   sign('nopark', '禁止停車', 'NO PARKING', '#1a3a8a', '#fff');
   sign('busstop', '聖心醫院站', '12 · 35 · 紅 7', '#2a5a9a', '#fff');
   sign('flamm', '嚴禁煙火', 'NO FLAMES', '#c01818', '#fff');
-  sign('gen_plate', '發電機 GEN-02', '380V 3Φ 250kVA', '#c8ccc8', '#222');
+  sign('gen_plate', '207 專用', '勿拔　工務 2003', '#c8ccc8', '#222');
   const gauge = (n, red) => inR(n, (w, h) => {
     ctx.fillStyle = '#ddd8c8'; ctx.beginPath(); ctx.arc(64, 64, 60, 0, 7); ctx.fill();
     ctx.strokeStyle = '#111'; ctx.lineWidth = 2;
