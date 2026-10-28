@@ -89,7 +89,9 @@ export function lobbyColdOpen(R) {
     else if (nf < 6) { R.put(bouquet(nf), x, z, r() * 6.28, { collide: false }); nf++; }
   }
   // 北口東側柱子(x 68–72, z 54–56)朝西那一面:褪色的紅漆直書
-  R.put(tpl('story:dontrust', (b) => b.plane(D(paintRect()), 0.4, 1.9, 0, 0.95, 0)), 67.9, 55.0, -PI / 2, { y: y + 0.45 });
+  // (兩面都放:朝外那面看得到,朝柱子那面被背面剔除)
+  const dt = tpl('story:dontrust', (b) => b.plane(D(paintRect()), 0.4, 1.9, 0, 0.95, 0));
+  for (const yw of [-PI / 2, PI / 2]) R.put(dt, 67.94, 55.0, yw, { y: y + 0.45 });
   return { ns, nb, nf };
 }
 void G; void glowSwatch;
@@ -111,8 +113,8 @@ export function stairMark(R, zone) {
   const runs = R.walls.filter((r) => r.len >= 1.6).sort((a, b) => b.len - a.len);
   const t = tpl(`story:floornum:${lv}:${side}`, (b) => b.plane(D(floorNum(lv, side)), 1.3, 0.975, 0, 0.49, 0.003));
   for (const run of runs.slice(0, 2)) {
-    const tt = (run.t0 + run.t1) / 2;
-    if (R.isWindow(run, tt - 0.7, tt + 0.7)) continue;
+    const tt = run.len > 3.4 ? run.t1 - 1.0 : (run.t0 + run.t1) / 2 + 0.9; // 避開牆中央的小樓層牌(signs.js)
+    if (R.isWindow(run, tt - 0.7, tt + 0.7) || tt > run.t1 - 0.6) continue;
     R.atWall(t, run, tt, { mount: 1.15 });
   }
 }
