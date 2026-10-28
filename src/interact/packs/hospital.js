@@ -173,7 +173,7 @@ const items = [
   // ================================================================== 電話、廣播、電視、打字機
   { id: 'h.ix.payphone', kind: 'phone', zone: 'f1_lobby', mount: 'wall', near: null, style: 'pay', ext: null, calls: ['ph.p01', 'ph.p02', 'ph.p03', 'ph.p04'], ring: 'tension', special: null,
     why: '大廳的公共電話；市話早就斷了，只有大廳的人的聲音進得來。' },
-  { id: 'h.ix.phone.store', kind: 'phone', zone: 'f1_store', mount: 'surface', near: null, style: 'desk', ext: '金水商行', calls: ['ph.shop01'], ring: 'flag:h.shop.open', special: null,
+  { id: 'h.ix.phone.store', kind: 'phone', zone: 'f1_lobby', mount: 'wall', near: 'f1_store', style: 'wall', // 掛在店門口外面的牆上:捲門拉下時也接得到 ext: '金水商行', calls: ['ph.shop01'], ring: 'flag:h.shop.open', special: null,
     why: '金水商行臨時補給點的對講機；金水伯每局第一次開店會打來（第 2 次以後由 src/story/deduce.js 播 hc.21）。' },
   { id: 'h.ix.phone.pharmacy', kind: 'phone', zone: 'f1_pharmacy', mount: 'surface', near: null, style: 'desk', ext: '1F 藥局', calls: ['ph.r01', 'ph.r02', 'ph.r05'], ring: 'tension', special: null,
     why: '藥局的內線電話；萬嵐的總機會自動撥進來放「家屬會面」廣播。' },

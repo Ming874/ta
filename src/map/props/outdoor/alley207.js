@@ -99,6 +99,7 @@ export function alley207(ctx, zone) {
   addT(P, tpl('alley:gensign', (b) => { b.plane(L(signRect()), 0.36, 0.2, 0, 0, 0.003); b.box('pi_cardboard', 0.37, 0.21, 0.004, 0, 0, 0); }), M(82.0, y + 0.95, 5.95, 0, Math.PI + 0.06, -0.04));
   // 發電機的運轉指示燈(只有發光,不打光;不跟 207 的窗搶)
   P.add('glow_amber', sph(0.018, 8, 6), M(81.25, y + 0.92, 4.02));
+  jinshuiTruck(ctx, zone); // [scene r5] 金水伯的發財車(平常藏起來,結局時顯示)
   // ---- 結局錨點:鐵網後面(北圍牆與網之間),抬頭看 207 的窗 ----
   ctx.event({ kind: 'anchor', name: 'alleyView', x: 75.4, y, z: 2.45, yaw: Math.PI - 0.042, pitch: 0.4, zone: zone?.id });
   return P;
@@ -110,4 +111,35 @@ function THREE_Plane(w, h) {
   const uv = g.attributes.uv;
   for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w, uv.getY(i) * h);
   return g;
+}
+
+// [scene r5] 金水伯的發財車:白色小貨車(車頭在前、後面平斗 + 淺藍欄板),斗上幾箱貨與一塊帆布;車門手寫「金水商行」。
+// 平常 visible = false(結局才顯示;只改 visible,不動燈)。材質都是其他車輛已用過的共用材質 → 不會多編 shader。
+const doorRect = () => labRect('alley:jinshui', 112, 48, (c, w, h) => {
+  c.fillStyle = '#eef0ec'; c.fillRect(0, 0, w, h);
+  c.fillStyle = '#b01e18'; c.font = 'bold 22px serif'; c.textAlign = 'center'; c.fillText('金水商行', w / 2, 26);
+  c.fillStyle = '#333'; c.font = '10px sans-serif'; c.fillText('柑仔店 · 送貨 0932-xxx-207', w / 2, 42);
+});
+function jinshuiTruck(ctx, zone) {
+  const T = new Parts();
+  T.add('car_white', box(1.35, 1.5, 1.6), M(1.45, 1.2, 0));
+  T.add('car_white', box(0.5, 0.55, 1.6), M(2.02, 0.72, 0));
+  T.add('glass', box(0.04, 0.62, 1.42), M(2.13, 1.6, 0, 0, 0, 0.12));
+  for (const s of [-1, 1]) T.add('glass', box(0.7, 0.5, 0.03), M(1.5, 1.62, s * 0.81));
+  T.add('plastic_black', box(0.1, 0.18, 1.66), M(2.28, 0.55, 0));
+  for (const s of [-1, 1]) { T.add('glow_white', box(0.03, 0.12, 0.2), M(2.29, 0.8, s * 0.62)); T.add('glow_red', box(0.03, 0.12, 0.14), M(-1.6, 0.75, s * 0.68)); T.add('plastic_black', box(0.12, 0.1, 0.05), M(2.05, 1.62, s * 0.86)); }
+  T.add('metal_gray', box(2.85, 0.08, 1.62), M(-0.2, 0.78, 0));
+  for (const s of [-1, 1]) T.add('plastic_blue', box(2.85, 0.36, 0.04), M(-0.2, 1.0, s * 0.79));
+  T.add('plastic_blue', box(0.04, 0.36, 1.62), M(-1.62, 1.0, 0));
+  T.add('plastic_blue', box(0.04, 0.5, 1.62), M(0.75, 1.07, 0));
+  for (const [x, s] of [[1.45, -1], [1.45, 1], [-0.9, -1], [-0.9, 1]]) { T.add('tire', cyl(0.3, 0.3, 0.2, 14).rotateX(HALF), M(x, 0.3, s * 0.72)); T.add('chrome', cyl(0.14, 0.14, 0.21, 10).rotateX(HALF), M(x, 0.3, s * 0.72)); }
+  for (const [x, z, w, h] of [[-0.4, -0.35, 0.6, 0.45], [-0.4, 0.35, 0.55, 0.4], [-1.05, 0.0, 0.5, 0.5], [0.25, 0.2, 0.45, 0.35]]) T.add('cardboard', box(w, h, 0.5), M(x, 0.82 + h / 2, z));
+  T.add('fabric_blue', box(0.9, 0.04, 1.1), M(-1.0, 1.1, 0.0, 0, 0, 0.1));
+  for (const s of [-1, 1]) addT(T, tpl('alley:jinshui', (b) => b.plane(L(doorRect()), 0.62, 0.27, 0, 0, 0.002)), M(1.42, 1.0, s * 0.802, 0, s > 0 ? 0 : Math.PI, 0));
+  const g = T.group();
+  g.name = 'jinshui-truck';
+  g.position.set(88.6, 0, 7.0); g.rotation.y = Math.PI; // 停在鐵網東邊(不擋視線),車頭朝西對著那扇窗
+  g.visible = false;
+  ctx.add(g, { static: false, collide: false });
+  ctx.event({ kind: 'anchor', name: 'truck', x: 88.6, y: 0, z: 7.0, yaw: Math.PI, zone: zone?.id });
 }

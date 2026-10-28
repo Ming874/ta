@@ -252,7 +252,7 @@ export class ShopUI {
           <span><kbd>1</kbd>–<kbd>4</kbd>分頁</span><span><kbd>↑</kbd><kbd>↓</kbd>選擇</span><span><kbd>Enter</kbd>購買</span><span><kbd>E</kbd>離開</span>
           <span class="sp"></span>
           <button class="sh-btn ghost" data-act="close">離開<kbd>E</kbd></button>
-          <button class="sh-btn ghost" id="shopNext">不等了，開始下一次燈篙<kbd>N</kbd></button>
+          <button class="sh-btn ghost" id="shopNext">不等了，直接開始下一波<kbd>N</kbd></button>
         </div>
         <div class="sh-toast"></div>
       </div>`;
@@ -355,7 +355,7 @@ export class ShopUI {
     const g = this.game;
     const sp = SPECIAL[waveKind((g.round || 0) + 1)];
     this.restEl.innerHTML = g.phase === 'shop' || g.phase === 'break'
-      ? `燈篙再亮還有 <b>${Math.max(0, Math.ceil(g.restT))}</b> 秒${g.net ? '' : ' · 買東西時暫停'}<br />下一次：第 ${(g.round || 0) + 1} 次燈篙${sp ? ` · <i>${esc(sp.name)}</i>` : ''}` : '';
+      ? `下一波還有 <b>${Math.max(0, Math.ceil(g.restT))}</b> 秒${g.net ? '' : ' · 買東西時暫停'}<br />下一次：第 ${(g.round || 0) + 1} 次燈篙${sp ? ` · <i>${esc(sp.name)}</i>` : ''}` : '';
   }
 
   renderTabs() {
@@ -480,7 +480,7 @@ export class ShopUI {
     if (it.id === 'ammo_all') {
       const rows = (it.quotes || []).map((q) => `<span>${esc(weaponName(q.id))}</span>${bar((q.mag + q.reserve) / (q.magCap + q.resCap), 1)}<em>${q.missing ? `+${q.missing}` : '滿'}</em><em class="pr">${q.missing ? q.price : ''}</em>`).join('');
       const save = it.full > it.price ? `<span>原價<b class="strike">${it.full}</b></span><span>省下<b class="up">${it.full - it.price}</b></span>` : '';
-      return `<div class="sh-stats ammo">${rows}</div><div class="sh-facts">${save}<span>每次燈篙開始也會自動補 <b>2</b> 個彈匣</span></div>`;
+      return `<div class="sh-stats ammo">${rows}</div><div class="sh-facts">${save}<span>每一波開始也會自動補 <b>2</b> 個彈匣</span></div>`;
     }
     const q = it.quote, part = it.state === 'part' && q.part;
     const add = part ? q.part.rounds : q.missing;

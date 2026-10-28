@@ -52,7 +52,7 @@ export class IxUI {
     const e = mk(`ix-sub${o.tag ? ' ' + o.tag : ''}`, `${o.who ? `<b style="color:${o.color || '#cfd8d2'}">${esc(o.who)}</b>` : ''}<span>${lines.map(esc).join('<br>')}</span>`);
     this.subEl.appendChild(e);
     while (this.subEl.children.length > 2) this.subEl.firstChild.remove();
-    const ms = o.ms || 1200 + String(o.text || '').length * 220;
+    const ms = Math.max(o.ms || 0, 1400 + [...String(o.text || '')].length * 200); // 至少夠讀完(語音很快時也不會一閃就走)
     const h = { e, t: setTimeout(() => h.close(), ms), close() { clearTimeout(h.t); if (!e.isConnected) return; e.classList.add('out'); setTimeout(() => e.remove(), 400); } };
     this.subs.push(h);
     if (this.subs.length > 6) this.subs.shift();

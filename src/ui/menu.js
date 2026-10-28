@@ -39,18 +39,18 @@ export const KEYS = [
   ['W A S D', '移動'], ['Shift', '奔跑'], ['Space', '跳躍'], ['C', '蹲下（切換）'],
   ['滑鼠左鍵', '射擊'], ['滑鼠右鍵', '開鏡（按住）'], ['R', '換彈'], ['1–6 / 滾輪', '切換武器'],
   ['G', '投擲手榴彈'], ['V', '小刀'], ['F', '手電筒'], ['E', '互動：金水商行／補給櫃／調查'],
-  ['H', '使用醫療包'], ['M', '地圖'], ['N', '燈篙熄時不等了，直接開始下一次'], ['T', '關閉提示'],
+  ['H', '使用醫療包'], ['M', '地圖'], ['N', '休息時不等了，直接開始下一波'], ['T', '關閉提示'],
   ['J', '推理本'], ['B', '吹口哨（鬼月莫亂吹）'],
   ['Esc', '暫停'], ['F3', '效能資訊'],
 ];
 const KEYS_MP = [['Tab', '計分板（多人）'], ['Enter', '聊天（多人）']];
 const TIPS = [
-  '每次燈篙熄了有 <b>30 秒</b>（第 5、10… 次之前 40 秒）：金水伯把貨放在店裡，拉起鐵門（畫面上的推車標記會指路）：槍、彈藥、改裝、防彈背心、手榴彈與醫療包。<b>買東西時遊戲暫停</b>。',
-  '<b>第 5、10、15… 次燈篙會亮到最大</b>，打最多劑的巨屍會醒；第 8、13、18… 次是特別的夜（狂奔之夜／膿毒潮）。從第 5 次起他們越來越耐打，記得升級武器。',
+  '每一波打完有 <b>30 秒</b>休息（第 5、10… 波之前 40 秒）：金水伯把貨放在店裡，拉起鐵門（畫面上的推車標記會指路）：槍、彈藥、改裝、防彈背心、手榴彈與醫療包。<b>買東西時遊戲暫停</b>。',
+  '<b>第 5、10、15… 波最強</b>，打最多劑的巨屍會醒；第 8、13、18… 波是特別的夜（狂奔之夜／膿毒潮）。從第 5 次起他們越來越耐打，記得升級武器。',
   '<b>爆頭</b>造成雙倍傷害並多拿 50% 錢；<b>近戰擊殺</b>錢加倍。4 秒內連續擊殺會累積<b>連殺</b>，分數倍率最高 ×2，5、8、12… 連殺另有錢獎勵。',
-  '一整次燈篙<b>毫髮無傷</b>可以拿到額外獎勵；回來的人身上還有生前的零錢與鈔票，燈篙暗下時，地上的錢會一起算進你的口袋，用得到的掉落物也會一起收。',
+  '一整波<b>毫髮無傷</b>可以拿到額外獎勵；回來的人身上還有生前的零錢與鈔票，這一波結束時，地上的錢會一起算進你的口袋，用得到的掉落物也會一起收。',
   '回來的人會掉<b>彈匣</b>（橘光）、<b>醫療包</b>（綠光），偶爾掉<b>手榴彈</b>；彈藥或生命不足時掉落率會提高。靠近就會自動吸過來，約 40 秒後消失。',
-  '各樓層的<b>彈藥櫃與醫療櫃</b>每次燈篙可用一次（按 E）。按 <b>M</b> 打開地圖找它們。',
+  '各樓層的<b>彈藥櫃與醫療櫃</b>每一波可用一次（按 E）。按 <b>M</b> 打開地圖找它們。',
   '<b>膿腫者</b>死亡會爆炸並留下毒氣；<b>巨屍</b>咆哮後會衝鋒，引他撞牆再打頭。',
   '聲音是你最好的朋友：戴上耳機，注意腳步、低吼與遠方的動靜。',
   '<b>推理本（J）</b>：看到、撿到、聽到的線索會自己記下來。把詞填進句子，到「問的地方」<b>擲筊</b>：聖筊就是對了，笑筊、陰筊會告訴你對了幾個。',
@@ -97,7 +97,7 @@ export class Menu {
         <div class="mn-sub">午夜之後，這裡<b>不再收治活人</b>。</div>
         <div class="mn-rule"></div>
         <div class="mn-btns">
-          <button class="mn-btn primary" id="startBtn">單人<small>撐過一次次燈篙 · 查出 207 那一夜的事</small></button>
+          <button class="mn-btn primary" id="startBtn">單人<small>撐過一波波殭屍 · 查出 207 那一夜的事</small></button>
           <button class="mn-btn" data-mode="coop">合作生存<small>2–4 人連線 · 倒地可互相救援</small></button>
           <button class="mn-btn" data-mode="pvp">對戰死鬥<small>2–8 人 · 各自為戰，可加入殭屍騷擾（非正史）</small></button>
           <div id="menuModes"></div>
@@ -155,7 +155,7 @@ export class Menu {
   showBest() {
     const b = loadBest(), el = $('menuBest');
     if (!el) return;
-    el.innerHTML = b && b.round ? `<span>最佳紀錄</span>第 <b>${b.round}</b> 次燈篙 · 分數 <b>${(b.score || 0).toLocaleString('en-US')}</b> · 擊殺 <b>${b.kills || 0}</b>` : '';
+    el.innerHTML = b && b.round ? `<span>最佳紀錄</span>第 <b>${b.round}</b> 波 · 分數 <b>${(b.score || 0).toLocaleString('en-US')}</b> · 擊殺 <b>${b.kills || 0}</b>` : '';
   }
 
   // ---------- 暫停 ----------
@@ -207,9 +207,9 @@ export class Menu {
     const by = s.byType || {}, top = Math.max(1, ...Object.values(by));
     const types = TYPE_ORDER.filter((k) => by[k]).map((k) => `<div><span>${TYPE_NAMES[k]}</span><i style="--w:${(by[k] / top).toFixed(3)}"></i><b>${by[k]}</b></div>`).join('');
     const nw = s.isNew || {}, best = s.best, NEW = '<i class="mn-new">新紀錄</i>';
-    const rec = best ? `<div class="mn-best"><span>本機最佳</span>分數<b>${(best.score || 0).toLocaleString('en-US')}</b>燈篙<b>${best.round || 0}</b>擊殺<b>${best.kills || 0}</b>連殺<b>${best.streak || 0}</b>${best.runs ? `<em>共 ${best.runs} 場</em>` : ''}</div>` : '';
+    const rec = best ? `<div class="mn-best"><span>本機最佳</span>分數<b>${(best.score || 0).toLocaleString('en-US')}</b>波數<b>${best.round || 0}</b>擊殺<b>${best.kills || 0}</b>連殺<b>${best.streak || 0}</b>${best.runs ? `<em>共 ${best.runs} 場</em>` : ''}</div>` : '';
     $('deadinfo').innerHTML = `
-      <div class="mn-round">你撐到第<b>${s.round}</b>次燈篙${nw.round ? NEW : ''}</div>
+      <div class="mn-round">你撐到第<b>${s.round}</b>波${nw.round ? NEW : ''}</div>
       <div class="mn-score">分數<b>${(s.score || 0).toLocaleString('en-US')}</b>${nw.score ? NEW : ''}</div>
       <div class="mn-stats">
         <div><b>${s.kills}</b><small>擊殺${nw.kills ? NEW : ''}</small></div>
@@ -230,7 +230,7 @@ export class Menu {
     const g = this.game, el = $('pauseRun');
     if (!on || !g || !el) return;
     const S = g.stats || {};
-    el.innerHTML = g.state === 'playing' ? `第 <b>${g.round || 1}</b> 次燈篙 · 擊殺 <b>${S.kills || 0}</b> · 分數 <b>${(S.score || 0).toLocaleString('en-US')}</b> · 錢 <b>${g.player?.coins || 0}</b>` : '';
+    el.innerHTML = g.state === 'playing' ? `第 <b>${g.round || 1}</b> 波 · 擊殺 <b>${S.kills || 0}</b> · 分數 <b>${(S.score || 0).toLocaleString('en-US')}</b> · 錢 <b>${g.player?.coins || 0}</b>` : '';
   }
 
   // ---------- 面板 ----------
