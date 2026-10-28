@@ -351,9 +351,11 @@ export function warmDraw(game, objects) {
 // 分批:每批只畫 batch 個(其餘物件用圖層暫時排除),批與批之間讓出主執行緒並等 GPU 行程追上 → 不會變成一個數秒的長任務。
 // 陰影 pass 不畫(陰影深度 program 已預編譯;每批都重畫手電筒陰影太浪費)
 const WARM_LAYER = 30;
-export async function warmDrawScene(game, { batch = 12 } = {}) {
+export async function warmDrawScene(game, { batch = 12, all = false } = {}) {
   const r = game.renderer, scene = game.scene, cam = game.camera, sm = r.shadowMap;
-  const reps = representatives(scene), lights = [];
+  // all:每個物件都畫一次(上傳全部幾何緩衝 / VAO;開始畫面前做,第一幀與走進新區域時就不會一次上傳一大堆)
+  const reps = all ? [] : representatives(scene), lights = [];
+  if (all) scene.traverse((o) => { if ((o.isMesh || o.isLine || o.isPoints || o.isSprite) && o.material && o.geometry) reps.push(o); });
   scene.traverse((o) => { if (o.isLight) lights.push(o); });
   warmRT = warmRT || new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType });
   for (let i = 0; i < reps.length; i += batch) {
@@ -379,6 +381,26 @@ export async function warmDrawScene(game, { batch = 12 } = {}) {
     }
   }
   return reps.length;
+}
+
+// 場景材質用到的貼圖先上傳(開始畫面前,每個工作最多 budget ms;第一幀不會一次上傳全部程式貼圖)
+export async function uploadSceneTextures(game, budget = 8) {
+  const r = game.renderer, todo = [], seen = new Set();
+  const KEYS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap', 'alphaMap', 'bumpMap', 'lightMap', 'displacementMap', 'specularMap', 'gradientMap'];
+  game.scene.traverse((o) => {
+    for (const m of [].concat(o.material || [])) {
+      if (!m) continue;
+      for (const k of KEYS) { const t = m[k]; if (t && !seen.has(t) && t.image && !t.isRenderTargetTexture && t.version > 0 && r.properties.get(t).__version !== t.version) { seen.add(t); todo.push(t); } }
+      for (const v of Object.values(m.uniforms || {})) { const t = v?.value; if (t?.isTexture && !seen.has(t) && t.image && !t.isRenderTargetTexture && t.version > 0 && r.properties.get(t).__version !== t.version) { seen.add(t); todo.push(t); } }
+    }
+  });
+  let i = 0;
+  while (i < todo.length) {
+    await gpuDrain(r, 500);
+    const t0 = performance.now();
+    while (i < todo.length && performance.now() - t0 < budget) { try { r.initTexture(todo[i]); } catch { /* 略過 */ } i++; }
+  }
+  return todo.length;
 }
 
 // program 第一次被使用時,three 還要查詢 uniform/attribute 位置(每個數 ms~十數 ms 的同步呼叫)。

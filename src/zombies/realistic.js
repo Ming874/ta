@@ -197,7 +197,7 @@ export function loadRealistic(game) {
   if (off()) return;
   const typesOf = {};
   for (const [t, ids] of Object.entries(BODIES)) for (const id of ids) (typesOf[id] ||= []).push(t);
-  for (const id of Object.keys(typesOf)) load(id, BASE + 'zombies/' + id + '.glb', typesOf[id], 35);
+  for (const id of Object.keys(typesOf)) load(id, BASE + 'zombies/' + id + '.glb', typesOf[id], 8); // [perf] 殭屍模型決定 hz:warm(開局出怪的時間點),排在大部分貼圖前面
 }
 // 進入多人房間時才下載倖存者模型(單人不需要);優先序高於殭屍(隊友一開局就看得到)
 export function loadSurvivors() {

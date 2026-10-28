@@ -5,7 +5,7 @@
 //   uploads.attach(renderer)          main.js 建好渲染器後呼叫
 //   await uploads.add(texture)        排隊上傳(回傳時已在 GPU 上)
 const q = [];
-let R = null, armed = false, lastT = 0;
+let R = null, armed = false, lastT = 0, skips = 0;
 export const uploads = {
   maxSize: 1024, // 串流貼圖上限(殭屍/道具在畫面上不會大到需要 2K)
   done: 0, ms: 0, // 統計
@@ -22,8 +22,10 @@ function arm() {
   armed = true;
   const step = (t) => {
     armed = false;
-    const slow = lastT && t - lastT > 40; // 上一幀已經超時:這幀不加重
+    // 上一幀已經超時:這幀不加重(最多連跳 2 幀;載入期間每幀都慢,不能因此一直不上傳)
+    const slow = lastT && t - lastT > 40 && skips < 2;
     lastT = t;
+    skips = slow ? skips + 1 : 0;
     if (!slow && q.length) {
       const [tex, resolve] = q.shift();
       shrink(tex).then(() => {

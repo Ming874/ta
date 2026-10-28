@@ -4,7 +4,7 @@ import { Quality } from './sys/quality.js';
 import { Perf } from './sys/perf.js';
 import { caps } from './sys/caps.js';
 import { idle } from './sys/sched.js';
-import { precompile, precompilePasses, initPrograms, warmDraw, warmDrawScene, warmPMREM, yieldNow } from './sys/warmup.js';
+import { precompile, precompilePasses, initPrograms, warmDraw, warmDrawScene, warmPMREM, uploadSceneTextures, yieldNow } from './sys/warmup.js';
 import { backgroundTicker } from './sys/ticker.js';
 import { texStats, texturesReady } from './sys/texworker.js';
 import { prewarm, whenTypesReady, variantStats, getVariant, instantiate, forceVariant, VARIANT_TYPES } from './zombies/model.js';
@@ -162,10 +162,16 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ---- 啟動:世界 shader 先在背景編好再開始畫(第一幀不會整個卡住),最多等 4 秒 ----
+let sceneReady = null; // 場景 program 全部可用時 resolve(warmRuntime 的離屏繪製要等它,否則會在繪製時同步編譯場景材質)
 async function boot() {
+  let ready;
+  sceneReady = new Promise((r) => { ready = r; });
   // 光源數量是 shader 參數:第一次 updateCombat 才加進場景的爆炸閃光燈(boomLight)若在預編譯之後才出現,
   // 第一幀會把全部 program 同步重編一次(慢機器上 5~15 秒的凍結)→ 預編譯前先初始化
   game.initCombat?.();
+  // 殭屍與常見特效材質:每種殭屍的第一個變體一建好就預編譯(與場景預編譯平行,不等它做完)
+  whenTypesReady().then(() => { performance.mark('hz:variants'); warmStage = 1; return idle(warmRuntime, 300); })
+    .catch((e) => console.warn('[warmup]', e)).finally(() => { warmStage = 4; game.warmed = true; });
   await yieldNow(); // 先讓模組執行完(DOMContentLoaded、選單可互動),編譯分批在之後的任務裡做
   const t = performance.now();
   try {
@@ -187,15 +193,19 @@ async function boot() {
       performance.mark('hz:programs');
     }
   } catch (e) { console.warn('[warmup]', e); }
+  // 開始畫面前:貼圖上傳、每個物件離屏畫一次(幾何上傳 / ANGLE 頂點格式變體),分批、每批之間讓出主執行緒
+  try {
+    const t2 = performance.now();
+    await uploadSceneTextures(game);
+    await warmDrawScene(game, { all: true, batch: 16 });
+    performance.measure('hz:prewarm', { start: t2 });
+  } catch (e) { console.warn('[warmup]', e); }
   performance.measure('hz:precompile', { start: t });
+  ready();
   last = performance.now();
   if (!raf && !document.hidden) raf = requestAnimationFrame(frame);
-  // 每種「材質 × 頂點格式」離屏各畫一次(分批、每批之間讓出主執行緒並等 GPU 追上)
-  idle(async () => { const t1 = performance.now(); await warmDrawScene(game); performance.measure('hz:warmDrawScene', { start: t1 }); }, 500);
   // 殭屍與常見特效材質:每種殭屍的第一個變體一建好就在閒置時段預編譯(不等全部變體、也不等貼圖下載),
   // 第一隻殭屍出現/第一槍不會頓一下
-  whenTypesReady().then(() => { performance.mark('hz:variants'); warmStage = 1; return idle(warmRuntime, 300); })
-    .catch((e) => console.warn('[warmup]', e)).finally(() => { warmStage = 4; game.warmed = true; });
 }
 boot();
 
@@ -230,6 +240,7 @@ async function warmRuntime() {
   warmStage = 3;
   await texturesReady();
   performance.mark('hz:warm:tex');
+  await sceneReady;
   // 再真的畫一次(離屏):每種殭屍材質 × 蒙皮頂點格式、特效物件,連同陰影 pass
   await idle(() => {
     const v = getVariant('walker', 0), draws = new THREE.Group();
