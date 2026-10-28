@@ -12,17 +12,6 @@ const rnd = (seed) => { let s = seed >>> 0 || 1; return () => ((s = (s * 16807) 
 const glowScr = (c) => G(glowSwatch(c, c));
 
 // ---------------- ICU ----------------
-const vitalMon = () => tpl('r5:vitalmon', (b) => {
-  b.box('pl_beige', 0.36, 0.3, 0.32, 0, 0.15, 0, { r: 0.02 });
-  b.plane(glowScr('#2a7a50'), 0.26, 0.19, 0, 0.165, 0.161);
-  b.box('pl_dark', 0.3, 0.03, 0.02, 0, 0.02, 0.16);
-});
-const ventilator = () => tpl('r5:vent', (b) => {
-  b.box('pl_cream', 0.42, 0.9, 0.38, 0, 0.55, 0, { r: 0.02 });
-  b.plane(glowScr('#3a8a9a'), 0.22, 0.14, 0, 0.82, 0.191);
-  for (const s of [-1, 1]) b.cyl('rubber', 0.03, 0.04, s * 0.16, 0.05, 0.14, { seg: 8, axis: 'x' });
-  b.tube('pl_clear', [[0.12, 0.7, 0.2], [0.3, 0.75, 0.45], [0.55, 0.62, 0.5], [0.75, 0.68, 0.35]], 0.012, { seg: 5, bend: 0.06 });
-});
 // 推車上的 14 吋 CRT 生命徵象監視器(綠色波形;2003 年的機型,米色外殼、後殼凸出)
 const vitalCart = (k) => tpl(`r5:vitalcart:${k % 2}`, (b) => {
   for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2 + 0.3; b.rod('chrome', 0.011, [0, 0.085, 0], [Math.cos(a) * 0.25, 0.06, Math.sin(a) * 0.25], { seg: 5 }); caster(b, Math.cos(a) * 0.25, Math.sin(a) * 0.25, 0.06, { r: 0.022 }); }
