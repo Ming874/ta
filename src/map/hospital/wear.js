@@ -138,8 +138,8 @@ export const WEAR_ALBEDO = /* glsl */`
 			md = smoothstep( 0.66, 0.86, md ) * uWear.z * ( 0.3 + wxW );
 			wc *= mix( vec3( 1.0 ), vec3( 0.3, 0.34, 0.24 ), clamp( md, 0.0, 1.0 ) );
 			wxRough += md * 0.2 + band * 0.08;
-			// 漆面光澤不均(擦過的地方亮、粉化的地方霧)
-			wxRough += max( wxNB.r - 0.45, 0.0 ) * 0.25 * uWear.x;
+			// 漆面粉化不均(只在油漆/灰泥牆:有剝落層的材質;軟包、磁磚、亮光漆不變)
+			wxRough += max( wxNB.r - 0.45, 0.0 ) * 0.25 * uWear.x * step( 0.001, uWear2.x );
 			if ( uWear.x > 0.7 ) {
 				// 病床/推車撞出來的橫向擦痕(0.6~1.1m 高,黑灰色、短、斷斷續續)
 				float sb = smoothstep( 0.55, 0.7, wxH ) * ( 1.0 - smoothstep( 0.95, 1.15, wxH ) );

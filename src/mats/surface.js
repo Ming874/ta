@@ -169,18 +169,20 @@ const FS_COLOR = /* glsl */`
 				col *= 1.0 - 0.25 * exp( - td * td / ( pw * pw * 2.0 + 1e-7 ) ) * min( 1.0, 0.0015 / pw );
 				rough = mix( rough, 0.3 + 0.2 * A.r, tape );
 			}
-			if ( side > 0.5 && bW > 0.25 && bH > 0.18 && bh > 0.12 ) {
-				vec2 pm = vec2( vSF.x * bW, vSF.y * bH ) - vec2( bW * ( 0.12 + 0.1 * fract( bh * 7.3 ) ), bH * 0.52 );
-				vec2 bs = vec2( min( 0.28, bW * 0.5 ), min( 0.12, bH * 0.3 ) );
+			// 每個面各自決定(同一疊箱子的四個面不會每面同一個位置都有同一塊字)
+			float fh = fract( sin( dot( floor( sGN.xz * 1.9 + 0.5 ), vec2( 41.3, 17.9 ) ) + vSC.z * 7.31 + bh * 13.0 ) * 43758.5453 );
+			if ( side > 0.5 && bW > 0.25 && bH > 0.18 && fh > 0.42 ) {
+				vec2 pm = vec2( vSF.x * bW, vSF.y * bH ) - vec2( bW * ( 0.08 + 0.3 * fract( fh * 7.3 ) ), bH * ( 0.42 + 0.22 * fract( fh * 3.1 ) ) );
+				vec2 bs = vec2( min( 0.12 + 0.18 * fract( fh * 5.7 ), bW * 0.5 ), min( 0.06 + 0.08 * fract( fh * 2.3 ), bH * 0.3 ) );
 				if ( pm.x > 0.0 && pm.y > 0.0 && pm.x < bs.x && pm.y < bs.y ) {
 					vec2 ci = floor( pm / vec2( 0.018, 0.028 ) ), cf = fract( pm / vec2( 0.018, 0.028 ) );
-					float ch = fract( sin( dot( ci + bh * 17.0, vec2( 12.9898, 78.233 ) ) ) * 43758.5453 );
+					float ch = fract( sin( dot( ci + fh * 17.0, vec2( 12.9898, 78.233 ) ) ) * 43758.5453 );
 					// 方塊字:每格 1~2 豎 + 1~3 橫(像中文印刷字);每行從左邊開始、長度不一;每三行空一行
 					float inC = step( 0.12, cf.x ) * step( cf.x, 0.88 ) * step( 0.1, cf.y ) * step( cf.y, 0.9 );
 					float v1 = step( abs( cf.x - 0.25 - 0.2 * fract( ch * 5.1 ) ), 0.06 ), v2 = step( abs( cf.x - 0.72 + 0.15 * fract( ch * 2.9 ) ), 0.06 ) * step( 0.4, fract( ch * 7.7 ) );
 					float h1 = step( abs( cf.y - 0.2 - 0.12 * fract( ch * 9.7 ) ), 0.05 ), h2 = step( abs( cf.y - 0.52 - 0.1 * fract( ch * 4.3 ) ), 0.05 ) * step( 0.3, fract( ch * 3.3 ) );
 					float h3 = step( abs( cf.y - 0.82 ), 0.05 ) * step( 0.45, fract( ch * 6.1 ) );
-					float rowL = ( 0.45 + 0.55 * fract( sin( ci.y * 17.3 + bh * 31.0 ) * 43758.5453 ) ) * bs.x / 0.018;
+					float rowL = ( 0.45 + 0.55 * fract( sin( ci.y * 17.3 + fh * 31.0 ) * 43758.5453 ) ) * bs.x / 0.018;
 					float glyph = step( 0.08, ch ) * inC * max( max( v1, v2 ), max( h1, max( h2, h3 ) ) ) * step( 1.0, mod( ci.y, 3.0 ) + 0.5 ) * step( ci.x, rowL );
 					vec3 ink = fract( bh * 3.7 ) > 0.4 ? vec3( 0.035, 0.035, 0.04 ) : vec3( 0.04, 0.07, 0.13 );
 					float wornI = 0.75 * smoothstep( 0.15, 0.5, C.g + A.r * 0.3 ) * ( 1.0 - smoothstep( 0.2, 0.45, pw / 0.018 ) ); // 字太小(遠)就淡出
