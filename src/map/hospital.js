@@ -156,7 +156,8 @@ export function* buildHospitalSteps(world, layout, scene, opts = {}) {
   L.levels.forEach((lv, lj) => { for (let r = 0; r < L.H; r++) for (let c = 0; c < L.W; c++) { const ch = L.charAt(lj, c, r); if (ch === 'o' || ch === '%') { pvs.queueSeed(lj, c, r); if (lj > 0) pvs.queueSeed(lj - 1, c, r); } } });
   const nearSt = [];
   const nearStairs = (li, x, z) => { nearSt.length = 0; for (const s of stairsP) if ((s.lo === li || s.hi === li) && (s.x - x) ** 2 + (s.z - z) ** 2 < s.r * s.r) nearSt.push(s); return nearSt; };
-  let view = null, comp = null, pvsSig = '', pvsTick = 0, pvsLi = 1, pvsOut = false;
+  let view = null, comp = null, pvsSig = -1, pvsTick = 0, pvsLi = 1, pvsOut = false;
+  const one = new Int32Array(1); // 單一區塊的查詢(不每次配置陣列)
   const tracked = []; // { o, li, regs }:沒有烘進批次的靜態實例池(下載模型會換掉零件的那些),依區塊開關 visible
   // 某樓層某些區塊目前是否可能看得到(regs = null:不分區塊)
   const pvsTest = (oli, regs) => {
@@ -189,7 +190,8 @@ export function* buildHospitalSteps(world, layout, scene, opts = {}) {
     for (const px of pool.proxies) {
       if (!px.parent || !px.visible) continue;
       const e = px.matrixWorld.elements, oli = Math.max(0, L.levelOfY(e[13] - 0.2));
-      if (pvsTest(oli, [pvs.regionAt(oli, e[12], e[14])])) return true;
+      one[0] = pvs.regionAt(oli, e[12], e[14]);
+      if (pvsTest(oli, one)) return true;
     }
     return false;
   };
@@ -198,7 +200,8 @@ export function* buildHospitalSteps(world, layout, scene, opts = {}) {
   };
   const dynVisible = (o) => {
     const oli = Math.max(0, L.levelOfY(o.position.y + 0.3));
-    return pvsTest(oli, [pvs.regionAt(oli, o.position.x, o.position.z)]);
+    one[0] = pvs.regionAt(oli, o.position.x, o.position.z);
+    return pvsTest(oli, one);
   };
   ctx.lateAdd = (obj) => {
     if (!view || !obj.isInstancedMesh) return;
@@ -233,6 +236,9 @@ export function* buildHospitalSteps(world, layout, scene, opts = {}) {
       const rs = regionSet(pvs, oli, x0, z0, x1, z1, false);
       return pvsTest(oli, rs ? rs.r : null);
     },
+    // 同上,區塊組合先算好(每幀查詢不配置):pvsBoxRegions → { li, regs },pvsTestRegions(那個物件)
+    pvsBoxRegions(y, x0, z0, x1, z1) { const oli = Math.max(0, L.levelOfY(y)); const rs = regionSet(pvs, oli, x0, z0, x1, z1, false); return { li: oli, regs: rs ? rs.r : null }; },
+    pvsTestRegions(q) { return !view || pvsTest(q.li, q.regs); },
     // [draws] 靜態批次(src/map/hospital/batch.js):結構 / 道具區塊 / 靜態實例池 → 每個材質一個 BatchedMesh,實例 = 區塊。
     // 由 game.js 在互動物件與材質表面升級(upgradeWorldSurfaces)之後、預編譯之前呼叫一次(分段 generator;batch() = 同步跑完)
     batch(game) { const it = H.batchSteps(game); let r; while (!(r = it.next()).done) { /* 同步跑完 */ } return r.value; },
@@ -335,7 +341,8 @@ export function* buildHospitalSteps(world, layout, scene, opts = {}) {
         pvs.setMaxDistance(H.propDistance + 10);
         pvsLi = li; pvsOut = outdoor;
         const changed = pvs.update(li, p.x, p.z, nearStairs(li, p.x, p.z));
-        const sig = li + (outdoor ? 'o' : 'i') + vis.join('') + propVis.join('');
+        let sig = li * 2 + (outdoor ? 1 : 0);
+        for (let i = 0; i < vis.length; i++) sig = sig * 4 + (vis[i] ? 2 : 0) + (propVis[i] ? 1 : 0);
         const big = changed || sig !== pvsSig;
         if (big || ((pvsTick = (pvsTick + 1) & 3) === 0)) view.refresh(li, vis, propVis, outdoor, p.x, p.y + 1.6, p.z, H.propDistance, big);
         if (big) { applyTracked(); comp?.refresh(); dynTick = 11; }

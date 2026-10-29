@@ -120,7 +120,7 @@ export function createVis(L) {
   // ---- 目前的可見區塊(旗標陣列)----
   const own = new Uint8Array(nR), col = new Uint8Array(nR), other = new Uint8Array(nR);
   const mark = (arr, list) => { for (let i = 0; i < list.length; i++) arr[list[i]] = 1; };
-  let last = '', version = 0;
+  let last = -1, version = 0; // 上次的(樓層, 格子, 附近樓梯)組合鍵(數字:每幀比對不配置字串)
   const todo = [];
   // 種子去重:每 2×2 格只取一格(固定挑區塊內第一個不透明以外的格子 → 閒置預算與即時查詢用同一格,快取命中)
   const canon = (j, k) => {
@@ -135,11 +135,13 @@ export function createVis(L) {
     own, col, other, // own:玩家這層看得到;col:看得到的格子位置在各層的區塊;other:經由開口/樓梯看到的其他層
     get version() { return version; },
     // 距離變短時沿用舊結果(看得比較遠 = 保守);變長才清快取(畫質切換,不是每幀的動態解析度)
-    setMaxDistance(m) { const n = Math.ceil(m / CELL) + 2; if (n > maxCells) { maxCells = n; cache.clear(); last = ''; } },
+    setMaxDistance(m) { const n = Math.ceil(m / CELL) + 2; if (n > maxCells) { maxCells = n; cache.clear(); last = -1; } },
     // stairs:[{ lo, hi, cells:[[c,r],...] }](玩家附近、連通兩層的樓梯);outdoor:玩家在戶外
     update(li, x, z, stairs) {
       const c = clampC(Math.floor(x / CELL)), r = clampR(Math.floor(z / CELL));
-      const sk = li + ',' + c + ',' + r + '|' + stairs.map((s) => s.id).join(',');
+      let sm = 0;
+      for (let i = 0; i < stairs.length; i++) sm |= 1 << (stairs[i].id & 31);
+      const sk = (((li * H + r) * W + c) * 4294967296) + (sm >>> 0);
       if (sk === last) return false;
       last = sk;
       own.fill(0); col.fill(0); other.fill(0);
@@ -181,7 +183,7 @@ export function createVis(L) {
         }
       }
       for (const j of pending) mark(other, levelRegs[j]);
-      if (pending.size) last = ''; // 下一幀(種子算好後)再精算一次
+      if (pending.size) last = -1; // 下一幀(種子算好後)再精算一次
       version++;
       return true;
     },
@@ -196,7 +198,7 @@ export function createVis(L) {
       return n;
     },
     // 開門/關門等改變阻擋時(目前門一律視為透明 → 不需要)
-    invalidate() { cache.clear(); last = ''; },
+    invalidate() { cache.clear(); last = -1; },
     stats: () => ({ regions: nR, cached: cache.size }),
   };
   return api;

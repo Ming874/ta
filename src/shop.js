@@ -663,10 +663,9 @@ export class Shop {
   // [draws] 店面整組(含店招、捲門)在玩家位置看不到時(src/map/hospital/vis.js 的 PVS)不畫
   _pvs() {
     const H = this.game?.hospital;
-    if (!H?.pvsVisibleBox) return true;
-    if (!this._pvsBox) { this.group.updateMatrixWorld(true); this._pvsBox = new THREE.Box3().setFromObject(this.group); }
-    const b = this._pvsBox;
-    return H.pvsVisibleBox(b.min.y + 0.3, b.min.x, b.min.z, b.max.x, b.max.z);
+    if (!H?.pvsBoxRegions) return true;
+    if (!this._pvsQ) { this.group.updateMatrixWorld(true); const b = new THREE.Box3().setFromObject(this.group); this._pvsQ = H.pvsBoxRegions(b.min.y + 0.3, b.min.x, b.min.z, b.max.x, b.max.z); }
+    return H.pvsTestRegions(this._pvsQ);
   }
   // opts.game:用來預先編譯 shader;opts.models = false 可關閉 GLB 載入(測試用)
   constructor(scene, world, opts = {}) {
