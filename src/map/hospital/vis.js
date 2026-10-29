@@ -112,7 +112,7 @@ export function createVis(L) {
     const hu = holeUp[li], hh = holeHere[li];
     for (let k = 0; k < N; k++) { if (!raw[k]) continue; if (hu[k]) up.push(k); if (hh[k]) down.push(k); }
     res = { own: lists[li], col: lists, up: Int32Array.from(up), down: Int32Array.from(down) };
-    if (cache.size > 2500) cache.clear();
+    if (cache.size > 2500) { let k = 0; for (const key0 of cache.keys()) { cache.delete(key0); if (++k >= 400) break; } } // 丟掉最舊的一批(不整個清空 → 不會一次重算一大堆)
     cache.set(key, res);
     return res;
   }
@@ -134,7 +134,8 @@ export function createVis(L) {
     regions, nR, regionAt, regionAtCell, opaqueAt, cellReg, TILE,
     own, col, other, // own:玩家這層看得到;col:看得到的格子位置在各層的區塊;other:經由開口/樓梯看到的其他層
     get version() { return version; },
-    setMaxDistance(m) { const n = Math.ceil(m / CELL) + 2; if (n !== maxCells) { maxCells = n; cache.clear(); last = ''; } },
+    // 距離變短時沿用舊結果(看得比較遠 = 保守);變長才清快取(畫質切換,不是每幀的動態解析度)
+    setMaxDistance(m) { const n = Math.ceil(m / CELL) + 2; if (n > maxCells) { maxCells = n; cache.clear(); last = ''; } },
     // stairs:[{ lo, hi, cells:[[c,r],...] }](玩家附近、連通兩層的樓梯);outdoor:玩家在戶外
     update(li, x, z, stairs) {
       const c = clampC(Math.floor(x / CELL)), r = clampR(Math.floor(z / CELL));
