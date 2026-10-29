@@ -8,7 +8,7 @@
 //   (簡譜依記憶整理成五聲音階的單旋律,節奏簡化)
 // 真人錄音(vox.js;CC0 / CC BY / CC BY-SA,署名與剪輯紀錄見 public/credits/audio.md;暖機完成後才下載,失敗時退回合成版):
 //   阿嬤哼《望春風》、孩子哼《天黑黑》《火金姑》= 真人哼聲/童聲的取樣樂器(錄音的單音 + 迴圈,照簡譜演奏,不是合成的共振峰)
-//   誦經 = 龍山寺的長輩誦經(兩段)+ 上海沉香閣的木魚與比丘尼(循環)、戶外的北管 =〈什牌・倒旗〉的三個樂句、
+//   誦經 = 龍山寺的長輩誦經(兩段)+ 比丘尼誦經與木魚(xserra;三段都是循環)、戶外的北管 =〈什牌・倒旗〉的三個樂句、
 //   收音機的老唱片 = 林茂賢示範演唱〈豐原調〉(只留唱的部分,過 AM 窄頻)、育嬰區的錄音帶 = 大人唱的〈天黑黑〉(過卡帶)
 // 仍然合成的:音樂盒、卡帶電子琴《雨夜花》(沒有可用的器樂錄音)、收音機裡的大廣弦 + 月琴、嗩吶、西索米、引魂鈴、哀歌、配樂床;
 //   在閒置時間用 OfflineAudioContext 烘焙成 12~22.05kHz 單聲道緩衝(自己的快取,一次只烘焙一個,150 秒沒用就釋放)。
@@ -372,14 +372,14 @@ const RX = {
   jingle: { len: () => 4, fn: (d, t) => { const N = seq('jingle'); iCassette(filter('highpass', 380, 0.8, filter('lowpass', 2800, 0.8, d)), t, N, { wow: 22 }); for (const n of N.notes) metal(d, t + n.t, n.f * 2, 0.02, 1.2, [1, 2.76, 5.4]); }, rms: 0.07 },
   // 哼唱:真人的取樣樂器(vox.js;vox = 先載好的取樣表,暖機後才載)。fb = 取樣載入失敗時的合成版(共振峰)
   //   孩子:G 調(錄音裡的女童剛好唱了 G 大調五聲的每個音,幾乎不用移調);阿嬤:A 調(哼聲往下移約三個半音 = 比較老)
-  hum_thh: { sr: 22050, vox: 'kid', len: () => seq('thh', { bpm: 78 }).len + 2.2, fn: (d, t) => iVox(d, t + 0.6, seq('thh', { key: 67, bpm: 78 }), VOICE.kid, { fade: 0.45 }), fb: (d, t) => iHum(d, t, seq('thh', { bpm: 78 }), { vib: 14, shaky: 10, lp: 1100, f1: 330, f2: 1250, breath: 0.04, fade: 0.5 }), rms: 0.05 },
-  hum_hkk: { sr: 22050, vox: 'kid', len: () => seq('hkk', { bpm: 72 }).len + 2.2, fn: (d, t) => iVox(d, t + 0.6, seq('hkk', { key: 67, bpm: 72 }), VOICE.kid, { fade: 0.45 }), fb: (d, t) => iHum(d, t, seq('hkk', { bpm: 72 }), { vib: 14, shaky: 10, lp: 1100, f1: 330, f2: 1250, breath: 0.04, fade: 0.5 }), rms: 0.05 },
+  hum_thh: { sr: 22050, vox: 'kid', len: () => seq('thh', { bpm: 78 }).len + 2.2, fn: (d, t) => iVox(d, t + 0.6, seq('thh', { key: 67, bpm: 78 }), VOICE.kid, { fade: 0.45 }), fb: (d, t) => iHum(d, t, seq('thh', { bpm: 78 }), { vib: 14, shaky: 10, lp: 1100, f1: 330, f2: 1250, breath: 0.04, fade: 0.5 }), rms: 0.05, vrms: 0.07 },
+  hum_hkk: { sr: 22050, vox: 'kid', len: () => seq('hkk', { bpm: 72 }).len + 2.2, fn: (d, t) => iVox(d, t + 0.6, seq('hkk', { key: 67, bpm: 72 }), VOICE.kid, { fade: 0.45 }), fb: (d, t) => iHum(d, t, seq('hkk', { bpm: 72 }), { vib: 14, shaky: 10, lp: 1100, f1: 330, f2: 1250, breath: 0.04, fade: 0.5 }), rms: 0.05, vrms: 0.07 },
   hum_wcf: { sr: 22050, vox: 'ama', len: () => seq('wcf', { bpm: 56, bars: 4 }).len + 2.2, fn: (d, t) => iVox(d, t + 0.6, seq('wcf', { key: 57, bpm: 56, bars: 4 }), VOICE.ama), fb: (d, t) => iHum(d, t, seq('wcf', { key: 60, bpm: 56, bars: 4 }), { vib: 34, vr: 5.9, shaky: 16, lp: 800, f1: 260, f2: 950, breath: 0.09, det: 18, port: 0.06 }), rms: 0.05 },
   // 錄音片段(clip:直接用解碼好的錄音,不烘焙;loop 的迴圈點在 vox.js 的 CLIPS)。誦經、北管各有幾段,ALT 隨機挑
   chant_a: { clip: 'chant_a', loop: true, g: 0.75 },
   chant_b: { clip: 'chant_b', loop: true, g: 0.75 },
   chant_c: { clip: 'chant_c', loop: true, g: 0.8 },
-  bg_1: { clip: 'bg_1' }, bg_2: { clip: 'bg_2' }, bg_3: { clip: 'bg_3' },
+  bg_1: { clip: 'bg_1', g: 1.3 }, bg_2: { clip: 'bg_2', g: 1.3 }, bg_3: { clip: 'bg_3', g: 1.3 },
   // 錄音過播放鏈再烘焙:收音機裡的老唱片〈豐原調〉(兩段)、錄音帶裡的〈天黑黑〉
   rec_fy1: { sr: 12000, vox: 'fy', len: () => CLIPS.fy.parts[0][1] - CLIPS.fy.parts[0][0] + 1.2, fn: (d, t) => iRecord(d, t, voxBuf('fy'), CLIPS.fy.parts[0][0], CLIPS.fy.parts[0][1] - CLIPS.fy.parts[0][0]), rms: 0.07 },
   rec_fy2: { sr: 12000, vox: 'fy', len: () => CLIPS.fy.parts[1][1] - CLIPS.fy.parts[1][0] + 1.2, fn: (d, t) => iRecord(d, t, voxBuf('fy'), CLIPS.fy.parts[1][0], CLIPS.fy.parts[1][1] - CLIPS.fy.parts[1][0]), rms: 0.07 },
@@ -404,7 +404,7 @@ const FQ = [];
 let busy = false;
 const now = () => (A.ctx ? A.ctx.currentTime : 0);
 const idle = (fn) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(fn, { timeout: 1500 }) : setTimeout(fn, 30)); // 等真正的閒置時間(建圖一次 2~15ms)
-function post(b, R, len) { // 循環:尾巴疊回開頭;一次性:去掉尾端靜音;最後正規化到目標 RMS(峰值限制在 0.9)
+function post(b, R, len, rms = R.rms) { // 循環:尾巴疊回開頭;一次性:去掉尾端靜音;最後正規化到目標 RMS(峰值限制在 0.9)
   const sr = b.sampleRate;
   let n = b.length;
   if (R.loop) n = Math.round(len * sr);
@@ -414,7 +414,7 @@ function post(b, R, len) { // 循環:尾巴疊回開頭;一次性:去掉尾端�
   if (R.loop) for (let i = n; i < x.length; i++) y[i - n] += x[i];
   let e = 0, pk = 0;
   for (let i = 0; i < n; i++) { e += y[i] * y[i]; const a = Math.abs(y[i]); if (a > pk) pk = a; }
-  const rms = Math.sqrt(e / n) || 1e-6, k = Math.min(R.rms / rms, 0.9 / (pk || 1));
+  const r = Math.sqrt(e / n) || 1e-6, k = Math.min(rms / r, 0.9 / (pk || 1));
   for (let i = 0; i < n; i++) y[i] *= k;
   return out;
 }
@@ -444,7 +444,7 @@ function pumpF() {
     try { p = bake(len + T + (R.loop ? 0 : 0.5), (d, t) => fn(d, t, len, T), 1, R.sr || SR); } catch (err) { if (import.meta.env?.DEV) console.warn('[folk]', key, err); FC.delete(key); busy = false; pumpF(); return; }
     const ms = performance.now() - c0;
     FS.bakeMs += ms; FS.ms[key] = +ms.toFixed(1);
-    p.then((b) => { if (FC.get(key) === e && A.ctx) { e.b = post(b, R, len); FS.baked++; } busy = false; pumpF(); }, () => { FC.delete(key); busy = false; pumpF(); });
+    p.then((b) => { if (FC.get(key) === e && A.ctx) { e.b = post(b, R, len, fn === R.fb ? R.rms : R.vrms ?? R.rms); FS.baked++; } busy = false; pumpF(); }, () => { FC.delete(key); busy = false; pumpF(); });
   });
 }
 // 取得烘焙好的緩衝(沒有就排程;pr 越大越先)。clip 配方 = 直接用解碼好的錄音(暖機後才載)

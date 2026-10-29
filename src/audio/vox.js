@@ -7,7 +7,7 @@
 //    不規則的顫音(速度會飄、每個音延遲出現)、慢的音高漂移、樂句前吸一口氣(鼻子吸氣的真實錄音)、氣聲。
 //    阿嬤:成年女聲的哼聲往下移(調性 A,約低三個半音)、顫音寬而不穩、音量顫抖、氣多、句尾往下掉。
 //    孩子:女童唱的單音(G 大調五聲的音剛好都有),顫音淺、句子越來越小聲。
-// 2) 錄音片段(folk.js 的 clip 配方):太平間/納骨堂/禮拜堂的誦經循環(龍山寺 ×2、上海沉香閣的木魚)、
+// 2) 錄音片段(folk.js 的 clip 配方):太平間/納骨堂/禮拜堂的誦經循環(龍山寺 ×2、xserra 的比丘尼誦經 + 木魚)、
 //    戶外很遠的北管樂句、收音機的老唱片〈豐原調〉(只留唱的部分)、育嬰區錄音帶裡大人唱的〈天黑黑〉。
 // 全部在暖機完成(performance mark 'hz:warm')之後才下載;單聲道、16~24 kHz,在背景執行緒解碼(samples.js 的佇列);
 // 150 秒沒用就釋放(要再用時從 HTTP 快取重新解碼)。載入失敗時 folk.js 退回原本的合成版本。
@@ -20,15 +20,17 @@ export const SETS = {
   // drotzruhn〈Humming C D A for alexggqs〉(Freesound 439504,CC0)前半段的乾聲:A3 / C4 / D4 各兩個 take(已做頻譜對齊);
   // 吸氣:PSsoundproject〈Woman humming a nondescript tune〉(Wikimedia Commons,CC0)
   ama: { f: 'folk/hum_ama_sheet.mp3', sr: 22050, n: [[223.63, 0.02, 1.19769, 2.1729, 2.25292], [222.73, 2.31292, 4.16308, 5.15723, 5.23725], [263.43, 5.29725, 8.36464, 9.62559, 9.70562], [262.93, 9.76562, 10.12406, 10.76721, 10.84725], [296.91, 10.90725, 11.19795, 12.32659, 12.40663], [297.94, 12.46663, 12.91996, 13.90107, 13.98108]], br: [[14.04108, 14.45108], [14.51108, 15.00108], [15.06108, 15.50108]] },
-  // f-r-a-g-i-l-e〈Child Chops, Glitchy Sampler, Dry〉(Freesound 500743,CC0):女童唱的 E4 G4 A4 B4 C5 D5 E5(避開削波的那幾個)
-  kid: { f: 'folk/hum_kid_sheet.mp3', sr: 22050, n: [[335.74, 0.02, 0.06898, 0.20007, 0.24008], [392.01, 0.30008, 0.35505, 0.52868, 0.56871], [439.34, 0.62871, 0.73556, 0.91061, 0.95063], [489.98, 1.01063, 1.05763, 1.19852, 1.23854], [521.39, 1.29854, 1.37949, 1.54226, 1.58229], [588.63, 1.64229, 1.76114, 1.87671, 1.91675], [636.69, 1.97675, 2.02972, 2.10807, 2.14808]], br: [[2.20808, 2.69808]] },
+  // f-r-a-g-i-l-e〈Child Chops, Glitchy Sampler, Dry〉(Freesound 500743,CC0):女童唱的 E4 G4 A4 B4 C5 D5 E5(避開削波、剪接聲的那幾個);
+  //   原本每個音只有 0.16~0.3 秒 → 穩定段先把音高拉平(±30 音分內),再用相位對齊的隨機顆粒接長,迴圈約 1 秒
+  //   (短迴圈會有每秒 7 次的機械脈動;不拉平的話顆粒之間音高不同,交叉淡化會互相抵消、變粗糙)
+  kid: { f: 'folk/hum_kid_sheet.mp3', sr: 22050, n: [[335.7, 0.02, 0.78571, 1.64406, 1.70408], [391.78, 1.76408, 1.97506, 2.93481, 2.99483], [440.11, 3.05483, 3.60105, 4.73066, 4.79067], [489.91, 4.85067, 5.25321, 6.3062, 6.36621], [521.91, 6.42621, 6.95646, 8.07716, 8.13717], [587.93, 8.19717, 8.93494, 9.79726, 9.85729], [637.61, 9.91729, 10.3757, 11.4855, 11.54554]], br: [[11.60554, 12.09554]] },
 };
 // ---------- 錄音片段(scratchpad/vocals/scripts/prep_clips.py 產生) ----------
 // ls/le:迴圈點(檔案前後各留 0.5 秒邊界,解碼器的前置延遲不會落在接縫上);parts:片段在檔案裡的位置
 export const CLIPS = {
   chant_a: { f: 'folk/chant_longshan_a_loop.mp3', sr: 16000, dur: 23.8, ls: 0.5, le: 23.3 }, // 吳燦政,龍山寺 2013-05-25(CC BY 3.0)
   chant_b: { f: 'folk/chant_longshan_b_loop.mp3', sr: 16000, dur: 21.4, ls: 0.5, le: 20.9 }, // 吳燦政,龍山寺 2012-11-03(CC BY 3.0)
-  chant_c: { f: 'folk/chant_muyu_loop.mp3', sr: 16000, dur: 21.952, ls: 0.5, le: 21.452 }, // xserra〈buddhist-2.wav〉(CC BY 4.0):木魚 + 比丘尼
+  chant_c: { f: 'folk/chant_muyu_loop.mp3', sr: 16000, dur: 21.952, ls: 0.5, le: 21.452 }, // xserra〈buddhist-2.wav〉(CC BY 4.0):比丘尼 + 木魚(濾掉 1845 Hz 的電器嘯音)
   bg_1: { f: 'folk/beiguan_far_1.mp3', sr: 16000, dur: 21.4 }, // 〈什牌・倒旗〉彰化縣文化局(CC BY 3.0 TW)
   bg_2: { f: 'folk/beiguan_far_2.mp3', sr: 16000, dur: 17.18 },
   bg_3: { f: 'folk/beiguan_far_3.mp3', sr: 16000, dur: 22.92 },
@@ -144,7 +146,7 @@ export function iVox(d, t0, N, V, o = {}) {
     pg.gain.linearRampToValueAtTime(fadeK * (1 - arc), te);
     prev = null;
     for (const i of P) {
-      const n = notes[i], legIn = !!prev, nx = notes[i + 1], legOut = P.includes(i + 1);
+      const n = notes[i], legIn = !!prev, legOut = P.includes(i + 1);
       const t = t0 + n.t + (i ? rand(-V.rub, V.rub) : 0);
       const f = n.f * ct(rand(-V.det, V.det));
       let k = pickNote(S, f, last);
@@ -157,7 +159,7 @@ export function iVox(d, t0, N, V, o = {}) {
       vg.connect(src.detune); dg.connect(src.detune); dg2.connect(src.detune);
       const g = gain(0, pg); src.connect(g);
       const same = legIn && Math.abs(1200 * Math.log2(prev.f / f)) < 40;
-      let ton;
+      let ton, lv = 1;
       if (legIn && !same) { // 連音:新音從迴圈裡進來(不重起音),交叉淡化 + 滑音
         const x0 = t - V.xf * 0.5, x1 = t + V.xf * 0.5;
         ton = x0;
@@ -165,16 +167,17 @@ export function iVox(d, t0, N, V, o = {}) {
         g.gain.setValueAtTime(0, x0); g.gain.linearRampToValueAtTime(1, x1);
         const c = clamp(1200 * Math.log2(prev.f / f), -600, 600);
         src.detune.setValueAtTime(c, x0); src.detune.setTargetAtTime(0, x0, V.port / 3);
-        prev.g.gain.setValueAtTime(1, x0); prev.g.gain.linearRampToValueAtTime(0, x1);
+        prev.g.gain.setValueAtTime(prev.lv, x0); prev.g.gain.linearRampToValueAtTime(0, x1);
         prev.src.detune.setTargetAtTime(-c * 0.7, x0, V.port / 3);
         prev.src.stop(x1 + 0.03);
       } else if (same) { // 同音重唱:前一個收一點、新的從起音進來(「嗯—嗯」)
         const x0 = t - 0.06;
         ton = t - 0.01;
-        prev.g.gain.setValueAtTime(1, x0); prev.g.gain.linearRampToValueAtTime(0, t + 0.02);
+        prev.g.gain.setValueAtTime(prev.lv, x0); prev.g.gain.linearRampToValueAtTime(0, t + 0.02);
         prev.src.stop(t + 0.05);
         src.start(ton, sm[1] + Math.min(0.04, (sm[2] - sm[1]) * 0.3));
-        g.gain.setValueAtTime(0, ton); g.gain.linearRampToValueAtTime(0.92, ton + V.att * 0.7);
+        lv = 0.92;
+        g.gain.setValueAtTime(0, ton); g.gain.linearRampToValueAtTime(lv, ton + V.att * 0.7);
       } else { // 句首:取樣自己的起音,從下面一點點滑上來
         ton = t;
         src.start(t, sm[1]);
@@ -187,12 +190,11 @@ export function iVox(d, t0, N, V, o = {}) {
       vEnv.setTargetAtTime(V.vib * rand(0.75, 1.25), ton + vd, 0.18);
       if (!legOut) { // 句尾:放掉 + 音高往下掉
         const tEnd = t0 + n.t + n.d, rel = Math.min(V.rel, n.d * 0.6), r0 = Math.max(ton + V.att + 0.02, tEnd - rel);
-        g.gain.setValueAtTime(1, r0); g.gain.linearRampToValueAtTime(0, r0 + rel);
+        g.gain.setValueAtTime(lv, r0); g.gain.linearRampToValueAtTime(0, r0 + rel);
         if (V.fall) src.detune.setTargetAtTime(V.fall * rand(0.7, 1.2), r0, rel / 2);
         src.stop(r0 + rel + 0.05);
         prev = null;
-      } else prev = { src, g, f };
-      void nx;
+      } else prev = { src, g, f, lv };
     }
   }
   return true;
