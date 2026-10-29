@@ -321,7 +321,7 @@ export class Hud {
     e.dataset.k = key;
     if (o.color) e.style.setProperty('--c', o.color);
     this.feedEl.appendChild(e);
-    while (this.feedEl.children.length > 6) this.feedEl.firstChild.remove();
+    while (this.feedEl.children.length > 4) this.feedEl.firstChild.remove(); // 最多 4 行(一次太多訊息讀不完)
     e.animate([{ opacity: 0, transform: 'translateX(1.5em)' }, { opacity: 1, transform: 'none', offset: 0.06 }, { opacity: 1, offset: 0.85 }, { opacity: 0, transform: 'translateX(.8em)' }], { duration: life, easing: 'ease-out', fill: 'forwards' })
       .onfinish = () => e.remove();
   }
@@ -346,7 +346,7 @@ export class Hud {
     e.dataset.k = key;
     e.style.color = color;
     this.pickEl.appendChild(e);
-    while (this.pickEl.children.length > 4) this.pickEl.firstChild.remove();
+    while (this.pickEl.children.length > 3) this.pickEl.firstChild.remove();
     e.animate([
       { opacity: 0, transform: 'translateY(1em) scale(.9)' }, { opacity: 1, transform: 'scale(1.06)', offset: 0.1 }, { transform: 'scale(1)', offset: 0.18 },
       { opacity: 1, offset: 0.72 }, { opacity: 0, transform: 'translateY(-2.4em)' },
