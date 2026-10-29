@@ -220,6 +220,28 @@ export function* buildHospitalSteps(world, layout, scene, opts = {}) {
     pvsSig = sig;
     return big;
   };
+  // [perf6] 活屍(動態角色)也依 PVS:主相機這次渲染時,所在區塊(腳與頭兩個高度 × 四周 0.5m)都看不到的就先藏起來(主畫面與
+  // 手電筒陰影都不畫),渲染完立刻還原 —— 遊戲邏輯、射線、伏擊姿勢看到的 visible 永遠是原本的值。
+  // 其他樓層 / 牆後 / 關著的門後的活屍不再每幀畫 4~5 + 陰影 3~5 個 draw call
+  const hiddenActors = [];
+  const actorVisible = (x, y, z) => {
+    for (const dy of [0.3, 1.5]) {
+      const oli = Math.max(0, L.levelOfY(y + dy));
+      for (const [dx, dz] of [[0, 0], [0.5, 0], [-0.5, 0], [0, 0.5], [0, -0.5]]) { one[0] = pvs.regionAt(oli, x + dx, z + dz); if (pvsTest(oli, one)) return true; }
+    }
+    return false;
+  };
+  const hideActors = (list) => {
+    if (!list || !view || !lastP) return;
+    const far2 = H.propDistance * H.propDistance; // 視線只算到道具距離 + 10m:更遠的(戶外遠處路燈下)照舊只靠視錐剔除
+    for (let i = 0; i < list.length; i++) {
+      const z = list[i], root = z?.root, p = z?.pos;
+      if (!root || !root.visible || !p) continue;
+      if ((p.x - lastP.x) ** 2 + (p.z - lastP.z) ** 2 > far2) continue;
+      if (!actorVisible(p.x, p.y, p.z)) { root.visible = false; hiddenActors.push(root); }
+    }
+  };
+  const unhideActors = () => { for (let i = 0; i < hiddenActors.length; i++) hiddenActors[i].visible = true; hiddenActors.length = 0; };
   // [perf6] 門的狀態(src/interact/doors.js):兩扇都完全關好(不在轉動)的實心門洞,在玩家這一層的精細視線裡當牆。
   // 主相機每次渲染前檢查(很便宜):門一開始轉動(或新一局門被重設成開著)就在這一幀重算 PVS → 門後的房間和門縫同一幀出現,不會晚一幀
   let doorWays = null;
@@ -341,13 +363,15 @@ export function* buildHospitalSteps(world, layout, scene, opts = {}) {
       const prev = scene0.onBeforeRender;
       scene0.onBeforeRender = function (r, sc, cam, rt) {
         prev.call(this, r, sc, cam, rt);
+        unhideActors();
         if (cam === cam0 && (cam.layers.mask & 1)) {
           if (doorPoll() && lastP) { pvsStep(lastP.li, lastP.x, lastP.y, lastP.z, lastP.outdoor, false); dynVisAll(lastP.x, lastP.z); } // [perf6] 門開/關:這一幀就重算
           view.cull(cam);
+          hideActors(game?.zombies);
         } else view.showAll();
       };
       const prevA = scene0.onAfterRender;
-      scene0.onAfterRender = function (r, sc, cam) { view.restoreShadows(); prevA.call(this, r, sc, cam); };
+      scene0.onAfterRender = function (r, sc, cam) { view.restoreShadows(); unhideActors(); prevA.call(this, r, sc, cam); };
       // [perf6] 會投影的 InstancedMesh 用自己的深度材質(不和一般網格共用 three 預設那一個 → 陰影 pass 不會每幀來回切 program)
       scene0.traverse(instancedDepth);
       // 場景根節點不會動:關掉自動更新(否則每幀強迫全部物件重算世界矩陣);自己 updateMatrix 的物件照常更新
