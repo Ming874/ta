@@ -299,7 +299,7 @@ export const ZONES = [
   { id: 'f1_xray', level: '1F', name: 'X 光室', rects: [[9, 7, 12, 10]], theme: 'xray', floor: 'linoleum', wall: 'paint_white', light: 'fluoro_dying', mood: 'clinical' },
   { id: 'f1_ct', level: '1F', name: '電腦斷層室', rects: [[14, 7, 17, 10]], theme: 'ct', floor: 'linoleum', wall: 'paint_white', light: 'fluoro_cold', mood: 'clinical' },
   { id: 'f1_pharmacy', level: '1F', name: '藥局', rects: [[19, 7, 27, 10]], theme: 'pharmacy', floor: 'linoleum', wall: 'paint_green', light: 'fluoro_dying', mood: 'corridor' },
-  { id: 'f1_cafeteria', level: '1F', name: '員工餐廳', rects: [[32, 7, 40, 10]], theme: 'cafeteria', floor: 'tile_ward', wall: 'tile_wall', light: 'fluoro', mood: 'corridor' },
+  { id: 'f1_cafeteria', level: '1F', name: '員工餐廳', rects: [[32, 7, 40, 10]], theme: 'cafeteria', floor: 'tile_ward', wall: 'tile_wall', light: 'fluoro_dying', mood: 'corridor' }, // [scene8] 原本 fluoro 九成燈管全亮,像還在營業 → 老化燈管(三分之一壞掉)
   { id: 'f1_rehab', level: '1F', name: '復健室', rects: [[42, 7, 50, 10]], theme: 'rehab', floor: 'wood_floor', wall: 'paint_white', light: 'fluoro_dying', mood: 'clinical' },
   { id: 'f1_waiting', level: '1F', name: '門診候診區', rects: [[9, 15, 11, 24], [12, 23, 17, 24]], theme: 'waiting', floor: 'tile_lobby', wall: 'paint_green', light: 'fluoro', mood: 'corridor' },
   { id: 'f1_er', level: '1F', name: '急診室', rects: [[42, 15, 50, 16], [48, 17, 50, 24], [41, 16, 41, 16]], theme: 'er', floor: 'linoleum', wall: 'tile_wall', light: 'emergency', mood: 'emergency' },

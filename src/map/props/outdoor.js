@@ -12,6 +12,7 @@ import { resetEnv } from './outdoor/env.js';
 import { resetCars } from './outdoor/cars.js';
 import { resetVehicles } from './outdoor/vehicles.js';
 import { resetFurniture } from './outdoor/furniture.js';
+import { scene8Room } from './indoor/scene8.js';
 
 // 戶外與工業區道具(停車場、後巷、墓園、遊戲場、中庭、頂樓、逃生梯、地下工業房間、納骨堂)
 // 以及大型障礙物('X' 格:車、救護車、靈車、子母車、發電機、焚化爐、噴水池、雕像、水塔、冷氣主機…)。
@@ -53,6 +54,7 @@ export function dressOutdoor(ctx, zone) {
   if (!fn) return;
   const t0 = performance.now();
   try { fn(ctx, zone); } catch (e) { console.error('[props-out] 擺設失敗', zone.id, e); }
+  scene8Room(ctx, zone); // [scene8] 地下室工業房間、墓園、遊戲場的故事層(Room 規劃器:不擋路、碰撞照登記)
   spent.set(ctx, (spent.get(ctx) || 0) + performance.now() - t0);
 }
 

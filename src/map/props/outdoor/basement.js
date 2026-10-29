@@ -7,6 +7,7 @@ import { flatDecal, trashBag, bagFallback } from './industrial.js';
 import { BAND, litter, leafPatch, puddle, wallStrip, drain } from './ground.js';
 import { bodyBag, bioBin } from './camp.js';
 import { barrel, crate, propane, tyre, pallet, wetSign } from './furniture.js';
+import { bagGeo } from '../indoor/scene8.js';
 
 // 地下室工業房間:維修隧道、鍋爐房、裝卸平台、救護車坡道、焚化爐室、水泵房、頂樓機房、納骨堂、停屍間外梯。
 // 沿牆管線/線槽(每格一段,接起來連續)、閥門與壓力錶、大型機械(碰撞)、雜物與水漬。
@@ -58,6 +59,7 @@ function wallBox(P, s, y, R) {
 // 大型臥式鍋爐(保溫層 + 鞍座 + 爐門 + 煙道)
 function boiler(ctx, P, x, y, z, yaw, R) {
   const T = new Parts(), L = 3.6, r = 1.0;
+  (ctx.__b1 || (ctx.__b1 = { boilers: [] })).boilers.push({ x, y, z, yaw }); // [scene8] 燃燒機、儀表、安全閥、立管在 indoor/scene8.js
   T.add('metal_gray', cyl(r, r, L, 24).rotateZ(HALF), M(0, r + 0.35, 0));
   for (let k = 0; k <= 6; k++) T.add('steel', tor(r + 0.01, 0.015, 4, 28).rotateY(HALF), M(-L / 2 + k * L / 6, r + 0.35, 0));
   T.add('cast_iron', cyl(r * 0.95, r * 0.95, 0.12, 24).rotateZ(HALF), M(L / 2 + 0.06, r + 0.35, 0));
@@ -116,12 +118,18 @@ function rollCage(P, x, y, z, yaw, R) {
 }
 // 推車上的紅色醫療廢棄物袋
 function wasteCart(P, x, y, z, yaw) {
+  // [scene8] 660L 四輪醫療廢棄物桶:桶身、上緣、往後掀開的蓋子、後把手、後大輪 + 前腳輪,桶裡塞滿紅袋
   const T = new Parts();
-  T.add('po_bag_yellow', rbox(0.9, 0.7, 0.6, 0.05), M(0, 0.55, 0));
-  for (const [a, b] of [[-0.35, -0.22], [0.35, -0.22], [-0.35, 0.22], [0.35, 0.22]]) T.add('rubber', cyl(0.07, 0.07, 0.04, 8).rotateX(HALF), M(a, 0.08, b));
-  T.merge(bagFallback('po_bag_red', 0.9), M(-0.15, 0.85, 0));
-  T.merge(bagFallback('po_bag_red', 0.8), M(0.22, 0.85, 0.05, 0.3, 1, 0));
-  T.add('po_label', labelQuad('wastebin', 0.5, 0.25), M(0, 0.6, 0.302));
+  T.add('po_bag_yellow', rbox(0.86, 0.78, 0.6, 0.03), M(0, 0.56, 0));
+  T.add('po_bag_yellow', rbox(0.92, 0.06, 0.66, 0.02), M(0, 0.97, 0));
+  T.add('po_bag_yellow', rbox(0.9, 0.04, 0.64, 0.02), M(0, 1.26, -0.41, -1.92, 0, 0));
+  T.add('steel', rod(new V3(-0.4, 0.9, -0.37), new V3(0.4, 0.9, -0.37), 0.018, 6));
+  for (const s of [-1, 1]) T.add('steel', box(0.04, 0.04, 0.08), M(s * 0.4, 0.9, -0.33));
+  for (const s of [-1, 1]) T.add('rubber', cyl(0.1, 0.1, 0.06, 10).rotateZ(HALF), M(s * 0.4, 0.1, -0.22));
+  for (const s of [-1, 1]) T.add('rubber', cyl(0.055, 0.055, 0.04, 8).rotateZ(HALF), M(s * 0.32, 0.055, 0.22));
+  T.add('po_bag_red', bagGeo(0.26, 7), M(-0.18, 0.97, 0.02, 0, 0.4, 0, 1.1, 0.9, 1)); // [scene8] 跟廢棄物山同一種皺垃圾袋(原本的袋子像紅椒)
+  T.add('po_bag_red', bagGeo(0.24, 9), M(0.2, 0.95, 0.04, 0.2, 1.3, 0, 1.05, 0.85, 1));
+  T.add('po_label', labelQuad('wastebin', 0.5, 0.25), M(0, 0.62, 0.302));
   P.merge(T, M(x, y, z, 0, yaw, 0));
 }
 
@@ -240,6 +248,7 @@ function dressIncinerator(ctx, zone) {
     P.add('po_ash', new THREE.SphereGeometry(0.6, 10, 6, 0, TAU, 0, HALF).scale(1.3, 0.3, 0.7), M(fx + 0.3, y, fz - 1.4));
     ctx.light({ x: fx, y: y + 0.9, z: fz - 0.9, color: 0xff5a18, intensity: 6, distance: 9, kind: 'fire', flicker: 0.3, zone: zone.id, glow: 0.6 });
     solid(ctx, fx, y, fz, 3.0, 2.6, 1.0, 'stone');
+    (ctx.__b1 || (ctx.__b1 = { boilers: [] })).furnace = { x: fx, z: fz }; // [scene8] 爐口周邊在 indoor/scene8.js
     P.add('wood_old', rod(new V3(fx + 1.9, y + 0.1, fz - 0.7), new V3(fx + 2.0, y + 1.3, fz - 0.5), 0.02, 6));
   }
   for (const [x, z] of [[98.6, 36.4], [99.6, 40.8], [86.2, 56.2], [88.6, 56.0]]) if (freeAt(ctx, li, x, z, 0.6)) { wasteCart(P, x, y, z, R.range(-0.3, 0.3)); solid(ctx, x, y, z, 1.0, 1.1, 0.7, 'metal'); }
