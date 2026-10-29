@@ -52,6 +52,18 @@ export function radio(on = true, level = 0.6) {
   setTimeout(() => { for (const s of N.srcs) { try { s.stop(); } catch { /* 已停 */ } } N.out.disconnect(); }, 300);
 }
 
+// 收音機的尖叫(回授嘯叫):活屍 6 m 內又看不到時、207 門口、地下室燒壞(REDESIGN §2.4.5)。k 0..1 = 強度;long = 燒壞那一聲(長、越拉越高、最後「啪」)
+export function screech(k = 0.6, long = false) {
+  const len = long ? 3.2 : 1.1 + k * 0.4;
+  const h = emit({ bus: 'sfx', prio: 7, room: 0.25, dur: len + 0.4, gain: 0.5 + k * 0.5 });
+  if (!h) return;
+  const d = h.in, t = h.t, f0 = rand(1650, 2100);
+  tone(d, t, { type: 'square', f: f0, f1: f0 * (long ? 2.6 : 1.35), glide: len, a: 0.05, hold: len * 0.7, dur: len * 0.3, g: 0.05 + k * 0.06 });
+  tone(d, t + 0.03, { type: 'sawtooth', f: f0 * 1.5, f1: f0 * (long ? 3.4 : 1.8), glide: len, a: 0.08, hold: len * 0.6, dur: len * 0.35, g: 0.02 + k * 0.03, detune: 12 });
+  burst(d, t, { type: 'bandpass', f: 2600, q: 0.8, dur: len, a: 0.02, g: 0.05 + k * 0.05, buf: 'pink' });
+  if (long) { burst(d, t + len, { type: 'highpass', f: 3000, q: 0.7, dur: 0.05, g: 0.4 }); click(d, t + len + 0.01, 1800, 0.3); }
+}
+
 // ---------- 院內廣播提示音 ----------
 // 頻寬窄的天花板喇叭 + 長殘響;兩支喇叭有時間差(遠處那支較暗)
 const PA_NOTES = { up: [[523.25, 0], [659.25, 0.42], [783.99, 0.84]], down: [[783.99, 0], [659.25, 0.42], [523.25, 0.84]], alert: [[880, 0], [880, 0.3], [880, 0.6]] };

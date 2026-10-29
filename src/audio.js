@@ -32,7 +32,7 @@ import { body, setBodyHealth, prebakeBody } from './audio/body.js';
 import { ui } from './audio/ui.js';
 import { scare, SCARE_KINDS } from './audio/scares.js';
 import { setZone, loopStart, loopStop, startAmbience, ambState, LOOP_KINDS, resetAmbience, defineMood } from './audio/ambience.js';
-import { radio, pa, tape, storyState } from './audio/story.js';
+import { radio, pa, tape, storyState, screech } from './audio/story.js';
 import * as AMB from './audio/ambience.js';
 import { thunder, setRain, rainState, rainGains, rainContext, rainReset, preloadRain } from './audio/weather.js';
 import { folkCue, folkReset, folkState, folkPrebake, _folk, FS as folkFS } from './audio/folk.js';
@@ -177,6 +177,7 @@ export const sfx = {
 
   // ---- 劇情 ----
   radio: safe((on = true, level) => radio(on, level)),
+  screech: safe((k = 0.6, long = false) => screech(k, long)), // 收音機的尖叫(src/story/radio.js)
   pa: safe((kind = 'up') => pa(kind)),
   tape: safe((kind = 'play') => tape(kind)),
 

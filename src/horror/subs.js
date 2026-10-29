@@ -38,7 +38,7 @@ export class GhostSubs {
     this.lines.push(L);
     // 一個字幕區:別人的字收掉、同一個人的上一句變淡(src/ui/captions.js)
     const left = Math.max(0, (times[times.length - 1] ?? 0) - (clock() - t0));
-    L.q = captions.add({ el, who, kind: 'speech', critical: !!o.critical, until: now() + left + 0.3, cut: () => this._drop(L, true) });
+    L.q = captions.add({ el, who, kind: 'speech', critical: !!o.critical, until: captions.now() + left + 0.3, cut: () => this._drop(L, true) });
     return L;
   }
   _drop(L, cut = false) {

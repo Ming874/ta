@@ -70,7 +70,7 @@ export function installEnding(game, S) {
     for (const c of [...box.children]) { c.classList.remove('on'); setTimeout(() => c.remove(), 800); }
     const d = document.createElement('div');
     d.className = 'st-line'; d.dataset.w = who;
-    const tag = { xl: '收音機 · 小美', ks: '金水伯', ama: '阿嬤', ho: '電話 · 王醫師', pa: '醫院廣播' }[who];
+    const tag = { xl: '收音機 · 小美', ks: '金水伯', ama: '阿嬤', xa: '收音機 · 阿嬤', ho: '電話 · 王醫師', pa: '醫院廣播' }[who];
     d.innerHTML = `${tag ? `<small>${tag}</small>` : ''}${esc(text)}`;
     box.appendChild(d);
     requestAnimationFrame(() => d.classList.add('on'));
@@ -238,15 +238,25 @@ export function installEnding(game, S) {
         cnt.textContent = NUM[i]; cnt.classList.add('on');
         if (i < 9) { say(game, 'xl', NUM[i] + '。', { sub: () => {} }); await w(2.5); cnt.classList.remove('on'); await w(0.15); }
       }
-      say(game, 'xl', '十。', { sub: () => {} });
-      await w(0.6);
-      await talk('ama', '……十。天亮了。', { gap: 2.4 });
+      // 「十」:收音機的雜訊慢慢消失,這一聲是阿嬤的聲音,從收音機出來(全章唯一一次;REDESIGN §6.3)
+      const Rd = game.story?.radio;
+      if (Rd?.has?.()) {
+        Rd.hush(14); await w(1.6);
+        await talk('xa', '……十。天亮了。', { gap: 2.4, filter: 'radio' });
+        await talk('xl', '……剛剛那是誰？', { gap: 1 });
+        await talk('xl', '我第一次……聽到她。', { gap: 2 });
+      } else {
+        say(game, 'xl', '十。', { sub: () => {} });
+        await w(0.6);
+        await talk('ama', '……十。天亮了。', { gap: 2.4 });
+      }
       cnt.classList.remove('on');
       dawn(1);
       // 六、三個守燈的人
       run.beat = 'keepers';
       await talk('ks', '……那句話，是你阿嬤教你的。', { gap: 1 });
-      await talk('ks', '她在護理站，聽小美的節目學的。\n那捲錄音帶，是阿伯錄的。', { gap: 2.4 });
+      await talk('ks', '她在護理站，聽小美的節目學的。\n那捲錄音帶，是阿伯錄的。', { gap: 1.4 });
+      if (game.story?.radio?.kind === 'ama') { await talk('ks', '那台收音機，是秀英的。', { gap: 1 }); await talk('ks', '她每天晚上都開著。', { gap: 2.4 }); }
       // 七、窗
       run.beat = 'window';
       if (v === 'dark') {

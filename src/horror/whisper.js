@@ -19,7 +19,9 @@ export class Whispers {
     this.log = [];
   }
   reset() { this.used.clear(); this.cur = null; this.h.subs.clear(); }
-  get busy() { return !!this.cur && performance.now() / 1000 < this.cur.end; }
+  // 說到哪裡用遊戲時間(和聲音的鎖、字幕區同一個鐘;暫停時不走)
+  now() { const g = this.h.game; return g && Number.isFinite(g.time) ? g.time : performance.now() / 1000; }
+  get busy() { return !!this.cur && this.now() < this.cur.end; }
   // 依觸發條件挑一句:c = { zone(區域物件或 id)、round、phase、prop、cue、ear、hint }
   pick(trig, c = {}) {
     const zid = typeof c.zone === 'string' ? c.zone : c.zone?.id, zth = typeof c.zone === 'object' ? c.zone?.theme : null;
@@ -49,7 +51,7 @@ export class Whispers {
     const L0 = typeof line === 'string' ? LINE_BY_ID[line] || { id: null, text: line } : line;
     if (!L0 || !L0.text) return null;
     const L = L0.text.includes('{暱稱}') ? { ...L0, text: L0.text.replace(/\{暱稱\}/g, nick()) } : L0;
-    const prio = o.priority ?? 5, t = performance.now() / 1000;
+    const prio = o.priority ?? 5, t = this.now();
     // 聲音的鎖(src/story/voice.js):劇情的人在說話時,鬼不插嘴(電話腳本照播);沒有 force 的(隨機的鬼)前後都要安靜
     const V = this.h.game?.story?.voice;
     if (V && !o.lockOk && o.filter !== 'phone' && V.busy({ quiet: !o.force })) return null; // 有人在說話:鬼不插嘴(劇情的 lockOk、電話腳本照播)
@@ -60,7 +62,13 @@ export class Whispers {
     const tag = o.tag ?? (filter ? TAG[filter] : (L.ghost && this.h.known.has(L.ghost) && GHOSTS[L.ghost]?.name ? GHOSTS[L.ghost].name : '？？？'));
     // 一個字幕區(src/ui/captions.js):劇情/接起的電話/回憶(critical)不會被擋;其他的,別人還在講就不出聲也不出字
     const crit = o.critical ?? (!!o.force && prio >= 9);
-    if (o.subtitle !== false && !crit && !captions.can(tag)) return null;
+    // 阿嬤的話只走劇情(收音機安靜 → 哼聲 → 一句;src/story/voice.js);隨機的只剩聽不清的聲音、不出字。其他的鬼一局最多 3 句有字幕(REDESIGN §2.8、R9)
+    let sub = o.subtitle !== false, murmur = false;
+    if (!o.lockOk && !crit && !filter && L.trig !== 'script') {
+      if (L.ghost === 'zheng') { sub = false; murmur = true; }
+      else if (sub) { const V = this.h.game?.story?.voice; if (V) { V.count.ghost = (V.count.ghost || 0) + 1; if (V.count.ghost > 3) { sub = false; murmur = true; } } }
+    }
+    if (sub && !crit && !captions.can(tag)) return null;
     if (!crit && !o.lockOk && !filter && L.trig !== 'warn' && captions.combat()) return null; // 戰鬥中(15 m 內有活屍、被追):隨機的鬼先不講(伏擊的警告除外)
     let ear = o.ear ?? L.ear ?? 'auto';
     if (filter === 'phone' && (ear === 'auto' || ear === 'both')) ear = 'right'; // 聽筒貼在右耳
@@ -69,7 +77,7 @@ export class Whispers {
     if (pa && !pos) { const p = this.h.game.player, fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw); pos = { x: p.pos.x + fx * 3, y: p.pos.y + 2.8, z: p.pos.z + fz * 3 }; } // 前上方的天花板喇叭
     if (pa) ear = 'world';
     if (ear === 'auto') ear = pos ? 'world' : ['left', 'right', 'left', 'right', 'behind'][(Math.random() * 5) | 0];
-    const mode = o.mode ?? L.mode ?? 'syllabic';
+    const mode = murmur ? 'murmur' : o.mode ?? L.mode ?? 'syllabic';
     const g = o.g ?? (pa ? 0.42 : 0.55);
     const voice = pa ? { voiced: 1, voiceGain: 0.5, noise: 0.25, f0: 228, pitch: 1.16, rate: 4.4, breath: false, clicks: false } : {}; // 合成、甜美、制式(§11.1)
     let hnd = null, h2 = null;
@@ -86,7 +94,7 @@ export class Whispers {
     this.count++;
     this.log.push(`${L.id || 'text'}@${ear}${filter ? '/' + filter : ''}`);
     if (this.log.length > 30) this.log.shift();
-    if (o.subtitle !== false) {
+    if (sub) {
       const clock = hnd && A.ctx ? () => A.ctx.currentTime : undefined;
       this.h.subs.show({ text: L.text, ear: ear === 'world' ? 'both' : ear, filter, times: hnd ? hnd.times : timesByIndex(sy, 0.55), t0: hnd ? hnd.t0 : undefined, clock, hold: 1.8, tag, who: tag, critical: crit, cap: pa, style: o.style });
     }

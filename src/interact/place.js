@@ -1,7 +1,7 @@
 import { rng } from '../map/props/ctx.js';
 import { makeApi } from './kinds/common.js';
 import { phones, anchorPhone, phoneDirector } from './kinds/phones.js';
-import { radio, carradio, tv, piano, musicbox, mobile, cassette, typewriter } from './kinds/media.js';
+import { radio, handradio, carradio, tv, piano, musicbox, mobile, cassette, typewriter } from './kinds/media.js';
 import { lightswitch, vending, elevator, lift, alarm, alarmBonus, pa, sink, nursecall, keypad, terminal, fusebox } from './kinds/machines.js';
 import { locker, drawer, medcab, morgue, pickup, note, candle, fountain, snack } from './kinds/storage.js';
 import { noteById } from './notes.js';
@@ -37,7 +37,7 @@ const FP = {
   note: { mount: 'surface', w: 0.42, d: 0.42, y0: 0, y1: 0.5 },
   memorial: { mount: 'surface', w: 0.6, d: 0.4, y0: 0.7, y1: 1.3 }, cctv: { mount: 'surface', w: 0.5, d: 0.4, y0: 0.7, y1: 1.2 },
 };
-const KINDS = { phone: phones, radio, carradio, tv, piano, musicbox, mobile, cassette, typewriter, switch: lightswitch, vending, lift, alarm, pa, sink, nursecall, keypad, terminal, fusebox, locker, drawer, medcab, morgue, pickup, note, logbook: note, candle, snack, memorial, cctv };
+const KINDS = { phone: phones, radio, handradio, carradio, tv, piano, musicbox, mobile, cassette, typewriter, switch: lightswitch, vending, lift, alarm, pa, sink, nursecall, keypad, terminal, fusebox, locker, drawer, medcab, morgue, pickup, note, logbook: note, candle, snack, memorial, cctv };
 // 一般補充:每個主題 [種類, 機率, 參數]
 const THEME = {
   ward: [['switch', 0.85], ['nursecall', 0.75], ['drawer', 0.55], ['sink', 0.25], ['medcab', 0.2], ['tv', 0.12]],

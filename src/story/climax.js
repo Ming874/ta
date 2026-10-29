@@ -45,7 +45,7 @@ export function installClimax(game, S) {
     run.touqi = true; run.knobT = game.time + 16;
     try { sfx.folk('lament', p()); } catch { /* 略 */ }
     X.flags.set('h.touqi', true);
-    X.after(3.5, () => { try { H()?.remember?.('s3.touqi', { event: 'touqi', tag: 'zheng', ghost: 'zheng' }); } catch { /* 略 */ } seq(game, [['ama', '今天是頭七……阿嬤回來看你。', undefined, { id: 's3.touqi' }]]); });
+    X.after(3.5, () => { try { H()?.remember?.('s3.touqi', { event: 'touqi', tag: 'zheng', ghost: 'zheng' }); } catch { /* 略 */ } seq(game, [['ama', '今天是頭七……阿嬤回來看你。', undefined, { id: 's3.touqi', many: true }]]); });
   }
   function knob() { // 阿嬤把門內的旋鈕轉開
     if (has('h.207.knob')) return;
@@ -80,7 +80,7 @@ export function installClimax(game, S) {
     flag('h.207.open');
     const w = door207(), q = w ? { x: w.cx, y: w.y + 2.6, z: w.cz } : null;
     try { ixs.alarmStart?.('h207', q || p()); X.after(9, () => ixs.alarmStop?.('h207')); } catch { /* 略 */ }
-    seq(game, [0.8, ['pa', '207 警報。207 警報。', 5], ['xl', '……你開了那扇門。整棟樓都在響。', 3.2], ['xl', '保全人員請到二樓。\n有一個人醒了，穿保全制服。\n他在那扇門口坐了三年。', 5]]);
+    seq(game, [0.8, ['pa', '207 警報。207 警報。', 5], ['pa', '保全人員，請到二樓。', 3], ['xl', '……你開了那扇門。整棟樓都在響。', 3.2, { combatOk: true }], ['xl', '大新的無線電在叫一個名字。', 3, { combatOk: true }], ['xl', '劉家豪。他在那扇門口，坐了三年。', 3.4, { combatOk: true }]]); // 廣播說廣播的,小美說她從無線電聽到的(REDESIGN §7)
     if (!isHost()) return;
     if (game.phase === 'fighting') run.alarmPend = true; // 這一波打完再來
     else X.after(9, () => startGuardWave());
@@ -145,7 +145,7 @@ export function installClimax(game, S) {
     const step = acc; acc = 0;
     const h = H(), Dr = h?.director, silent = game.phase !== 'fighting';
     // 頭七之前:小美先感覺到(在二樓:叫你站著;不在二樓:叫你上去)
-    if (!run.lead && h && h.quiet >= 7 && Dr?.silent && !run.touqi && (Dr.roundT || 0) > 2.5) { run.lead = true; const on2 = /^f2_/.test(game.hospital?.zone?.id || ''); seq(game, on2 ? [['xl', '……今天，好像是她的頭七。', 2.6], ['xl', '人走後第七天，會回家看一眼。', 3], ['xl', '不要過去，站著就好。', 2.6]] : [['xl', '……今天，好像是她的頭七。', 2.6], ['xl', '人走後第七天，會回家看一眼。', 3], ['xl', '二樓的燈，一盞一盞暗下去了。', 3], ['xl', '好像有人在等你。', 2.4]]); }
+    if (!run.lead && h && h.quiet >= 7 && Dr?.silent && !run.touqi && (Dr.roundT || 0) > 2.5) { run.lead = true; const on2 = /^f2_/.test(game.hospital?.zone?.id || ''); seq(game, on2 ? [['xl', '第七次燈熄了。', 2.2], ['xl', '我們這邊說，人走後第七天，', 3], ['xl', '會回家看一眼，叫頭七。', 2.8], ['xl', '……收音機好安靜。', 2.2], ['xl', '不要過去，站著就好。', 2.6]] : [['xl', '第七次燈熄了。', 2.2], ['xl', '我們這邊說，人走後第七天，', 3], ['xl', '會回家看一眼，叫頭七。', 2.8], ['xl', '……收音機好安靜。', 2.2], ['xl', '好像有人在二樓等你。', 2.6]]); } // 她不認識阿嬤:這是她的推論(REDESIGN §7)
     // 頭七:第 7 次靜默還沒發生 → 退路
     if (!run.touqi && h && h.quiet >= 7 && Dr?.silent && (Dr.roundT || 0) > 14 && !h.memories?.state?.cur) touqiFallback();
     // 頭七那一次靜默久一點(單人):她回來、腳印、旋鈕,不要被下一波打斷
@@ -166,7 +166,7 @@ export function installClimax(game, S) {
     // 第 5 次招魂燈的巨屍 = 大新照護員 夜班組長(正典 §4 首領;身上有門禁卡):給他一個名字,等門禁卡的那幾分鐘才有對象
     if (!run.lead5 && game.round === 5 && game.phase === 'fighting' && !has('h.badge')) {
       const z = game.zombies.find((q) => q.alive && q.type === 'brute' && (q.dist ?? 99) < 30);
-      if (z) { run.lead5 = true; X.after(3, () => game.ui?.banner?.('大新夜班組長　陳建宏', '他以前是這裡的看護 · 門禁卡在他身上', 3800, 'red')); X.after(4.5, () => seq(game, [['xl', '穿大新制服那個……胸口有一張卡。', undefined, { gap: 3 }], ['xl', '他以前是這裡的看護。', 2.4], ['xl', '第一個打針的，就是他們。', 2.8]])); } // 先讓「巨屍出現」的打法提示講完
+      if (z) { run.lead5 = true; X.after(3, () => game.ui?.banner?.('大新夜班組長　陳建宏', '他以前是這裡的看護 · 門禁卡在他身上', 3800, 'red')); X.after(4.5, () => seq(game, [['xl', '大新的無線電說過，', 2.0, { combatOk: true, gap: 0.4 }], ['xl', '門禁卡在夜班組長身上。', 2.6, { combatOk: true, gap: 3 }], ['xl', '他以前是這裡的看護。', 2.4, { combatOk: true }], ['xl', '第一個打針的，就是他們。', 2.8, { combatOk: true }]])); } // 先讓「巨屍出現」的打法提示講完
     }
     // 看守 207 的保全:那一波第一隻巨屍
     if (run.wave && isHost()) {

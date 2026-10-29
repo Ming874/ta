@@ -343,16 +343,23 @@ class Chase {
       g.ui?.banner?.('快逃！', `他殺不死 · 跑到閃著綠光的${name}（跟著綠色標記），或甩掉他躲起來`, 3600, 'red');
       const H = g.horror;
       { // [story] 小美每次說的不一樣;放在唯一的字幕區(src/ui/captions.js),和小美其他的話同一個樣子;急事 → 蓋過別人的字;佔住聲音的鎖
-        let text = line || g.story?.chaseLine?.();
-        if (!shop && !line && (!text || text.includes('金水'))) text = '快跑！綠燈那邊有補給櫃——躲過去！';
-        text = text || '快跑！往綠燈那邊——金水伯的店！';
+        const Rd = g.story?.radio, cl = line ? null : g.story?.chaseLine?.();
+        let text = line || cl;
+        if (cl === '') text = ''; // 小美一局最多 3 句(REDESIGN §7),之後只剩收音機的尖叫
+        else {
+          if (!shop && !line && (!text || text.includes('金水'))) text = '快跑！綠燈那邊有補給櫃——躲過去！';
+          text = text || '快跑！往綠燈那邊——金水伯的店！';
+        }
+        if (text && !line && Rd && !Rd.hear()) text = ''; // 沒有收音機(還沒撿、關著、壞了):小美說不出來
         const who = line ? '電話' : '收音機 · 小美', iu = g.interact?.ui;
-        if (iu?.say) iu.say({ who, text, ms: 3600, tag: line ? 'phone' : 'radio', color: line ? '#a9b6be' : '#9fd0ff', critical: true, speak: 2.4 });
-        else H?.subs?.show?.({ text, tag: who, cap: true, hold: 2.4, critical: true });
-        g.story?.voice?.claim?.(2.8, 9, 'chase');
+        if (text) {
+          if (iu?.say) iu.say({ who, text, ms: 3600, tag: line ? 'phone' : 'radio', color: line ? '#a9b6be' : '#9fd0ff', critical: true, speak: 2.4 });
+          else H?.subs?.show?.({ text, tag: who, cap: true, hold: 2.4, critical: true });
+          g.story?.voice?.claim?.(2.8, 9, 'chase');
+        }
+        if (Rd) Rd.screech?.(0.9);
+        else { sfx.radio?.(true); setTimeout(() => sfx.radio?.(false), 2800); }
       }
-      sfx.radio?.(true);
-      setTimeout(() => sfx.radio?.(false), 2800);
     } else g.ui?.feed?.('追獵者出現了 · 他在追你的隊友', { icon: 'skull', color: '#ff6a5a', ms: 3500 });
   }
   _presStop(reason, me) {
@@ -448,7 +455,7 @@ class Chase {
       g.baseFov = P.fov0 + 6 * k;
       if (!P.on && k < 0.01) { g.baseFov = P.fov0; P.fov0 = null; }
     }
-    if (P.icT > 0 && (P.icT -= dt) <= 0 && P.on && P.me) g.horror?.subs?.show?.({ text: '快進來！門我拉起來了——快！', tag: '對講機 · 金水伯', cap: true, hold: 2.6 });
+    if (P.icT > 0 && (P.icT -= dt) <= 0 && P.on && P.me) g.horror?.subs?.show?.({ text: '快進來！門我拉起來了——快！', tag: '對講機 · 金水伯', cap: true, hold: 2.6, critical: true });
     if (k > 0.05 && (P.heartT -= dt) <= 0) { P.heartT = 1.0 - 0.55 * k; sfx.zHeart?.(k); }
     if (P.on && P.safe) {
       if ((P.beaconT -= dt) <= 0) { P.beaconT = 1.5; sfx.zBeacon?.(P.safe); }

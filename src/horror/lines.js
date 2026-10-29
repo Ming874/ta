@@ -120,14 +120,14 @@ export const LINES = [
   { id: 'rd.4', text: '……今天晚上，小美在山上，陪大家等月亮……', who: '霧港夜話 1999/10/20 的舊錄音', why: '王志明 10/19 的叩應讓小美上山做現場直播', when: '1999/10/20', trig: 'radio', filter: 'radio', prog: [4] },
 
   // ---------- 警告(靜默期裡的伏擊者:耳朵 = 他的方向) ----------
-  { id: 'wn.back', text: '……後面。', who: '不明(亡者)', why: '提示:靜默期裡宿主不是零,有東西從背後來', when: '現在', trig: 'warn', ear: 'behind', hint: 'warn' },
-  { id: 'wn.left', text: '左邊……有人。', who: '不明(亡者)', why: '提示:有東西從左邊來', when: '現在', trig: 'warn', ear: 'left', hint: 'warn' },
-  { id: 'wn.right', text: '右邊……他在等。', who: '不明(亡者)', why: '提示:有東西從右邊來', when: '現在', trig: 'warn', ear: 'right', hint: 'warn' },
-  { id: 'wn.heard', text: '他們聽到你了。', who: '不明(亡者)', why: '世界規則「他們聽得到」', when: '現在', trig: 'warn', hint: 'warn' },
+  { id: 'wn.back', text: '……後面。', who: '不明(亡者)', why: '提示:靜默期裡宿主不是零,有東西從背後來', when: '現在', trig: 'off', was: 'warn', ear: 'behind', hint: 'warn' },
+  { id: 'wn.left', text: '左邊……有人。', who: '不明(亡者)', why: '提示:有東西從左邊來', when: '現在', trig: 'off', was: 'warn', ear: 'left', hint: 'warn' },
+  { id: 'wn.right', text: '右邊……他在等。', who: '不明(亡者)', why: '提示:有東西從右邊來', when: '現在', trig: 'off', was: 'warn', ear: 'right', hint: 'warn' },
+  { id: 'wn.heard', text: '他們聽到你了。', who: '不明(亡者)', why: '世界規則「他們聽得到」', when: '現在', trig: 'off', was: 'warn', hint: 'warn' },
 
   // ---------- 引導(提示;鬼不說謊,所以是最可靠的引導) ----------
-  { id: 'gd.shop', text: '……捲門拉起來了。往這邊。', who: '不明(亡者)', why: '休息時補給站開放;耳朵的方向 = 補給站的方向', when: '現在', trig: 'guide', cue: 'shop', phase: 'rest', hint: 'shop' },
-  { id: 'gd.shop2', text: '金水的店……在這邊。', ghost: 'zheng', who: '林秀英', why: '金水伯二十五年來每個星期日都來看 207;她認得他', when: '現在', trig: 'guide', cue: 'shop', phase: 'rest', hint: 'shop', prog: [3] },
+  { id: 'gd.shop', text: '……捲門拉起來了。往這邊。', who: '不明(亡者)', why: '休息時補給站開放;耳朵的方向 = 補給站的方向', when: '現在', trig: 'off', was: 'guide', cue: 'shop', phase: 'rest', hint: 'shop' },
+  { id: 'gd.shop2', text: '金水的店……在這邊。', ghost: 'zheng', who: '林秀英', why: '金水伯二十五年來每個星期日都來看 207;她認得他', when: '現在', trig: 'off', was: 'guide', cue: 'shop', phase: 'rest', hint: 'shop', prog: [3] },
   { id: 'gd.fountain', text: '池子裡丟七次……修女留了話。', ghost: 'lobby', who: '大廳的人', why: '噴水池聖母像:丟滿七枚銅板,底座出現2003 年的修女的禱告字條', when: '七月初三', trig: 'zone', zone: ['f1_lobby'], prog: [6], hint: 'egg:fountain' },
   { id: 'gd.his', text: '病歷電腦……打她住進來的那一天。', ghost: 'zheng', who: '林秀英', why: 'HIS 終端可以輸入號碼;0924 是 207 的入院日期', when: '現在', trig: 'idle', prog: [6], hint: 'egg:his' },
   { id: 'gd.radio', text: '停車場……有一台車的收音機還開著。', who: '不明(亡者)', why: '停車場一台車的收音機調在 AM 1207(車主是一位家屬)', when: '現在', trig: 'idle', prog: [4], hint: 'egg:carradio' },

@@ -8,7 +8,7 @@
 //   voice.busy() / voice.claim(秒, 優先, 誰) / voice.until
 //   劇情的 seq 與對講機/提示(deduce.talk)會排隊等;隨機的鬼(沒有 force 的耳語)忙的時候直接放棄;
 //   裝置(錄音帶、電話、廣播)開始講時也佔住鎖。阿嬤的一句前後各留空白。
-import { ix as ixs } from '../audio.js';
+import { sfx, ix as ixs } from '../audio.js';
 import { captions } from '../ui/captions.js';
 
 export const WHO = {
@@ -30,7 +30,7 @@ export function voiceLock(game) {
   if (S.voice) return S.voice;
   const now = () => game.time || 0;
   const V = {
-    until: 0, prio: 0, who: null, quietUntil: 0, q: [], headT: 0,
+    until: 0, prio: 0, who: null, quietUntil: 0, q: [], headT: 0, count: {}, amaRest: -1,
     get owner() { return V.q[0] || null; },
     // 有人在說話,或有一段對話在講/在排隊(token = 自己那一段)
     busy(o = {}) {
@@ -52,9 +52,10 @@ export function voiceLock(game) {
       V.quietUntil = Math.max(V.quietUntil, V.until + pad);
       V.prio = prio; V.who = who;
     },
-    reset() { V.until = V.quietUntil = 0; V.prio = 0; V.who = null; V.q.length = 0; },
+    reset() { V.until = V.quietUntil = 0; V.prio = 0; V.who = null; V.q.length = 0; V.count = {}; V.amaRest = -1; },
   };
   S.voice = V;
+  S.say = (who, text, o) => line(game, who, text, o); // 不排隊的一句(收音機的戰鬥警告)
   captions.bind(game); // 唯一的字幕區(src/ui/captions.js)
   game.interact?.on?.('reset', () => V.reset());
   return V;
@@ -74,14 +75,24 @@ export function wait(game, secs) {
 export function line(game, who, text, o = {}) {
   text = fillNick(text);
   if (game.story?.ending?.active && !o.sub && !o.ending) return 0; // 結局裡只有結局自己的聲音
-  const secs = o.secs || secsOf(text);
+  // 小美只從收音機出來(REDESIGN §2.4.4):沒有收音機、關著、壞了 → 不說;地下室字幕殘缺;放下 = 左肩小聲、舉起 = 兩耳
+  const Rd = game.story?.radio, V0 = voiceLock(game);
+  if (who === 'xl' && Rd && !o.sub) {
+    if (!Rd.hear()) return 0;
+    if ((o.warn || o.optional) && (V0.count.xl || 0) >= LIMIT.xl) return 0; // 每局預算(R9):超過了,不必要的句子丟掉
+    Rd.tuneHome?.();
+    if (!o.raw) text = Rd.garble(text);
+    if (!o.pos) { const v = Rd.voice(); o = { ...o, pos: v.pos, gain: v.gain }; }
+  }
+  if (who !== 'n') V0.count[who] = (V0.count[who] || 0) + 1;
+  const secs = o.secs || secsOf(text) * (who === 'pa' ? 1.3 : 1); // 廣播的合成聲比較慢
   const W = WHO[who];
   if (o.sub) o.sub(who, text, secs);
   if (who === 'n' || o.quiet) return secs;
   voiceLock(game).claim(secs, o.prio ?? 9, who, who === 'ama' ? 5 : 0); // 佔住鎖(別人等;阿嬤之後空 5 秒)
-  if (who === 'ama') {
+  if (who === 'ama' || who === 'xa') { // xa = 阿嬤從收音機(結局「十」)
     const h = game.horror;
-    try { h?.whisper?.({ id: o.id || null, text, ghost: 'zheng', ear: o.ear || 'both' }, { priority: 9, force: true, subtitle: !o.sub, lockOk: true, critical: true }); } catch { /* 靈異系統關掉了 */ }
+    try { h?.whisper?.({ id: o.id || null, text, ghost: 'zheng', ear: who === 'xa' ? 'left' : o.ear || 'both' }, { priority: 9, force: true, subtitle: !o.sub, lockOk: true, critical: true, filter: who === 'xa' ? 'radio' : o.filter, tag: who === 'xa' ? '收音機 · 阿嬤' : undefined }); } catch { /* 靈異系統關掉了 */ }
     return secs;
   }
   if (!W) return secs;
@@ -90,8 +101,23 @@ export function line(game, who, text, o = {}) {
     try { ixs.phoneVoice?.(text, { voice: W.voice, filter: W.filter, pos: o.pos || null, gain: o.gain }); } catch { /* 還沒有聲音 */ }
     return secs;
   }
-  try { api.speak({ who: W.tag, parts: [text], voice: W.voice }, { filter: W.filter, noHorror: who !== 'pa', pos: o.pos || null, lockOk: true, critical: true }); } catch { /* 略 */ }
+  try { api.speak({ who: W.tag, parts: [text], voice: W.voice }, { filter: W.filter, noHorror: who !== 'pa', pos: o.pos || null, gain: o.gain, lockOk: true, critical: true }); } catch { /* 略 */ }
   return secs;
+}
+
+// 每局台詞預算(REDESIGN §5 R9):小美 ≤ 60(數到十不算)、金水伯 ≤ 20、阿嬤 ≤ 15;超過了,不必要的句子丟掉
+export const LIMIT = { xl: 60, ks: 20, ama: 15, ghost: 3 };
+// 等收音機能聽(最多 120 秒);等的時候先讓出佇列給別人
+export async function radioReady(game, V, token, stopped = () => false) {
+  const Rd = game.story?.radio;
+  if (!Rd || Rd.hear()) return true;
+  V.leave(token);
+  const t0 = game.time || 0;
+  while (!Rd.hear() && (game.time || 0) - t0 < 120 && !stopped()) await wait(game, 0.5);
+  V.join(token);
+  if (!Rd.hear()) return false;
+  await free(game, { token, maxWait: 45 });
+  return true;
 }
 
 // 依序播;回傳 Promise(完成或中止都 resolve),帶 stop()
@@ -108,6 +134,30 @@ export function seq(game, lines, o = {}) {
       if (typeof L === 'function') { await L(); continue; }
       if (typeof L === 'number') { await wait(game, L); continue; }
       const [who, text, secs, lo] = L;
+      const opt = { ...o, ...(lo || {}) };
+      // 小美要有收音機:還沒撿、關著、壞了 → 排隊(先讓出佇列給別人);提示這種可有可無的直接丟掉
+      if (who === 'xl' && !opt.sub && game.story?.radio && !game.story.radio.hear()) {
+        if (opt.optional) continue;
+        if (!(await radioReady(game, V, token, () => stopped))) continue;
+      }
+      // 戰鬥中(15 m 內有活屍、被追)只說警告(R3):劇情的話等到安靜下來
+      if ((who === 'xl' || who === 'ks') && !opt.combatOk && !opt.warn && !opt.noWait && !opt.sub && captions.combat()) {
+        const t0 = game.time || 0;
+        while (captions.combat() && (game.time || 0) - t0 < 120 && !stopped) await wait(game, 0.5);
+      }
+      // 阿嬤:一次休息最多一句(頭七、倒下、聖筊除外);之前收音機自己安靜 →〈望春風〉→ 1.6 秒(REDESIGN §2.8)
+      if (who === 'ama' && !opt.sub) {
+        const Rd = game.story?.radio, rest = Rd?.run?.rests ?? 0;
+        if (!opt.many && rest > 0 && V.amaRest === rest) continue;
+        if ((V.count.ama || 0) >= LIMIT.ama && !opt.many) continue;
+        if (!opt.many) V.amaRest = rest;
+        if (!opt.noSignal) {
+          await free(game, { quiet: true, maxWait: 45, token });
+          Rd?.hush?.(6);
+          try { sfx.folk?.('ama', game.player?.pos); } catch { /* 冷卻中 */ }
+          await wait(game, 1.6);
+        }
+      }
       const ps = String(text).split('\n'); // 一句一行字幕(CLARITY_PLAN §5:一句不超過 18 字,長的拆成兩句依序播)
       for (let i = 0; i < ps.length; i++) {
         if (stopped) return false;

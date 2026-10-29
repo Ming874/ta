@@ -6,13 +6,15 @@
 //   - 戰鬥中(15 m 內有活屍、或正在被追):不是劇情的話先不講(combat())。
 // API:captions.bind(game) / root() / can(who, critical) / sound(text) / add(q) / drop(q) / live() / combat() / state()
 import './captions.css';
-const now = () => performance.now() / 1000;
 const L = []; // { el, who, kind: 'speech' | 'sound', critical, until(說完的時間,performance 秒), cut() }
 let G = null, R = null, lastSound = -1e9;
+// 說到哪裡用遊戲時間(和聲音的鎖同一個鐘;暫停時不走);還沒綁遊戲就用真實時間
+const now = () => (G && Number.isFinite(G.time) ? G.time : performance.now() / 1000);
 const seen = new Map();
 
 export const captions = {
-  bind(game) { G = game; },
+  bind(game) { if (G === game) return; G = game; game.interact?.on?.('reset', () => { captions.clear(); lastSound = -1e9; seen.clear(); }); },
+  now: () => now(),
   root() {
     if (R && R.isConnected) return R;
     R = document.getElementById('gh-subs');

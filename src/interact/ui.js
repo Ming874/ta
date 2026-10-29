@@ -57,7 +57,7 @@ export class IxUI {
     captions.root().appendChild(e);
     const ms = sound ? Math.min(o.ms || 2200, 2600) : Math.max(o.ms || 0, 1400 + [...String(o.text || '')].length * 200); // 至少夠讀完(語音很快時也不會一閃就走);聲音字幕短短的
     const h = { e, t: setTimeout(() => h.close(), ms), close() { clearTimeout(h.t); captions.drop(h.q); if (!e.isConnected) return; e.classList.add('out'); setTimeout(() => e.remove(), 400); } };
-    h.q = captions.add({ el: e, who, kind: sound ? 'sound' : 'speech', critical: !!o.critical, until: performance.now() / 1000 + (o.speak ?? Math.max(0.6, ms / 1000 - 1.2)), cut: () => { clearTimeout(h.t); cutEl(e); } });
+    h.q = captions.add({ el: e, who, kind: sound ? 'sound' : 'speech', critical: !!o.critical, until: captions.now() + (o.speak ?? Math.max(0.6, ms / 1000 - 1.2)), cut: () => { clearTimeout(h.t); cutEl(e); } });
     this.subs.push(h);
     if (this.subs.length > 6) this.subs.shift();
     return h;

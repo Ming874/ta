@@ -337,7 +337,7 @@ class Ambush {
       if (bd < s.R + 2.5 && !s.spoiled) { s.spoiled = true; this.stats.spoiled++; }
       return;
     }
-    if (s.spoiled || bd > s.R || bd < 1.2 || t - s.seenT < 4) return;
+    if (s.spoiled || bd > s.R + (this.g.story?.radio?.loud || 0) || bd < 1.2 || t - s.seenT < 4) return; // [story] 收音機開著,聽得到你
     const E = this._emerge(hs, sp.y, best, s.R);
     if (!E) { s.wrong = (s.wrong || 0) + 1; if (s.wrong === 1) this.stats.wrongDir++; return; }
     if (this._allow('ambush', best, sp)) this._fire(s, E, best, hs);
@@ -563,7 +563,8 @@ class Ambush {
     const dx = cx - p.pos.x, dz = cz - p.pos.z, dl = Math.hypot(dx, dz) || 1;
     const look = (-dx * Math.sin(p.yaw || 0) - dz * Math.cos(p.yaw || 0)) / dl; // 1 = 正眼看著牠
     if (look > 0.9 && bd > 2) { a.stare += step; if (a.stare < 4) return; } // 被盯著:繼續當屍體(盯太久也會撲)
-    if (bd <= a.R || (look < -0.2 && bd <= a.R + 0.8)) this._wakeCorpse(z, false, p);
+    const loud = g.story?.radio?.loud || 0; // [story] 收音機開著,牠們也聽得到
+    if (bd <= a.R + loud || (look < -0.2 && bd <= a.R + 0.8 + loud)) this._wakeCorpse(z, false, p);
   }
   _wakeCorpse(z, force, p) {
     const loud = this._allow('ambush', p, z.pos);

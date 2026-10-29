@@ -62,7 +62,7 @@ export function makeApi(game, ix, kit, R) {
       const V = game.story?.voice, crit = !!o.critical, key = who || DEV_TAG[filter] || filter, tok = {};
       let joined = false, endAt = Infinity;
       const leave = () => { if (joined) { joined = false; V?.leave?.(tok); } };
-      let prevEnd = 0; // 一段一段依序講(前一段講完才輪到下一段;被鎖擋住時不會插隊)
+      let prevEnd = 0, nextI = 0; // 一段一段依序講(前一段開始講、講完才輪到下一段;被鎖擋住時不會插隊)
       parts.forEach((p, i) => {
         const d = dur(p);
         const at = total;
@@ -70,17 +70,19 @@ export function makeApi(game, ix, kit, R) {
         let waited = 0;
         const run = () => {
           if (cancelled) return;
+          if (i !== nextI) { stops.push(ix.after(0.25, run)); return; } // 前一段還沒開始講
           if (i > 0 && (game.time || 0) < prevEnd) { stops.push(ix.after(Math.max(0.05, prevEnd - (game.time || 0)), run)); return; }
           if (V && !o.lockOk && !joined) { joined = true; (filter === 'phone' && V.front ? V.front : V.join)(tok); }
           const retry = () => { if (waited < (crit ? 40 : 20)) { waited += 0.25; stops.push(ix.after(0.25, run)); return true; } return false; };
           if ((V && !o.lockOk && V.busy({ token: tok })) || !captions.can(key, crit)) { if (retry()) return; if (!crit) { h.stop(); return; } }
           let used = false;
           if (hz?.whisper && !o.noHorror) { // 靈異系統的耳語/電話聲(有自己的字幕);回傳 null = 別人還在講 → 等一下再試(不拿自己的字幕疊上去)
-            try { const w = hz.whisper(p, { ear: o.ear || line.ear || (filter === 'phone' ? 'right' : 'both'), subtitle: true, filter, priority: 7, pos: o.pos || null, who: key, tag: key, lockOk: true, critical: crit }); if (w) { used = true; cur = w; } } catch { used = false; } // 字幕標籤 = 說話的人(收音機 · 小美、電話 · 王醫師…)
+            try { const w = hz.whisper(p, { ear: o.ear || line.ear || (filter === 'phone' ? 'right' : 'both'), subtitle: true, filter, priority: 7, pos: o.pos || null, who: key, tag: key, lockOk: true, critical: crit, force: crit || undefined }); if (w) { used = true; cur = w; } } catch { used = false; } // 字幕標籤 = 說話的人(收音機 · 小美、電話 · 王醫師…)
             if (!used && hz?.whispers?.busy && retry()) return;
           }
           if (V && !o.lockOk) V.claim(d, 6, key);
           if (i === 0) endAt = (game.time || 0) + total;
+          nextI = i + 1;
           prevEnd = (game.time || 0) + d + 0.35;
           if (!used) {
             cur = ixs.phoneVoice(p, { voice, filter, pos: o.pos || null, gain: o.gain });
