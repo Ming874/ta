@@ -129,7 +129,7 @@ function dressParking(ctx, zone) {
   edgeDress(ctx, zone, R, P, { leaves: 8, ivy: 0.1, tufts: 3, litter: 0.35 });
   scatter(ctx, zone, R, P, { leaves: 0.18, litter: 0.08, puddles: 0.05, stains: 0.05 });
   // [scene6] 雨水往緣石邊流:沿南北兩條緣石的長條積水;柏油裂縫長草;外牆腳/圍牆腳的草、落葉、髒污帶與爬藤
-  for (const zc of [76.45, 93.6]) for (let x = 4 + R.range(0, 6); x < 116; x += R.range(6, 13)) if (freeAt(ctx, li, x, zc, 0.3)) puddle(P, R, x, zc, R.range(0.35, 0.6), R.range(2.0, 3.4), 0.45, 0.0045);
+  for (const zc of [76.45, 93.6]) for (let x = 4 + R.range(0, 4); x < 116; x += R.range(4, 9)) if (freeAt(ctx, li, x, zc, 0.3)) puddle(P, R, x, zc, R.range(0.5, 0.85), R.range(2.4, 4.0), 0.5, 0.0045); // [scene7] 更大更密(原本看不出來)
   scatter(ctx, zone, R, P, { leaves: 0, litter: 0, cracks: 0.04, tufts: 0.035, stains: 0.03 });
   edgeDress(ctx, zone, R, P, { leaves: 5, ivy: 0.12, tufts: 3, litter: 0.2, stain: 0.12 });
   finish(ctx, P);
@@ -618,6 +618,24 @@ function dressRooftop(ctx, zone) {
     P.add('glow_red', sph(0.08, 8, 6), M(100.4, y + 7.08, 64.6));
     ctx.light({ x: 100.4, y: y + 7.1, z: 64.6, color: 0xff2010, intensity: 2.5, distance: 6, kind: 'beacon', flicker: 0, zone: zone.id, glow: 0.9 });
     solid(ctx, 100.4, y, 64.6, 0.3, 7, 0.3, 'metal');
+  }
+  // [scene7] 台灣屋頂的標準配備:不鏽鋼水塔(架高在鐵架上)、一排冷氣室外機(風扇格柵、鏽水痕)、從屋頂邊垂下的電線
+  for (const [x, z] of [[95.5, 61.5], [98.2, 61.5]]) if (freeRect(ctx, li, x - 1, z - 1, x + 1, z + 1, true)) {
+    const T = new Parts();
+    for (const [a, b] of [[-0.55, -0.55], [0.55, -0.55], [-0.55, 0.55], [0.55, 0.55]]) T.add('steel', box(0.06, 0.8, 0.06), M(a, 0.4, b));
+    T.add('steel', box(1.3, 0.06, 1.3), M(0, 0.82, 0));
+    T.add('steel', cyl(0.62, 0.62, 1.25, 20), M(0, 1.48, 0)); T.add('steel', new THREE.SphereGeometry(0.62, 20, 6, 0, TAU, 0, 0.5), M(0, 2.1, 0));
+    for (const yy of [1.05, 1.5, 1.95]) T.add('cast_iron', cyl(0.63, 0.63, 0.03, 20), M(0, yy, 0)); // 箍
+    T.add('steel', cyl(0.035, 0.035, 0.9, 6), M(0.5, 0.45, 0.5)); T.add('cast_iron', cyl(0.06, 0.06, 0.08, 8), M(0, 2.42, 0));
+    put(ctx, T, x, y, z, R() * TAU); solid(ctx, x, y, z, 1.35, 2.3, 1.35, 'metal');
+  }
+  for (let k = 0; k < 4; k++) { const x = 58 + k * 1.15, z = 65.2; if (!freeAt(ctx, li, x, z, 0.4)) continue;
+    const C = new Parts();
+    C.add('metal_white', box(0.9, 0.65, 0.34), M(0, 0.42, 0)); C.add('cast_iron', cyl(0.24, 0.24, 0.02, 16), M(-0.12, 0.42, 0.172, HALF, 0, 0));
+    for (let i = -2; i <= 2; i++) C.add('steel', box(0.5, 0.012, 0.012), M(-0.12, 0.42 + i * 0.08, 0.185));
+    C.add('steel', box(0.95, 0.04, 0.42), M(0, 0.07, 0)); C.add('cast_iron', box(0.04, 0.3, 0.004), M(0.3, 0.22, 0.172));
+    C.add('cast_iron', cyl(0.012, 0.012, 1.2, 4), M(0.36, 0.6, -0.1, 0.9, 0, 0)); // 冷媒管往牆
+    put(ctx, C, x, y, z, Math.PI + R.range(-0.05, 0.05)); solid(ctx, x, y, z, 0.9, 0.75, 0.4, 'metal');
   }
   if (freeAt(ctx, li, 20.4, 64.4, 0.6)) { const S = new Parts(); S.add('metal_white', new THREE.SphereGeometry(0.6, 16, 8, 0, TAU, 0, 0.9).rotateX(-0.9), M(0, 1.2, 0)); S.add('steel', cyl(0.04, 0.04, 1.2, 6), M(0, 0.6, 0)); S.add('steel', rod(new V3(0, 1.0, 0.1), new V3(0, 1.45, 0.62), 0.012, 4)); put(ctx, S, 20.4, y, 64.4, 0.6); solid(ctx, 20.4, y, 64.4, 0.6, 1.6, 0.6, 'metal'); }
   for (const [x0, x1, z] of [[19, 50, 65.3], [62, 101, 52.3]]) { P.add('steel', box(x1 - x0, 0.08, 0.3), M((x0 + x1) / 2, y + 0.18, z)); for (let x = x0; x < x1; x += 2.5) P.add('steel', box(0.05, 0.18, 0.3), M(x, y + 0.09, z)); }

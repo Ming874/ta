@@ -10,6 +10,7 @@ function lbox(B, li, key, F, u0, y0, w0, u1, y1, w1) {
   B.box(li, key, Math.min(xa, xb), y0, Math.min(za, zb), Math.max(xa, xb), y1, Math.max(za, zb), {});
 }
 
+const hashS = (n) => { const s = Math.sin(n * 12.9898 + 4.1) * 43758.5453; return s - Math.floor(s); };
 export function buildFacade(K) {
   const { L, B } = K;
   const stats = { ac: 0, cage: 0, pipe: 0 };
@@ -25,6 +26,11 @@ export function buildFacade(K) {
     const W = (d) => wo + out * d; // 離外牆面 d 公尺
     const mid = (w.u0 + w.u1) / 2;
     const roll = R();
+    // [scene7] 窗台下的雨水黑痕(大多數窗都有;老建築外牆最明顯的紋理變化)
+    if (hashS(w.li * 131 + w.c * 17 + w.r * 7) < 0.7) {
+      const n = 2 + ((hashS(w.c * 3.1 + w.r) * 3) | 0);
+      for (let k = 0; k < n; k++) { const u = w.u0 + 0.2 + hashS(k * 7.7 + w.c + w.r * 3) * (w.u1 - w.u0 - 0.4), l = 0.5 + hashS(k * 3.3 + w.c * 1.7) * 1.6, wd = 0.02 + hashS(k + w.r) * 0.05; lbox(B, w.li, 'trim_soot', F, u - wd / 2, Math.max(y + 0.1, s0 - 0.08 - l), W(0.0), u + wd / 2, s0 - 0.08, W(0.004)); }
+    }
     // ---- 窗型冷氣(2F/3F 三成、1F 一成五):窗台下方穿牆,外凸 0.42m
     if (roll < (id === '1F' ? 0 : 0.3)) { // 1F 不放(膝蓋高度凸出 40cm、沒有碰撞會穿過去)
       const cu = mid + (R() < 0.5 ? -0.42 : 0.42), hw = 0.31, yb = s0 - 0.55, yt = s0 - 0.12;
@@ -100,6 +106,11 @@ export function buildFacade(K) {
       else B.box(f.li, 'trim_concrete', Math.min(f.fixed, f.fixed + nx * d), y0, a0, Math.max(f.fixed, f.fixed + nx * d), y1, a1, {});
     };
     if (id !== '1F') slab(f.a0 - 0.06, f.a1 + 0.06, f.y - 0.12, f.y + 0.1, 0.06);
+    if (id === '1F') { // [scene7] 1F 牆腳 0.85m 的綠色磁磚裙(老醫院常見),和上面的外牆材質分開
+      if (horiz) B.box(f.li, 'tile_green', f.a0, f.y, Math.min(f.fixed, f.fixed + nz * 0.018), f.a1, f.y + 0.85, Math.max(f.fixed, f.fixed + nz * 0.018), {});
+      else B.box(f.li, 'tile_green', Math.min(f.fixed, f.fixed + nx * 0.018), f.y, f.a0, Math.max(f.fixed, f.fixed + nx * 0.018), f.y + 0.85, f.a1, {});
+      slab(f.a0, f.a1, f.y + 0.85, f.y + 0.88, 0.03); // 磁磚收邊
+    }
     const roofLevel = f.top >= L.LEVEL_H - 0.05 && !L.levels[f.li + 1];
     if (roofLevel || id === '3F') slab(f.a0 - 0.08, f.a1 + 0.08, f.y + f.top - 0.02, f.y + f.top + 0.1, 0.09);
     for (const s of f.segs || []) {

@@ -628,9 +628,9 @@ export function decal(kind, v = 0, floor = false) {
     } else if (kind === 'lane') {
       // [scene6] 走廊中央的動線磨耗:推床/輪椅的兩道輪痕 + 中間被鞋底磨得較暗的一帶(邊緣柔和)
       c.filter = 'blur(10px)';
-      const g = c.createLinearGradient(0, 0, w, 0); g.addColorStop(0, 'rgba(26,22,16,0)'); g.addColorStop(0.5, 'rgba(26,22,16,0.2)'); g.addColorStop(1, 'rgba(26,22,16,0)');
+      const g = c.createLinearGradient(0, 0, w, 0); g.addColorStop(0, 'rgba(26,22,16,0)'); g.addColorStop(0.5, 'rgba(26,22,16,0.36)'); g.addColorStop(1, 'rgba(26,22,16,0)'); // [scene7] 0.2 → 0.36:原本在 SSR 反光下看不出來
       c.fillStyle = g; c.fillRect(8, 10, w - 16, h - 20); c.filter = 'blur(1.2px)';
-      for (const x0 of [w * 0.33, w * 0.67]) for (let k = 0; k < 3; k++) { c.strokeStyle = `rgba(14,12,10,${rr(0.08, 0.2)})`; c.lineWidth = rr(1.5, 3); c.beginPath(); const x = x0 + rr(-5, 5); c.moveTo(x, 0); c.bezierCurveTo(x + rr(-6, 6), h * 0.33, x + rr(-6, 6), h * 0.66, x + rr(-5, 5), h); c.stroke(); }
+      for (const x0 of [w * 0.33, w * 0.67]) for (let k = 0; k < 3; k++) { c.strokeStyle = `rgba(14,12,10,${rr(0.16, 0.34)})`; c.lineWidth = rr(2, 4); c.beginPath(); const x = x0 + rr(-5, 5); c.moveTo(x, 0); c.bezierCurveTo(x + rr(-6, 6), h * 0.33, x + rr(-6, 6), h * 0.66, x + rr(-5, 5), h); c.stroke(); }
       for (let k = 0; k < 16; k++) { c.strokeStyle = `rgba(12,10,8,${rr(0.1, 0.35)})`; c.lineWidth = rr(1, 2.4); const x = rr(20, w - 20), y = rr(10, h - 10); c.beginPath(); c.moveTo(x, y); c.lineTo(x + rr(-10, 10), y + rr(-14, 14)); c.stroke(); }
       c.filter = 'none';
     } else if (kind === 'mud') {

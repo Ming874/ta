@@ -289,11 +289,39 @@ export function roomStory(R, zone) {
 }
 
 // 其餘病房各一層故事(201、202、205、206、208、210;203/209 在 story.js)
+// ---------------- [scene7] 每間病房一個從門口就看得到的主角物件(大剪影、高對比)
+// 茄芷袋(紅白藍條紋帆布袋,台灣人住院搬家當用的)
+const tarpBag = (k) => tpl(`r7:tarpbag:${k % 2}`, (b) => {
+  const W = 0.62, H = 0.42, D = 0.3;
+  b.box('fab_white', W, H, D, 0, H / 2, 0, { r: 0.04 });
+  for (const [y, m] of [[0.07, 'fab_red'], [0.16, 'fab_blue'], [0.27, 'fab_red'], [0.36, 'fab_blue']]) b.box(m, W + 0.008, 0.045, D + 0.008, 0, y, 0, { r: 0.03 });
+  for (const s of [-1, 1]) b.tube('fab_red', [[-0.16, H - 0.02, s * 0.1], [-0.12, H + 0.16, s * 0.08], [0.12, H + 0.16, s * 0.08], [0.16, H - 0.02, s * 0.1]], 0.012, { seg: 4, bend: 0.03 });
+  if (k) b.box('fab_floral', 0.4, 0.06, 0.24, 0.02, H + 0.02, 0, { r: 0.02, ry: 0.2 }); // 塞在上面的衣服
+});
+// 家屬睡的行軍床 + 粉紅花被
+const cot = () => tpl('r7:cot', (b) => {
+  const L1 = 1.86, W = 0.64;
+  for (const s of [-1, 1]) b.box('alu', 0.03, 0.03, L1, s * W / 2, 0.38, 0);
+  for (const z of [-0.8, 0, 0.8]) for (const s of [-1, 1]) b.rod('alu', 0.012, [s * W / 2, 0.38, z], [-s * W / 2 * 0.9, 0.02, z], { seg: 4 });
+  b.box('fab_canvas', W - 0.02, 0.012, L1 - 0.06, 0, 0.39, 0);
+  b.box('fab_pink', W + 0.02, 0.07, 1.1, 0.02, 0.43, 0.3, { r: 0.03, ry: 0.05 }); // 摺起來的花被
+  b.box('fab_white', 0.42, 0.09, 0.28, 0, 0.44, -0.7, { r: 0.04 });
+});
+// 花布被(摺好放在床上)
+const quilt = () => tpl('r7:quilt', (b) => { b.box('fab_red', 0.86, 0.12, 0.62, 0, 0.06, 0, { r: 0.04 }); b.box('fab_pink', 0.87, 0.03, 0.63, 0, 0.09, 0, { r: 0.012 }); b.box('fab_yellow', 0.87, 0.018, 0.63, 0, 0.035, 0, { r: 0.008 }); });
+// 紅紙毛筆字(貼在窗前 / 牆上)
+const redPaper = (key, lines, w, h) => labRect(`r7:red:${key}`, 96, Math.round(96 * h / w), (c, cw, ch) => {
+  c.fillStyle = '#b21e14'; c.fillRect(0, 0, cw, ch); c.fillStyle = 'rgba(0,0,0,0.12)'; c.fillRect(0, ch - 6, cw, 6);
+  lines.forEach((t, i) => text(c, t, cw / 2, (ch / (lines.length + 1)) * (i + 1), { size: Math.min(30, ch / (lines.length + 0.6)), color: '#141010', font: '"DFKai-SB", "BiauKai", "KaiTi", serif' }));
+});
+const redSheet = (key, lines, w, h) => tpl(`r7:redsheet:${key}`, (b) => { b.plane(L(redPaper(key, lines, w, h)), w, h, 0, h / 2, 0.004); b.box('paper', 0.04, 0.012, 0.002, -w / 2 + 0.03, h - 0.01, 0.006); b.box('paper', 0.04, 0.012, 0.002, w / 2 - 0.03, h - 0.01, 0.006); });
+
 export function wardStory2(R, n, ctx = {}) {
   const E = R.run('E'), W = R.run('W');
   const z0 = R.r0 * 2, c = R.center();
   const bays = ctx.bays || [];
   const bay = (side, k) => bays.find((q) => q.side === side && q.bz === z0 + (k ? 5.05 : 1.25));
+  hero(R, n, ctx, z0, c);
   if (n === 201) {
     // 小鈴的頻道:東側靠窗那床的床頭櫃上一台紅色收音機(AM 1207),西床床欄旁牆上家屬的字條
     const b = bay(1, 0);
@@ -319,5 +347,29 @@ export function wardStory2(R, n, ctx = {}) {
     if (W) R.atWall(altar(), W, z0 + 3.2, { mount: 1.25, gap: 0.004, collide: false }); // 家屬帶來的小神桌(L 型鐵件層架)
   } else if (n === 210) {
     for (const [run, t] of [[E, z0 + 1.3], [W, z0 + 1.3]]) if (run) { const p = R.at(run, t, 1.08); R.put(plasticCover(), p.x, p.z, Math.PI / 2, { y: R.y + 0.05, collide: false }); } // 萬嵐 2024 的「封存」
+  }
+}
+
+// [scene7] 主角物件:門口(南側)往北看時在視線中央、尺寸夠大、顏色和綠牆/白床對比
+function hero(R, n, ctx, z0, c) {
+  const bays = ctx.bays || [], N = R.run('N'), y = R.y;
+  const bay = (side, k) => bays.find((q) => q.side === side && q.bz === z0 + (k ? 5.05 : 1.25));
+  if (n === 201 && N) { // 窗前一張紅紙:「阿爸 加油」(家屬從外面送進來的)
+    const p = R.at(N, c.x, -0.04);
+    R.put(redSheet('201', ['阿爸', '加油'], 0.5, 0.7), p.x, p.z, N.yaw, { y: y + 1.35 });
+  } else if (n === 202) { // 窗下一張行軍床(家屬陪病),捲著粉紅花被
+    if (R.freeAt(c.x, z0 + 0.42, 0.3)) { R.put(cot(), c.x, z0 + 0.42, Math.PI / 2, {}); R.mark(R.footprint(cot().bbox, c.x, z0 + 0.42, Math.PI / 2, 0.02)); }
+  } else if (n === 205) { // 象棋桌旁的茄芷袋
+    const ob = ctx.overbed;
+    if (ob) { const q = R.local(ob, -0.35, 0, -0.75); if (R.freeAt(q.x, q.z, 0.25)) R.put(tarpBag(1), q.x, q.z, ob.yaw + 0.5, { collide: false }); }
+  } else if (n === 206) { // 東側靠門那床:摺好的紅花被(五月十三號要回家)
+    const b = bay(1, 1);
+    if (b) R.putRel(quilt(), b.p, 0, 0.755, 0.5, 0, 0.1);
+  } else if (n === 208) { // 神桌上方一大塊紅布「平安」
+    const W = R.run('W');
+    if (W) R.atWall(redSheet('208', ['平', '安'], 0.42, 0.9), W, z0 + 3.2, { mount: 1.6, gap: 0.004 });
+  } else if (n === 209 || n === 203) { // 牆邊一個茄芷袋
+    const b = bay(-1, 1);
+    if (b) { const q = R.local(b.p, 0.75, 0, 1.0); if (R.freeAt(q.x, q.z, 0.25)) R.put(tarpBag(n), q.x, q.z, b.p.yaw + 0.3, { collide: false }); }
   }
 }

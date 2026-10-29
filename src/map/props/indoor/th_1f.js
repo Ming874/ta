@@ -137,14 +137,14 @@ export function fillShelves(R, p, kind, o = {}) {
       const row = boxRowT(w, d, hmax, R.rng.int(0, 9), kind === 'records' ? 'records' : 'supplies');
       R.putRel(row, p, (tp.x0 + tp.x1) / 2, tp.y, (tp.z0 + tp.z1) / 2, 0, 0, 0);
     } else {
-      const n = Math.floor(w / 0.11);
-      for (let k = 0; k < n; k++) {
-        if (R.chance(0.3)) continue;
-        const u = (k + 0.5) / n, x = tp.x0 + w * u, z = tp.z0 + d * R.rand(0.25, 0.75);
+      const n = Math.floor(w / (kind === 'meds' ? 0.085 : 0.11)); // [scene7] 藥架要滿:前後兩排、較少空位(實例化,不加 draw call)
+      for (let k = 0; k < n * (kind === 'meds' && d > 0.3 ? 2 : 1); k++) {
+        if (R.chance(kind === 'meds' ? 0.16 : 0.3)) continue;
+        const kk = k % n, row = (k / n) | 0, u = (kk + 0.5) / n, x = tp.x0 + w * u, z = kind === 'meds' && d > 0.3 ? tp.z0 + d * (row ? R.rand(0.62, 0.82) : R.rand(0.18, 0.38)) : tp.z0 + d * R.rand(0.25, 0.75);
         const type = kind === 'bottles' ? R.pick(['pillbottle', 'pillbottle2', 'vial']) : R.pick(['pillbox', 'pillbox2', 'pillbox3']);
         const M = p.M.clone().multiply(new THREE.Matrix4().makeRotationY(kind === 'bottles' ? R.rand(0, 6) : R.rand(-0.15, 0.15)).setPosition(x, tp.y, z));
         R.inst(type, ctpl(type), M);
-        if (kind !== 'bottles' && R.chance(0.4)) { const M2 = M.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0.05, 0)); R.inst(type, ctpl(type), M2); }
+        if (kind !== 'bottles' && R.chance(0.55)) { const M2 = M.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0.05, 0)); R.inst(type, ctpl(type), M2); }
       }
     }
   }
