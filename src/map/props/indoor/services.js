@@ -85,6 +85,13 @@ const fireDoorRect = () => labRect('svc:firedoor', 128, 64, (c, w, h) => {
 });
 const fireDoorSign = () => tpl('svc:firedoorsign', (b) => { b.box('pl_white', 0.27, 0.14, 0.006, 0, 0.07, 0.003); b.plane(L(fireDoorRect()), 0.26, 0.13, 0, 0.07, 0.0065); });
 
+// [scene7] 放射科門上的「X光 使用中」紅色燈箱(台灣醫院的招牌畫面;燈還微微亮著)
+const xrayLampRect = () => glowRect('svc:xraylamp', 128, 48, (c, w, h) => {
+  c.fillStyle = '#3a0806'; c.fillRect(0, 0, w, h); c.fillStyle = '#c8281c';
+  c.font = 'bold 18px "Microsoft JhengHei", sans-serif'; c.textAlign = 'center'; c.fillText('X光 使用中', w / 2, 22); c.font = 'bold 11px Arial'; c.fillText('X-RAY IN USE', w / 2, 40);
+});
+const xrayLamp = () => tpl('svc:xraylamp', (b) => { b.box('pl_white', 0.46, 0.18, 0.08, 0, 0.09, 0.04); b.plane(G(xrayLampRect()), 0.42, 0.15, 0, 0.09, 0.0805); });
+
 // 外轉角的不鏽鋼護角(L 形 6cm × 6cm,高 h;m = ±1 決定轉角在模板 +X 或 -X 側)
 const cornerGuard = (h, m) => tpl(`svc:corner:${h.toFixed(2)}:${m}`, (b) => {
   b.box('steel', 0.065, h, 0.0025, -m * 0.0325, h / 2, 0.00125); // 貼在原牆面
@@ -140,8 +147,9 @@ function corridor(R, zone) {
     if (g.other?.theme === 'stairwell') { // 安全門告示:門邊 1.45m
       for (const t of [g.t1 + 0.42, g.t0 - 0.42]) { const run = runAt(R, g, t - 0.16, t + 0.16); if (run) { R.atWall(fireDoorSign(), run, t, { mount: 1.45, gap: 0.0 }); break; } }
     }
-    // 門上的緊急照明燈(出口/樓梯門上方已經有綠色出口燈)
-    if (!exitSign && rng() < 0.55) R.atWall(emLight(rng.int(0, 5) === 0 ? 1 : rng() < 0.15 ? 2 : 0), pr, mid + (g.n >= 2 ? 0 : rng.range(-0.3, 0.3)), { mount: g.h + 0.17, gap: 0.0 });
+    // 門上的緊急照明燈(出口/樓梯門上方已經有綠色出口燈);放射科/電腦斷層門上改成「X光 使用中」燈箱
+    if (g.other && (g.other.theme === 'xray' || g.other.theme === 'ct')) R.atWall(xrayLamp(), pr, mid, { mount: g.h + 0.15, gap: 0.0 });
+    else if (!exitSign && rng() < 0.55) R.atWall(emLight(rng.int(0, 5) === 0 ? 1 : rng() < 0.15 ? 2 : 0), pr, mid + (g.n >= 2 ? 0 : rng.range(-0.3, 0.3)), { mount: g.h + 0.17, gap: 0.0 });
     // 門框兩側:手垢(手推門的高度)、門腳踢痕;病人房間的門邊再一台乾洗手機(把手那側,離門框 25cm)
     for (const [t, s] of [[g.t0 - 0.2, -1], [g.t1 + 0.2, 1]]) {
       const run = runAt(R, g, Math.min(t, t + s * 0.4), Math.max(t, t + s * 0.4));
@@ -301,7 +309,7 @@ export function bedside(R, p, k, kind) {
 // (緊急紅燈、監視器藍綠、夜燈粉紅、燭光、商店暖光、少數還亮著的日光燈)。窗簾/木板/鐵條在它前面 → 剪影。
 // 只放南/東/西向的外窗(北面後巷「只有 207 亮著」是故事的畫面);發光面單面朝外,從房間裡看不到。
 // pi_glow 圖集 + 區域合併,不新增材質。
-const WIN_GLOW = { emergency: '#7a1c14', monitor: '#225060', nightlight: '#64303e', candle: '#784416', sconce: '#784416', warm: '#8a6634', lamp: '#704e22', surgical: '#3a4844', fluoro_cold: '#324250', fluoro: '#364638', fluoro_dying: '#2e3a32', sodium: '#704418', bare_bulb: '#5e4220', moon: '#2a3444' };
+const WIN_GLOW = { emergency: '#b02a1e', monitor: '#307888', nightlight: '#94465a', candle: '#b06420', sconce: '#b06420', warm: '#c8964c', lamp: '#a07030', surgical: '#56685f', fluoro_cold: '#4a6274', fluoro: '#4e6650', fluoro_dying: '#44564a', sodium: '#a0621e', bare_bulb: '#8a6030', moon: '#3e4c64' }; // [scene7 r2] ×1.5:30m 外雨霧裡要讀得到
 const winGlowRect = (col, k) => glowRect(`svc:wglow:${col}:${k}`, 64, 48, (c, w, h) => {
   const g = c.createRadialGradient(w * (0.4 + k * 0.2), h * 0.35, 2, w / 2, h / 2, w * 0.7);
   g.addColorStop(0, col); g.addColorStop(1, '#030303'); c.fillStyle = g; c.fillRect(0, 0, w, h);
@@ -359,7 +367,7 @@ function liftLobby(R) {
       if (L2.charAt(li, c + dc, r + dr) !== 'E') continue;
       const t0 = (run.horiz ? c : r) * L2.CELL, mid = t0 + L2.CELL / 2;
       R.atWall(liftInd(), run, mid, { mount: 2.3, gap: 0.0 });
-      if (rng() < 0.6) R.atWall(liftOut(), run, mid, { mount: 0, gap: 0.01, collide: false });
+      if (((c * 7 + r * 3 + li) % 3) !== 1) R.atWall(liftOut(), run, mid, { mount: 0, gap: 0.035, collide: false }); // 大多數電梯門貼著故障告示 + 封鎖膠帶(門板稍微內凹,離牆面 3.5cm)
       const side = run.t1 >= t0 + L2.CELL + 0.4 && L2.charAt(li, c + dc + (run.horiz ? 1 : 0), r + dr + (run.horiz ? 0 : 1)) !== 'E' ? 1 : -1;
       const tp = side > 0 ? t0 + L2.CELL + 0.25 : t0 - 0.25;
       if (tp > run.t0 + 0.1 && tp < run.t1 - 0.1) R.atWall(liftPanel(), run, tp, { mount: 1.0, gap: 0.0 });
