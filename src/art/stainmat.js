@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { paintTextures } from '../sys/texworker.js';
 import { registerMat } from '../map/materials.js';
 import { CELLS, cellUV, ATLAS } from './stainset.js';
+import { surfaceUniforms as SU } from '../mats/surface.js';
 
 // ===== 血跡貼花的共用材質 pi_stain =====
 // 圖集在貼圖 Worker 畫好(src/art/stains.paint.js):map(albedo + alpha,2048×1024)與 nr(半解析度:R/B = 切線空間法線 xy、
@@ -23,8 +24,51 @@ export function stainMaterial() {
   });
   const chunk = THREE.ShaderChunk.normal_fragment_maps.replace('vec3 mapN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;', NR_DECODE);
   if (chunk === THREE.ShaderChunk.normal_fragment_maps) console.warn('[stains] normal_fragment_maps 改版了,法線解碼沒套上');
-  MAT.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_maps>', chunk); };
-  MAT.customProgramCacheKey = () => 'stain-nr';
+  // r2:血膜很薄,會跟著底下牆面/地面的微凹凸(灰泥顆粒、橘皮、麻點)→ 用物品細節貼圖(src/mats/surface.js 的 tSurfA.r,
+  // 一格 0.5m)在世界座標取樣:凹凸法線、凹處血積得比較深、薄的地方只沾到凸點(邊緣跟著表面紋理斷開)。
+  // 沒有這層時整片血跡是平的,像貼紙。細節貼圖還沒畫好或低畫質(uSurfG.x = 0)時維持原樣。
+  MAT.onBeforeCompile = (sh) => {
+    sh.uniforms.tSurfA = SU.tSurfA;
+    sh.uniforms.uSurfG = SU.uSurfG;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vStW;')
+      .replace('#include <fog_vertex>', `#include <fog_vertex>
+	{
+		vec4 stw = vec4( transformed, 1.0 );
+		#ifdef USE_BATCHING
+			stw = batchingMatrix * stw;
+		#endif
+		#ifdef USE_INSTANCING
+			stw = instanceMatrix * stw;
+		#endif
+		vStW = ( modelMatrix * stw ).xyz;
+	}`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vStW;\nuniform sampler2D tSurfA;\nuniform vec4 uSurfG;')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+	vec3 stNw = normalize( ( vec4( vNormal, 0.0 ) * viewMatrix ).xyz ), stA = abs( stNw );
+	vec2 stUv = ( stA.y > 0.6 ? vStW.xz : ( stA.x > stA.z ? vStW.zy : vStW.xy ) ) * 2.0;
+	float stH = texture2D( tSurfA, stUv ).r;
+	float stK = step( 0.5, uSurfG.x );
+	{
+		float a0 = diffuseColor.a;
+		// 薄處只沾到凸點;厚的血泊不受影響
+		diffuseColor.a = mix( a0, a0 * smoothstep( 0.18, 0.62, stH + a0 * 0.55 ), stK * ( 1.0 - a0 ) * 0.9 );
+		diffuseColor.rgb *= mix( 1.0, 0.8 + 0.36 * stH, stK );
+	}`)
+      .replace('#include <normal_fragment_maps>', chunk + `
+	if ( stK > 0.5 ) {
+		vec3 sp = - vViewPosition, sx = dFdx( sp ), sy = dFdy( sp );
+		vec3 r1 = cross( sy, normal ), r2 = cross( normal, sx );
+		float det = dot( sx, r1 ) * faceDirection;
+		vec2 dh = vec2( dFdx( stH ), dFdy( stH ) ) * 0.0005;
+		vec3 g = sign( det ) * ( dh.x * r1 + dh.y * r2 );
+		float gl = length( g ), dl = abs( det );
+		g *= min( 1.0, 0.4 * dl / max( gl, 1e-20 ) );
+		if ( dl > 1e-20 ) normal = normalize( dl * normal - g );
+	}`);
+  };
+  MAT.customProgramCacheKey = () => 'stain-nr2';
   registerMat('pi_stain', MAT);
   return MAT;
 }

@@ -18,7 +18,7 @@
 
 ## ambientCG (https://ambientcg.com, CC0)
 - `gloss_paint` - [PaintedPlaster003](https://ambientcg.com/view?id=PaintedPlaster003)
-- `tile_sq` - [Tiles133C](https://ambientcg.com/view?id=Tiles133C)
+- (`tile_sq` 改為原創:tools/textures/gen_tile.py)
 - `checker_bw` - [Tiles012](https://ambientcg.com/view?id=Tiles012)
 - `ceiling_tile2` - [OfficeCeiling001](https://ambientcg.com/view?id=OfficeCeiling001)
 

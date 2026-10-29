@@ -64,6 +64,7 @@ varying vec4 vSF;
 flat varying vec4 vSC;
 varying vec3 vSW;
 float gSurfSSS = 0.0;
+float gSurfSheen = 0.0;
 float gSurfIn = 0.0;
 float surfLum( vec3 c ) { return dot( c, vec3( 0.2126, 0.7152, 0.0722 ) ); }
 // 紋理高度(依紋理型態組合兩張細節圖的通道)
@@ -119,7 +120,7 @@ const FS_COLOR = /* glsl */`
 		else if ( gt == 3 ) { col *= 0.76 + 0.36 * B.g; }
 		else if ( gt == 4 ) { col *= 0.84 + 0.22 * B.b; rough -= ( B.b - 0.5 ) * 0.14; }
 		else if ( gt == 5 ) { col *= 0.94 + 0.1 * C.b; }
-		else if ( gt == 6 ) { col *= 0.86 + 0.22 * C.b * ( 0.7 + 0.6 * A.r ); }
+		else if ( gt == 6 ) { col *= 0.94 + 0.09 * C.b * ( 0.6 + 0.6 * A.r ) + 0.05 * ( A.r - 0.5 ); } // 牛皮紙:纖維很淡(太明顯會像木紋夾板)
 		else if ( gt == 7 ) { col *= 0.97 + 0.05 * A.r; }
 		else if ( gt == 8 ) { col = mix( col, col * vec3( 1.3, 0.94, 0.7 ), B.b * 0.6 ) * ( 0.8 + 0.3 * A.r ); }
 		else if ( gt == 9 ) { col *= 0.72 + 0.4 * h; }
@@ -151,6 +152,52 @@ const FS_COLOR = /* glsl */`
 			col = mix( col, col * vec3( 0.7, 0.66, 0.6 ), streak * 0.6 );
 			rough = mix( rough, min( 1.0, rough + 0.12 ), streak );
 		}
+		// 紙箱(r2):側面的瓦楞細稜、頂面的封箱膠帶、側面的印刷字塊(褪色、磨掉)、放在地上吸水的水漬線
+		if ( gt == 6 ) {
+			float bW = vSF.z, bH = vSF.w, bh = fract( sin( vSC.z * 91.7 + 3.1 ) * 43758.5453 );
+			float side = 1.0 - step( 0.5, abs( sGN.y ) );
+			float fpx = max( abs( sTx.x ), abs( sTy.x ) ) / 0.008;
+			float fk = ( 1.0 - smoothstep( 0.2, 0.6, fpx ) ) * step( 0.1, min( bW, bH ) ) * side;
+			float fl0 = sin( sTc.x * 785.4 ), fl1 = sin( ( sTc.x + sTx.x ) * 785.4 ), fl2 = sin( ( sTc.x + sTy.x ) * 785.4 );
+			h += fl0 * 0.5 * fk; hx += fl1 * 0.5 * fk; hy += fl2 * 0.5 * fk;
+			col *= 1.0 + fl0 * 0.04 * fk;
+			float pw = max( max( length( sTx ), length( sTy ) ), 0.0008 );
+			if ( sGN.y > 0.7 && min( bW, bH ) > 0.25 && bh > 0.25 ) {
+				float td = abs( vSF.y - 0.5 ) * bH - 0.024;
+				float tape = 1.0 - smoothstep( - pw, pw, td );
+				col = mix( col, col * vec3( 0.8, 0.68, 0.5 ) + 0.012, tape * 0.9 );
+				col *= 1.0 - 0.25 * exp( - td * td / ( pw * pw * 2.0 + 1e-7 ) ) * min( 1.0, 0.0015 / pw );
+				rough = mix( rough, 0.3 + 0.2 * A.r, tape );
+			}
+			// 每個面各自決定(同一疊箱子的四個面不會每面同一個位置都有同一塊字)
+			float fh = fract( sin( dot( floor( sGN.xz * 1.9 + 0.5 ), vec2( 41.3, 17.9 ) ) + vSC.z * 7.31 + bh * 13.0 ) * 43758.5453 );
+			if ( side > 0.5 && bW > 0.25 && bH > 0.18 && fh > 0.42 ) {
+				vec2 pm = vec2( vSF.x * bW, vSF.y * bH ) - vec2( bW * ( 0.08 + 0.3 * fract( fh * 7.3 ) ), bH * ( 0.42 + 0.22 * fract( fh * 3.1 ) ) );
+				vec2 bs = vec2( min( 0.12 + 0.18 * fract( fh * 5.7 ), bW * 0.5 ), min( 0.06 + 0.08 * fract( fh * 2.3 ), bH * 0.3 ) );
+				if ( pm.x > 0.0 && pm.y > 0.0 && pm.x < bs.x && pm.y < bs.y ) {
+					vec2 ci = floor( pm / vec2( 0.018, 0.028 ) ), cf = fract( pm / vec2( 0.018, 0.028 ) );
+					float ch = fract( sin( dot( ci + fh * 17.0, vec2( 12.9898, 78.233 ) ) ) * 43758.5453 );
+					// 方塊字:每格 1~2 豎 + 1~3 橫(像中文印刷字);每行從左邊開始、長度不一;每三行空一行
+					float inC = step( 0.12, cf.x ) * step( cf.x, 0.88 ) * step( 0.1, cf.y ) * step( cf.y, 0.9 );
+					float v1 = step( abs( cf.x - 0.25 - 0.2 * fract( ch * 5.1 ) ), 0.06 ), v2 = step( abs( cf.x - 0.72 + 0.15 * fract( ch * 2.9 ) ), 0.06 ) * step( 0.4, fract( ch * 7.7 ) );
+					float h1 = step( abs( cf.y - 0.2 - 0.12 * fract( ch * 9.7 ) ), 0.05 ), h2 = step( abs( cf.y - 0.52 - 0.1 * fract( ch * 4.3 ) ), 0.05 ) * step( 0.3, fract( ch * 3.3 ) );
+					float h3 = step( abs( cf.y - 0.82 ), 0.05 ) * step( 0.45, fract( ch * 6.1 ) );
+					float rowL = ( 0.45 + 0.55 * fract( sin( ci.y * 17.3 + fh * 31.0 ) * 43758.5453 ) ) * bs.x / 0.018;
+					float glyph = step( 0.08, ch ) * inC * max( max( v1, v2 ), max( h1, max( h2, h3 ) ) ) * step( 1.0, mod( ci.y, 3.0 ) + 0.5 ) * step( ci.x, rowL );
+					vec3 ink = fract( bh * 3.7 ) > 0.4 ? vec3( 0.035, 0.035, 0.04 ) : vec3( 0.04, 0.07, 0.13 );
+					float wornI = 0.75 * smoothstep( 0.15, 0.5, C.g + A.r * 0.3 ) * ( 1.0 - smoothstep( 0.2, 0.45, pw / 0.018 ) ); // 字太小(遠)就淡出
+					col = mix( col, ink, glyph * wornI );
+				}
+			}
+			float hfl = mod( vSW.y - uSurfG.z + 0.03, uSurfG.y ) - 0.03;
+			float wl = 0.04 + 0.06 * Cm.g + 0.02 * C.r;
+			float wpw = max( max( length( sWx ), length( sWy ) ), 0.001 );
+			float wet = 1.0 - smoothstep( wl - wpw, wl + wpw, hfl );
+			float tl = exp( - ( hfl - wl ) * ( hfl - wl ) / ( 0.000016 + wpw * wpw ) ) * min( 1.0, 0.004 / wpw );
+			col *= mix( 1.0, 0.66, wet * side ) * ( 1.0 - 0.3 * tl * side );
+			rough = mix( rough, 0.98, wet * side * 0.5 );
+		}
+		if ( gt == 9 ) gSurfSheen = 0.55; else if ( gt == 3 ) gSurfSheen = 0.2;
 		// 靠近地面:鞋子、推車輪子的黑色擦痕(非金屬)
 		if ( metal < 0.5 ) col = mix( col, vec3( 0.035, 0.032, 0.03 ), A.g * kick * 0.55 * P3.w );
 		// 邊角磨損(面內座標 → 到邊的距離,公尺)
@@ -219,6 +266,11 @@ const SSS_TO = /* glsl */`reflectedLight.directDiffuse += irradiance * BRDF_Lamb
 		float sNL = dot( geometryNormal, directLight.direction );
 		float sWrap = saturate( ( sNL + gSurfSSS ) / ( 1.0 + gSurfSSS ) );
 		reflectedLight.directDiffuse += max( sWrap - dotNL, 0.0 ) * directLight.color * vec3( 1.0, 0.7, 0.56 ) * BRDF_Lambert( material.diffuseContribution );
+	}
+	if ( gSurfSheen > 0.0 ) { // 絨毛/布的光澤:掠射角(輪廓)的纖維反光,背光也有一點(絨毛透光)
+		float sNV = saturate( dot( geometryNormal, geometryViewDir ) );
+		float sNL2 = saturate( dot( geometryNormal, directLight.direction ) * 0.6 + 0.4 );
+		reflectedLight.directDiffuse += directLight.color * sNL2 * pow( 1.0 - sNV, 3.0 ) * gSurfSheen * sqrt( max( material.diffuseContribution, vec3( 0.0 ) ) ) * 0.35;
 	}`;
 // 室內:鏡面反射改取室內環境(漫射的環境光仍是場景的,與牆面一致)
 const ENV_FROM = 'vec4 envMapColor = textureCubeUV( envMap, envMapRotation * reflectVec, roughness );';
