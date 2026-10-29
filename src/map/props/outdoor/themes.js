@@ -129,7 +129,7 @@ function dressParking(ctx, zone) {
   edgeDress(ctx, zone, R, P, { leaves: 8, ivy: 0.1, tufts: 3, litter: 0.35 });
   scatter(ctx, zone, R, P, { leaves: 0.18, litter: 0.08, puddles: 0.05, stains: 0.05 });
   // [scene6] 雨水往緣石邊流:沿南北兩條緣石的長條積水;柏油裂縫長草;外牆腳/圍牆腳的草、落葉、髒污帶與爬藤
-  for (const zc of [76.45, 93.6]) for (let x = 4 + R.range(0, 6); x < 116; x += R.range(6, 13)) if (freeAt(ctx, li, x, zc, 0.3)) puddle(P, R, x, zc, R.range(0.35, 0.6), R.range(2.0, 3.4), 0.45, 0.0045);
+  for (const zc of [76.45, 93.6]) for (let x = 4 + R.range(0, 4); x < 116; x += R.range(4, 9)) if (freeAt(ctx, li, x, zc, 0.3)) puddle(P, R, x, zc, R.range(0.5, 0.85), R.range(2.4, 4.0), 0.5, 0.0045); // [scene7] 更大更密(原本看不出來)
   scatter(ctx, zone, R, P, { leaves: 0, litter: 0, cracks: 0.04, tufts: 0.035, stains: 0.03 });
   edgeDress(ctx, zone, R, P, { leaves: 5, ivy: 0.12, tufts: 3, litter: 0.2, stain: 0.12 });
   finish(ctx, P);

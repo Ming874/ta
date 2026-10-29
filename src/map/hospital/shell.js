@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { prng, hashStr } from './paint.js';
 import { surfSize, isRoomMapped } from './surfaces.js';
 import { wallRecipe, floorKey, ceilKey, zoneTint, zoneWear, FACADE, COURT, BOUNDARY, revealFor } from './style.js';
-import { ceilServices } from './ceilsvc.js';
+import { ceilServices, pipeExtras } from './ceilsvc.js';
 
 // 建築外殼:地板、牆(上下段 + 收邊)、窗台/窗楣、天花板(含缺塊與夾層)、樓板邊、牆頂、屋頂與女兒牆、拱頂、管線。
 // 會把每面牆的資訊(位置、法線、區域、配方)記錄在 K.faces,給貼花/標示/燈具使用。
@@ -513,6 +513,7 @@ export function buildPipes(K) {
           const ax = alongX ? c0 * 2 + a : across, az = alongX ? across : r0 * 2 + a;
           B.box(li, 'trim_dark', ax - 0.02, yy, az - 0.02, ax + 0.02, yC, az + 0.02, {});
         }
+        pipeExtras(B, li, alongX, alongX ? c0 * 2 : across, yy, alongX ? across : r0 * 2, len, rad, hashStr(zone.id + k)); // [scene7] 識別色環、閥門
       }
     }
   }

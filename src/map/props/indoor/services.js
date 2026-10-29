@@ -6,7 +6,9 @@
 //  - 磨耗:門框兩側的手垢、門腳踢痕、推床撞牆的擦痕、走廊中央的動線磨耗、門口的鞋跟刮痕、雨夜從外面踩進來的泥腳印
 // 全部是共用道具材質 + pi_lab / pi_glow / pi_decal 圖集,經 Room.put 進區域合併(不新增材質、不新增 draw call)。
 import { tpl, L, G, led } from './parts.js';
-import { labRect, glowRect, atlasStats } from './atlas.js';
+import { D } from './geo.js';
+import { labRect, glowRect, decalRect, atlasStats } from './atlas.js';
+import { glowSwatch } from './art.js';
 import { text } from './tex.js';
 import { floorDecal, wallDecal, ctpl } from './clutter.js';
 
@@ -93,6 +95,9 @@ const cornerGuard = (h, m) => tpl(`svc:corner:${h.toFixed(2)}:${m}`, (b) => {
 export function dressServices(R, zone) {
   if (typeof window !== 'undefined' && !window.__piAtlas) window.__piAtlas = atlasStats; // 開發:圖集用量
   const th = zone.theme;
+  windowGlow(R, zone); // [scene7]
+  if (th !== 'store' && th !== 'shop') liftLobby(R); // [scene7] 電梯廳:樓層顯示、呼叫鈕、故障告示 + 封鎖膠帶
+  if (th === 'stairwell') stairNotes(R); // [scene7]
   if (th === 'corridor' || th === 'lobby' || th === 'waiting') corridor(R, zone);
   if (th === 'lobby' || th === 'corridor' || th === 'er' || th === 'store' || th === 'waiting') wetEntrance(R);
 }
@@ -234,7 +239,7 @@ function corridor(R, zone) {
     for (let s = 1.4; s < len - 1.4; s += 2.5) {
       const x = alongX ? c0 * 2 + s : cx + rng.range(-0.15, 0.15), z = alongX ? cz + rng.range(-0.15, 0.15) : r0 * 2 + s;
       if (!R.isReach(x, z)) continue;
-      floorDecal(R, 'lane', x, z, rng.range(1.2, 1.5), { yaw: (alongX ? HALF : 0) + rng.range(-0.04, 0.04) + (rng() < 0.5 ? Math.PI : 0) });
+      floorDecal(R, 'lane', x, z, rng.range(1.5, 1.8), { yaw: (alongX ? HALF : 0) + rng.range(-0.04, 0.04) + (rng() < 0.5 ? Math.PI : 0) });
     }
   }
 }
@@ -289,4 +294,95 @@ export function bedside(R, p, k, kind) {
   if (r() < 0.55) R.putRel(basin(k + 1), p, (r() - 0.5) * 0.3, 0, -0.45 + r() * 0.3, 0, r() * 6);
   if (kind !== 'stripped' && r() < 0.6) { const q = R.local(p, (r() < 0.5 ? -1 : 1) * 0.68, 0, 0.15 + r() * 0.5); if (R.freeAt(q.x, q.z, 0.1)) R.put(slippers(k), q.x, q.z, p.yaw + (r() - 0.5) * 1.2, { collide: false }); }
   if (kind === 'made' && r() < 0.35) R.putRel(railTowel(), p, 0, 0, 0);
+}
+
+// ---------------------------------------------------------------- [scene7] 從外面看得到的窗內微光
+// 夜裡從停車場看,一整片黑牆讀不出是建築:依房間裡「還在亮的東西」在窗玻璃後面放一片很暗的發光面
+// (緊急紅燈、監視器藍綠、夜燈粉紅、燭光、商店暖光、少數還亮著的日光燈)。窗簾/木板/鐵條在它前面 → 剪影。
+// 只放南/東/西向的外窗(北面後巷「只有 207 亮著」是故事的畫面);發光面單面朝外,從房間裡看不到。
+// pi_glow 圖集 + 區域合併,不新增材質。
+const WIN_GLOW = { emergency: '#7a1c14', monitor: '#225060', nightlight: '#64303e', candle: '#784416', sconce: '#784416', warm: '#8a6634', lamp: '#704e22', surgical: '#3a4844', fluoro_cold: '#324250', fluoro: '#364638', fluoro_dying: '#2e3a32', sodium: '#704418', bare_bulb: '#5e4220', moon: '#2a3444' };
+const winGlowRect = (col, k) => glowRect(`svc:wglow:${col}:${k}`, 64, 48, (c, w, h) => {
+  const g = c.createRadialGradient(w * (0.4 + k * 0.2), h * 0.35, 2, w / 2, h / 2, w * 0.7);
+  g.addColorStop(0, col); g.addColorStop(1, '#030303'); c.fillStyle = g; c.fillRect(0, 0, w, h);
+  c.fillStyle = 'rgba(0,0,0,0.85)'; // 窗下的家具剪影(床尾、櫃子、椅背)
+  if (k === 0) { c.fillRect(4, h - 12, 26, 12); c.fillRect(40, h - 8, 18, 8); } else { c.fillRect(30, h - 14, 30, 14); c.fillRect(6, h - 20, 3, 20); }
+});
+const winGlow = (col, k) => tpl(`svc:wglow:${col}:${k}`, (b) => b.plane(G(winGlowRect(col, k)), 1.78, 1.42, 0, 0.71, 0));
+export function windowGlow(R, zone) {
+  const th = zone.theme;
+  if (zone.id === 'f2_ward_207') return; // 207 有自己的燈
+  let col = th === 'shop' ? WIN_GLOW.warm : WIN_GLOW[zone.light];
+  if (!col || (zone.light === 'moon' && th !== 'lobby')) return; // 月光區只有大廳(裡面還有幾盞燈)
+  const sparse = /^fluoro|surgical/.test(zone.light) || th === 'corridor'; // 日光燈的房間/走廊:大多已經壞了,只有少數窗還有一點冷光
+  const L = R.L, li = R.li;
+  for (const run of R.walls) {
+    if (run.side === 'N' || !run.wins.length) continue;
+    const [dc, dr] = run.side === 'S' ? [0, 1] : run.side === 'W' ? [-1, 0] : [1, 0];
+    for (const p of run.wins) {
+      const [c, r] = run.horiz ? [p, (run.cells[0][1])] : [run.cells[0][0], p];
+      const oc = c + dc * 2, or = r + dr * 2; // 窗格再往外一格
+      if (!(L.flagsAt(li, oc, or) & L.F.OUTDOOR) && L.ceilY(li, oc, or) !== Infinity) continue;
+      const h = hashN(li * 977 + c * 31 + r * 7);
+      if (sparse && h > 0.28) continue;
+      const pos = R.at(run, (p + 0.5) * L.CELL, -1.56);
+      R.put(winGlow(col, h < 0.5 ? 0 : 1), pos.x, pos.z, run.yaw + Math.PI, { y: R.y + 0.95 });
+    }
+  }
+}
+const hashN = (n) => { const s = Math.sin(n * 12.9898) * 43758.5453; return s - Math.floor(s); };
+
+// ---------------------------------------------------------------- [scene7] 電梯廳與樓梯間
+const liftIndRect = () => labRect('svc:liftind', 128, 28, (c, w, h) => {
+  c.fillStyle = '#121414'; c.fillRect(0, 0, w, h); c.fillStyle = '#3a2a1a'; c.font = 'bold 15px sans-serif';
+  ['B1', '1', '2', '3'].forEach((t, i) => c.fillText(t, 26 + i * 24, 20)); c.fillText('▲', 4, 15); c.fillText('▼', 108, 22);
+});
+const liftOutRect = () => labRect('svc:liftout', 72, 100, (c, w, h) => {
+  c.fillStyle = '#e8d43a'; c.fillRect(0, 0, w, h); c.fillStyle = '#111'; c.fillRect(0, 0, w, 5); c.fillRect(0, h - 5, w, 5);
+  text(c, '電梯故障', w / 2, 26, { size: 15, color: '#9a1010' }); text(c, '暫停使用', w / 2, 48, { size: 15, color: '#111' });
+  text(c, '請改走樓梯', w / 2, 70, { size: 11, color: '#111', weight: 'normal' }); text(c, '總務室 92.5', w / 2, 88, { size: 8, color: '#444', weight: 'normal' });
+});
+const liftPanel = () => tpl('svc:liftpanel', (b) => {
+  b.box('steel', 0.12, 0.27, 0.012, 0, 0.135, 0.006);
+  for (const [yy, lit] of [[0.19, true], [0.09, false]]) { b.cyl('pl_white', 0.02, 0.008, 0, yy, 0.016, { axis: 'z', seg: 10 }); if (lit) b.cyl(G(glowSwatch('liftbtn', '#ff8a18')), 0.01, 0.003, 0, yy, 0.0215, { axis: 'z', seg: 8 }); }
+});
+const liftInd = () => tpl('svc:liftind', (b) => { b.box('steel', 0.52, 0.15, 0.025, 0, 0.075, 0.0125); b.plane(L(liftIndRect()), 0.48, 0.105, 0, 0.075, 0.0255); });
+const liftOut = () => tpl('svc:liftout', (b) => {
+  b.plane(L(liftOutRect()), 0.3, 0.42, 0, 1.5, 0.012);
+  for (const s of [-1, 1]) b.box('pl_yellow', 2.3, 0.06, 0.003, 0, 1.1, 0.008 + (s > 0 ? 0.004 : 0), { rz: s * 0.78 }); // 封鎖膠帶 X
+});
+function liftLobby(R) {
+  const L2 = R.L, li = R.li, rng = R.rng;
+  for (const run of R.walls) {
+    const [dc, dr] = run.side === 'N' ? [0, -1] : run.side === 'S' ? [0, 1] : run.side === 'W' ? [-1, 0] : [1, 0];
+    for (const [c, r] of run.cells) {
+      if (L2.charAt(li, c + dc, r + dr) !== 'E') continue;
+      const t0 = (run.horiz ? c : r) * L2.CELL, mid = t0 + L2.CELL / 2;
+      R.atWall(liftInd(), run, mid, { mount: 2.3, gap: 0.0 });
+      if (rng() < 0.6) R.atWall(liftOut(), run, mid, { mount: 0, gap: 0.01, collide: false });
+      const side = run.t1 >= t0 + L2.CELL + 0.4 && L2.charAt(li, c + dc + (run.horiz ? 1 : 0), r + dr + (run.horiz ? 0 : 1)) !== 'E' ? 1 : -1;
+      const tp = side > 0 ? t0 + L2.CELL + 0.25 : t0 - 0.25;
+      if (tp > run.t0 + 0.1 && tp < run.t1 - 0.1) R.atWall(liftPanel(), run, tp, { mount: 1.0, gap: 0.0 });
+    }
+  }
+}
+// 樓梯間:保持暢通的告示、紅漆噴字(往下的箭頭)、平台角落多一點垃圾
+const stairNote = () => labRect('svc:stairnote', 96, 64, (c, w, h) => {
+  c.fillStyle = '#efe9d6'; c.fillRect(0, 0, w, h); c.fillStyle = '#1a6a3a'; c.fillRect(0, 0, w, 14);
+  text(c, '安全梯', w / 2, 8, { size: 10, color: '#fff' }); text(c, '禁止堆放雜物', w / 2, 30, { size: 12, color: '#b01818' }); text(c, '保持通道暢通', w / 2, 48, { size: 11, color: '#222', weight: 'normal' });
+});
+const sprayRect = (k) => decalRect(`svc:spray:${k}`, 160, 96, (c, w, h) => {
+  c.clearRect(0, 0, w, h); c.globalAlpha = 0.85; c.strokeStyle = k ? 'rgba(20,18,16,0.9)' : 'rgba(150,20,14,0.9)'; c.fillStyle = c.strokeStyle; c.lineWidth = 7; c.lineCap = 'round';
+  if (k === 0) { c.font = 'bold 40px "Microsoft JhengHei", sans-serif'; c.fillText('出口', 12, 52); c.beginPath(); c.moveTo(120, 14); c.lineTo(120, 80); c.moveTo(102, 60); c.lineTo(120, 82); c.lineTo(138, 60); c.stroke(); }
+  else { c.font = 'bold 22px sans-serif'; c.fillText('正 正 正 丅', 8, 40); c.lineWidth = 3; c.beginPath(); c.moveTo(8, 60); c.lineTo(150, 58); c.stroke(); }
+  c.globalAlpha = 0.5; for (let i = 0; i < 6; i++) { c.fillRect(20 + i * 22, 56 + (i % 2) * 6, 2, 18 + i * 3); } // 噴漆滴下
+});
+function stairNotes(R) {
+  const runs = R.walls.filter((r) => r.len >= 2).sort((a, b) => b.len - a.len);
+  if (runs[1]) R.atWall(tpl('svc:stairnotesheet', (b) => { b.box('paper', 0.3, 0.2, 0.002, 0, 0.1, 0.001); b.plane(L(stairNote()), 0.29, 0.19, 0, 0.1, 0.0025); }), runs[1], runs[1].t1 - 0.5, { mount: 1.45, gap: 0.0 });
+  const k = R.L.levels[R.li].id === '1F' || R.L.levels[R.li].id === 'B1' ? 0 : 1;
+  const run = runs[2] || runs[0];
+  if (run) { const rect = sprayRect(k); const t = tpl(`svc:spray:${k}`, (b) => b.plane(D(rect), 0.8, 0.48, 0, 0, 0)); const p = R.wallPos(run, (run.t0 + run.t1) / 2, 0.007); R.put(t, p.x, p.z, run.yaw, { y: R.y + 1.25 }); }
+  const cells = [...R.plain]; let placed = 0;
+  for (let i = 0; i < 40 && placed < 10; i++) { const key = cells[(R.rng() * cells.length) | 0]; if (key == null) break; const x = ((key % R.L.W) + R.rng()) * 2, z = (((key / R.L.W) | 0) + R.rng()) * 2; if (!R.freeAt(x, z, 0.1)) continue; const n = ['debris', 'paper', 'paper2', 'can', 'butt'][(R.rng() * 5) | 0]; R.I(n, ctpl(n), x, R.y, z, R.rng() * 6.28); placed++; }
 }

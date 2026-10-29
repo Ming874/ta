@@ -62,3 +62,24 @@ export function ceilServices(B, li, c, r, yC, zone) {
     for (let k = 0; k < 7; k++) { const o = -w / 2 + 0.06 + k * ((w - 0.12) / 6); down(B, li, 'trim_white', x + (along ? 0 : o), yC - 0.008, z + (along ? o : 0), along ? w - 0.05 : 0.014, along ? 0.014 : w - 0.05); }
   }
 }
+
+// [scene7] 裸露管線的細節:每 5~7m 一段識別色環(黃 = 瓦斯/蒸汽、綠 = 冷卻水、紅 = 消防、白 = 給水),
+// 粗管每 9m 左右一組法蘭 + 閘閥(閥體、閥桿、紅色手輪)。axis X 時 (x0, z) = 起點、z 固定;Z 時 (x, z0)。
+let PG = null;
+export function pipeExtras(B, li, alongX, x0, y, z0, len, rad, seed) {
+  if (!PG) PG = { band: new THREE.CylinderGeometry(1, 1, 1, 10, 1, true), flange: new THREE.CylinderGeometry(1, 1, 1, 12), wheel: new THREE.TorusGeometry(0.11, 0.012, 4, 12), box: new THREE.BoxGeometry(1, 1, 1) };
+  const H = (k) => { const s = Math.sin(seed * 0.0137 + k * 12.9898) * 43758.5453; return s - Math.floor(s); };
+  const col = ['trim_yellow', 'trim_green', 'trim_red', 'trim_white'][(H(1) * 4) | 0];
+  const at = (a) => (alongX ? [x0 + a, y, z0] : [x0, y, z0 + a]);
+  const qAxis = new THREE.Quaternion().setFromEuler(alongX ? new THREE.Euler(0, 0, Math.PI / 2) : new THREE.Euler(Math.PI / 2, 0, 0)); // 圓柱 Y 軸 → 管線方向
+  const rot = (g, sx, sy, sz, a, extra) => { const [x, yy, z] = at(a); _p.set(x, yy, z); _s.set(sx, sy, sz); _m.compose(_p, qAxis, _s); B.geo(li, extra?.key ?? col, g, _m); };
+  for (let a = 1.5 + H(2) * 3; a < len - 0.5; a += 5 + H(a) * 2) { rot(PG.band, rad + 0.006, 0.12, rad + 0.006, a); rot(PG.band, rad + 0.006, 0.03, rad + 0.006, a + 0.14); }
+  if (rad < 0.08) return;
+  for (let a = 3 + H(3) * 4; a < len - 1; a += 8 + H(a + 1) * 3) {
+    for (const o of [-0.18, 0.18]) rot(PG.flange, rad + 0.035, 0.03, rad + 0.035, a + o, { key: 'trim_steel' });
+    rot(PG.flange, rad + 0.02, 0.3, rad + 0.02, a, { key: 'trim_dark' }); // 閥體
+    const [x, yy, z] = at(a);
+    _q.identity(); _p.set(x, yy - rad - 0.12, z); _s.set(0.025, 0.24, 0.025); _m.compose(_p, _q, _s); B.geo(li, 'trim_steel', PG.box, _m); // 閥桿(往下)
+    _q.setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0)); _p.set(x, yy - rad - 0.25, z); _s.set(1, 1, 1); _m.compose(_p, _q, _s); B.geo(li, 'trim_red', PG.wheel, _m); // 手輪
+  }
+}
