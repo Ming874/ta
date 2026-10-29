@@ -20,6 +20,7 @@ import { procStats } from './hospital/proctex.js';
 import { createVis } from './hospital/vis.js';
 import { createBatcher, createBatchView, createDynBatch, createCompactor, batchable, plainObj, regionSet, instancedDepth } from './hospital/batch.js';
 import { applySurface, hasSurface } from '../mats/surface.js';
+import { doorSeeThrough } from './hospital/leaves.js';
 
 // 聖心醫院本體:依 levels.js 的四層佈局建出結構(牆/地板/天花板/門窗/樓梯/欄杆/戶外)、材質、燈光、氛圍與腳本驚嚇。
 // 細節在 src/map/hospital/*;這裡負責組裝、樓層可見性與每幀更新。
@@ -203,6 +204,41 @@ export function* buildHospitalSteps(world, layout, scene, opts = {}) {
     one[0] = pvs.regionAt(oli, o.position.x, o.position.z);
     return pvsTest(oli, one);
   };
+  // 可推動的小道具:34m(或畫質的道具距離,取小)以外不畫;[draws] 看不到的區塊也不畫
+  const dynVisAll = (px, pz) => { const fd = Math.min(34, H.propDistance); for (const o of dynProps) { const dx = o.position.x - px, dz = o.position.z - pz; o.visible = dx * dx + dz * dz < fd * fd && (!view || dynVisible(o)); } };
+  // [draws] PVS:換格子(或樓層/戶外/樓梯附近的規則/門)才重算;tick = 這一幀也重算道具距離
+  let lastP = null;
+  const pvsStep = (li, x, y, z, outdoor, tick) => {
+    pvs.setMaxDistance(H.propDistance + 10);
+    pvsLi = li; pvsOut = outdoor;
+    const changed = pvs.update(li, x, z, nearStairs(li, x, z));
+    let sig = li * 2 + (outdoor ? 1 : 0);
+    for (let i = 0; i < vis.length; i++) sig = sig * 4 + (vis[i] ? 2 : 0) + (propVis[i] ? 1 : 0);
+    const big = changed || sig !== pvsSig;
+    if (big || tick) view.refresh(li, vis, propVis, outdoor, x, y + 1.6, z, H.propDistance, big);
+    if (big) { applyTracked(); comp?.refresh(); }
+    pvsSig = sig;
+    return big;
+  };
+  // [perf6] 門的狀態(src/interact/doors.js):兩扇都完全關好(不在轉動)的實心門洞,在玩家這一層的精細視線裡當牆。
+  // 主相機每次渲染前檢查(很便宜):門一開始轉動(或新一局門被重設成開著)就在這一幀重算 PVS → 門後的房間和門縫同一幀出現,不會晚一幀
+  let doorWays = null;
+  const shut = (l) => !l.anim && Math.abs(Math.atan2(Math.sin(l.group.rotation.y - l.closed), Math.cos(l.group.rotation.y - l.closed))) < 0.03;
+  const doorPoll = () => {
+    const D = H.game?.interact?.doors;
+    if (!D?.list) return false;
+    if (!doorWays) {
+      doorWays = [];
+      for (const w of D.list) {
+        if (w.leaves.length < 2 || doorSeeThrough(w.style)) continue;
+        const [li, c, r] = String(w.key).split(',').map(Number);
+        if ([li, c, r].every(Number.isFinite)) doorWays.push({ w, li, c, r });
+      }
+    }
+    let any = false;
+    for (const d of doorWays) if (pvs.setDoor(d.li, d.c, d.r, d.w.leaves.every(shut))) any = true;
+    return any;
+  };
   ctx.lateAdd = (obj) => {
     if (!view || !obj.isInstancedMesh) return;
     instancedDepth(obj);
@@ -305,7 +341,10 @@ export function* buildHospitalSteps(world, layout, scene, opts = {}) {
       const prev = scene0.onBeforeRender;
       scene0.onBeforeRender = function (r, sc, cam, rt) {
         prev.call(this, r, sc, cam, rt);
-        if (cam === cam0 && (cam.layers.mask & 1)) view.cull(cam); else view.showAll();
+        if (cam === cam0 && (cam.layers.mask & 1)) {
+          if (doorPoll() && lastP) { pvsStep(lastP.li, lastP.x, lastP.y, lastP.z, lastP.outdoor, false); dynVisAll(lastP.x, lastP.z); } // [perf6] 門開/關:這一幀就重算
+          view.cull(cam);
+        } else view.showAll();
       };
       const prevA = scene0.onAfterRender;
       scene0.onAfterRender = function (r, sc, cam) { view.restoreShadows(); prevA.call(this, r, sc, cam); };
@@ -347,19 +386,11 @@ export function* buildHospitalSteps(world, layout, scene, opts = {}) {
       updateVisibility(li, p.x, p.z, outdoor);
       // [draws] PVS:換格子(或樓層/戶外/樓梯附近的規則改變)才重算;道具距離每 4 幀重算
       if (view) {
-        pvs.setMaxDistance(H.propDistance + 10);
-        pvsLi = li; pvsOut = outdoor;
-        const changed = pvs.update(li, p.x, p.z, nearStairs(li, p.x, p.z));
-        let sig = li * 2 + (outdoor ? 1 : 0);
-        for (let i = 0; i < vis.length; i++) sig = sig * 4 + (vis[i] ? 2 : 0) + (propVis[i] ? 1 : 0);
-        const big = changed || sig !== pvsSig;
-        if (big || ((pvsTick = (pvsTick + 1) & 3) === 0)) view.refresh(li, vis, propVis, outdoor, p.x, p.y + 1.6, p.z, H.propDistance, big);
-        if (big) { applyTracked(); comp?.refresh(); dynTick = 11; }
-        pvsSig = sig;
-        if (!big) pvs.idle(0.6);
+        lastP = { li, x: p.x, y: p.y, z: p.z, outdoor };
+        const big = pvsStep(li, p.x, p.y, p.z, outdoor, ((pvsTick = (pvsTick + 1) & 3) === 0));
+        if (big) dynTick = 11; else pvs.idle(0.6);
       }
-      // 可推動的小道具:34m(或畫質的道具距離,取小)以外不畫;[draws] 看不到的區塊也不畫
-      if ((dynTick = (dynTick + 1) % 12) === 0) { const fd = Math.min(34, H.propDistance); for (const o of dynProps) { const dx = o.position.x - p.x, dz = o.position.z - p.z; o.visible = dx * dx + dz * dz < fd * fd && (!view || dynVisible(o)); } }
+      if ((dynTick = (dynTick + 1) % 12) === 0) dynVisAll(p.x, p.z);
       // 道具區塊距離剔除(每 4 幀一次;區塊包圍球表面到眼睛的距離)。
       // 小東西在霧裡更早就看不清楚:半徑越小顯示距離越短(半徑 0.2m ≈ 1/3,4m 以上 = 完整距離)
       if ((cullTick = (cullTick + 1) & 3) === 0) {
