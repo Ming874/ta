@@ -1,6 +1,6 @@
 # 等天光 Before Daybreak · 製作與授權(CREDITS)
 
-本專案只使用 **CC0(公眾領域)**、**CC-BY** 與 **MIT** 授權的外部素材,全部下載放在 `public/` 內(不使用外部連結)。
+本專案只使用 **CC0(公眾領域)**、**CC-BY**、**MIT** 授權的外部素材(另有一個 **CC BY-SA 4.0** 的錄音,見「音效與配樂」),全部下載放在 `public/` 內(不使用外部連結)。
 CC0 素材在法律上不需署名,以下仍逐一列出作者與來源致謝。各區的原始署名檔(`public/credits/<區域>.md`)與本檔內容相同,新增素材時兩邊都要更新。
 
 ## 程式與函式庫
@@ -113,8 +113,16 @@ MIT 授權全文與每個角色的來源網址見 `public/credits/zombie-models.
 
 ## 音效與配樂(audio)
 
-所有音效與配樂皆為 WebAudio 即時程式合成(`src/audio/**`),未使用外部錄音素材。
-樣本系統已就緒:日後把 CC0 / CC-BY 的音檔放進 `public/audio/` 並在 `src/audio/bank.js` 登記後會自動載入;屆時須在此列出作品名稱、作者、來源網址與授權(CC BY 4.0 需註明作者與授權連結)。
+音效與配樂以 WebAudio 即時程式合成(`src/audio/**`)為骨幹,並疊加 CC0 / CC BY / CC BY-SA 的錄音素材(`public/audio/`);錄音載入失敗時一律退回合成版本。
+每個錄音檔的作者、來源網址、授權與剪輯紀錄見 `public/credits/audio.md`。
+
+**台灣民謠與儀式聲的真人錄音**(`public/audio/folk/`;旋律只用公有領域的作品,《望春風》《雨夜花》只哼、只用樂器演奏,不唱詞):
+- 阿嬤的哼唱:"Humming C D A for alexggqs" by drotzruhn(https://freesound.org/people/drotzruhn/sounds/439504/),CC0;吸氣聲取自 "Woman humming a nondescript tune" by PSsoundproject(https://commons.wikimedia.org/wiki/File:Woman_humming_a_nondescript_tune.wav),CC0。剪成單音取樣表、照簡譜重新演奏。
+- 孩子的哼唱:"Child Chops, Glitchy Sampler, Dry" by f-r-a-g-i-l-e(https://freesound.org/people/f-r-a-g-i-l-e/sounds/500743/),CC0。剪成單音取樣表、照簡譜重新演奏。
+- 助念(太平間、納骨堂、禮拜堂):Wu, Tsan-Cheng 吳燦政,"Mengjia Longshan Temple, Taipei - Chanting"(2013)與 "Mengjia Longshan Temple - Chant Buddhist scriptures"(2012,https://archive.org/details/aporee_15924_18493),radio aporee ::: maps(https://aporee.org/maps/),CC BY 3.0(https://creativecommons.org/licenses/by/3.0/);"buddhist-2.wav" by xserra(https://freesound.org/s/320270/),CC BY 4.0(https://creativecommons.org/licenses/by/4.0/)。各取約 20 秒做成無縫循環。
+- 戶外遠處的北管:〈什牌・倒旗〉,《內行與子弟:林阿春與賴木松的北管亂彈藝術世界》,彰化縣文化局(1999),創作者 范揚坤,嗩吶 邱火榮、鄭榮興,北鼓 賴木松;國家文化記憶庫(https://tcmb.culture.tw/zh-tw/detail?indexCode=Culture_Media&id=697685),CC BY 3.0 TW(https://creativecommons.org/licenses/by/3.0/tw/)。取三個樂句。
+- 收音機裡的老唱片:林茂賢老師示範演唱〈豐原調〉,臺中市政府文化局,國家文化記憶庫(https://tcmb.culture.tw/zh-tw/detail?indexCode=Culture_Media&id=666001),CC0。只留唱的段落。
+- 育嬰區錄音帶裡的〈天黑黑〉:"Thinn-oo-oo.mp3" by Tè Khái-sū(Kaihsu Tai),Wikimedia Commons(https://commons.wikimedia.org/wiki/File:Thinn-oo-oo.mp3),**CC BY-SA 4.0**(https://creativecommons.org/licenses/by-sa/4.0/)。剪輯過的檔案 `audio/folk/tape_thinn_oo_oo.mp3` 依相同方式分享條款,**同樣以 CC BY-SA 4.0 釋出**(只及於這個音檔)。
 
 ## 物理、效能與連線
 

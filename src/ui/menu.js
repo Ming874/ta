@@ -317,7 +317,7 @@ export class Menu {
     this.pBody.innerHTML = `<div class="mp-cred">
       <h4>遊戲</h4><p>《等天光》（Before Daybreak）— 網頁 3D 恐怖射擊。程式、關卡、介面、程式生成的貼圖、模型與音效合成。</p><p>謹以此紀念 1999 年與 2003 年，所有守在第一線的人。</p>
       <h4>引擎與函式庫</h4><p>three.js（MIT）· Vite（MIT）· Rapier 物理引擎 @dimforge/rapier3d-compat（Apache-2.0）· ws（MIT）</p>
-      <h4>外部素材</h4><p>只使用 CC0 與 CC-BY 授權的素材，完整署名如下（<a href="${base}credits/CREDITS.md" target="_blank" rel="noopener">開啟 CREDITS.md</a>）。</p>
+      <h4>外部素材</h4><p>只使用 CC0、CC-BY（另有一個 CC BY-SA 的錄音）與 MIT 授權的素材，完整署名如下（<a href="${base}credits/CREDITS.md" target="_blank" rel="noopener">開啟 CREDITS.md</a>）。</p>
       <div class="mp-md">正在讀取授權清單…</div></div>`;
     this.pFoot.innerHTML = '<span></span><button data-act="done">關閉</button>';
     this.pFoot.querySelector('[data-act="done"]').onclick = () => this.closePanel();
