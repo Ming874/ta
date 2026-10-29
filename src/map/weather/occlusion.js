@@ -118,6 +118,9 @@ export class RainOcclusion {
     const forced = [], hid = [];
     // 依玩家位置隱藏的樓層/道具/距離剔除區塊全部打開
     for (const list of [H?.levelGroups, H?.propGroups, H?.chunks]) if (list) for (const o of list) if (!o.visible) { o.visible = true; forced.push(o); }
+    // [draws] 靜態批次 / 可推動道具批次 / 壓實的實例池平常只開玩家看得到的區塊(src/map/hospital/batch.js):烘焙時全部打開
+    // (這裡畫的是包住主場景的外層場景,主場景的 onBeforeRender 不會被呼叫;下一次主相機渲染會自己重新剔除)
+    H?.batches?.showAll?.();
     for (const o of hide) if (o && o.visible) { o.visible = false; hid.push(o); }
     if (g.camera && g.camera.visible) { g.camera.visible = false; hid.push(g.camera); }
     // 燈不參與深度,但燈的數量是 program key 的一部分:烘焙時燈一律不算(圖層清空,子物件照畫),
