@@ -323,7 +323,8 @@ export class Weather {
     this.sheets.forEach((sh, i) => (sh.userData.a = i < fh.length ? sheetA[Math.min(i, 2)] : 0.1));
     this.root.add(this.rain, this.curtain, this.splash, this.drips, this.clouds, this.skyline, this.bolt, ...this.sheets);
     // 戶外地板變濕(結構材質:先注入再交給原本的 hook);窗玻璃的水珠/水痕
-    const WETS = { asphalt: [0.85, 0.42, 0.6], paving: [0.6, 0.36, 0.55], gravel: [0.25, 0.3, 0.45], grass: [0.0, 0.18, 0.3], roof_gravel: [0.55, 0.3, 0.5], metal_grate: [0, 0.15, 0.5], soil: [0.8, 0.35, 0.45] };
+    // [水窪, 變暗, 光澤](r2:整夜的雨 → 泥土/柏油/鋪面再暗一點;凹處積水見 wet.js uCav)
+    const WETS = { asphalt: [0.85, 0.46, 0.6], paving: [0.6, 0.42, 0.55], gravel: [0.25, 0.38, 0.45], grass: [0.0, 0.22, 0.3], roof_gravel: [0.55, 0.36, 0.5], metal_grate: [0, 0.15, 0.5], soil: [0.8, 0.48, 0.5] };
     for (const [k, [pd, d, gl]] of Object.entries(WETS)) { try { makeWet(surf(k), { puddle: pd, darken: d, gloss: gl }); } catch { /* 沒有這個材質 */ } }
     try { makeGlassWet(surf('glass')); } catch { /* 沒有玻璃 */ }
     // 殭屍淋到雨時皮膚/衣服/頭髮變濕亮(同一套逐像素淋雨判定:室內、屋簷下的不會濕;開機預編譯前就注入,不會遊戲中途重編)

@@ -13,8 +13,9 @@ export const CELLS = {
   // 手掌按在牆上往下滑:上方完整掌印,下面是指紋拉出的條紋,最後往下滴
   hand0: { w: 224, h: 384, ppm: 700, k: 0.76, age: 0.5, por: 0.25, flake: 0.15, rim: 0.6, ex: 2.0, paint(B, R, c) {
     const M = handModel(R, { spread: R.r(0.15, 0.45) }), left = R() < 0.4;
-    const g = handPrint(B, R, M, { x: c.w / 2 + R.r(-10, 10), y: 160, ang: R.r(-0.1, 0.1), ppm: c.ppm, left, thr: 0.3, tx: R.r(-0.3, 0.3), ty: R.r(-0.2, 0.3), seed: R.i(0, 1e5), load: 1.05, slide: { len: R.r(70, 105), ang: R.r(-0.07, 0.07), pow: 1.25, end: 0.32, wob: 1.2 } });
-    drips(B, R, { n: 6, y0: g.gy0 + 40, len: 170, w0: 2.6, thr: 0.32, gap: 5 });
+    // 滑下的距離短一點、拖痕淡得快(長長一整片條紋像刷子刷的);垂流少、長短不一
+    const g = handPrint(B, R, M, { x: c.w / 2 + R.r(-10, 10), y: 150, ang: R.r(-0.1, 0.1), ppm: c.ppm, left, thr: 0.3, tx: R.r(-0.3, 0.3), ty: R.r(-0.2, 0.3), seed: R.i(0, 1e5), load: 1.05, slide: { len: R.r(38, 68), ang: R.r(-0.09, 0.09), pow: 1.7, end: 0.16, wob: 1.6 } });
+    drips(B, R, { n: 3, y0: g.gy0 + 40, len: 150, w0: 2.4, thr: 0.36, gap: 9 });
   } },
   // 兩隻手推在牆上(一隻完整、一隻只有手指和上半掌),往下滴
   hand1: { w: 288, h: 352, ppm: 700, k: 0.98, age: 0.72, por: 0.2, flake: 0.25, rim: 0.6, ex: 2.0, paint(B, R, c) {
@@ -85,14 +86,14 @@ export const CELLS = {
   drag0: { w: 224, h: 512, ppm: 170, k: 0.82, floor: 1, age: 0.78, por: 0, flake: 0.25, rim: 0.6, ex: 1.8, paint(B, R, c) {
     const P = curve([112, 488], [112 + R.r(-30, 30), 340], [112 + R.r(-30, 30), 170], [100 + R.r(-15, 15), 18], 48);
     pool(B, R, [[112, 470, 30], [92, 452, 16]], { edge: 2, tv: 1.4, warp: 0.1 });
-    smear(B, R, P, { wd: (u) => 78 * (1 - 0.25 * u), load: (u) => 1.3 * Math.pow(1 - u, 0.9) + 0.06, bristles: 90, clump: 0.25, dry: 0.5 });
+    smear(B, R, P, { wd: (u) => 78 * (1 - 0.25 * u), load: (u) => 1.3 * Math.pow(1 - u, 0.9) + 0.06, bristles: 44, clump: 0.5, dry: 0.5, wander: 0.2 });
     // 手指抓地:四道細線,在帶子一側
-    const f0 = R.r(0.12, 0.25), f1 = f0 + R.r(0.25, 0.4);
+    const f0 = R.r(0.12, 0.25), f1 = f0 + R.r(0.25, 0.4), fs = R.i(0, 1e5);
     for (let f = 0; f < 4; f++) {
       const L = [];
       for (let k = Math.round(f0 * 48); k <= Math.round(f1 * 48); k++) {
         const a = P[Math.max(0, k - 1)], b = P[Math.min(48, k + 1)], tx = b[0] - a[0], ty = b[1] - a[1], tl = Math.hypot(tx, ty) || 1;
-        const o = 44 + f * 3.2, u = (k - f0 * 48) / ((f1 - f0) * 48);
+        const u = (k - f0 * 48) / ((f1 - f0) * 48), o = 44 + f * 3.4 * (1 - 0.35 * u) + (vnoise(k * 0.18, f, fs) - 0.5) * 3;
         L.push(P[k][0] - (ty / tl) * o, P[k][1] + (tx / tl) * o, 0.85, 0.75 * (1 - u * 0.7));
       }
       poly(B.t, c.w, c.h, L, 1);

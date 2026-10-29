@@ -31,7 +31,7 @@ float occH( vec2 xz ) {
 const WET_PARS = /* glsl */`
 uniform float uWet; uniform float uRainT; uniform float uRain; uniform float uRipple; uniform float uPudLv; uniform float uWRefl; uniform float uExpT;
 uniform vec4 uWLPos[ ${WL_MAX} ]; uniform vec3 uWLCol[ ${WL_MAX} ]; uniform int uWLN;
-uniform float uPuddle; uniform float uPudMin; uniform float uDarken; uniform float uGloss;
+uniform float uPuddle; uniform float uPudMin; uniform float uDarken; uniform float uGloss; uniform float uCav;
 ${OCC_GLSL}
 varying vec3 vWetPos;
 float wHash( vec2 p ) { return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 ); }
@@ -74,8 +74,12 @@ const WET_ROUGH = /* glsl */`
 	float wN = wNoise( vWetPos.xz * 0.21 ) * 0.62 + wNoise( vWetPos.xz * 0.83 + 3.1 ) * 0.28 + wNoise( vWetPos.xz * 3.7 ) * 0.1;
 	float wSt = wNoise( vec2( dot( vWetPos.xz, vec2( wNw.z, - wNw.x ) ) * 3.0, vWetPos.y * 0.4 ) ); // 立面流痕
 	float wPud = max( smoothstep( 0.67 - 0.12 * uPudLv, 0.71 - 0.12 * uPudLv, wN ) * uPuddle * step( 0.02, uPudLv ), uPudMin ) * wW * wUp;
+	// 凹處積水(r2):裂縫、磚縫、龜裂泥土的縫裡先積水(ORM 的 AO 通道 = 凹處)→ 細細的反光線,不是整片乾的
+	#ifdef USE_ROUGHNESSMAP
+	wPud = max( wPud, uCav * smoothstep( 0.82, 0.45, texelRoughness.r ) * wW * wUp * smoothstep( 0.05, 0.4, uPudLv ) * ( 0.55 + 0.45 * wN ) );
+	#endif
 	float wDamp = wW * mix( 0.45 + 0.55 * wSt, 0.65 + 0.35 * wN, wUp );
-	diffuseColor.rgb *= 1.0 - uDarken * wDamp;
+	diffuseColor.rgb *= 1.0 - min( 0.85, uDarken * ( 0.75 + 0.5 * roughnessFactor ) ) * wDamp; // 粗糙多孔的(泥土、柏油)吸水變暗得多,亮面的少
 	diffuseColor.rgb = mix( diffuseColor.rgb, diffuseColor.rgb * 0.3, wPud );
 	roughnessFactor = mix( roughnessFactor, roughnessFactor * ( 1.0 - uGloss ) + 0.06, wDamp );
 	roughnessFactor = mix( roughnessFactor, 0.03, wPud );
@@ -125,9 +129,12 @@ const WET_VERT = /* glsl */`
 `;
 // 把濕潤效果注入 MeshStandardMaterial(可疊在其他 onBeforeCompile 之前:先改字串、再呼叫原本的 hook)
 // puddle:水窪量(0 = 沒有水窪,只變暗變亮);darken:濕了變暗程度;gloss:粗糙度下降程度;full:整面都是水
-export function makeWet(m, { puddle = 0, darken = 0.3, gloss = 0.55, full = false } = {}) {
+export function makeWet(m, opts = {}) {
+  const { puddle = 0, darken = 0.3, gloss = 0.55, full = false } = opts;
   if (!m || m.userData.wet) return m;
-  m.userData.wet = { uPuddle: { value: Math.min(1, puddle) }, uPudMin: { value: full ? 1 : 0 }, uDarken: { value: darken }, uGloss: { value: gloss } };
+  // cav:凹處積水(只對 ORM 打包的 PBR 粗糙度貼圖有意義:R = AO);預設 = 粗糙度貼圖是 pbrTex 來的就開
+  const cav = opts.cav ?? (m.roughnessMap?.userData?.pbr ? 1 : 0);
+  m.userData.wet = { uPuddle: { value: Math.min(1, puddle) }, uPudMin: { value: full ? 1 : 0 }, uDarken: { value: darken }, uGloss: { value: gloss }, uCav: { value: cav } };
   const prev = m.onBeforeCompile;
   const hasPrev = prev && prev !== THREE.Material.prototype.onBeforeCompile;
   m.onBeforeCompile = function (s, r) {

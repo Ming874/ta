@@ -137,10 +137,11 @@ function samp(G, gw, gh, x, y) {
 
 // ---------------------------------------------------------------- 合成
 // P:ppm(像素/公尺)、age 0 新鮮..1 乾透、por 多孔 0..1、flake 剝落 0..1、rim 咖啡環、sub 底材色、dustCol、seed
+// 顏色校正(r2):薄血膜原本太亮太飽和,暖色手電筒 + ACES 之下像紅色印章;壓暗一點、乾的偏褐
 const COL = {
-  fresh: [[156, 20, 17], [66, 4, 5]],
-  dry: [[116, 56, 40], [38, 12, 9]],
-  soak: [[126, 60, 46], [98, 40, 30]],
+  fresh: [[140, 22, 18], [60, 5, 5]],
+  dry: [[102, 47, 35], [34, 11, 8]],
+  soak: [[114, 56, 43], [88, 37, 28]],
 };
 export function compose(B, P) {
   const { w, h } = B, n = w * h, ppm = P.ppm;
@@ -371,7 +372,7 @@ export function handPrint(B, R, M, o) {
     if (sl && bs > 0.02) {
       const ua = xc * sdy - yc * sdx, va = xc * sdx + yc * sdy;
       const st = fbm(ua * 3.2, va * 0.12, seed + 31, 3);
-      mot *= 0.35 + 1.2 * st;
+      mot *= 0.55 + 0.8 * st;
       if (best < 0.32 && st < 0.45 + (0.32 - best)) mot *= 0.15; // 血快用完 → 斷斷續續
     }
     const v = best * load * clamp(mot, 0, 1.4);
@@ -425,21 +426,24 @@ export function clawSet(B, R, S, ppm, PX) {
   const ca = Math.cos(S.ang), sa = Math.sin(S.ang);
   const delay = [0.9, 0, 0.35, 1.75], lenK = [0.93, 1, 0.95, 0.68], depK = [0.85, 1, 0.92, 0.6];
   const n = S.n ?? 4, skip = n === 3 ? R.i(0, 3) : -1;
+  // 手往下拖時手指會收攏(指距越來越窄)、每根手指的弧度不同、力道忽大忽小 → 不是四條等距的平行直線
+  const conv = S.conv ?? R.r(0.15, 0.3);
   for (let f = 0; f < 4; f++) {
     if (f === skip) continue;
-    const off = (f - 1.5) * S.sp + R.r(-0.12, 0.12), d0 = delay[f] * R.r(0.7, 1.3), L = S.len * lenK[f] * R.r(0.88, 1.08);
-    const D = S.dep * depK[f] * R.r(0.85, 1.1), gw = (S.gw ?? 0.9) * R.r(0.8, 1.2), ph = R() * 6.28, steps = Math.ceil(L * s / 0.7);
+    const off = (f - 1.5) * S.sp + R.r(-0.15, 0.15), d0 = delay[f] * R.r(0.6, 1.4), L = S.len * lenK[f] * R.r(0.76, 1.1);
+    const D = S.dep * depK[f] * R.r(0.8, 1.1), gw = (S.gw ?? 0.9) * R.r(0.75, 1.2), ph = R() * 6.28, steps = Math.ceil(L * s / 0.7);
+    const fb = R.r(-0.045, 0.045);
     const P = [], Q = [];
     for (let k = 0; k <= steps; k++) {
       const u = k / steps, al = d0 + u * L;
-      const lat = off + S.bend * u * u * S.len + (vnoise(al * 0.35, f, seed) - 0.5) * 0.35;
+      const lat = off * (1 - conv * u) + (S.bend + fb) * u * u * S.len + (vnoise(al * 0.16, f, seed) - 0.5) * 0.42 + (vnoise(al * 1.4, f + 7, seed) - 0.5) * 0.08;
       const lx = lat * s, ly = al * s;
       const px = S.x + lx * ca + ly * sa, py = S.y - lx * sa + ly * ca;
       const tin = sstep(0, 0.05, u), tout = 1 - sstep(0.6, 1.0, u);
       const chat = 0.92 + 0.08 * Math.sin((al / 0.55) * 6.283 + ph) * (vnoise(al * 0.8, f + 9, seed) > 0.4 ? 1 : 0.3);
-      let dd = D * tin * Math.pow(tout, 0.7) * chat;
+      let dd = D * tin * Math.pow(tout, 0.7) * chat * (0.62 + 0.62 * vnoise(al * 0.22, f + 11, seed));
       if (u > 0.7 && vnoise(al * 1.6, f + 3, seed) < 0.32) dd *= 0.2; // 指甲跳開
-      const r = Math.max(0.35, (gw / 2) * s * tin * (0.3 + 0.7 * tout) * chat);
+      const r = Math.max(0.35, (gw / 2) * s * tin * (0.3 + 0.7 * tout) * chat * (0.8 + 0.4 * Math.min(1, dd / Math.max(0.05, D))) * (1 + 0.3 * Math.exp(-u * 10)));
       P.push(px, py, r, dd);
       Q.push(px, py, r + (S.chipR ?? 0.55) * s * (0.45 + 0.55 * tout) * (0.7 + 0.6 * vnoise(al * 0.7, f + 5, seed)), dd);
     }
@@ -569,7 +573,7 @@ export function pool(B, R, blobs, o = {}) {
 // ---------------------------------------------------------------- 抹痕 / 拖痕
 // 沿路徑刷:path = [[x, y], ...](像素)、wd 寬(px)、load(u) 血量、brush 刷毛數;刷毛隨機斷續 → 縱向條紋
 export function smear(B, R, path, o) {
-  const { w, h } = B, seed = R.i(0, 1e6), nb = o.bristles ?? 64, br = new Float32Array(nb);
+  const { w, h } = B, seed = R.i(0, 1e6), nb = o.bristles ?? 64, br = new Float32Array(nb), wv = o.wander ?? 0;
   for (let j = 0; j < nb; j++) { const e = Math.abs(j / (nb - 1) - 0.5) * 2; br[j] = clamp((1 - Math.pow(e, 4)) * (0.35 + 0.8 * vnoise(j * (o.clump ?? 0.35), 1, seed)) + (R() - 0.5) * 0.3, 0, 1.2); }
   // 路徑重新取樣(間距 0.6px)
   const pts = [];
@@ -586,9 +590,11 @@ export function smear(B, R, path, o) {
     const nx = -ty, ny = tx, wd = (typeof o.wd === 'function' ? o.wd(u) : o.wd), ld = o.load(u);
     const ns = Math.ceil(wd / 0.55);
     for (let j = 0; j <= ns; j++) {
-      const v = j / ns, bj = br[Math.min(nb - 1, (v * nb) | 0)];
-      const along = u * N * 0.6;
-      let val = ld * bj * (0.7 + 0.6 * fbm(v * nb * 0.5, along * 0.02, seed + 3, 2));
+      const v = j / ns, along = u * N * 0.6;
+      // 刷毛條紋沿路徑漂移、內插(r2):固定的刷毛索引會拉出一條條等寬平行線,一長串拖痕看起來像輪胎痕
+      const vv = wv ? clamp(v + (vnoise(along * 0.012, 5, seed) - 0.5) * wv + (vnoise(along * 0.05, 9, seed) - 0.5) * wv * 0.3) : v;
+      const fj = vv * (nb - 1), j0 = Math.min(nb - 2, fj | 0), bj = br[j0] + (br[j0 + 1] - br[j0]) * (fj - j0);
+      let val = ld * bj * (0.7 + 0.6 * fbm(vv * nb * 0.5, along * 0.02, seed + 3, 2)) * (wv ? 0.5 + 0.9 * fbm(vv * 5, along * 0.006, seed + 13, 2) : 1);
       if (val < (o.dry ?? 0.45) && fbm(v * nb * 0.9, along * 0.05, seed + 7, 2) > 0.3 + val) val *= 0.1; // 乾刷斷裂
       const x = Math.floor(pts[k][0] + nx * (v - 0.5) * wd), y = Math.floor(pts[k][1] + ny * (v - 0.5) * wd);
       if (x < 0 || y < 0 || x >= w - 1 || y >= h - 1) continue;
