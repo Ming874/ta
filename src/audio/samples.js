@@ -83,6 +83,14 @@ export function startLoading() {
 
 export const ready = (cats = CATS.filter((c) => !LAZY.has(c))) => Promise.all(cats.map((c) => loadCat(c)));
 
+// 單一檔案(folk 的真人錄音,見 vox.js):排進同一個載入佇列(同時最多 3 個、背景解碼成 sr 單聲道);失敗回傳 null
+export function fetchBuf(f, sr, mono = true) {
+  if (!A.ctx) return Promise.resolve(null);
+  const p = enqueue(f, sr, false, mono);
+  pump();
+  return p;
+}
+
 // 隨機取一個已載入的變體(不連續重複):回傳 { b 緩衝, g 增益(事件 g × 檔案正規化 n) };沒有就觸發該類別載入並回傳 null
 const PICK = { b: null, g: 1 };
 export function get(key) {
