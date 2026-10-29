@@ -16,7 +16,7 @@ const S = (pbr, tile, o = {}) => ({ pbr, tile, ...o });
 // 油漆牆:細緻灰泥(完整的漆面)+ 依世界雜訊與每面牆破舊度露出的剝落層(殘留漆片 + 底下的灰泥)
 const PAINT = (tint, o = {}) => S('plaster_paint', 2.5, {
   tint, norm: 1, sat: 0.15, rough: 0.82, n: 0.7, cav: 0.25, fb: o.fb,
-  peel: { set: 'paint_peeling', tile: 1.3, amt: o.peel ?? 0.55, scale: o.ps ?? 0.42, flake: 0.42, tint, under: o.under ?? 0x8a8478, n: 1.2 },
+  peel: { set: 'paint_peeling', tile: 1.3, amt: o.peel ?? 0.55, scale: o.ps ?? 0.42, flake: 0.42, tint, under: o.under ?? 0xa29c8e, n: 1.2 }, // 底下的灰泥 ≈ 0.37(原本 0.25:剝落處像潑墨的黑斑)
   wear: o.wear ?? [0.85, 0.7, 0.45, 0], ...o,
 });
 // 亮光漆護牆(油性漆,有碎點與擦傷)
@@ -57,7 +57,7 @@ export const SURFACES = {
   tile_cream: TILESQ(0xd2c5a8, { fb: 'tile_white', sat: 0.35 }),
   tile_long: S('tile_wall', 1.27, { tint: 0xf0ece0, cav: 0.5, wear: [0.8, 0.5, 0.35, 0] }), // 細長直磚
   // 灰泥/清水模/磚/石/木/壁紙
-  plaster: S('plaster_paint', 3.0, { tint: 0xd4c8ae, norm: 1, sat: 0.2, rough: 0.9, n: 0.9, peel: { set: 'paint_peeling', tile: 1.6, amt: 0.35, scale: 0.3, flake: 0.42, tint: 0xe8dcc4, under: 0x8a7e6a, n: 1 } }),
+  plaster: S('plaster_paint', 3.0, { tint: 0xd4c8ae, norm: 1, sat: 0.2, rough: 0.9, n: 0.9, peel: { set: 'paint_peeling', tile: 1.6, amt: 0.35, scale: 0.3, flake: 0.42, tint: 0xe8dcc4, under: 0x9e9280, n: 1 } }),
   plaster_chapel: S('plaster', 2.6, { tint: 0xe0caa4, sat: 1, wear: [0.8, 0.9, 0.7, 0] }),
   plaster_dorm: S('plaster_mould', 2.4, { tint: 0xe8e2cc, gain: 1.35, sat: 0.35, wear: [0.8, 0.8, 0.7, 0] }),
   plaster_mould: S('plaster_mould', 2.4, { tint: 0xd8d4c0, gain: 1.4, sat: 0.6, wear: [1, 1, 1, 0] }),
@@ -231,7 +231,7 @@ function structHook(shader) {
 	float l2l = dot( l2c.rgb, vec3( 0.299, 0.587, 0.114 ) );
 	float flake = smoothstep( uL2.y - 0.07, uL2.y + 0.07, l2l );
 	vec3 l2 = mix( uL2under * ( 0.55 + l2l ), uL2col * ( 0.7 + 0.45 * l2l ), flake );
-	l2 *= 1.0 - 0.45 * smoothstep( 0.0, 0.5, flake ) * ( 1.0 - smoothstep( 0.5, 1.0, flake ) ); // 漆片邊緣的陰影
+	l2 *= 1.0 - 0.3 * smoothstep( 0.0, 0.5, flake ) * ( 1.0 - smoothstep( 0.5, 1.0, flake ) ); // 漆片邊緣的陰影
 	diffuseColor.rgb = mix( diffuseColor.rgb, l2, wxPeel );
 	#endif
 #endif`)
