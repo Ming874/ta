@@ -373,7 +373,7 @@ export function doorAtlas() {
   const nrm = new THREE.CanvasTexture(nc); nrm.colorSpace = THREE.NoColorSpace; nrm.anisotropy = 8;
   const orm = new THREE.CanvasTexture(L.orm); orm.colorSpace = THREE.NoColorSpace; orm.anisotropy = 8;
   const door = new THREE.MeshStandardMaterial({ name: 'door:pbr', map, normalMap: nrm, normalScale: new THREE.Vector2(1, 1), roughnessMap: orm, metalnessMap: orm, aoMap: orm, roughness: 1, metalness: 1, alphaTest: 0.5, envMapIntensity: 0.9 });
-  const glass = new THREE.MeshStandardMaterial({ name: 'door:glass', map, roughnessMap: orm, metalnessMap: orm, roughness: 1, metalness: 1, transparent: true, depthWrite: false, side: THREE.DoubleSide, envMapIntensity: 1.2 });
+  const glass = new THREE.MeshStandardMaterial({ name: 'door:glass', map, roughnessMap: orm, metalnessMap: orm, roughness: 1, metalness: 1, transparent: true, depthWrite: false, side: THREE.DoubleSide, envMapIntensity: 1.2, forceSinglePass: true }); // [perf6] 平面玻璃一次畫完(見 surfaces.js)
   const leak = new THREE.MeshBasicMaterial({ name: 'door:leak', map, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: true });
   CACHE = { map, normalMap: nrm, orm, mats: { door, glass, leak }, ms: 0, slices: 0, done: false };
   // 畫圖步驟(順序固定:亂數序列與一次畫完時相同)

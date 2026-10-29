@@ -320,21 +320,63 @@ function norm(g) { // 合併前統一屬性(position/normal/uv,非索引)
   g.morphAttributes = {};
   return g.index ? g.toNonIndexed() : g;
 }
+// [perf6] 純色材質(MeshStandardMaterial、沒有任何貼圖/自發光/自訂 shader、不透明)依「完全相同的參數」
+// 併成一個開了頂點色的共用材質(顏色寫進頂點色,和 color 一模一樣)→ 店面的展示品(槍、掉落物、商品)幾十種顏色變成少數幾個 draw call
+const PLAIN_KEYS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap', 'alphaMap', 'bumpMap', 'displacementMap', 'lightMap', 'envMap'];
+const plainVC = new Map();
+function plainOf(mat) {
+  if (!mat.isMeshStandardMaterial || mat.isMeshPhysicalMaterial || mat.transparent || mat.alphaTest > 0 || mat.vertexColors || mat.wireframe || mat.fog === false || mat.toneMapped === false) return null;
+  if (mat.onBeforeCompile !== THREE.Material.prototype.onBeforeCompile || mat.customProgramCacheKey !== THREE.Material.prototype.customProgramCacheKey) return null;
+  if (mat.defines && Object.keys(mat.defines).some((k) => k !== 'STANDARD')) return null;
+  if (mat.emissive && mat.emissive.r + mat.emissive.g + mat.emissive.b > 0) return null;
+  if (PLAIN_KEYS.some((k) => mat[k]) || mat.opacity !== 1 || mat.blending !== THREE.NormalBlending || mat.depthWrite === false || mat.colorWrite === false) return null;
+  const key = [mat.roughness, mat.metalness, mat.side, mat.flatShading ? 1 : 0, mat.envMapIntensity ?? 1, mat.shadowSide ?? '-'].join('|');
+  let v = plainVC.get(key);
+  if (!v) {
+    v = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: mat.roughness, metalness: mat.metalness, side: mat.side, flatShading: mat.flatShading, envMapIntensity: mat.envMapIntensity ?? 1 });
+    v.shadowSide = mat.shadowSide;
+    v.name = 'shop:plain:' + key;
+    plainVC.set(key, v);
+  }
+  return v;
+}
 // 依材質分桶的靜態幾何(最後合併成少數網格,降低 draw call)
 class Buckets {
-  constructor() { this.map = new Map(); }
+  constructor() { this.map = new Map(); this.copies = new Map(); }
   add(mat, g) { if (!this.map.has(mat)) this.map.set(mat, []); this.map.get(mat).push(norm(g)); }
   // 把整個物件樹(槍、掉落物模型)攤平成靜態幾何;mtx = 物件相對店面座標的矩陣
+  // [perf6] 外來物件的材質用複本:展示槍和第一人稱槍共用材質時,同一個材質每幀在兩個場景(燈光數不同)之間切換 program
+  // (每次切換 three 都要重算 program 參數)。複本的 program 鍵相同 → 不會多編 shader;userData(磨損 uniform)共用
   addObject(obj, mtx) {
     obj.updateMatrixWorld(true);
     obj.traverse((o) => {
       if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || Array.isArray(o.material) || !o.visible) return;
       const g = o.geometry.clone();
       g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(mtx, o.matrixWorld));
-      this.add(o.material, g);
+      let m = this.copies.get(o.material);
+      if (!m) {
+        m = plainOf(o.material) ? o.material : o.material.clone();
+        if (m !== o.material) { m.userData = o.material.userData; m.userData.shopCopy = true; this.owned = (this.owned || []).concat(m); }
+        this.copies.set(o.material, m);
+      }
+      this.add(m, g);
     });
   }
   flush(parent, shadow = true) {
+    // 純色材質 → 共用頂點色材質(同參數的併成一桶;顏色是線性值,與頂點色的解讀一致)
+    for (const [mat, list] of [...this.map]) {
+      const v = plainOf(mat);
+      if (!v) continue;
+      const c = mat.color;
+      for (const g of list) {
+        const n = g.attributes.position.count, col = new Float32Array(n * 3);
+        for (let i = 0; i < n * 3; i += 3) { col[i] = c.r; col[i + 1] = c.g; col[i + 2] = c.b; }
+        g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      }
+      this.map.delete(mat);
+      if (!this.map.has(v)) this.map.set(v, []);
+      this.map.get(v).push(...list);
+    }
     for (const [mat, list] of this.map) {
       const m = new THREE.Mesh(mergeGeometries(list), mat);
       m.userData.own = true; // 店面自己的合併幾何(dispose 時釋放;材質是共用的)
@@ -1504,6 +1546,7 @@ export class Shop {
     for (const b of this.boxes) this.world.removeBox(b);
     this.boxes.length = 0;
     this.group.traverse((o) => { if (o.userData.own) o.geometry.dispose(); });
+    for (const m of [...(this.B?.owned || []), ...(this.D?.owned || [])]) m.dispose(); // [perf6] 外來物件材質的複本
     for (const t of [this.tagTex, this.termTex, this.tvTex]) t?.dispose();
     this.anim.length = 0;
   }
