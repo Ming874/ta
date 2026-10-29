@@ -1395,11 +1395,22 @@ export class Shop {
     if (this.open === open && !instant) return;
     this.open = open;
     this.target = open ? 1 : 0;
+    this.fastK = false;
     if (instant) { this.k = this.target; this.neon = open ? 1 : 0; this._applyK(); this._applyNeon(); }
     else {
       sfx.shutter(this.pos, open);
       this.neonT = open ? 1.6 : 0; // 霓虹延遲點亮
     }
+    this.drawTerminal(true);
+  }
+
+  // [zombies-w3] 追逐戰:捲門只拉到一半(k 0..1,不開店、不點霓虹)讓玩家鑽進來;fast = 猛力拉下
+  setShutter(k, fast = false) {
+    this.open = false;
+    if (Math.abs(this.target - k) < 1e-3) return;
+    sfx.shutter(this.pos, k > this.k);
+    this.target = k;
+    this.fastK = fast;
     this.drawTerminal(true);
   }
 
@@ -1435,8 +1446,9 @@ export class Shop {
     this.t = t;
     // 捲門
     if (this.k !== this.target) {
-      const sp = this.target ? 1 / 2.6 : 1 / 2.1;
-      this.k = this.target ? Math.min(1, this.k + dt * sp) : Math.max(0, this.k - dt * sp);
+      const up = this.target > this.k, sp = (up ? 1 / 2.6 : 1 / 2.1) * (this.fastK ? 3.5 : 1);
+      this.k = up ? Math.min(this.target, this.k + dt * sp) : Math.max(this.target, this.k - dt * sp); // [zombies-w3] 可停在中間(setShutter)
+      if (this.k === this.target) this.fastK = false;
       this._applyK();
     }
     // 霓虹:開店時延遲並閃爍點亮,關店立即熄滅
