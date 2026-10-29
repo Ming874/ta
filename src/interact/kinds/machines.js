@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { Model, T, canvasTex, texMat, FONT } from '../kit.js';
 
 // 機關與設備:電燈開關(用光源池的燈具狀態,不新增燈)、販賣機(投 5 元喝一罐)、電梯呼叫鈕(現有電梯)、
-// 遺體專用貨梯(門會打開,裡面有東西)、火警拉桿(引來屍群;那一波回來的人倒下會多掉錢)、廣播麥克風、洗手台、
-// 護理呼叫鈕、密碼鍵盤、病歷終端(萬嵐 HIS v4)、保險絲盒 / 發電機配電(目標系統可以用的旗標與道具)。
+// 遺體專用貨梯(門會打開,裡面有東西)、火警拉桿(引來屍群;那一波活屍倒下會多掉錢)、廣播麥克風、洗手台、
+// 護理呼叫鈕、密碼鍵盤、病歷終端(大新 HIS v4)、保險絲盒 / 發電機配電(目標系統可以用的旗標與道具)。
 const ZERO = T(0, -50, 0, 0, 0, 0, 0.0001, 0.0001, 0.0001);
 const ledPool = (api) => api.kit.pool('led', (m) => { m.box(api.M.led, 0xffffff, 0, 0, 0, 1, 1, 1); }, api.M.led);
 
@@ -276,7 +276,7 @@ export const lift = {
   },
 };
 
-// ---------- 火警拉桿:按住拉下去 → 火警鈴 22 秒、紅燈閃;戰鬥中會多引來一波(那一波回來的人倒下會多掉錢) ----------
+// ---------- 火警拉桿:按住拉下去 → 火警鈴 22 秒、紅燈閃;戰鬥中會多引來一波(那一波活屍倒下會多掉錢) ----------
 export const alarm = {
   build(api, s, spec = {}) {
     const { kit, M, ix, ixs, R, game } = api;
@@ -493,7 +493,7 @@ export const keypad = {
   },
 };
 
-// ---------- 病歷系統終端(萬嵐 HIS v4):輸入號碼查資料 ----------
+// ---------- 病歷系統終端(大新 HIS v4):輸入號碼查資料 ----------
 export const terminal = {
   build(api, s, spec = {}) {
     const { kit, M, ix, game } = api;
@@ -510,14 +510,14 @@ export const terminal = {
     kit.static(m, api.mtx(s), s.li);
     kit.static(b, L, s.li);
     if (desk) api.box(s, -0.46, 0.05, 0.46, 0.63, 0.8);
-    const H = api.LINES.HIS || { title: '萬嵐 HIS v4', entries: {}, unknown: '查無資料' };
-    const tex = canvasTex('his', 128, 96, (x, w, h) => { x.fillStyle = '#041008'; x.fillRect(0, 0, w, h); x.fillStyle = '#5aff7a'; x.font = `bold 10px ${FONT}`; x.fillText('HIS v4', 8, 16); x.font = `9px ${FONT}`; x.fillText('床號 / 病歷號查詢', 8, 32); x.fillText('> _', 8, 50); for (let i = 0; i < 24; i++) { x.fillStyle = 'rgba(90,255,122,.06)'; x.fillRect(0, i * 4, w, 1); } });
+    const H = api.LINES.HIS || { title: '大新　病歷電腦', entries: {}, unknown: '查無資料' };
+    const tex = canvasTex('his', 128, 96, (x, w, h) => { x.fillStyle = '#041008'; x.fillRect(0, 0, w, h); x.fillStyle = '#5aff7a'; x.font = `bold 10px ${FONT}`; x.fillText('病歷電腦', 8, 16); x.font = `9px ${FONT}`; x.fillText('床號 / 病歷號查詢', 8, 32); x.fillText('> _', 8, 50); for (let i = 0; i < 24; i++) { x.fillStyle = 'rgba(90,255,122,.06)'; x.fillRect(0, i * 4, w, 1); } });
     const sm = new Model(); sm.quad(texMat('his', tex, { basic: true }), 0, 0.19, 0.131, 0.28, 0.21);
     kit.static(sm, L, s.li);
     const pos = { x: 0, y: 0, z: 0 };
     { const v = new THREE.Vector3(0, 0.19, 0.15).applyMatrix4(L); pos.x = v.x; pos.y = v.y; pos.z = v.z; }
     return ix.register(pos, {
-      id: spec.id || 'his' + Math.round(pos.x), kind: 'terminal', name: H.title, reach: 1.9, radius: 0.18, scope: 'map', prompt: '使用病歷系統',
+      id: spec.id || 'his' + Math.round(pos.x), kind: 'terminal', name: H.title, reach: 1.9, radius: 0.18, scope: 'map', prompt: '用病歷電腦查資料',
       onUse: () => {
         ix.ui.keypad({
           title: H.title, sub: '輸入床號或病歷號 · [Enter] 查詢', len: 4, terminal: true,
@@ -569,7 +569,7 @@ export const fusebox = {
     for (let i = 0; i < st.n; i++) fz.set(fi[i], fm(i));
     for (const c of initial) power(c, true);
     const panel = () => ix.ui.panel({
-      title: spec.title || '配電盤', sub: () => `保險絲 ${st.n}/${slots} · 可同時供電 ${cap()} 條迴路`,
+      title: spec.title || '配電盤', sub: () => `保險絲 ${st.n}/${slots} · 可以同時供電 ${cap()} 個地方`,
       rows: () => circuits.map((c) => ({ label: c.label, on: st.on.has(c.id), can: st.on.has(c.id) || st.on.size < cap() })),
       toggle: (i) => {
         const c = circuits[i];

@@ -52,7 +52,7 @@ export function sarsSheet(kind) {
       c.fillStyle = '#9cc8d8'; c.beginPath(); c.moveTo(46, 96); c.quadraticCurveTo(w / 2, 70, w - 46, 96); c.lineTo(w - 50, 150); c.quadraticCurveTo(w / 2, 172, 50, 150); c.closePath(); c.fill();
       c.strokeStyle = '#5a8a9a'; c.lineWidth = 2; for (let i = 0; i < 3; i++) { c.beginPath(); c.moveTo(52, 112 + i * 13); c.lineTo(w - 52, 112 + i * 13); c.stroke(); }
       c.strokeStyle = '#ddd'; c.lineWidth = 3; c.beginPath(); c.arc(44, 122, 18, 1.3, 4.9); c.stroke(); c.beginPath(); c.arc(w - 44, 122, 18, -1.8, 1.8); c.stroke();
-      lines(['N95 口罩', '每人每日限領一個', '領取請至護理站登記'], 196, 22, { size: 15 });
+      lines(['N95 口罩', '每人每日限領一個', '領取請到護理站登記'], 196, 22, { size: 15 });
     } else if (kind === 'ppe') {
       c.fillStyle = '#c87a1a'; c.fillRect(0, 0, w, 42);
       text(c, '穿戴防護裝備順序', w / 2, 22, { size: 19, color: '#fff' });
@@ -81,14 +81,14 @@ export function sarsSheet(kind) {
       for (let i = 0; i <= 12; i++) { c.beginPath(); c.moveTo(8, 34 + i * 18); c.lineTo(w - 8, 34 + i * 18); c.stroke(); }
       for (const x of [8, 56, 124, w - 8]) { c.beginPath(); c.moveTo(x, 34); c.lineTo(x, 34 + 12 * 18); c.stroke(); }
       const day = ['4/29', '4/30', '5/1', '5/2', '5/3', '5/4', '5/5', '5/6', '5/7', '5/8', '5/9', '5/10'];
-      const a = ['鄭', '林', '陳', '鄭', '黃', '鄭', '鄭', '林', '鄭', '—', '', ''], b2 = ['張', '黃', '張', '陳', '林', '陳', '鄭', '陳', '(發燒)', '', '', ''];
+      const a = ['林', '吳', '陳', '林', '黃', '林', '林', '吳', '林', '—', '', ''], b2 = ['張', '黃', '張', '陳', '吳', '陳', '林', '陳', '(發燒)', '', '', ''];
       day.forEach((d, i) => {
         text(c, d, 32, 43 + i * 18, { size: 12, color: '#222', weight: 'normal', font: hand });
         text(c, a[i], 90, 43 + i * 18, { size: 12, color: i === 6 ? '#a8231c' : '#1c2a6a', weight: 'normal', font: hand });
         text(c, b2[i], 157, 43 + i * 18, { size: 12, color: '#1c2a6a', weight: 'normal', font: hand });
       });
       c.strokeStyle = '#a8231c'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(126, 151 + 2 * 18); c.lineTo(w - 12, 151 + 2 * 18); c.stroke();
-      text(c, '護理長:鄭玉蘭', w - 12, h - 12, { size: 12, color: '#1c2a6a', align: 'right', weight: 'normal', font: hand });
+      text(c, '護理長：林秀英', w - 12, h - 12, { size: 12, color: '#1c2a6a', align: 'right', weight: 'normal', font: hand });
     } else if (kind === 'family') { // 手寫告示
       c.fillStyle = '#f4f0e0'; c.fillRect(0, 0, w, h);
       lines(['家屬請勿闖入', '病房區'], 40, 30, { size: 22, color: '#a8231c', font: hand });

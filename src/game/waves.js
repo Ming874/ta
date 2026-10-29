@@ -14,8 +14,8 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 // ---------- 回合類型 ----------
 export const SPECIAL = {
   boss: { name: '最大的一波', sub: '最老的醒了 · 引他撞牆，再打頭', cls: 'red' },
-  rush: { name: '狂奔之夜', sub: '剛打第一針的人跑得最快 · 背靠牆角，別被包夾', cls: 'red' },
-  swarm: { name: '膿毒潮', sub: '悶熱的晚上，脹氣的會出來 · 在遠處引爆膿腫者', cls: 'gold' },
+  rush: { name: '（建議）跑很快的一波', sub: '剛打第一針的人跑得最快 · 背靠牆角，別被包夾', cls: 'red' },
+  swarm: { name: '（建議）會爆的一波', sub: '悶熱的晚上，脹氣的會出來 · 在遠處引爆膿腫者', cls: 'gold' },
 };
 export function waveKind(n) {
   if (n >= 5 && n % 5 === 0) return 'boss';

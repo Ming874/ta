@@ -138,7 +138,7 @@ export function streakMesh() {
         if ( a < 0.0008 ) discard;
         // 折射色調:雨滴偏冷、中心較白
         vec3 c = vCol * mix( uTint, vec3( 1.0 ), core * 0.5 );
-        gl_FragColor = vec4( c * a, 1.0 );
+        gl_FragColor = vec4( c * a, 8.0 ); // a = 8:[gpu] TAA 反應式標記(src/gfx/gbuf.js);加法混合不用 alpha
       }`,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, side: THREE.DoubleSide, // 螢幕空間展開的四邊形方向不固定
   });
@@ -221,7 +221,7 @@ export function curtainMesh() {
         vec3 col = vL * ( s * sheet * fogA + uHaze * ( 1.0 - fogA * 0.5 ) * sheet * uInt );
         col *= vfade;
         if ( max( col.r, max( col.g, col.b ) ) < 1e-4 ) discard;
-        gl_FragColor = vec4( col, 1.0 );
+        gl_FragColor = vec4( col, 1.0 ); // 雨幕是低頻的霧狀層:交給 TAA 正常累積(不標反應式)
       }`,
     transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide,
     blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor, blendEquation: THREE.AddEquation,
@@ -285,7 +285,7 @@ export function splashMesh() {
         }
         float a = ( crown * 0.45 + drops * 0.8 ) * vA * ( 1.0 - t * t );
         if ( a < 0.002 ) discard;
-        gl_FragColor = vec4( vCol * uTint * a, 1.0 );
+        gl_FragColor = vec4( vCol * uTint * a, 8.0 );
       }`,
     transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide,
     blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor, blendEquation: THREE.AddEquation,
@@ -345,7 +345,7 @@ export function dripMesh() {
         float x = vUv.x * 2.0 - 1.0;
         float a = vA * exp( - x * x * 3.0 ) * smoothstep( 0.0, 0.2, vUv.y ) * ( 1.0 - smoothstep( 0.8, 1.0, vUv.y ) );
         if ( a < 0.001 ) discard;
-        gl_FragColor = vec4( vCol * a * ( vPh < 0.5 ? 1.6 : 1.0 ), 1.0 );
+        gl_FragColor = vec4( vCol * a * ( vPh < 0.5 ? 1.6 : 1.0 ), 8.0 );
       }`,
     transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide,
     blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor, blendEquation: THREE.AddEquation,

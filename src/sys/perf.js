@@ -68,6 +68,8 @@ export class Perf {
     if (!this.el) this.build();
     this.el.classList.toggle('on', on);
     this.measure = on || caps.flags.has('perf');
+    const q = this.game.quality;
+    if (q?.gpu) q.gpu.detail = on || caps.flags.has('gpuprof'); // 面板開著時逐 pass 計 GPU 時間
     if (on) this.draw();
   }
 
@@ -92,6 +94,8 @@ export class Perf {
       L.push(`FPS ${warn(q.fps > 55, fmt(q.fps, 0).padStart(3))}  幀 ${fmt(q.frameMs)}ms  p99 ${warn(q.frameP99 < 25, fmt(q.frameP99))}  最長 ${warn(q.frameMax < 50, fmt(q.frameMax, 0))}`);
       L.push(`CPU 更新 ${fmt(this.upd, 2)}  渲染 ${fmt(this.rnd, 2)} ms   GPU ${q.gpuTimer ? (q.gpuMs == null ? '…' : warn(q.gpuMs < 14, fmt(q.gpuMs, 2)) + ' ms') : '<span class="d">無計時擴充</span>'}`);
       L.push(`解析度 ${fmt(q.pixelRatio, 2)}×  ${q.width}×${q.height}`);
+      const gp = g.quality.gpu;
+      if (gp?.detail && gp.done) L.push(`GPU 分段 ${gp.table().slice(0, 9).map(([k, v]) => `${k} ${fmt(v, 2)}`).join('  ')}`);
     }
     L.push(`Draw ${warn(info.render.calls < 350, String(info.render.calls))}  三角形 ${big(info.render.triangles)}  線 ${big(info.render.lines)}  點 ${big(info.render.points)}`);
     L.push(`幾何 ${info.memory.geometries}  貼圖 ${info.memory.textures}  Shader ${info.programs ? info.programs.length : '—'}`);

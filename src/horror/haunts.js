@@ -52,7 +52,8 @@ export class HauntFx {
     }
     const el = this.edgeEl;
     el.dataset.side = side; el.firstChild.textContent = text || '';
-    el.classList.remove('fast'); el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
+    // 重播 CSS 動畫:下一幀再加回 'on'(不用 offsetWidth 強制排版;第一次結霜曾因此卡 0.95 秒)
+    el.classList.remove('fast'); el.classList.remove('on'); requestAnimationFrame(() => el.classList.add('on'));
   }
   edgeOut(fast) { const el = this.edgeEl; if (!el) return; el.classList.toggle('fast', !!fast); el.classList.remove('on'); }
   reset() { this.restore(); for (const m of this.meshes) m.visible = false; this.ballOn = false; this.envOn = false; this.edgeOut(true); }
@@ -200,7 +201,7 @@ export function hauntKinds(h) {
 
   const K = {
     // =================== 燈 ===================
-    // 其他燈暗下來,只剩頭上一盞在晃(影子跟著擺);阿嬤:「那盞燈……阿嬤顧了十四暝。」
+    // 其他燈暗下來,只剩頭上一盞在晃(影子跟著擺);阿嬤：「那盞燈……阿嬤顧了十四個晚上。」
     swingBulb: { ok: (c) => indoor(c) && !!swingPick(c), run(c) {
       const f = swingPick(c), others = c.fixtures.filter((q) => q !== f && q.li === c.li && lit(q) && dist(c, q.x, q.z) < 14);
       const dur = rand(7.5, 9.5), A0 = rand(0.45, 0.6), w = Math.PI * 2 * rand(0.5, 0.62), ph = rand(0, 6.28), ax = Math.random() < 0.5, fp = fpos(f);
@@ -248,7 +249,7 @@ export function hauntKinds(h) {
       return true;
     } },
     // =================== 看得見的 ===================
-    // 隔簾被拉開(吊環聲),床邊站著一個病人;你看過他、轉開,再看:床邊空了。病人:「護理長講,第七天就可以回家了。」
+    // 隔簾被拉開(吊環聲),床邊站著一個病人;你看過他、轉開,再看:床邊空了。阿嬤：「第七晚，廣播又叫阿嬤下樓……阿嬤沒有去。」
     curtainDraw: { ok: (c) => indoor(c) && free() && models.ready('patient') && !!curtPick(c), run(c) {
       const a0 = curtPick(c), y = lv(c), nx = a0.nx || 0, nz = a0.nz || 0, x = a0.x - nx * 0.35, z = a0.z - nz * 0.35;
       ghost.rings({ x: a0.x, y: y + 2.0, z: a0.z });
@@ -282,7 +283,7 @@ export function hauntKinds(h) {
         onEnd: () => { if (seenT > 0.2) story('beam', { ear }); } });
       return a;
     } },
-    // 燈下有一個人的影子橫過地板(拿著病歷板),沒有人。阿嬤:「巡房了……十四暝,阿嬤都是這樣走過來的。」
+    // 燈下有一個人的影子橫過地板(拿著病歷板),沒有人。阿嬤：「十四個晚上……阿嬤都這樣巡房。」
     shadowPass: { ok: (c) => indoor(c) && !X.shadow.visible && !!shadowSpot(c), run(c) {
       const S = shadowSpot(c), m = X.shadow, y = lv(c) + 0.02, T = 1.8;
       m.scale.set(0.85, 1, 2.6); m.visible = true; m.material.opacity = 0;
@@ -319,7 +320,7 @@ export function hauntKinds(h) {
       return w;
     } },
     // =================== 有人在 ===================
-    // 有人拍你肩膀(鬼月禁忌);阿嬤:「阿嬤講過,七月莫讓人拍肩膀。」
+    // 有人拍你肩膀(鬼月禁忌);阿嬤：「阿嬤說過：七月被拍肩膀，不要轉頭。」
     shoulderTap: { ok: (c) => indoor(c) && !c.zNear && P().speedNorm < 0.5, run(c) {
       const p = P(), side = Math.random() < 0.5 ? 'left' : 'right', sg = side === 'left' ? -1 : 1, [fx, fz] = fwdOf(), rx = -fz, rz = fx;
       const pos = { x: p.pos.x + rx * sg * 0.35 - fx * 0.25, y: p.pos.y + 1.45, z: p.pos.z + rz * sg * 0.35 - fz * 0.25 };
@@ -352,7 +353,7 @@ export function hauntKinds(h) {
       h.director.hold(7);
       return true;
     } },
-    // 遠處有人吹口哨;阿嬤:「暗暝莫吹口哨……會把他們叫來。」
+    // 遠處有人吹口哨;阿嬤：「晚上不要吹口哨……會把他們叫來。」
     whistle: { ok: (c) => indoor(c) && !c.zNear && !(W.busy && W.cur?.prio >= 5), run(c) {
       const a = rand(0, 6.28), pos = { x: c.px + Math.cos(a) * 12, y: lv(c) + 1.6, z: c.pz + Math.sin(a) * 12 };
       ghost.whistle(pos, 3.2);
@@ -369,7 +370,7 @@ export function hauntKinds(h) {
       h.director.hold(T + 7);
       return m;
     } },
-    // 金水商行的皮球從暗處彈出來,滾到你腳邊;阿嬤:「金水仔拿來的球……你細漢上愛玩。」
+    // 金水商行的皮球從暗處彈出來,滾到你腳邊;阿嬤：「金水伯拿來的球……你小時候最愛玩。」
     ballRoll: { ok: (c) => indoor(c) && !X.ballOn && !!ballPath(c), run(c) {
       const B = ballPath(c), y = lv(c) + 0.11, m = X.ball, pos = { x: B.sx, y, z: B.sz }, axis = new THREE.Vector3(B.dz, 0, -B.dx).normalize();
       const L = B.d, T = 1.1 + L * 0.42; // 一開始快、越滾越慢
@@ -397,12 +398,12 @@ export function hauntKinds(h) {
       });
       return B;
     } },
-    // 收音機自己轉台,轉到 1999/9/21 01:47 小鈴在山上的現場直播;直播在地震那一秒中斷
+    // 收音機自己轉台,轉到 1999/9/21 01:47 小美在山上的現場直播;直播在地震那一秒中斷
     radio1999: { ok: (c) => !!radioPick(c) && !(W.busy && W.cur?.prio >= 7), run(c) {
       const r = radioPick(c), pos = { x: r.x, y: (r.y ?? lv(c)) + 0.5, z: r.z };
       ghost.tune(pos, 2.4);
       h.after(2.5, () => {
-        const v = story('radio', { pos, priority: 8, force: true, tag: '收音機 · 1999' }), d = v?._hd?.dur ?? 5.5;
+        const v = story('radio', { pos, priority: 8, force: true, tag: '收音機 · 小美（1999）' }), d = v?._hd?.dur ?? 5.5;
         h.after(Math.max(1, d - 0.8), () => { ghost.stinger('sub', 0.6); P().addShake?.(0.12); ghost.tune(pos, 0.6); }); // 地鳴,斷訊
       });
       h.director.hold(12);
@@ -432,7 +433,7 @@ export function hauntKinds(h) {
       h.watch((dt) => { t += dt; const turned = angDiff(P().yaw, y0) > 0.6; if (turned || t > 6.5) { X.edgeOut(turned); return false; } return true; });
       return side;
     } },
-    // 頭七(第 7 次靜默期,index.js 指定):走廊盡頭站著阿嬤;看著她,她才走。「頭七了……阿嬤回來看你。」
+    // 頭七(第 7 次靜默期,index.js 指定):走廊盡頭站著阿嬤;看著她,她才走。「今天是頭七……阿嬤回來看你。」
     touqi: { ok: (c) => indoor(c) && free() && models.ready('nurse') && !!c.figSpot?.(), run(c) {
       const s = c.figSpot(), y = lv(c);
       const a = A.spawn({ tag: 'touqi', fig: 'nurse', pose: 'stand', look: 'pale', alpha: 0.8, x: s.x, y, z: s.z, yaw: Math.atan2(c.px - s.x, c.pz - s.z), dur: 14, fadeIn: 1.2, vanish: { flash: false, look: 0.985, lookT: 1.4, near: 6 },
@@ -466,7 +467,7 @@ export function hauntKinds(h) {
       return list.length;
     } },
     // =================== 大跳嚇(一幕一個) ===================
-    // 你一轉身,窗外貼著一張臉(玻璃上留下手印);阿嬤:「莫看窗仔外……那時候,他們不讓我們開窗。」
+    // 你一轉身,窗外貼著一張臉(玻璃上留下手印);阿嬤：「不要看窗外……那時候不能開窗。」
     windowFace: { ok: (c) => indoor(c) && free() && models.ready('patient') && !!faceWin(c), run(c) {
       const w = faceWin(c);
       let t = 0;
@@ -499,7 +500,7 @@ export function hauntKinds(h) {
       });
       return w;
     } },
-    // 鏡子:先是一口氣、一陣嗡聲,然後一張臉塞滿整面鏡子;接著是阿嬤溫柔的一句「你的目睭,跟阿嬤同款。」
+    // 鏡子:先是一口氣、一陣嗡聲,然後一張臉塞滿整面鏡子;接著是阿嬤溫柔的一句「你的眼睛，跟阿嬤一樣。」
     mirrorRush: { ok: (c) => !!mirrorPick(c), run(c) {
       const m = mirrorPick(c), w = m.w || 0.47, hh = m.h || 0.59;
       ghost.breathNeck(0.5); ghost.stinger('swell', 0.55);

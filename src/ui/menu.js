@@ -11,7 +11,7 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 const HEART = '<svg viewBox="0 0 32 32" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" d="M16 27.5S4.5 20 4.5 12.3C4.5 8.6 7.3 6 10.6 6c2.3 0 4.3 1.3 5.4 3.2C17.1 7.3 19.1 6 21.4 6c3.3 0 6.1 2.6 6.1 6.3C27.5 20 16 27.5 16 27.5z"/><path fill="currentColor" d="M15 1.5h2v4h3v2h-3v5h-2v-5h-3v-2h3z"/><path fill="none" stroke="currentColor" stroke-width="1.2" opacity=".7" d="M11 13.5c1.5 2.5 3 3.5 5 3.5s3.5-1 5-3.5"/></svg>';
 const pct = (v) => `${Math.round(v * 100)}%`;
 const TYPE_ORDER = ['walker', 'runner', 'crawler', 'bloater', 'brute'];
-const TYPE_NAMES = { walker: '行屍', runner: '狂奔者', crawler: '爬行者', bloater: '膿腫者', brute: '巨屍' };
+const TYPE_NAMES = { walker: '（建議）活屍', runner: '快跑的', crawler: '爬的', bloater: '會爆的', brute: '巨屍' };
 const PRESET_NAME = { low: '低', medium: '中', high: '高', ultra: '極致' };
 // [類型, 鍵, 標籤, …]:range(min, max, step, 格式, 說明)/ toggle(說明)/ seg(選項, 說明)/ btn(按鈕文字, 說明)
 const SETTINGS = [
@@ -40,22 +40,21 @@ export const KEYS = [
   ['滑鼠左鍵', '射擊'], ['滑鼠右鍵', '開鏡（按住）'], ['R', '換彈'], ['1–6 / 滾輪', '切換武器'],
   ['G', '投擲手榴彈'], ['V', '小刀'], ['F', '手電筒'], ['E', '互動：金水商行／補給櫃／調查'],
   ['H', '使用醫療包'], ['M', '地圖'], ['N', '休息時不等了，直接開始下一波'], ['T', '關閉提示'],
-  ['J', '推理本'], ['B', '吹口哨（鬼月莫亂吹）'],
+  ['J', '筆記本'], ['B', '吹口哨（鬼月不要亂吹）'],
   ['Esc', '暫停'], ['F3', '效能資訊'],
 ];
 const KEYS_MP = [['Tab', '計分板（多人）'], ['Enter', '聊天（多人）']];
 const TIPS = [
   '每一波打完有 <b>30 秒</b>休息（第 5、10… 波之前 40 秒）：金水伯把貨放在店裡，拉起鐵門（畫面上的推車標記會指路）：槍、彈藥、改裝、防彈背心、手榴彈與醫療包。<b>買東西時遊戲暫停</b>。',
-  '<b>第 5、10、15… 波最強</b>，打最多劑的巨屍會醒；第 8、13、18… 波是特別的夜（狂奔之夜／膿毒潮）。從第 5 次起他們越來越耐打，記得升級武器。',
+  '<b>第 5、10、15… 波最強</b>，打最多針的巨屍會醒；第 8、13、18… 波是特別的夜（狂奔之夜／膿毒潮）。從第 5 次起他們越來越耐打，記得升級武器。',
   '<b>爆頭</b>造成雙倍傷害並多拿 50% 錢；<b>近戰擊殺</b>錢加倍。4 秒內連續擊殺會累積<b>連殺</b>，分數倍率最高 ×2，5、8、12… 連殺另有錢獎勵。',
-  '一整波<b>毫髮無傷</b>可以拿到額外獎勵；回來的人身上還有生前的零錢與鈔票，這一波結束時，地上的錢會一起算進你的口袋，用得到的掉落物也會一起收。',
-  '回來的人會掉<b>彈匣</b>（橘光）、<b>醫療包</b>（綠光），偶爾掉<b>手榴彈</b>；彈藥或生命不足時掉落率會提高。靠近就會自動吸過來，約 40 秒後消失。',
+  '一整波<b>毫髮無傷</b>可以拿到額外獎勵；活屍身上還有生前的零錢和鈔票，這一波結束時，地上的錢會一起算進你的口袋，用得到的掉落物也會一起收。',
+  '活屍會掉<b>彈匣</b>（橘光）、<b>醫療包</b>（綠光），偶爾掉<b>手榴彈</b>；彈藥或生命不足時掉落率會提高。靠近就會自動吸過來，約 40 秒後消失。',
   '各樓層的<b>彈藥櫃與醫療櫃</b>每一波可用一次（按 E）。按 <b>M</b> 打開地圖找它們。',
   '<b>膿腫者</b>死亡會爆炸並留下毒氣；<b>巨屍</b>咆哮後會衝鋒，引他撞牆再打頭。',
   '聲音是你最好的朋友：戴上耳機，注意腳步、低吼與遠方的動靜。',
-  '<b>推理本（J）</b>：看到、撿到、聽到的線索會自己記下來。把詞填進句子，到「問的地方」<b>擲筊</b>：聖筊就是對了，笑筊、陰筊會告訴你對了幾個。',
-  '<b>三把火</b>：被嚇到、犯了鬼月禁忌會熄一把；全熄就「失魂」。到阿嬤的遺照前收驚，或站在收音機旁讓小鈴數到十。',
-  '<b>鬼月禁忌</b>：晚上莫吹口哨、有人叫你的名字莫回頭、路邊的紅包莫撿、肩膀莫讓人拍。',
+  '<b>筆記本（J）</b>：線索會自己記下來，「到目前為止」那一頁寫著你知道的事。把詞填進句子，到阿嬤的照片前<b>擲筊</b>（丟兩片筊杯問阿嬤）：聖筊＝全對；笑筊、陰筊會告訴你對了幾個。',
+  '<b>鬼月禁忌</b>：晚上不要吹口哨、有人叫你名字不要回頭、路邊的紅包不要撿、被拍肩膀不要轉頭。',
 ];
 const keyGrid = (list, cls = '') => `<div class="mn-keys ${cls}">${list.map(([k, t]) => `<div><kbd>${esc(k)}</kbd><span>${esc(t)}</span></div>`).join('')}</div>`;
 
@@ -94,10 +93,10 @@ export class Menu {
         <div class="mn-over">${HEART}HUÍ SHÉN · SACRED HEART HOSPITAL</div>
         <h1 class="mn-title"><span>回</span><span>神</span></h1>
         <div class="mn-sub mn-chap">〈207 的燈〉聖心醫院</div>
-        <div class="mn-sub">午夜之後，這裡<b>不再收治活人</b>。</div>
+        <div class="mn-sub">阿嬤死在 207 號房。今晚，<b>她打電話叫你回來</b>。</div>
         <div class="mn-rule"></div>
         <div class="mn-btns">
-          <button class="mn-btn primary" id="startBtn">單人<small>撐過一波波殭屍 · 查出 207 那一夜的事</small></button>
+          <button class="mn-btn primary" id="startBtn">單人<small>撐過一波波活屍 · 查出阿嬤在 207 守著什麼</small></button>
           <button class="mn-btn" data-mode="coop">合作生存<small>2–4 人連線 · 倒地可互相救援</small></button>
           <button class="mn-btn" data-mode="pvp">對戰死鬥<small>2–8 人 · 各自為戰，可加入殭屍騷擾（非正史）</small></button>
           <div id="menuModes"></div>

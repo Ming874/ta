@@ -355,7 +355,7 @@ export class ShopUI {
     const g = this.game;
     const sp = SPECIAL[waveKind((g.round || 0) + 1)];
     this.restEl.innerHTML = g.phase === 'shop' || g.phase === 'break'
-      ? `下一波還有 <b>${Math.max(0, Math.ceil(g.restT))}</b> 秒${g.net ? '' : ' · 買東西時暫停'}<br />下一次：第 ${(g.round || 0) + 1} 次燈篙${sp ? ` · <i>${esc(sp.name)}</i>` : ''}` : '';
+      ? `下一波還有 <b>${Math.max(0, Math.ceil(g.restT))}</b> 秒${g.net ? '' : ' · 買東西時暫停'}<br />下一波：第 ${(g.round || 0) + 1} 波${sp ? ` · <i>${esc(sp.name)}</i>` : ''}` : '';
   }
 
   renderTabs() {
@@ -509,7 +509,7 @@ export class ShopUI {
     }
     if (it.id === 'heal') {
       const rows = `<span>生命</span>${bar(p.hp / p.maxHp, 1)}<em>${Math.ceil(p.hp)}</em><em class="${p.hp < p.maxHp ? 'up' : ''}">${p.hp < p.maxHp ? `→${p.maxHp}` : ''}</em>`;
-      return `<div class="sh-stats ammo">${rows}</div><div class="sh-facts"><span>每點生命<b>1</b> 元</span><span>燈篙暗下時也會自動回復 <b>20</b></span></div>`;
+      return `<div class="sh-stats ammo">${rows}</div><div class="sh-facts"><span>每點生命<b>1</b> 元</span><span>每一波結束時也會自動回復 <b>20</b></span></div>`;
     }
     return '';
   }

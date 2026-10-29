@@ -6,7 +6,7 @@ import { models } from './ghosts.js';
 // 分類:有人在(跟著你的腳步、沿牆跟著你的敲擊、頸後呼吸、繞著頭轉的低語、背後跑過去)/ 聲音的空間把戲 /
 //       門(慢慢自己打開、背後的門輕輕關上、整條走廊的門依序甩上)/ 東西被丟出來、轉頭前後不一樣 /
 //       看得見的(視線邊緣跑過的影子、你一轉頭就靠近的人、手電筒一閃就不見的人、窗玻璃裡站在你背後的人)/
-//       院內廣播故障重播、護理呼叫鈴、太平間〈點名〉、隔離房從裡面敲門、停電之後有東西變了。
+//       醫院廣播故障重播、護理呼叫鈴、太平間〈點名〉、隔離房從裡面敲門、停電之後有東西變了。
 // 每種都看玩家的位置、朝向、明暗與最近的驚嚇(導演:冷卻 + 疲勞 + 幕次);文字一律從 lines.js 取。
 // 門一律透過互動系統的門(game.interact.doors:setState / colliders),碰撞盒跟著更新;多人時不動門(門狀態是共享的)。
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -107,7 +107,7 @@ export function scareKinds(h) {
 
   const K = {
     // =================== 有人在 ===================
-    // 跟著你的腳步:你走它走、你停它停(停下來之後多一步);回頭就沒了。第二幕起偶爾是鄭玉蘭巡房(病歷板的夾子)
+    // 跟著你的腳步:你走它走、你停它停(停下來之後多一步);回頭就沒了。第二幕起偶爾是林秀英巡房(病歷板的夾子)
     pace: { ok: (c) => indoor(c) && P().speedNorm > 0.3 && !c.zNear && !h._pace, run(c) {
       const trail = [], zheng = act() >= 2 && Math.random() < 0.4;
       let acc = 0, lx = c.px, lz = c.pz, t = 0, still = 0, steps = 0, done = false;
@@ -136,7 +136,7 @@ export function scareKinds(h) {
       });
       return true;
     } },
-    // 沿著牆跟著你的敲擊(三次,一次比一次近);第二幕起鄭玉蘭提醒:聽到敲門不要開
+    // 沿著牆跟著你的敲擊(三次,一次比一次近);第二幕起林秀英提醒:聽到敲門不要開
     knockFollow: { ok: (c) => indoor(c) && !!wallBeside(c, 2.4, 1.2), run(c) {
       const sets = act() >= 3 ? 4 : 3;
       for (let i = 0; i < sets; i++) h.after(i * rand(3.2, 4.4), () => {
@@ -174,14 +174,14 @@ export function scareKinds(h) {
       h.watch((dt) => { t += dt; const k = Math.min(1, t / 3.4); pos.x = X.x0 + (X.x1 - X.x0) * k; pos.z = X.z0 + (X.z1 - X.z0) * k; return k < 1; });
       return X;
     } },
-    // 護理呼叫鈴在空病房響(第二幕起鄭玉蘭回應)
+    // 護理呼叫鈴在空病房響(第二幕起林秀英回應)
     nurseCall: { ok: (c) => indoor(c) && !!bellSpot(c), run(c) {
       const s = bellSpot(c);
       ghost.callBell({ x: s.x, y: lv(c) + 1.3, z: s.z });
       if (act() >= 2) cue('call', 0.5, undefined, 3.2);
       return s;
     } },
-    // 院內廣播故障重播(萬嵐的集合廣播系統;STORY.md §1.10:合成、甜美、制式,叫人集合的喇叭都裝了誘集模組)
+    // 醫院廣播故障重播(大新的集合廣播系統;STORY.md §1.10:合成、甜美、制式,叫人集合的喇叭都裝了誘集模組)
     paHijack: { ok: () => !!W.pick('pa', { round: game.round, phase: game.phase }) && !(W.busy && W.cur?.prio >= 8), run() {
       const l = W.pick('pa', { round: game.round, phase: game.phase });
       sfx.pa('up');
@@ -196,7 +196,7 @@ export function scareKinds(h) {
       h.after(rand(0.4, 1.2), () => { ghost.creakLong({ x: w.cx, y: w.y + 1.2, z: w.cz }, 3.8); creep(w, P().pos.x, P().pos.z, rand(3.6, 4.6)); });
       return w;
     } },
-    // 背後剛經過的門,輕輕關上了(第二幕起:鄭玉蘭說「門要關好」)
+    // 背後剛經過的門,輕輕關上了(第二幕起:林秀英說「門要關好」)
     doorClose: { ok: (c) => sp() && !!closeWay(c), run(c) {
       const w = closeWay(c);
       D().setState(w, 'closed', { sound: true, net: false });

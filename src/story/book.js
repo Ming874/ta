@@ -2,7 +2,7 @@ import './book.css';
 import { QUESTION, WORDS, CATS, THROW } from './clues.js';
 import { sfx, ix as ixs } from '../audio.js';
 
-// 推理本畫面(J):左頁是題目與填空句,右頁是詞庫/線索卡。
+// 筆記本畫面(J):左頁是題目與填空句,右頁是詞庫/線索卡。
 // 打開時放開滑鼠鎖定(要用滑鼠點/拖曳);單人世界暫停;多人世界不停(本機玩家不能動,受傷自動收起)。
 // [J] / [E] 收起(重新鎖定滑鼠);[Esc] 收起並叫出暫停選單;[1]~[7] 選空格;右鍵清除空格。
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -11,7 +11,7 @@ const BL = Object.keys(QUESTION.blanks);
 
 export class Book {
   constructor(game, D) {
-    this.game = game; this.D = D; this.isOpen = false; this.sel = null; this.tab = 'words'; this.card = null; this.el = null; this.hurt = 0;
+    this.game = game; this.D = D; this.isOpen = false; this.sel = null; this.tab = 'notes'; this.card = null; this.el = null; this.hurt = 0;
     window.addEventListener('keydown', (e) => this.onKey(e), true);
   }
   canOpen() {
@@ -39,13 +39,16 @@ export class Book {
     const d = /^(?:Digit|Numpad)([1-7])$/.exec(e.code);
     if (d) { this.select(BL[+d[1] - 1]); return; }
     if (e.code === 'Backspace' || e.code === 'Delete') { if (this.sel) { this.D.clear(this.sel); ixs.paper?.(); this.draw(); } return; }
-    if (e.code === 'KeyQ' || e.code === 'BracketLeft') { this.tab = 'words'; this.draw(); return; }
-    if (e.code === 'KeyW' || e.code === 'BracketRight') { this.tab = 'cards'; this.D.seenAll(); this.draw(); }
+    const TABS = ['notes', 'words', 'cards'], ti = TABS.indexOf(this.tab);
+    if (e.code === 'KeyQ' || e.code === 'BracketLeft') { this.tab = TABS[Math.max(0, ti - 1)]; this.draw(); return; }
+    if (e.code === 'KeyW' || e.code === 'BracketRight') { this.tab = TABS[Math.min(2, ti + 1)]; if (this.tab === 'cards') this.D.seenAll(); this.draw(); }
   }
   open() {
     if (this.isOpen || !this.canOpen()) return false;
     const g = this.game;
     if (!this.el) this.build();
+    if (!this.isOpen && !this.D.hintBlank) this.tab = 'notes'; // 打開時先看〈到目前為止〉
+    try { g.story?.notes?.bookOpened?.(); } catch { /* 略 */ }
     this.isOpen = true;
     g.bookOpen = true; // input.js:放開滑鼠鎖定時不要叫出暫停選單
     this.paused = !g.paused;
@@ -77,7 +80,7 @@ export class Book {
     } else done();
     return true;
   }
-  select(b) { this.sel = b && this.sel === b ? null : b; this.tab = 'words'; this.draw(); }
+  select(b) { this.sel = b && this.sel === b ? null : b; if (b) this.tab = 'words'; this.draw(); }
   put(b, w) {
     if (!b || !w) return;
     if (this.D.fill(b, w)) {
@@ -118,18 +121,24 @@ export class Book {
     const sent = QUESTION.sentences.map((s) => `<p>${esc(s).replace(/\{(b\d)\}/g, (_, b) => slot(b))}</p>`).join('');
     const n = D.filled(), last = st.last;
     const lastTxt = last ? `上一次：${THROW.name[last.result]}${last.result === 'sheng' ? '' : `，對了 ${last.n} 個，共 ${last.m} 個`}` : '';
-    const hint = solved ? '' : n === QUESTION.m ? '<div class="dd-hint ready">已填好。到 2F 護理站阿嬤的遺照前，按住 <kbd>E</kbd> 擲筊。</div>'
+    const hint = solved ? '' : n === QUESTION.m ? '<div class="dd-hint ready">已填好。到 2F 護理站阿嬤的照片前，按住 <kbd>E</kbd> 擲筊（丟兩片筊杯問阿嬤：一正一反＝聖筊＝全對）。</div>'
       : `<div class="dd-hint">點一個空格，再從右頁挑一個詞（也可以直接拖過去）。線索越多，詞越多。</div>`;
     const truth = solved ? `<div class="dd-truth"><div class="dd-seal">聖筊</div><h3>最後一頁</h3><p>${esc(QUESTION.truth)}</p></div>` : '';
-    this.el.querySelector('.dd-l').innerHTML = `<div class="dd-hd"><span>推理本</span><span>〈207 的燈〉聖心醫院</span></div>
+    this.el.querySelector('.dd-l').innerHTML = `<div class="dd-hd"><span>筆記本</span><span>〈207 的燈〉聖心醫院</span></div>
       <h2>${esc(QUESTION.title)}</h2><div class="dd-sent${solved ? ' solved' : ''}">${sent}</div>
       <div class="dd-stat"><span>已填 ${n}／${QUESTION.m}</span>${lastTxt ? `<span>${esc(lastTxt)}</span>` : ''}</div>${hint}${truth}`;
     if (dragOnly) return;
     // ---- 右頁:詞庫 / 線索 ----
     const cards = D.cards(), fresh = st.fresh.length;
-    const tabs = `<nav class="dd-tabs"><button data-tab="words" class="${this.tab === 'words' ? 'on' : ''}">詞庫 <small>${D.words().length}</small></button><button data-tab="cards" class="${this.tab === 'cards' ? 'on' : ''}">線索 <small>${cards.length}</small>${fresh && this.tab !== 'cards' ? '<i>新</i>' : ''}</button><button class="dd-x" title="收起">×</button></nav>`;
+    const notes = this.game.story?.notes, nfresh = notes?.fresh || 0;
+    const tabs = `<nav class="dd-tabs"><button data-tab="notes" class="${this.tab === 'notes' ? 'on' : ''}">到目前為止${nfresh && this.tab !== 'notes' ? '<i>新</i>' : ''}</button><button data-tab="words" class="${this.tab === 'words' ? 'on' : ''}">可以用的詞 <small>${D.words().length}</small></button><button data-tab="cards" class="${this.tab === 'cards' ? 'on' : ''}">線索 <small>${cards.length}</small>${fresh && this.tab !== 'cards' ? '<i>新</i>' : ''}</button><button class="dd-x" title="收起">×</button></nav>`;
     let body = '';
-    if (this.tab === 'words') {
+    if (this.tab === 'notes') { // 〈到目前為止〉:下一步 + 你現在知道的事(新的在上面)
+      const nx = notes?.next?.(), items = notes?.list?.() || [], seen = this.notesSeen ?? -1;
+      body = `<div class="dd-next"><b>下一步：</b>${nx ? `${esc(nx.goal)}${nx.why ? `<small>｜${esc(nx.why)}</small>` : ''}` : '活下去，等天亮。'}</div>`
+        + (items.length ? `<ol class="dd-notes">${items.map((it) => `<li class="${it.t > seen ? 'new' : ''}">${esc(it.text)}</li>`).join('')}</ol>` : '<div class="dd-empty">還沒有寫什麼。</div>');
+      notes?.seen?.(); this.notesSeen = this.game.time;
+    } else if (this.tab === 'words') {
       const words = D.words(), selCat = this.sel ? QUESTION.blanks[this.sel].cat : null, used = new Set(Object.values(fill));
       if (!words.length) body = '<div class="dd-empty">還沒有詞。看到、撿到、聽到的線索會自己記進來。</div>';
       else body = Object.entries(CATS).map(([cat, nm]) => {

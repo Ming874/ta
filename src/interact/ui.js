@@ -108,9 +108,9 @@ export class IxUI {
     const body = tape && note.lines
       ? `<ol class="tr">${note.lines.map(([who, text]) => `<li><b>${esc(who)}</b>${esc(text)}</li>`).join('')}</ol>`
       : `<div class="tx">${esc(note.body).replace(/\n/g, '<br>')}</div>`;
-    el.innerHTML = `<div class="sheet"><div class="kd">${esc(KIND[kind] || '文件')}${note.where ? ` · ${esc(note.where)}` : ''}</div>
+    el.innerHTML = `<div class="sheet"><div class="kd">${esc(KIND[kind] || '文件')}${note.where && typeof note.where === 'string' ? ` · ${esc(note.where)}` : ''}</div>
       <h2>${esc(note.title)}</h2>${note.author || note.date ? `<div class="meta">${esc([note.author, note.date].filter(Boolean).join(' · '))}</div>` : ''}${body}</div>
-      <div class="ft">${withKeys(tape ? '[E] 收起（錄音帶繼續播） · [J] 推理本 · [Esc] 暫停選單' : '[E] 收起 · [J] 推理本 · [Esc] 暫停選單')}${this.game.net ? ' · 移動或受傷會自動收起' : ''}</div>`;
+      <div class="ft">${withKeys(tape ? '[E] 收起（錄音帶繼續播） · [J] 筆記本 · [Esc] 暫停選單' : '[E] 收起 · [J] 筆記本 · [Esc] 暫停選單')}${this.game.net ? ' · 移動或受傷會自動收起' : ''}</div>`;
     const m = { el, kind: 'reader', note, onClose: (s) => { if (s) ixs.paperClose(); opts.onClose?.(); } };
     if (tape) m.mark = (i) => { const li = el.querySelectorAll('.tr li'); li.forEach((x, j) => x.classList.toggle('on', j === i)); li[i]?.scrollIntoView?.({ block: 'nearest' }); };
     this.openModal(m);
@@ -162,7 +162,7 @@ export class IxUI {
     const draw = () => {
       el.innerHTML = `<div class="pad"><div class="kt">${esc(o.title)}</div><div class="ks">${esc(o.sub?.() || '')}</div>
         <ul>${o.rows().map((r, i) => `<li class="${r.on ? 'on' : ''}${r.can === false ? ' no' : ''}"><kbd class="kc">${i + 1}</kbd><span>${esc(r.label)}</span><em>${r.on ? '供電中' : r.can === false ? '無法供電' : '斷電'}</em></li>`).join('')}</ul>
-        <div class="ft">${withKeys(`[1]~[${o.rows().length}] 切換迴路 · [E] 關上`)}</div></div>`;
+        <div class="ft">${withKeys(`[1]~[${o.rows().length}] 切換供電 · [E] 關上`)}</div></div>`;
     };
     const m = {
       el, kind: 'panel', keys: new Set(), redraw: draw,

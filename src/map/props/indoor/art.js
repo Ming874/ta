@@ -437,7 +437,7 @@ export function dosScreen(kind = 'his') {
     reseed(kind.length * 61);
     c.fillStyle = kind === 'blue' ? '#0a1a8a' : '#020402'; c.fillRect(0, 0, w, h);
     const col = kind === 'blue' ? '#e8e8f8' : '#40d860';
-    const lines = kind === 'blue' ? ['*** STOP: 0x0000007B', '', 'INACCESSIBLE_BOOT_DEVICE', '', 'PATIENT RECORD 207', 'STATUS: ????????', '', 'DO NOT RESTART'] : ['萬嵐 HIS v4', '病患查詢 >> 207', '姓名：無名氏', '入院：1999/09/24', '狀態：封存', '', '', 'C:\\>_'];
+    const lines = kind === 'blue' ? ['*** STOP: 0x0000007B', '', 'INACCESSIBLE_BOOT_DEVICE', '', 'PATIENT RECORD 207', 'STATUS: ????????', '', 'DO NOT RESTART'] : ['大新　病歷電腦', '病患查詢 >> 207', '姓名：無名氏', '入院：1999/09/24', '狀態：鎖住', '', '', 'C:\\>_'];
     lines.forEach((t, k) => text(c, t, 8, 12 + k * 16, { size: 12, color: col, align: 'left', font: 'monospace', weight: 'normal' }));
     for (let y = 0; y < h; y += 2) { c.fillStyle = 'rgba(0,0,0,0.25)'; c.fillRect(0, y, w, 1); }
   });
@@ -523,7 +523,7 @@ function drops(c, n, x0, y0, w, h, rmin, rmax, a = 0.85) {
 // 有法線與粗糙度;floor = 地面版);其餘(水漬、黴、鏽、煙燻、嘔吐物…)維持這裡的 pi_decal 圖集
 export function decal(kind, v = 0, floor = false) {
   if (isStainKind(kind)) return stainRect(kind, v, floor);
-  const S = { pool: [256, 256], splat: [128, 128], drip: [96, 256], smear: [128, 256], hand: [96, 128], feet: [128, 256], stain: [192, 192], scratch: [128, 160], burn: [128, 128], mold: [128, 128], drag: [128, 256], dirt: [192, 192], rust: [64, 192], vomit: [128, 128], water: [192, 192], soot: [128, 192] }[kind] || [128, 128];
+  const S = { pool: [256, 256], splat: [128, 128], drip: [96, 256], smear: [128, 256], hand: [96, 128], feet: [128, 256], stain: [192, 192], scratch: [128, 160], burn: [128, 128], mold: [128, 128], drag: [128, 256], dirt: [192, 192], rust: [64, 192], vomit: [128, 128], water: [192, 192], soot: [128, 192], scuff: [192, 192], grime: [128, 160], kick: [256, 64], lane: [128, 256], mud: [128, 256], rub: [256, 48] }[kind] || [128, 128];
   const [w, h] = S;
   return decalRect(`dec:${kind}:${v}`, w, h, (c) => {
     reseed(kind.length * 991 + v * 13 + 7);
@@ -600,6 +600,49 @@ export function decal(kind, v = 0, floor = false) {
       c.filter = 'blur(1.5px)';
       for (let k = 0; k < 6; k++) { const x = w / 2 + rr(-20, 20), l = rr(h * 0.35, h); const g = c.createLinearGradient(0, 0, 0, l); g.addColorStop(0, 'rgba(110,50,20,0.7)'); g.addColorStop(1, 'rgba(110,50,20,0)'); c.fillStyle = g; c.fillRect(x, 0, rr(3, 10), l); }
       c.filter = 'none';
+    } else if (kind === 'scuff') {
+      // [scene6] 鞋跟/腳輪的黑色橡膠刮痕:短弧線、深淺不一(走廊轉角、門口)
+      for (let k = 0; k < 34; k++) {
+        const x = rr(16, w - 16), y = rr(16, h - 16), l = rr(8, 46), a = rr(0, 6.28), bend = rr(-0.5, 0.5);
+        c.strokeStyle = `rgba(${rr(8, 26)},${rr(8, 22)},${rr(8, 20)},${rr(0.18, 0.6)})`; c.lineWidth = rr(1, 3.2); c.lineCap = 'round';
+        c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + Math.cos(a + bend) * l * 0.5, y + Math.sin(a + bend) * l * 0.5, x + Math.cos(a) * l, y + Math.sin(a) * l); c.stroke();
+      }
+      c.filter = 'blur(5px)'; c.fillStyle = 'rgba(30,26,20,0.12)'; softBlob(c, w / 2, h / 2, 70, 12, 0.8); c.fill(); c.filter = 'none';
+    } else if (kind === 'grime') {
+      // [scene6] 門邊的手垢:手推門的位置一團灰褐色油污 + 幾道指痕(下緣往下淡)
+      c.filter = 'blur(7px)';
+      for (let k = 0; k < 5; k++) { c.fillStyle = `rgba(${rr(40, 60)},${rr(34, 48)},${rr(26, 36)},${rr(0.12, 0.26)})`; softBlob(c, w / 2 + rr(-12, 12), h * 0.45 + rr(-20, 20), rr(22, 40), 10, rr(1.1, 1.6)); c.fill(); }
+      c.filter = 'blur(1.5px)';
+      for (let k = 0; k < 9; k++) { c.fillStyle = `rgba(40,32,24,${rr(0.15, 0.32)})`; c.beginPath(); c.ellipse(w / 2 + rr(-26, 26), h * 0.4 + rr(-30, 30), rr(3, 6), rr(7, 14), rr(-0.4, 0.4), 0, 7); c.fill(); }
+      c.filter = 'none';
+    } else if (kind === 'kick' || kind === 'rub') {
+      // [scene6] 踢痕帶(門腳、牆腳)/ 推床撞痕(牆面 0.7~0.9m 的橫向擦痕)
+      c.filter = 'blur(2px)';
+      for (let k = 0; k < (kind === 'kick' ? 26 : 18); k++) {
+        const y = kind === 'kick' ? h - rr(4, h * 0.85) : h / 2 + rr(-h * 0.3, h * 0.3), x = rr(0, w * 0.7), l = rr(20, w * 0.5);
+        c.strokeStyle = `rgba(${rr(14, 34)},${rr(12, 28)},${rr(10, 24)},${rr(0.12, 0.42)})`; c.lineWidth = rr(1.5, kind === 'kick' ? 6 : 4); c.lineCap = 'round';
+        c.beginPath(); c.moveTo(x, y); c.lineTo(x + l, y + rr(-4, 4)); c.stroke();
+      }
+      c.filter = 'blur(6px)'; const g = c.createLinearGradient(0, kind === 'kick' ? h : h / 2 + 12, 0, kind === 'kick' ? 0 : h / 2 - 12);
+      g.addColorStop(0, 'rgba(30,26,20,0.28)'); g.addColorStop(1, 'rgba(30,26,20,0)'); c.fillStyle = g; c.fillRect(6, 6, w - 12, h - 12); c.filter = 'none';
+    } else if (kind === 'lane') {
+      // [scene6] 走廊中央的動線磨耗:推床/輪椅的兩道輪痕 + 中間被鞋底磨得較暗的一帶(邊緣柔和)
+      c.filter = 'blur(10px)';
+      const g = c.createLinearGradient(0, 0, w, 0); g.addColorStop(0, 'rgba(26,22,16,0)'); g.addColorStop(0.5, 'rgba(26,22,16,0.2)'); g.addColorStop(1, 'rgba(26,22,16,0)');
+      c.fillStyle = g; c.fillRect(8, 10, w - 16, h - 20); c.filter = 'blur(1.2px)';
+      for (const x0 of [w * 0.33, w * 0.67]) for (let k = 0; k < 3; k++) { c.strokeStyle = `rgba(14,12,10,${rr(0.08, 0.2)})`; c.lineWidth = rr(1.5, 3); c.beginPath(); const x = x0 + rr(-5, 5); c.moveTo(x, 0); c.bezierCurveTo(x + rr(-6, 6), h * 0.33, x + rr(-6, 6), h * 0.66, x + rr(-5, 5), h); c.stroke(); }
+      for (let k = 0; k < 16; k++) { c.strokeStyle = `rgba(12,10,8,${rr(0.1, 0.35)})`; c.lineWidth = rr(1, 2.4); const x = rr(20, w - 20), y = rr(10, h - 10); c.beginPath(); c.moveTo(x, y); c.lineTo(x + rr(-10, 10), y + rr(-14, 14)); c.stroke(); }
+      c.filter = 'none';
+    } else if (kind === 'mud') {
+      // [scene6] 雨夜從外面踩進來的泥鞋印(交錯、越往裡越淡)
+      for (let k = 0; k < 6; k++) {
+        const x = w / 2 + (k % 2 ? 16 : -16), y = h - 24 - k * 40, a = 0.5 - k * 0.07;
+        c.fillStyle = `rgba(60,46,30,${a})`; c.beginPath(); c.ellipse(x, y - 10, 11, 17, k % 2 ? 0.08 : -0.08, 0, 7); c.fill();
+        c.beginPath(); c.ellipse(x, y + 14, 9, 8, 0, 0, 7); c.fill();
+        c.globalCompositeOperation = 'destination-out'; c.fillStyle = 'rgba(0,0,0,0.5)';
+        for (let j = 0; j < 5; j++) c.fillRect(x - 9, y - 22 + j * 6, 18, 2); // 鞋底紋
+        c.globalCompositeOperation = 'source-over';
+      }
     } else if (kind === 'vomit') {
       c.fillStyle = 'rgba(120,110,40,0.7)'; softBlob(c, w / 2, h / 2, 40, 12, 0.7); c.fill();
       for (let k = 0; k < 20; k++) { c.fillStyle = `rgba(${rr(90, 140)},${rr(80, 120)},30,0.8)`; c.beginPath(); c.arc(rr(20, w - 20), rr(30, h - 30), rr(2, 5), 0, 7); c.fill(); }

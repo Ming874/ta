@@ -2,10 +2,10 @@
 // 她叫得動你幾次 = 難度:簡單 無限(越後面越小聲)、普通 3、困難 1、惡夢 0(「無人叫你」)。
 //
 // 單人:HP 歸零 → 不是馬上死:世界褪色、心跳慢下來、〈望春風〉、她叫你 → game.motion.revive()(黑、她的一句、眨眼張開)
-//       → 帶一點血起來;身邊的回來的人被推開、晃一下(在黑畫面裡做),一口氣、一下亮光,3 秒內不會再被打。
-//       叫幾次不寫數字:她的聲音一次比一次小(字卡變淡、句子變短),小鈴也聽得出來;最後一次她自己說「氣力賰無偌濟矣」。
-//       叫不動了 → 真的倒下(原本的死亡流程),最後一句:她「阿孫……阿嬤叫袂動矣。」/ 惡夢:小鈴「……喂？……收到請回答。」
-// 合作:隊友救援的倒地照舊;流血至死的人,下一次燈篙(回合開始)由阿嬤叫回來(佔一次次數;沒有了就不回來,留在觀戰,
+//       → 帶一點血起來;身邊的活屍被推開、晃一下(在黑畫面裡做),一口氣、一下亮光,3 秒內不會再被打。
+//       叫幾次不寫數字:她的聲音一次比一次小(字卡變淡、句子變短),小美也聽得出來;最後一次她自己說「氣力賰無偌濟矣」。
+//       叫不動了 → 真的倒下(原本的死亡流程),最後一句:她「阿孫……阿嬤叫袂動矣。」/ 惡夢:小美「……喂？……收到請回答。」
+// 合作:隊友救援的倒地照舊;流血至死的人,下一次招魂燈(回合開始)由阿嬤叫回來(佔一次次數;沒有了就不回來,留在觀戰,
 //       全員倒地照樣由房主判定結束)。倒地時阿嬤只在耳邊說一句。對戰:完全不碰。
 // 每一次都記進 horror.remember('ama.call')(tag zheng)與 game.story.calls;結局〈天光〉會說她今晚叫了你幾次。
 import { line, seq } from './voice.js';
@@ -15,12 +15,12 @@ import { settings } from '../ui/settings.js';
 const CALLS = { easy: Infinity, normal: 3, hard: 1, nightmare: 0 };
 const HP = { easy: 50, normal: 35, hard: 30, nightmare: 25 };
 // 她叫你(字卡上的一句):依剩下幾次變小
-const CALL = { strong: '阿孫，轉來喔！', mid: '阿孫——轉來喔！', weak: '阿孫……轉來……', faint: '……阿孫……' };
+const CALL = { strong: '阿孫，回神喔！', mid: '阿孫——回神喔！', weak: '阿孫……回來……', faint: '……阿孫……' };
 // 醒來之後,她在耳邊說的一句(只到 2003 年:你三歲以前的事)
 const SMALL = [
-  '你細漢跋倒，阿嬤嘛是按呢叫你。叫一聲，你就家己爬起來。',
-  '欲暗矣，阿嬤佇護理站門口叫你，你就跑過來，鞋仔攏穿相反。',
-  '阿嬤叫你，你就攏會轉來。……對無？',
+  '你小時候跌倒，阿嬤也是這樣叫你。\n叫一聲，你就自己爬起來。',
+  '天黑了，阿嬤在護理站門口叫你，\n你就跑過來，鞋子都穿反了。',
+  '阿嬤叫你，你都會回來。……對不對？',
 ];
 
 export function installRevive(game, S) {
@@ -51,7 +51,7 @@ export function installRevive(game, S) {
   function lastWord() { // 叫不動了:最後一句(跟原本的死亡淡出一起)
     if (run.lastWord) return;
     run.lastWord = true;
-    if (run.calls > 0) { try { H()?.reveal?.('zheng'); } catch { /* 略 */ } line(game, 'ama', '阿孫……阿嬤叫袂動矣。', { ear: 'both' }); }
+    if (run.calls > 0) { try { H()?.reveal?.('zheng'); } catch { /* 略 */ } line(game, 'ama', '阿孫……阿嬤叫不動你了。', { ear: 'both' }); }
     else line(game, 'xl', '……喂？……收到請回答。');
   }
 
@@ -78,8 +78,8 @@ export function installRevive(game, S) {
     try { sfx.folk('ama', p.pos); } catch { /* 冷卻中 */ }
     setTimeout(() => line(game, 'ama', say, { ear: t === 'strong' ? 'both' : t === 'mid' ? 'left' : 'behind' }), 650);
     await new Promise((res) => setTimeout(res, 950));
-    // 黑、她的一句、眨眼張開(motion 代理的 revive)。字卡淡出、眼睛要張開的那一刻才把人扶起來、把回來的人推開
-    // (倒地的時候回來的人不會追你;太早起來牠們會在字卡期間走回來)
+    // 黑、她的一句、眨眼張開(motion 代理的 revive)。字卡淡出、眼睛要張開的那一刻才把人扶起來、把活屍推開
+    // (倒地的時候活屍不會追你;太早起來牠們會在字卡期間走回來)
     const hold = t === 'strong' ? 1700 : t === 'mid' ? 1500 : 1300;
     setTimeout(() => standUp(), M?.reduced ? 300 : 500 + 900 + hold + 250);
     if (M?.revive) {
@@ -100,7 +100,7 @@ export function installRevive(game, S) {
     p.downed = false; p.alive = true;
     p.hp = Math.min(p.maxHp, HP[diff()] ?? 35);
     g.ui?.setHP?.(p.hp, p.maxHp);
-    // 身邊的回來的人:推到 5.5 m 外(沿著原來的方向,碰到牆就停),晃一下
+    // 身邊的活屍:推到 5.5 m 外(沿著原來的方向,碰到牆就停),晃一下
     const L = g.world?.layout, li = L ? Math.max(0, L.levelOfY(p.pos.y + 0.3)) : 0;
     const walk = (x, z) => !L || (L.flagsAt(li, Math.floor(x / 2), Math.floor(z / 2)) & L.F.WALK) !== 0;
     for (const z of g.zombies) {
@@ -120,10 +120,10 @@ export function installRevive(game, S) {
 
   function afterLines(n, r, t) {
     const L = [];
-    if (t === 'faint') L.push(['ama', '……轉來就好。', 2.2, { ear: 'left', gap: 1.2 }]);
+    if (t === 'faint') L.push(['ama', '……回來就好。', 2.2, { ear: 'left', gap: 1.2 }]);
     else L.push(['ama', SMALL[(n - 1) % SMALL.length], undefined, { ear: 'left', gap: 1.2 }]);
-    if (t === 'weak') L.push(['ama', '阿嬤的氣力……賰無偌濟矣。', 3.2, { ear: 'left', gap: 1.6 }]);
-    if (n === 1) L.push(['xl', '又倒下去了？……有人在叫你耶。我聽到了。是一個阿嬤。', 5.2]);
+    if (t === 'weak') L.push(['ama', '阿嬤的力氣……剩不多了。', 3.2, { ear: 'left', gap: 1.6 }]);
+    if (n === 1) L.push(['xl', '又倒下去了？有人在叫你耶。\n我聽到了，是一個阿嬤。', 5.2]);
     else if (t === 'mid') L.push(['xl', '……她的聲音，比剛剛小了。', 3]);
     else if (t === 'weak') L.push(['xl', '……她剛剛那一聲，好遠。', 2.8]);
     seq(game, [1.4, ...L], { alive: () => game.state === 'playing' });
@@ -141,7 +141,7 @@ export function installRevive(game, S) {
     el.remove();
   }
 
-  // ---------- 合作:倒地照舊;流血至死 → 下一次燈篙由阿嬤叫回來(佔一次) ----------
+  // ---------- 合作:倒地照舊;流血至死 → 下一次招魂燈由阿嬤叫回來(佔一次) ----------
   function wrapCoop() {
     const m = game.net?.mode;
     if (!m || m === run.coopWrapped || typeof m.respawn !== 'function' || typeof m.bleedOut !== 'function') return;
@@ -165,7 +165,7 @@ export function installRevive(game, S) {
     if (game.net && !game.net.mode?.pvp && !game.net.pvp) {
       wrapCoop();
       const p = game.player; // 合作倒地(等隊友):阿嬤在耳邊說一句
-      if (p.downed && !run.coopDown && game.state === 'playing') { run.coopDown = true; setTimeout(() => line(game, 'ama', '阿孫，莫睏去。……阿嬤佇遮。', { ear: 'left' }), 1200); }
+      if (p.downed && !run.coopDown && game.state === 'playing') { run.coopDown = true; setTimeout(() => line(game, 'ama', '阿孫，不要睡。……阿嬤在這裡。', { ear: 'left' }), 1200); }
       else if (!p.downed) run.coopDown = false;
     }
     return true;

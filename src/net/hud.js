@@ -194,7 +194,7 @@ export class NetHud {
   }
   spectate(name) {
     if (!this.spec) return;
-    if (name) { this.spec.textContent = `觀戰中：${name} · 左鍵切換 · 燈篙熄的時候回來`; this.spec.classList.add('on'); }
+    if (name) { this.spec.textContent = `觀戰中：${name} · 左鍵切換 · 這一波打完就回來`; this.spec.classList.add('on'); }
     else this.spec.classList.remove('on');
   }
   respawn(t, killer) {
@@ -267,7 +267,7 @@ export class NetHud {
       this.top.classList.add('on');
     } else if ((g.phase === 'break' || g.phase === 'shop') && g.state === 'playing') {
       const need = m.needed(), have = m.readyCount();
-      const html = `<span>準備下一次燈篙 <b>${have}/${need}</b></span><span class="dim">${m.voted ? '你已準備（再按 N 取消）' : '按 N 準備'}</span><span class="time">${mmss(g.restT || 0)}</span>`;
+      const html = `<span>準備下一波 <b>${have}/${need}</b></span><span class="dim">${m.voted ? '你已準備（再按 N 取消）' : '按 N 準備'}</span><span class="time">${mmss(g.restT || 0)}</span>`;
       if (html !== this._topHtml) { this.top.innerHTML = html; this._topHtml = html; }
       this.top.classList.add('on');
       m.shopText?.();
@@ -304,7 +304,7 @@ export class NetHud {
         return [id, [s.nameOf(id) + (id === s.hostSlot ? ' ★' : ''), t.kills, t.downs, t.revives, st, `${ping(id)}ms`]];
       });
     }
-    const title = s.pvp ? `對戰死鬥（模擬戰，非正史） · 先到 ${m.limit} 殺` : `合作 · 第 ${s.game.round} 次燈篙`;
+    const title = s.pvp ? `對戰死鬥（模擬戰，非正史） · 先到 ${m.limit} 殺` : `合作 · 第 ${s.game.round} 波`;
     this.board.innerHTML = `<h3><span>${esc(title)}</span><small>房間 ${esc(s.room.code)}</small></h3><table><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr>${rows.map(([id, r]) => `<tr class="${id === s.me ? 'me' : ''}">${r.map((v, i) => `<td class="${i === 4 && !s.pvp ? 'st' : ''}">${esc(v)}</td>`).join('')}</tr>`).join('')}</table>
       <div class="foot">延遲 ${Math.round(c.rtt)}ms ±${Math.round(c.jitter)} · 下載 ${(c.stats.inBps / 1024).toFixed(1)} KB/s · 上傳 ${(c.stats.outBps / 1024).toFixed(1)} KB/s · ★ 房主</div>`;
   }

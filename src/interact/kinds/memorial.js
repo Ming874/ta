@@ -4,7 +4,7 @@ import { A, emit, burst, tone } from '../../audio/core.js';
 import { THROW } from '../../story/clues.js';
 
 // 2F 護理站「問的地方」:阿嬤的遺照、乾掉的白色康乃馨、香爐、一副筊杯(2004 年金水伯放的)。
-//   看著遺照 0.8 秒 → 線索卡 hc.13(推理本系統自己判斷);按 [E] 看遺照;推理本填好之後按住 [E] 擲筊。
+//   看著遺照 0.8 秒 → 線索卡 hc.13(筆記本系統自己判斷);按 [E] 看遺照;筆記本填好之後按住 [E] 擲筊。
 //   擲筊是本機的(多人時隊友看不到你的筊),結果交給 game.deduce.resolve();聖筊替全隊打開 207。
 // 筊杯:一面平(陽,「正」)、一面圓(陰,「反」)。聖筊 = 一正一反;笑筊 = 兩正;陰筊 = 兩反。
 // 材質沿用互動物件的 ix:plastic(頂點色;開機預編譯時已經在場景裡),不新增 shader;不投影、不碰燈。
@@ -56,10 +56,10 @@ function photoTex() {
     for (let r = 0; r < 3; r++) for (let k = 0; k < 4; k++) { c.fillStyle = r === 1 && k === 2 ? '#fff4cc' : '#2c2b28'; c.fillRect(22 + k * 40, 26 + r * 56, 26, 38); }
     c.fillStyle = '#5a564c'; c.fillRect(110, 92, 14, 30); c.beginPath(); c.arc(117, 88, 6, 0, Math.PI * 2); c.fill(); // 窗裡的人
     c.fillStyle = '#f4f0e2'; c.fillRect(104, 100, 18, 12);
-    c.fillStyle = '#222'; c.font = `bold 5px ${FONT}`; c.fillText('莫驚', 106, 106); c.fillText('阿嬤', 106, 111);
+    c.fillStyle = '#222'; c.font = `bold 5px ${FONT}`; c.fillText('不要怕', 106, 106); c.fillText('阿嬤', 106, 111);
     for (let i = 0; i < 900; i++) { c.fillStyle = `rgba(${Math.random() < 0.5 ? '0,0,0' : '255,255,255'},${Math.random() * 0.12})`; c.fillRect(10 + Math.random() * (w - 20), 10 + Math.random() * (h - 56), 1.5, 1.5); } // 網點與雜訊
     c.fillStyle = '#2a2620'; c.font = `bold 13px ${FONT}`; c.textAlign = 'center';
-    c.fillText('護理長　鄭玉蘭', w / 2, h - 28); c.font = `11px ${FONT}`; c.fillText('1946 – 2003', w / 2, h - 12);
+    c.fillText('護理長　林秀英', w / 2, h - 28); c.font = `11px ${FONT}`; c.fillText('1946 – 2003', w / 2, h - 12);
   });
 }
 
@@ -170,9 +170,9 @@ export const memorial = {
       prompt: () => {
         const d = D();
         if (busy) { e.hold = 0; e.onTap = null; return { text: '擲筊中……', dim: true }; }
-        if (d && d.ready() && !d.solved()) { e.hold = THROW.hold; e.onTap = view; e.tapText = '看遺照'; e.holdText = '擲筊'; return '擲筊'; }
+        if (d && d.ready() && !d.solved()) { e.hold = THROW.hold; e.onTap = view; e.tapText = '看遺照'; e.holdText = '擲筊（問阿嬤對不對）'; return '擲筊'; }
         e.hold = 0; e.onTap = null;
-        return d && !d.solved() && d.filled() > 0 ? '看遺照（推理本還有空格）' : '看遺照';
+        return d && !d.solved() && d.filled() > 0 ? '看阿嬤的照片（筆記本還有空格）' : '看阿嬤的照片';
       },
       onUse: (ctx) => {
         if (busy) return false;
@@ -208,7 +208,7 @@ export const cctv = {
         api.ixs.switchClick?.(pos, true);
         api.note('h.c05');
         ix.flags.set('h.cctv.seen', true);
-        ix.after(6, () => api.game.deduce?.talk?.([['AM 1207 · 小鈴', '……快轉。我不想看人打架。', 2.8]]));
+        ix.after(6, () => api.game.deduce?.talk?.([['收音機 · 小美', '……快轉。我不想看人打架。', 2.8]]));
       },
     });
   },

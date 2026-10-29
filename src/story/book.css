@@ -93,3 +93,14 @@
 .ob-glint::after { transform: rotate(90deg); }
 .ob-glint.on { opacity: .9; animation: ob-tw 2.2s ease-in-out infinite; }
 @keyframes ob-tw { 0%, 100% { filter: brightness(.6); } 45% { filter: brightness(1.4); } 55% { filter: brightness(.9); } }
+
+/* 目標列的「為什麼」(CLARITY_PLAN §7.1):淡 40%、小一號 */
+.ob-line small { opacity: .6; font-size: .84em; letter-spacing: .12em; white-space: nowrap; }
+.ob-line.new small { animation: ob-in 2.4s ease-out; }
+.dd-next { margin: 0 0 1em; padding: .6em .8em; border: 1px solid rgba(122,29,20,.35); border-radius: .25em; background: rgba(255,248,230,.5); font: 1em/1.6 "Noto Serif TC", serif; color: #2a2018; }
+.dd-next b { color: #7a1d14; letter-spacing: .1em; }
+.dd-next small { opacity: .65; margin-left: .2em; font-size: .86em; }
+.dd-notes { margin: 0; padding: 0 0 0 1.2em; }
+.dd-notes li { margin: 0 0 .55em; font: .98em/1.75 "DFKai-SB", "BiauKai", "標楷體", "KaiTi", serif; color: #2e241b; }
+.dd-notes li.new { color: #7a1d14; animation: dd-new 1.6s ease-out; }
+@keyframes dd-new { from { background: rgba(200,140,60,.35); } to { background: transparent; } }

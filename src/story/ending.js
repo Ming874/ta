@@ -3,9 +3,9 @@
 //   game.story.ending.play(variant?, { fast })  開始(預設由 objectives 的 h.s.hold 完成時呼叫;variant 省略 = 依這一局決定)
 //   game.story.ending.decide() → 'secret' | 'good' | 'dark' | 'normal'     game.story.ending.active / .state()
 //
-// 一、最後一次燈篙熄 → 黑 → 「發財車沒有開出去。它繞到後巷，停在鐵網旁邊。」→ 你站在 2003 年家人看窗的鐵網前(anchors.alleyView)
-// 二、金水伯;三、紙條(有 hc.09:〔E〕交給金水伯);四、那一頁(有 hc.30:〔E〕打開);五、小鈴陪你數到十,天一聲一聲亮起來,阿嬤在「十」加進來;
-// 六、金水伯把三個守燈的人連起來;七、窗(好/秘密:燈暗一下又亮回來 → 小鈴「我自己去關」;苦:窗是黑的);八、207 的清晨(好/秘密);
+// 一、最後一次招魂燈熄 → 黑 → 「發財車沒有開出去。它繞到後巷，停在鐵網旁邊。」→ 你站在 2003 年家人看窗的鐵網前(anchors.alleyView)
+// 二、金水伯;三、紙條(有 hc.09:〔E〕交給金水伯);四、那一頁(有 hc.30:〔E〕打開);五、小美陪你數到十,天一聲一聲亮起來,阿嬤在「十」加進來;
+// 六、金水伯把三個守燈的人連起來;七、窗(好/秘密:燈暗一下又亮回來 → 小美「我自己去關」;苦:窗是黑的);八、207 的清晨(好/秘密);
 // 九、照片的背面、標題、片尾(致敬那一行)→〔回到主選單〕〔繼續守夜〕。
 // 規則:一直可以轉頭看(槍放下了);每一個〔E〕都有時間退路;Esc 照樣暫停(劇本用遊戲時間,暫停就停);按住空白鍵略過。
 // 多人:每個人看自己的結局(本機的推理結果);不移動玩家、不清怪(房主照常推進),只放字幕、那一頁與片尾。
@@ -17,14 +17,14 @@ import { CARD } from './clues.js';
 import { sfx, ghost } from '../audio.js';
 import { settings } from '../ui/settings.js';
 
-const NAME = { secret: '查房', good: '第七暝', dark: '熄燈', normal: '燈猶閣光' };
+const NAME = { secret: '查房', good: '第七晚', dark: '熄燈', normal: '燈還亮著' };
 const ONE = {
   secret: '護理長查完最後一間房。',
-  good: '「我醒了，玉蘭姐。」',
+  good: '「我醒了，秀英姐。」',
   dark: '燈熄了。不是她關的。',
-  normal: '逐暗攏光。二十三冬矣。',
+  normal: '每天晚上都亮著。二十三年了。',
 };
-const PAGE = ['5/12　封院第 14 天。燒退一點。左手腫。', '207 今天眼睛有動。我跟她說：燈我會顧，等你自己醒來，自己關。', '如果我走了，告訴我女兒：我不是 SARS。是針。'];
+const PAGE = ['5/12　封院第 14 天。燒退一點。左手腫。', '207 今天眼睛有動。我跟她說：燈我會顧，等你自己醒來，自己關。', '如果我走了，告訴淑芬：我不是 SARS。是針。'];
 const LAST = '告訴阿孫：阿嬤沒有不要回家。';
 const NUM = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
 
@@ -70,7 +70,7 @@ export function installEnding(game, S) {
     for (const c of [...box.children]) { c.classList.remove('on'); setTimeout(() => c.remove(), 800); }
     const d = document.createElement('div');
     d.className = 'st-line'; d.dataset.w = who;
-    const tag = { xl: 'AM 1207 · 小鈴', ks: '金水伯', ama: '阿嬤', ho: '來電 · 何啟明', pa: '院內廣播' }[who];
+    const tag = { xl: '收音機 · 小美', ks: '金水伯', ama: '阿嬤', ho: '電話 · 王醫師', pa: '醫院廣播' }[who];
     d.innerHTML = `${tag ? `<small>${tag}</small>` : ''}${esc(text)}`;
     box.appendChild(d);
     requestAnimationFrame(() => d.classList.add('on'));
@@ -152,7 +152,7 @@ export function installEnding(game, S) {
     X.tick(() => { const t = game.time - t0, k = t < 0.5 ? 1 - t / 0.5 : t < 1.7 ? 0 : t < 2.4 ? (t - 1.7) / 0.7 : 1, v = 0.04 + 0.96 * k; for (const f of F) { if ('gate' in f) f.gate = v; else f.ov = v; } return t < 2.5; }); // gate:場景代理給的乘數(配電盤不會蓋掉)
     return true;
   }
-  // 結束這一夜:停波、清掉回來的人(黑畫面裡做,不給錢)、收槍
+  // 結束這一夜:停波、清掉活屍(黑畫面裡做,不給錢)、收槍
   function endNight() {
     const g = game;
     if (g.net) return; // 多人:房主照常推進
@@ -178,7 +178,7 @@ export function installEnding(game, S) {
     // 按住空白鍵略過
     X.tick(() => { if (!run || run.done) return false; const sk = q('.st-skip i'); const held = run.spaceT ? (performance.now() - run.spaceT) / 1200 : 0; sk.style.width = Math.min(1, held) * 60 + 'px'; if (held >= 1 && !run.skip) { run.skip = true; skipMotion(); } if (game.input) game.input.fireHeld = false; return true; });
     try {
-      // 一、最後一次燈篙熄
+      // 一、最後一次招魂燈熄
       run.beat = 'night';
       document.body.classList.add('st-ending');
       if (game.weaponScene) game.weaponScene.visible = false;
@@ -188,15 +188,15 @@ export function installEnding(game, S) {
       if (solo) { place(pose207()); try { W()?.anchors?.truck?.mesh && (W().anchors.truck.mesh.visible = true); } catch { /* 略 */ } }
       try { game.setMood?.('shop'); } catch { /* 略 */ }
       dawn(0);
-      await mid(solo ? ['最後一次燈篙熄了。', '發財車沒有開出去。它繞到後巷，停在鐵網旁邊。'] : ['最後一次燈篙熄了。'], 1.6);
+      await mid(solo ? ['最後一次，招魂燈熄了。', '發財車沒有開出去。它繞到後巷，停在鐵網旁邊。'] : ['最後一次招魂燈熄了。'], 1.6);
       bars(true);
       await black(false, 2600);
       // 二、金水伯
       run.beat = 'alley';
       await w(1.2);
-      await talk('ks', '……阿伯想欲閣看一擺。', { gap: 1.4 });
-      await talk('ks', '二〇〇三年，阮逐暗都企佇遮。');
-      await talk('ks', '恁阿母抱你，你一直指彼扇窗。', { gap: 2 });
+      await talk('ks', '……阿伯想再看一次。', { gap: 1.4 });
+      await talk('ks', '2003 年，我們每天晚上都站在這裡。');
+      await talk('ks', '你阿母抱著你，你一直指那扇窗。', { gap: 2 });
       // 三、紙條
       if (d?.has?.('hc.09')) {
         run.beat = 'note';
@@ -205,24 +205,24 @@ export function installEnding(game, S) {
         if (gave) {
           S.flag?.('h.x.note'); try { X.flags.set('meta.note.kimsui', true); } catch { /* 略 */ }
           sub('n', '他看了很久。', 2); await w(3.2);
-          await talk('ks', '……伊無死？', { gap: 1.2 });
-          await talk('ks', '我揹落山的彼个囡仔，伊無死？', { gap: 2.2 });
-          if (has('h.ho.heard')) { await talk('ks', '彼个何醫師，九二一彼年共我講，送到病院就無救矣。'); await talk('ks', '……伊騙我。二十七冬。', { gap: 2 }); }
-          await talk('ks', '……小鈴。', { gap: 2.4 });
+          await talk('ks', '……她沒有死？', { gap: 1.2 });
+          await talk('ks', '我揹下山的那個女孩，她沒有死？', { gap: 2.2 });
+          if (has('h.ho.heard')) { await talk('ks', '那個王醫師，921 那年跟我說，'); await talk('ks', '送到醫院就救不回來了。'); await talk('ks', '……他騙我。騙了二十七年。', { gap: 2 }); }
+          await talk('ks', '……小美。', { gap: 2.4 });
           sub('n', '對講機那頭，沒有人回答。', 2.4); await w(3.4);
         }
       }
       // 四、那一頁
       if (d?.has?.('hc.30')) {
         run.beat = 'page';
-        const n = [10, () => say(game, 'ks', '彼張紙，你毋看覓？', { sub })];
+        const n = [10, () => say(game, 'ks', '那張紙，你不看一下？', { sub })];
         run.ch.page = await ask('打開那一頁', 20, n);
         await readPage();
         await w(2.4);
         await talk('xl', '……', { secs: 1.4, gap: 1.8, quiet: true });
-        await talk('xl', '……有人……顧了我十四暝？', { gap: 2.2 });
+        await talk('xl', '……她一直在跟我說話。', { gap: 2.2 });
         await talk('xl', '我醒了啊。', { gap: 1.2 });
-        await talk('xl', '我醒了，玉蘭姐。', { gap: 2.6 });
+        await talk('xl', '我醒了，秀英姐。', { gap: 2.6 });
       }
       // 五、數到十
       run.beat = 'count';
@@ -240,13 +240,13 @@ export function installEnding(game, S) {
       }
       say(game, 'xl', '十。', { sub: () => {} });
       await w(0.6);
-      await talk('ama', '……十。天光矣。', { gap: 2.4 });
+      await talk('ama', '……十。天亮了。', { gap: 2.4 });
       cnt.classList.remove('on');
       dawn(1);
       // 六、三個守燈的人
       run.beat = 'keepers';
-      await talk('ks', '……彼句話，是恁阿嬤教你的。', { gap: 1 });
-      await talk('ks', '伊佇護理站聽小鈴的節目學的。彼捲帶仔，是阿伯錄的。', { gap: 2.4 });
+      await talk('ks', '……那句話，是你阿嬤教你的。', { gap: 1 });
+      await talk('ks', '她在護理站，聽小美的節目學的。\n那捲錄音帶，是阿伯錄的。', { gap: 2.4 });
       // 七、窗
       run.beat = 'window';
       if (v === 'dark') {
@@ -254,11 +254,11 @@ export function installEnding(game, S) {
         await talk('xl', '……那盞燈是誰的？', { gap: 1 });
         await talk('xl', '為什麼它熄了，我會想哭？', { gap: 2.4 });
       } else {
-        await talk('ks', '……逐暗攏光。二十三冬矣。', { gap: 2.4 });
+        await talk('ks', '……每天晚上都亮著。二十三年了。', { gap: 2.4 });
         if (v === 'good' || v === 'secret') {
           blink();
           sub('n', '207 的燈暗了一下——像有人把手放在開關上，又停住。', 3.4); await w(4.6);
-          await talk('xl', '……玉蘭姐。', { gap: 1.6 });
+          await talk('xl', '……秀英姐。', { gap: 1.6 });
           await talk('xl', '再等我一下。', { gap: 1 });
           await talk('xl', '我自己去關。', { gap: 2.6 });
         } else await talk('xl', '……今天，數完了。', { gap: 2.2 });
@@ -293,24 +293,24 @@ export function installEnding(game, S) {
     return true;
   }
 
-  // 多人的結局(短版,約 40 秒,剛好一次休息):等燈篙熄 → 金水伯 → 那一頁 → 小鈴 → 數到十(快) → 標題橫幅。HUD 與槍都在。
+  // 多人的結局(短版,約 40 秒,剛好一次休息):等招魂燈熄 → 金水伯 → 那一頁 → 小美 → 數到十(快) → 標題橫幅。HUD 與槍都在。
   async function coop(v, d) {
     run.beat = 'wait';
     while (!run.skip && game.state === 'playing' && game.phase === 'fighting') await w(1);
     if (game.state !== 'playing') { run.done = true; return false; }
     run.beat = 'alley';
-    await talk('ks', '……逐暗攏光。二十三冬矣。', { gap: 1.2 });
+    await talk('ks', '……每天晚上都亮著。二十三年了。', { gap: 1.2 });
     if (d?.has?.('hc.30')) {
       run.beat = 'page';
       await readPage(0.6);
-      await talk('xl', '……有人……顧了我十四暝？', { gap: 1.2 });
-      await talk('xl', '我醒了，玉蘭姐。', { gap: 1.6 });
+      await talk('xl', '……她一直在跟我說話。', { gap: 1.2 });
+      await talk('xl', '我醒了，秀英姐。', { gap: 1.6 });
     }
     run.beat = 'count';
     await talk('xl', '怕的時候，數到十。', { gap: 0.6 });
     const cnt = q('.st-count');
     for (let i = 0; i < 10 && !run.skip && game.phase !== 'fighting'; i++) { cnt.textContent = NUM[i]; cnt.classList.add('on'); try { M()?.dawn?.((i + 1) / 10); } catch { /* 略 */ } await w(1.1); cnt.classList.remove('on'); }
-    if (game.phase !== 'fighting') await talk('ama', '……十。天光矣。', { gap: 1.2 });
+    if (game.phase !== 'fighting') await talk('ama', '……十。天亮了。', { gap: 1.2 });
     try { M()?.dawn?.(0, 4000); } catch { /* 略 */ }
     game.ui?.banner?.('〈207 的燈〉', `「${NAME[v]}」 · 謹以此紀念 1999 年與 2003 年，所有守在第一線的人。`, 9000, 'gold');
     run.beat = 'end'; run.done = true;
@@ -319,7 +319,7 @@ export function installEnding(game, S) {
 
   async function readPage(k = 1) {
     const pg = q('.st-page');
-    pg.innerHTML = `<div class="hd">交班　2F 北　護理長 鄭玉蘭</div>${PAGE.map((t) => `<div class="pl">${esc(t)}</div>`).join('')}<div class="pl last">${esc(LAST)}</div>`;
+    pg.innerHTML = `<div class="hd">值班日記　2F 北　護理長 林秀英</div>${PAGE.map((t) => `<div class="pl">${esc(t)}</div>`).join('')}<div class="pl last">${esc(LAST)}</div>`;
     pg.classList.add('on');
     sfx.pickupItem?.();
     const pl = [...pg.querySelectorAll('.pl')];
@@ -335,8 +335,8 @@ export function installEnding(game, S) {
     const box = document.createElement('div');
     box.className = 'st-photo';
     box.innerHTML = mine
-      ? '<div class="stamp">2000 · 聖心醫院 新生兒室</div><div class="hand">床母娘娘，<br>保庇阮孫。</div><div class="sig">玉蘭</div>'
-      : '<div class="stamp">霧港日報 · 92 年 5 月 8 日</div><div class="hand">莫驚<br>阿嬤佇遮</div><div class="sig">（剪下來的報紙，背面寫著：阿孫）</div>';
+      ? '<div class="stamp">2000 · 聖心醫院 新生兒室</div><div class="hand">床母娘娘，<br>保佑我的孫子。</div><div class="sig">秀英</div>'
+      : '<div class="stamp">霧港日報 · 92 年 5 月 8 日</div><div class="hand">不要怕<br>阿嬤在這裡</div><div class="sig">（剪下來的報紙，背面寫著：阿孫）</div>';
     void v;
     return box;
   }
@@ -344,7 +344,7 @@ export function installEnding(game, S) {
     const m = M();
     const credits = [
       { h: '〈207 的燈〉', lines: ['聖心醫院 · 霧港市舊港區', `結局「${NAME[v]}」`, ONE[v]] },
-      { h: '守燈的人', lines: ['鄭玉蘭（阿嬤）', '沈秀鈴（小鈴）', '蔡金水（金水伯）', fillNick('還有你，{暱稱}')] },
+      { h: '守著那盞燈的人', lines: ['林秀英（阿嬤）', '陳美玲（小美）', '黃金水（金水伯）', fillNick('還有你，{暱稱}')] },
       { h: '', lines: ['本作所有人物、醫院、地點與機構皆為虛構。'] },
       { h: '', lines: ['謹以此紀念 1999 年與 2003 年，所有守在第一線的人。'] },
       { h: '', lines: ['怕的時候，數到十。'] },
@@ -364,7 +364,7 @@ export function installEnding(game, S) {
     const show = async (html, secs) => { c.innerHTML = ''; if (typeof html === 'string') c.innerHTML = html; else c.appendChild(html); c.classList.add('on'); await w(secs); c.classList.remove('on'); await w(1.5); };
     await show(photo(v), 6.5);
     await show(`<div class="k">回神 · 第一章</div><h1>〈207 的燈〉</h1><h2>「${NAME[v]}」</h2><p style="margin-top:1.6em">${esc(ONE[v])}</p>`, 6);
-    await show(`<div class="k">守燈的人</div><p>鄭玉蘭（阿嬤）</p><p>沈秀鈴（小鈴）</p><p>蔡金水（金水伯）</p><p>還有你，${esc(fillNick('{暱稱}'))}</p>`, 5.5);
+    await show(`<div class="k">守著那盞燈的人</div><p>林秀英（阿嬤）</p><p>陳美玲（小美）</p><p>黃金水（金水伯）</p><p>還有你，${esc(fillNick('{暱稱}'))}</p>`, 5.5);
     await show('<p>本作所有人物、醫院、地點與機構皆為虛構。</p><p class="ded">謹以此紀念 1999 年與 2003 年，所有守在第一線的人。</p>', 7);
     c.innerHTML = '<p>怕的時候，數到十。</p>'; c.classList.add('on');
   }
@@ -389,7 +389,7 @@ export function installEnding(game, S) {
     game.bookOpen = false;
     const restore = () => { q('.st-black').classList.remove('on'); try { M()?.veil?.(0, 600); } catch { /* 略 */ } };
     if (a === 'menu') { restore(); game.quitToMenu?.(); return; }
-    // 繼續守夜:天亮了,金水伯的店又開了;下一次燈篙照常
+    // 繼續守夜:天亮了,金水伯的店又開了;下一次招魂燈照常
     restore();
     if (game.weaponScene) game.weaponScene.visible = true;
     if (run.flash && !game.player.flashOn) { try { game.player.toggleFlashlight(); } catch { /* 略 */ } }

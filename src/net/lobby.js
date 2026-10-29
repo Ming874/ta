@@ -367,7 +367,7 @@ class Lobby {
         <div><h3>聊天</h3><div class="chatbox"><div class="log"></div><input type="text" maxlength="160" placeholder="聊天（Enter 送出）" /></div></div>
       </div>
       <div class="msg"></div>
-      <div class="foot"><button class="red" id="mp-leave">離開房間</button><span class="help">${r.mode === 'pvp' ? '出生時選主武器 · Tab 計分板 · Enter 聊天' : '燈篙熄時到金水商行買東西 · N 準備下一波 · Tab 計分板'}</span><span class="row">${host ? '' : '<button id="mp-ready">準備</button>'}${host ? '<button class="big" id="mp-start">開始遊戲</button>' : ''}<button class="big" id="mp-rejoin" style="display:none">加入進行中的遊戲</button></span></div>`;
+      <div class="foot"><button class="red" id="mp-leave">離開房間</button><span class="help">${r.mode === 'pvp' ? '出生時選主武器 · Tab 計分板 · Enter 聊天' : '休息時到金水商行買東西 · N 準備下一波 · Tab 計分板'}</span><span class="row">${host ? '' : '<button id="mp-ready">準備</button>'}${host ? '<button class="big" id="mp-start">開始遊戲</button>' : ''}<button class="big" id="mp-rejoin" style="display:none">加入進行中的遊戲</button></span></div>`;
     const q = (s) => this.box.querySelector(s);
     q('#mp-copy').onclick = () => {
       const url = `${location.origin}${location.pathname}?room=${r.code}`;

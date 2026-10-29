@@ -199,7 +199,7 @@ function makePhone(api, o) {
       this.state = 'call'; this.offT = 0; this.ghost = false; this.line = null; this.end = 'dead'; this._ended = false;
       const hz = game.horror;
       let call = null, talk = null;
-      if (ln) { // 劇情來電(何啟明、回撥…):我們自己的台詞
+      if (ln) { // 劇情來電(王志明、回撥…):我們自己的台詞
         if (ln.id) this.used.add(ln.id);
         talk = api.speak(ln, { filter: 'phone' });
         ix.flags.set('h.call.' + (ln.id || key), true);

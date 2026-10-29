@@ -16,6 +16,26 @@ export function think(dt, ctx, dist, toX, toZ, w) {
   this._stgCd -= dt;
   const slowK = 1 - 0.55 * Math.min(1, this._slow);
   let dealt = 0;
+  const C = ctx.game?.chase, safeT = !!(C && C.isSafe && C.isSafe(this.target));
+  // 追逐結束/目標已在安全處:不再抓人。逃進金水商行(chase 設 _bangT):追到店門口(不進店區)捶一下再退開;其他 → 直接退開
+  if (this._retreat || safeT) {
+    if (this._bangT > 0) {
+      this._bangT -= dt;
+      if (this._bangT <= 0) { C?.bang?.(this, true); this.go('recover'); return 0; } // 走不到店門口:不捶了(捲門照樣放下)
+      if (this.state === 'chase') {
+        const zn = this._stopZone, Zat = (x, z) => world.zoneAt?.(x, this.pos.y + 0.2, z)?.id === zn;
+        if (Zat(this.pos.x + w.x * 1.3, this.pos.z + w.z * 1.3) || Zat(this.pos.x, this.pos.z) || this.blocked || dist < 2) { this._bangT = 0; this._bang = true; this.go('attack'); }
+        else { w.speed = this.speed * slowK; return 0; }
+      } else if (this.state === 'grab' || this.state === 'roar' || this.state === 'recover' || this.state === 'attack') { this.go('chase'); return 0; }
+    }
+    if (this.state === 'attack' && this._bang) { // 在店門口(不進店)捶一下,然後退開
+      w.speed = 0; w.face = Math.atan2(toX, toZ);
+      if (this.cross(0.3)) C?.bang?.(this);
+      if (this.st > 1.1) { this._bang = false; this.go('recover'); }
+      return 0;
+    }
+    if (!(this._bangT > 0) && this.state !== 'recover' && this.state !== 'spawn') { this._retreat = true; this.go('recover'); } // 踉蹌/暈眩/翻越中:讓動作做完
+  }
   switch (this.state) {
     case 'roar': // 現身:咆哮(房主與代理都會播 roar)
       w.speed = 0;
