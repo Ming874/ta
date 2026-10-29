@@ -142,8 +142,11 @@ export function seq(game, lines, o = {}) {
       }
       // 戰鬥中(15 m 內有活屍、被追)只說警告(R3):劇情的話等到安靜下來
       if ((who === 'xl' || who === 'ks') && !opt.combatOk && !opt.warn && !opt.noWait && !opt.sub && captions.combat()) {
+        V.leave(token); // 等的時候讓出佇列(別人的當下反應、警告照講)
         const t0 = game.time || 0;
         while (captions.combat() && (game.time || 0) - t0 < 120 && !stopped) await wait(game, 0.5);
+        V.join(token);
+        await free(game, { token, maxWait: 45 });
       }
       // 阿嬤:一次休息最多一句(頭七、倒下、聖筊除外);之前收音機自己安靜 →〈望春風〉→ 1.6 秒(REDESIGN §2.8)
       if (who === 'ama' && !opt.sub) {

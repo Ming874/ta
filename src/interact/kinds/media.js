@@ -41,7 +41,7 @@ export const handradio = {
     const st = { taken: false };
     const R = () => game.story?.radio;
     return ix.register(pos, {
-      id: spec.id, kind: 'handradio', name: spec.name || '手提收音機', reach: 2.3, radius: 0.22, scope: 'map', once: 'run', priority: 7, usedText: '',
+      id: spec.id, kind: 'handradio', name: spec.name || '手提收音機', reach: 2.3, radius: 0.22, scope: 'map', priority: 7, // 撿走之後提示就消失(不是「已經用過了」)
       prompt: () => (st.taken || !R()?.offer?.(spec.variant) ? null : `撿起${spec.name || '收音機'}`),
       onUse: () => {
         if (st.taken || !R()?.offer?.(spec.variant)) return;
