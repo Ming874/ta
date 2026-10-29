@@ -574,6 +574,7 @@ export class World {
         const b = list[k];
         if (b._s === st) continue;
         b._s = st;
+        if (b.moveOnly) continue; // 只擋人與殭屍移動的盒子(商店櫃台後緣的隱形牆):子彈、視線、聲音穿過
         const bt = boxRay(b, ox, oy, oz, dx, dy, dz, best);
         if (bt < best) { best = bt; hb = b; }
       }

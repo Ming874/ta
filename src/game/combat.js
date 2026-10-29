@@ -356,6 +356,7 @@ export const combatMethods = {
     }
     if (W.boxes) {
       for (const b of W.boxes) {
+        if (b.moveOnly) continue;
         if (pt.x > b.minX - 0.05 && pt.x < b.maxX + 0.05 && pt.z > b.minZ - 0.05 && pt.z < b.maxZ + 0.05 && pt.y < (b.y0 || 0) + b.height + 0.05 && pt.y > (b.y0 || 0) - 0.05) return b.mat || 'wood';
       }
     }

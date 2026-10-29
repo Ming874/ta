@@ -222,7 +222,7 @@ export function createPhysics(game, opts = {}) {
     const list = game.world?.boxes || [];
     const seen = new Set();
     for (const b of list) {
-      if (ownBoxes.has(b)) continue;
+      if (ownBoxes.has(b) || b.moveOnly) continue; // 只擋移動的隱形牆:屍體、碎片不撞
       seen.add(b);
       if (!sboxIds.has(b)) { const id = nextBox++; sboxIds.set(b, id); cmds.push(['sbox', id, ...boxParams(b)]); }
     }

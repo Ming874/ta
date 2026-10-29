@@ -787,6 +787,11 @@ export class Shop {
       }
     }
     this._collide(-L, Rt, -0.42, 0.42, 1.01); // [physics] 碰撞頂 = 檯面(1.0075)
+    // 櫃台上方到天花板的隱形牆(只擋人與殭屍的移動;子彈、視線、聲音、物理照常穿過):
+    // 跳躍最高 0.63m + 可踏上 0.46m > 檯面 1.01m,玩家會跳上櫃台(殭屍上不去的安全台)、掉進後面,貼著櫃台原地跳又翻不回來
+    this._collide(-L, Rt, -0.42, 0.42, ceil);
+    this.boxes[this.boxes.length - 1].moveOnly = true;
+    this._cw = { L, Rt };
 
     // ===== 捲門上方的招牌箱(捲門收在裡面) =====
     const fw = L + Rt, fcx = (Rt - L) / 2, fh = ceil - fasciaY;
@@ -1421,6 +1426,21 @@ export class Shop {
     this.drawTerminal(true);
   }
 
+  // 櫃台後方是封閉的:萬一還是有人進去(連線位置修正、傳送…),待 0.6 秒就送回櫃台前、面向櫃台
+  _guardBehind(dt, p) {
+    const q = p?.pos;
+    if (!q || !this._cw || Math.abs(q.y - this.y) > 1.2) { this._behindT = 0; return; }
+    const dx = q.x - this.S.x, dz = q.z - this.S.z;
+    const lx = dx * this.F.ax.x + dz * this.F.ax.z, lz = dx * this.F.az.x + dz * this.F.az.z;
+    if (lz > -0.45 || lz < -this.R.back - 0.3 || lx < -this._cw.L || lx > this._cw.Rt) { this._behindT = 0; return; }
+    if ((this._behindT = (this._behindT || 0) + dt) < 0.6) return;
+    this._behindT = 0;
+    const s = this.standPos;
+    p.place?.(s.x, this.y, s.z, Math.atan2(this.F.az.x, this.F.az.z));
+    p.vx = p.vz = p.vy = 0;
+    console.info('[shop] 玩家在櫃台後方,送回櫃台前');
+  }
+
   // 互動:'open' 可開啟商店、'closed' 在櫃台前但未開放、null 不在範圍
   interact(p) {
     if (Math.abs((p.pos.y || 0) - this.y) > 1.3) return null;
@@ -1451,6 +1471,7 @@ export class Shop {
 
   update(dt, t, player) {
     this.t = t;
+    this._guardBehind(dt, player);
     // 捲門
     if (this.k !== this.target) {
       const up = this.target > this.k, sp = (up ? 1 / 2.6 : 1 / 2.1) * (this.fastK ? 3.5 : 1);

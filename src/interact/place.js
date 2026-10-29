@@ -92,6 +92,7 @@ export function placeAll(game, ix, kit, pack, seed = 2077) {
   const hitBox = (x0, z0, x1, z1, y0, y1) => {
     const c0 = Math.max(0, Math.floor(x0 / 2)), c1 = Math.min(W.W - 1, Math.floor(x1 / 2)), r0 = Math.max(0, Math.floor(z0 / 2)), r1 = Math.min(W.H - 1, Math.floor(z1 / 2));
     for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) for (const b of W.boxGrid[r * W.W + c]) {
+      if (b.moveOnly) continue;
       if (b.maxX <= x0 || b.minX >= x1 || b.maxZ <= z0 || b.minZ >= z1 || b.maxY <= y0 || b.minY >= y1) continue;
       return true;
     }
