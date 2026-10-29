@@ -367,7 +367,7 @@ function liftLobby(R) {
       if (L2.charAt(li, c + dc, r + dr) !== 'E') continue;
       const t0 = (run.horiz ? c : r) * L2.CELL, mid = t0 + L2.CELL / 2;
       R.atWall(liftInd(), run, mid, { mount: 2.3, gap: 0.0 });
-      if (((c * 7 + r * 3 + li) % 3) !== 1) R.atWall(liftOut(), run, mid, { mount: 0, gap: 0.035, collide: false }); // 大多數電梯門貼著故障告示 + 封鎖膠帶(門板稍微內凹,離牆面 3.5cm)
+      if (((c * 7 + r * 3 + li) % 3) !== 1) R.atWall(liftOut(), run, mid, { mount: 0, gap: 0.085, collide: false }); // 大多數電梯門貼著故障告示 + 封鎖膠帶(門框凸出牆面,膠帶要在門框外 8.5cm)
       const side = run.t1 >= t0 + L2.CELL + 0.4 && L2.charAt(li, c + dc + (run.horiz ? 1 : 0), r + dr + (run.horiz ? 0 : 1)) !== 'E' ? 1 : -1;
       const tp = side > 0 ? t0 + L2.CELL + 0.25 : t0 - 0.25;
       if (tp > run.t0 + 0.1 && tp < run.t1 - 0.1) R.atWall(liftPanel(), run, tp, { mount: 1.0, gap: 0.0 });
