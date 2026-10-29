@@ -309,7 +309,7 @@ export const flowMethods = {
     if (this.phase !== 'fighting') { this._shopClosePending = false; return; }
     if (!this._shopHasPlayer()) { this._shopClosePending = false; this.shop?.setOpen(false); return; }
     const t0 = this._shopCloseT || 0, t = (this._shopCloseT = t0 + dt);
-    if (t0 === 0 || (t0 < 8 && t >= 8)) this.ui.feed(t0 === 0 ? '金水伯：「少年仔，快出來！要拉鐵門了！」' : '金水伯：「快點啦！」', { icon: 'warn', color: '#e8b46a', ms: 4200 });
+    if (t0 === 0 || (t0 < 8 && t >= 8)) this.ui.feed(t0 === 0 ? '對講機 · 金水伯：「少年仔，快出來！要拉鐵門了！」' : '對講機 · 金水伯：「快點啦！」', { icon: 'warn', color: '#e8b46a', ms: 4200 });
     if (t >= 20) { // 還是不出來:送到大廳,再拉下
       for (const p of this.players || [this.player]) { const q = p?.pos; if (q && p === this.player && this.world.zoneAt(q.x, q.y + 0.2, q.z)?.id === 'f1_store') { const s = this.world.layout?.start; if (s) p.place?.(s.x, s.y || 0, s.z, p.yaw); } }
       this._shopClosePending = false;
