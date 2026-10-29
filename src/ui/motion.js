@@ -38,7 +38,7 @@ export const EASE = {
 };
 const PROPS = ['fade', 'lid', 'tint', 'vig', 'desat', 'grain', 'crt', 'roll', 'dawn', 'beat', 'hurt'];
 const SUM = new Set(['vig', 'grain', 'roll']);
-const COLD_CARD = { title: '〈207 的燈〉', sub: '聖心醫院　·　霧港市舊港區', line: '農曆七月初一　00:00' };
+const COLD_CARD = { title: '〈第七暝〉', sub: '聖心醫院　·　霧港市舊港區', line: '農曆七月初一　00:00' };
 
 export function installMotion(game) {
   const U = game.post.uniforms;

@@ -312,7 +312,7 @@ export function installEnding(game, S) {
     for (let i = 0; i < 10 && !run.skip && game.phase !== 'fighting'; i++) { cnt.textContent = NUM[i]; cnt.classList.add('on'); try { M()?.dawn?.((i + 1) / 10); } catch { /* 略 */ } await w(1.1); cnt.classList.remove('on'); }
     if (game.phase !== 'fighting') await talk('ama', '……十。天亮了。', { gap: 1.2 });
     try { M()?.dawn?.(0, 4000); } catch { /* 略 */ }
-    game.ui?.banner?.('〈207 的燈〉', `「${NAME[v]}」 · 謹以此紀念 1999 年與 2003 年，所有守在第一線的人。`, 9000, 'gold');
+    game.ui?.banner?.('〈第七暝〉', `「${NAME[v]}」 · 謹以此紀念 1999 年與 2003 年，所有守在第一線的人。`, 9000, 'gold');
     run.beat = 'end'; run.done = true;
     return true;
   }
@@ -353,7 +353,7 @@ export function installEnding(game, S) {
       try {
         run.mp = m.cards([
           { lines: [photo(v)], hold: 6.5 },
-          { kicker: '回神 · 第一章', title: '〈207 的燈〉', sub: `「${NAME[v]}」`, lines: [ONE[v]], hold: 5.5 },
+          { kicker: '等天光 · 第一章', title: '〈第七暝〉', sub: `「${NAME[v]}」`, lines: [ONE[v]], hold: 5.5 },
         ]);
         await run.mp; run.mp = m.credits({ blocks: credits.slice(1), speed: 1 });
         await run.mp; run.mp = null;
@@ -363,7 +363,7 @@ export function installEnding(game, S) {
     const c = q('.st-card');
     const show = async (html, secs) => { c.innerHTML = ''; if (typeof html === 'string') c.innerHTML = html; else c.appendChild(html); c.classList.add('on'); await w(secs); c.classList.remove('on'); await w(1.5); };
     await show(photo(v), 6.5);
-    await show(`<div class="k">回神 · 第一章</div><h1>〈207 的燈〉</h1><h2>「${NAME[v]}」</h2><p style="margin-top:1.6em">${esc(ONE[v])}</p>`, 6);
+    await show(`<div class="k">等天光 · 第一章</div><h1>〈第七暝〉</h1><h2>「${NAME[v]}」</h2><p style="margin-top:1.6em">${esc(ONE[v])}</p>`, 6);
     await show(`<div class="k">守著那盞燈的人</div><p>林秀英（阿嬤）</p><p>陳美玲（小美）</p><p>黃金水（金水伯）</p><p>還有你，${esc(fillNick('{暱稱}'))}</p>`, 5.5);
     await show('<p>本作所有人物、醫院、地點與機構皆為虛構。</p><p class="ded">謹以此紀念 1999 年與 2003 年，所有守在第一線的人。</p>', 7);
     c.innerHTML = '<p>怕的時候，數到十。</p>'; c.classList.add('on');

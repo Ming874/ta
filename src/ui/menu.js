@@ -65,7 +65,7 @@ export class Menu {
     // 開始單人遊戲前依序等待的演出(例如之後的「隨機抽地圖」):async () => void。
     // 注意:滑鼠鎖定需要使用者手勢,演出超過數秒時請在演出結束時讓玩家再點一下(input.js 的 startBtn)
     this.beforeStart = [];
-    document.title = '回神 · 207 的燈';
+    document.title = '等天光 · 第七暝';
     this._main();
     this._pause();
     this._dead();
@@ -86,13 +86,13 @@ export class Menu {
     m.classList.add('mn', 'mo-boot'); // [motion] 世界建好之前只顯示開機字樣(src/ui/motion.js 拿掉 mo-boot 並依序淡入)
     setTimeout(() => m.classList.remove('mo-boot'), 30000); // 保險:轉場模組不在時
     m.innerHTML = `
-      <div class="mn-bootmark">回神<small>暖機中</small></div>
+      <div class="mn-bootmark">等天光<small>暖機中</small></div>
       <div class="mn-nosig" aria-hidden="true">CH 03<small>無訊號</small></div>
       <div class="mn-osd" aria-hidden="true"><span class="rec"><i></i>REC</span><span class="clk">2003/05/12 (一) 23:59:13</span><span class="cam">CAM 03 · 1F 大廳</span></div>
       <div class="mn-wrap">
-        <div class="mn-over">${HEART}HUÍ SHÉN · SACRED HEART HOSPITAL</div>
-        <h1 class="mn-title"><span>回</span><span>神</span></h1>
-        <div class="mn-sub mn-chap">〈207 的燈〉聖心醫院</div>
+        <div class="mn-over">${HEART}BEFORE DAYBREAK · SACRED HEART HOSPITAL</div>
+        <h1 class="mn-title"><span>等</span><span>天</span><span>光</span></h1>
+        <div class="mn-sub mn-chap">第一章〈第七暝〉聖心醫院</div>
         <div class="mn-sub">阿嬤死在 207 號房。今晚，<b>她打電話叫你回來</b>。</div>
         <div class="mn-rule"></div>
         <div class="mn-btns">
@@ -110,7 +110,7 @@ export class Menu {
       </div>
       <div class="mn-stage" id="menuStage"></div>
       <div class="mn-side"><div class="mn-sideh">操作</div>${keyGrid(KEYS, 'compact')}</div>
-      <div class="mn-foot">建議戴上耳機並全螢幕遊玩 · 所有設定與最佳紀錄只存在這台電腦的瀏覽器<br />回神 · 一款網頁 3D 恐怖射擊遊戲</div>`;
+      <div class="mn-foot">建議戴上耳機並全螢幕遊玩 · 所有設定與最佳紀錄只存在這台電腦的瀏覽器<br />等天光 Before Daybreak · 一款網頁 3D 恐怖射擊遊戲</div>`;
     m.addEventListener('click', (e) => {
       const b = e.target.closest('[data-p]');
       if (b) { sfx.uiClick(); this.openPanel(b.dataset.p); return; }
@@ -315,7 +315,7 @@ export class Menu {
     this.pTitle.textContent = '製作與授權';
     const base = import.meta.env?.BASE_URL || '/';
     this.pBody.innerHTML = `<div class="mp-cred">
-      <h4>遊戲</h4><p>《回神》— 網頁 3D 恐怖射擊。程式、關卡、介面、程式生成的貼圖、模型與音效合成。</p><p>謹以此紀念 1999 年與 2003 年，所有守在第一線的人。</p>
+      <h4>遊戲</h4><p>《等天光》（Before Daybreak）— 網頁 3D 恐怖射擊。程式、關卡、介面、程式生成的貼圖、模型與音效合成。</p><p>謹以此紀念 1999 年與 2003 年，所有守在第一線的人。</p>
       <h4>引擎與函式庫</h4><p>three.js（MIT）· Vite（MIT）· Rapier 物理引擎 @dimforge/rapier3d-compat（Apache-2.0）· ws（MIT）</p>
       <h4>外部素材</h4><p>只使用 CC0 與 CC-BY 授權的素材，完整署名如下（<a href="${base}credits/CREDITS.md" target="_blank" rel="noopener">開啟 CREDITS.md</a>）。</p>
       <div class="mp-md">正在讀取授權清單…</div></div>`;
