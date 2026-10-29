@@ -18,7 +18,7 @@ import { surf } from './hospital/surfaces.js';
 import { setAnisotropy, pbrState } from './hospital/pbr.js';
 import { procStats } from './hospital/proctex.js';
 import { createVis } from './hospital/vis.js';
-import { createBatcher, createBatchView, createDynBatch, createCompactor, batchable, plainObj, regionSet } from './hospital/batch.js';
+import { createBatcher, createBatchView, createDynBatch, createCompactor, batchable, plainObj, regionSet, instancedDepth } from './hospital/batch.js';
 import { applySurface, hasSurface } from '../mats/surface.js';
 
 // 聖心醫院本體:依 levels.js 的四層佈局建出結構(牆/地板/天花板/門窗/樓梯/欄杆/戶外)、材質、燈光、氛圍與腳本驚嚇。
@@ -205,6 +205,7 @@ export function* buildHospitalSteps(world, layout, scene, opts = {}) {
   };
   ctx.lateAdd = (obj) => {
     if (!view || !obj.isInstancedMesh) return;
+    instancedDepth(obj);
     const pool = obj.userData.pool;
     if (comp && pool?.owner && !pool.dyn && plainObj(obj)) { comp.drop(pool); comp.add(obj); comp.build(); comp.refresh(); } // 下載模型換掉的區塊實例池:換掉壓實清單裡的舊零件
     else if (pool?.owner || pool?.dyn) { track(obj); applyTracked(); }
@@ -265,6 +266,12 @@ export function* buildHospitalSteps(world, layout, scene, opts = {}) {
         used.push(m);
         if (!(used.length % 64)) yield* pause();
       }
+      // [perf6] 互動物件的靜態零件(src/interact/kit.js:每層 × 每種材質合併的 ix-static 網格,整層一個包圍球 → 從不剔除):
+      // 依三角形切到區塊、併進同材質的批次(和 ix-batch 同樣是 batching program,不會每幀來回切換)
+      propGroups.forEach((g, li) => {
+        for (const o of g.children) if (o.isMesh && !o.isInstancedMesh && !o.isBatchedMesh && /^ix-static:/.test(o.name) && batchable(o.material) && plainObj(o)) { Bt.addStruct(o, li, 'prop', 0.6); used.push(o); }
+      });
+      yield* pause();
       for (const g of propGroups) for (const o of g.children) {
         if (!o.isInstancedMesh || !o.count) continue;
         const pool = o.userData.pool, pi = /^pi_inst_/.test(o.name);
@@ -291,7 +298,7 @@ export function* buildHospitalSteps(world, layout, scene, opts = {}) {
       comp = createCompactor({ parent: root, test: pvsTest, vis: pvs, L });
       for (const o of keep) { const pool = o.userData.pool; if (pool?.owner && !pool.dyn && plainObj(o)) comp.add(o); else track(o); }
       comp.build();
-      view = createBatchView({ meshes: built.meshes, insts: built.insts, vis: pvs, moon: atmo.moon, dyn: dynB, comp, flash: () => H.game?.player?.flashlight || null });
+      view = createBatchView({ meshes: built.meshes, insts: built.insts, proxies: built.proxies, vis: pvs, moon: atmo.moon, dyn: dynB, comp, flash: () => H.game?.player?.flashlight || null });
       H.batches = view;
       // 主相機每次渲染前(矩陣已更新):視錐剔除 + 套用;其他相機(遮雨深度圖、離屏預熱)全部打開
       const scene0 = game?.scene || scene, cam0 = game?.camera || null;
@@ -302,12 +309,14 @@ export function* buildHospitalSteps(world, layout, scene, opts = {}) {
       };
       const prevA = scene0.onAfterRender;
       scene0.onAfterRender = function (r, sc, cam) { view.restoreShadows(); prevA.call(this, r, sc, cam); };
+      // [perf6] 會投影的 InstancedMesh 用自己的深度材質(不和一般網格共用 three 預設那一個 → 陰影 pass 不會每幀來回切 program)
+      scene0.traverse(instancedDepth);
       // 場景根節點不會動:關掉自動更新(否則每幀強迫全部物件重算世界矩陣);自己 updateMatrix 的物件照常更新
       scene0.matrixAutoUpdate = false;
       scene0.updateMatrix();
       scene0.updateMatrixWorld(true);
       busy += performance.now() - ts;
-      stats.batch = { ms: Math.round(busy), wall: Math.round(performance.now() - t1), steps: nY, struct: Math.round(t2), props: Math.round(t3 - t2), build: Math.round(t4 - t3), batched: built.meshes.length, instances: built.insts.length, dynBatches: dynB.meshes.length, dynItems: dynB.items.length, compact: comp.count(), fromMeshes: st.meshes, fromInstanced: st.instanced, bakedInst: st.inst, tracked: tracked.length, regions: pvs.nR };
+      stats.batch = { ms: Math.round(busy), wall: Math.round(performance.now() - t1), steps: nY, struct: Math.round(t2), props: Math.round(t3 - t2), build: Math.round(t4 - t3), batched: built.meshes.length, instances: built.insts.length, shadowProxies: built.proxies.length, proxied: built.meshes.filter((m) => m.userData.proxied).length, dynBatches: dynB.meshes.length, dynItems: dynB.items.length, compact: comp.count(), fromMeshes: st.meshes, fromInstanced: st.instanced, bakedInst: st.inst, tracked: tracked.length, regions: pvs.nR };
       console.log('[hospital] batch', JSON.stringify(stats.batch));
       return view;
     },
