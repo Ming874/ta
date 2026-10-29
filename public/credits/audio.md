@@ -1,7 +1,7 @@
 # 音效與配樂署名(audio)
 
 音效系統(`src/audio/**`)以 WebAudio 即時合成為骨幹,並疊加下列錄音素材(放在 `public/audio/`)。
-所有素材皆為 **CC0** 或 **CC BY 3.0 / 4.0** 授權,並經過剪輯(裁切、單聲道/立體聲轉換、響度/峰值正規化、淡入淡出、循環交叉淡化、MP3 編碼)。
+所有素材皆為 **CC0** 或 **CC BY 3.0 / 3.0 TW / 4.0** 授權(另有一件 **CC BY-SA 4.0**,見文末「真人錄音」),並經過剪輯(裁切、單聲道/立體聲轉換、響度/峰值正規化、淡入淡出、循環交叉淡化、MP3 編碼)。
 錄音載入失敗或缺檔時,遊戲會自動改用程式合成的版本。
 
 ## 需要署名(Creative Commons Attribution)— 33 件作品、36 個檔案
@@ -458,21 +458,45 @@
 | `audio/rain/rain_gush.ogg`(排水管湧流,`water_flowing.ogg` 1.5 秒循環) | 30 CC0 SFX loops | rubberduck | CC0 | https://opengameart.org/content/30-cc0-sfx-loops |
 | `audio/rain/thunder_roll.ogg`(雷聲,原檔 21.2~44.3 秒) | Rain - Long Thunder | wuxiascrub | CC0(作者註明「No need to credit」) | https://opengameart.org/content/rain-long-thunder |
 
-## 台灣民謠與儀式聲(src/audio/folk.js,全部在程式裡合成,沒有任何錄音檔)
+## 台灣民謠與儀式聲(src/audio/folk.js、src/audio/vox.js)
 
-旋律只用公有領域的作品;演奏(音樂盒、卡帶電子琴、收音機裡的大廣弦與月琴、哼唱、嗩吶、北管鑼鼓、西索米、引魂鈴、木魚與誦經、哀歌)全部是本專案程式碼合成,沒有取樣或參考任何既有錄音、編曲。簡譜依記憶整理為五聲音階的單旋律、節奏簡化。
+旋律只用公有領域的作品,簡譜依記憶整理為五聲音階的單旋律、節奏簡化。演奏分兩種:
+- **真人錄音**(下一節的表):哼唱用真人哼聲/童聲的單音做成取樣樂器、照簡譜演奏;誦經、遠處的北管、收音機裡的老唱片、錄音帶裡的〈天黑黑〉直接用錄音片段。
+- **程式合成**:音樂盒、卡帶電子琴、收音機裡的大廣弦與月琴、嗩吶、西索米、引魂鈴、哀歌、配樂床。真人錄音載入失敗時,哼唱與誦經、北管也會退回合成版本。
+
+任何程式、字幕、署名或文件裡都不寫歌詞,只寫曲名。
 
 | 旋律 | 作者 | 公有領域依據 | 用法 |
 |---|---|---|---|
-| 《望春風》(1933) | 鄧雨賢 作曲(1906–1944) | 作曲者逝世已逾 50 年(台灣著作權法:生存期間 + 50 年),旋律為公有領域。**只用旋律**:作詞者李臨秋(1909–1979)的歌詞仍受保護,不唱、不顯示歌詞 | 音樂盒(207 病房的搖籃曲、育嬰室的音樂盒)、阿嬤的哼唱、恐懼配樂床裡的音樂盒片段 |
-| 《雨夜花》(1934) | 鄧雨賢 作曲 | 同上。**只用旋律**:作詞者周添旺(1911–1988)的歌詞仍受保護 | 護理站錄音機的卡帶電子琴、收音機 |
-| 《天黑黑》 | 作者不詳(台灣傳統童謠) | 傳統民謠,無著作權人 | 空病房裡孩子的哼唱 |
-| 《火金姑》 | 作者不詳(台灣傳統童謠) | 傳統民謠 | 孩子的哼唱 |
+| 《望春風》(1933) | 鄧雨賢 作曲(1906–1944) | 作曲者逝世已逾 50 年(台灣著作權法:生存期間 + 50 年),旋律為公有領域。**只用旋律**:作詞者李臨秋(1909–1979)的歌詞仍受保護,只哼、只用樂器演奏,不唱、不顯示歌詞 | 音樂盒(207 病房的搖籃曲、育嬰室的音樂盒)、阿嬤的哼唱(真人哼聲取樣,閉口、無詞)、恐懼配樂床裡的音樂盒片段 |
+| 《雨夜花》(1934) | 鄧雨賢 作曲 | 同上。**只用旋律**:作詞者周添旺(1911–1988)的歌詞仍受保護,只用樂器演奏 | 護理站錄音機的卡帶電子琴、收音機(都是合成的器樂) |
+| 《天黑黑》 | 作者不詳(台灣傳統童謠) | 傳統民謠,無著作權人 | 空病房裡孩子的哼唱(真人童聲取樣)、育嬰區錄音帶裡大人唱的版本(Tè Khái-sū 的錄音,見下表) |
+| 《火金姑》 | 作者不詳(台灣傳統童謠) | 傳統民謠 | 孩子的哼唱(真人童聲取樣) |
 | 《思想起》 | 作者不詳(恆春傳統民謠) | 傳統民謠 | 收音機(大廣弦 + 月琴)、配樂片段 |
 | 《丟丟銅仔》 | 作者不詳(宜蘭傳統民謠) | 傳統民謠 | 收音機 |
 | 《桃花過渡》 | 作者不詳(傳統車鼓戲曲調) | 傳統民謠 | 收音機 |
 | 《六月茉莉》 | 作者不詳(傳統民謠) | 傳統民謠 | 收音機、補給站的溫暖配樂床 |
 | 《一隻鳥仔哮啾啾》 | 作者不詳(傳統民謠) | 傳統民謠 | 遠處出殯的西索米樂隊 |
-| 北管風嗩吶短句、牽亡歌風哀歌、AM 1207 台呼、追逐/停電/恐懼/頭七配樂床 | 本專案原創 | 原創 | 戶外遠處的北管鑼鼓、頭七、收音機台呼、配樂狀態 |
+| 〈豐原調〉 | 作者不詳(歌仔戲傳統曲調) | 傳統曲調;錄音本身為 CC0(見下表) | 收音機裡的老唱片(林茂賢老師示範演唱,只留唱的段落) |
+| 北管風嗩吶短句、牽亡歌風哀歌、AM 1207 台呼、追逐/停電/恐懼/頭七配樂床 | 本專案原創 | 原創 | 錄音載不到時的北管替代、頭七、收音機台呼、配樂狀態 |
 
-宗教與喪葬的聲音(誦經、木魚、引魂鈴、牽亡歌、西索米)只在安靜時段以低音量、完整演出出現,間隔很長,不用於跳嚇或玩笑。
+
+### 真人錄音(public/audio/folk/,`src/audio/vox.js`)
+
+全部是單聲道 MP3(16~24 kHz、40~64 kbps,共約 1.2 MB),暖機完成後才在背景下載解碼。剪輯:裁切、單聲道、高通/低通、響度正規化、淡入淡出、循環交叉淡化;哼唱的取樣表另做了頻譜對齊、迴圈點(整數個週期)與音高拉平。每個檔案的 ID3 標籤也寫了來源、作者與授權。
+
+| 檔案 | 來源作品 | 作者 / 典藏 | 授權 | 來源網址 | 用了哪一段、怎麼改 |
+|---|---|---|---|---|---|
+| `audio/folk/hum_ama_sheet.mp3`(阿嬤的哼唱) | Humming C D A for alexggqs | drotzruhn | CC0 | https://freesound.org/people/drotzruhn/sounds/439504/ | 前半段乾聲的 A3 / C4 / D4 長音各兩個 take(約 0:01.6~0:53.6 之間),頻譜對齊、做成迴圈取樣表 |
+| 同上(吸氣聲) | Woman humming a nondescript tune | PSsoundproject(Wikimedia Commons) | CC0 | https://commons.wikimedia.org/wiki/File:Woman_humming_a_nondescript_tune.wav | 三個鼻子吸氣(0:04.9、0:09.3、0:13.9 起各約 0.45 秒) |
+| `audio/folk/hum_kid_sheet.mp3`(孩子的哼唱) | Child Chops, Glitchy Sampler, Dry | f-r-a-g-i-l-e | CC0 | https://freesound.org/people/f-r-a-g-i-l-e/sounds/500743/ | 女童唱的 E4 G4 A4 B4 C5 D5 E5 單音(各 0.14~0.3 秒),音高拉平後用顆粒接長成約 1 秒的迴圈;一個吸氣取自上一列的 Commons 錄音 |
+| `audio/folk/chant_longshan_a_loop.mp3`(太平間/納骨堂/禮拜堂的助念) | Mengjia Longshan Temple, Taipei - Chanting(2013) | Wu, Tsan-Cheng 吳燦政(radio aporee ::: maps,Taiwan SoundMap,檔名 SoundMap201305251) | CC BY 3.0(https://creativecommons.org/licenses/by/3.0/) | https://aporee.org/maps/ | 11:30.6~11:53.4,雙耳錄音取一耳,22.8 秒無縫循環(2 秒等功率交叉淡化) |
+| `audio/folk/chant_longshan_b_loop.mp3`(同上) | Mengjia Longshan Temple - Chant Buddhist scriptures(2012) | Wu, Tsan-Cheng 吳燦政(radio aporee ::: maps,Taiwan SoundMap 20121103) | CC BY 3.0(https://creativecommons.org/licenses/by/3.0/) | https://archive.org/details/aporee_15924_18493 | 0:24.8~0:45.2,取一個聲道,20.4 秒無縫循環 |
+| `audio/folk/chant_muyu_loop.mp3`(同上,有木魚) | buddhist-2.wav | xserra | CC BY 4.0(https://creativecommons.org/licenses/by/4.0/) | https://freesound.org/s/320270/ | 1:16.7~1:37.7(木魚五個四拍循環),混成單聲道、陷波濾掉 1845 Hz 的持續嘯音,無縫循環 |
+| `audio/folk/beiguan_far_1.mp3`、`beiguan_far_2.mp3`、`beiguan_far_3.mp3`(戶外遠處的北管) | 〈什牌・倒旗〉,《內行與子弟:林阿春與賴木松的北管亂彈藝術世界》(彰化縣文化局,1999);嗩吶 邱火榮、鄭榮興,北鼓 賴木松 | 創作者 范揚坤;國家文化記憶庫 | CC BY 3.0 TW(https://creativecommons.org/licenses/by/3.0/tw/) | https://tcmb.culture.tw/zh-tw/detail?indexCode=Culture_Media&id=697685 | 三個自然起落的樂句:5:51.4~6:12.8、7:55.1~8:12.3、8:12.3~8:35.2;單聲道、低通 |
+| `audio/folk/radio_fengyuan_sung.mp3`(收音機裡的老唱片) | 林茂賢老師示範演唱豐原調 | 林茂賢;臺中市政府文化局,國家文化記憶庫 | CC0 | https://tcmb.culture.tw/zh-tw/detail?indexCode=Culture_Media&id=666001 | 只留唱的段落(0:03.2~0:17.9、1:13.9~1:17.2、1:20.1~1:25.4),講解的口白全部去掉;遊戲裡再過 AM 收音機的窄頻、失真、轉速不穩與炒豆聲 |
+| `audio/folk/tape_thinn_oo_oo.mp3`(育嬰區錄音帶裡大人唱的〈天黑黑〉) | Thinn-oo-oo.mp3 | Tè Khái-sū(Kaihsu Tai),Wikimedia Commons | **CC BY-SA 4.0**(https://creativecommons.org/licenses/by-sa/4.0/) | https://commons.wikimedia.org/wiki/File:Thinn-oo-oo.mp3 | 0:00.7~0:40.95,單聲道、高通/低通、響度正規化;遊戲裡再過卡帶的抖音、掉音與嘶聲 |
+
+**CC BY-SA 4.0 的衍生物**:`audio/folk/tape_thinn_oo_oo.mp3` 是 "Thinn-oo-oo.mp3" by Tè Khái-sū (Kaihsu Tai) 的剪輯版,依原授權的「相同方式分享」條款,**這個剪輯過的檔案同樣以 CC BY-SA 4.0 釋出**(https://creativecommons.org/licenses/by-sa/4.0/)。這個條款只及於這個音檔本身,不及於遊戲的程式或其他素材。
+
+宗教與喪葬的聲音(誦經、木魚、引魂鈴、牽亡歌、西索米)只在安靜時段以低音量、完整演出出現,間隔很長,不用於跳嚇或玩笑;誦經錄音不變調、不加速。

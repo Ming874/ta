@@ -56,7 +56,7 @@ function boot() {
   const idle = typeof requestIdleCallback === 'function' ? requestIdleCallback : (f) => setTimeout(f, 1500);
   idle(() => preloadRain(), { timeout: 4000 });
   // 民謠/配樂床:選單時閒置烘焙最常用的幾個(其他第一次用到時才烘焙)
-  setTimeout(() => folkPrebake(['bed_chase', 'box_wcf', 'radio_ssk', 'hum_wcf', 'bed_dread', 'bed_safe']), 9000);
+  setTimeout(() => folkPrebake(['bed_chase', 'box_wcf', 'radio_ssk', 'hum_wcf', 'rec_fy1', 'bed_dread', 'bed_safe']), 9000);
 }
 export function resume() {
   const c = ensure();

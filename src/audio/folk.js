@@ -1,24 +1,32 @@
-// 台灣民間的聲音:公有領域的旋律 + 全部在程式裡合成的演奏 + 依情境出現的「現場」聲音(增加恐懼感,但不嘲弄)。
+// 台灣民間的聲音:公有領域的旋律 + 真人錄音(人聲、誦經、北管)+ 程式合成的演奏 + 依情境出現的「現場」聲音(增加恐懼感,但不嘲弄)。
 //
 // 旋律(全部公有領域,依據寫在 public/credits/audio.md):
-//   鄧雨賢(1906–1944,逝世已逾 50 年)作曲:《望春風》(1933)《雨夜花》(1934)—— 只用旋律:作詞的李臨秋、周添旺著作權仍在,一律不唱詞
-//   作者不詳的傳統民謠:《天黑黑》《火金姑》《思想起》《丟丟銅仔》《桃花過渡》《六月茉莉》《一隻鳥仔哮啾啾》
+//   鄧雨賢(1906–1944,逝世已逾 50 年)作曲:《望春風》(1933)《雨夜花》(1934)—— 只用旋律:作詞的李臨秋、周添旺著作權仍在,
+//     一律只哼、只用樂器演奏,不唱詞;任何程式、字幕、署名、文件裡都不寫任何歌詞(只寫曲名)
+//   作者不詳的傳統民謠:《天黑黑》《火金姑》《思想起》《丟丟銅仔》《桃花過渡》《六月茉莉》《一隻鳥仔哮啾啾》〈豐原調〉(歌仔曲調)
 //   原創(本專案):北管風的嗩吶短句、牽亡歌風的哀歌、追逐/停電/恐懼/頭七/補給站的配樂床
-//   (簡譜依記憶整理成五聲音階的單旋律,節奏簡化;不參考、不取樣任何既有錄音或編曲)
-// 演奏全部合成:音樂盒、卡帶電子琴(抖音、掉音、嘶聲)、AM 收音機裡的大廣弦 + 月琴、孩子/阿嬤的閉口哼唱(共振峰)、
-//   嗩吶、北管鑼鼓、西索米(薩克斯風 + 行進鼓)、引魂鈴、木魚 + 誦經、哀歌;
-//   在閒置時間用 OfflineAudioContext 烘焙成 22.05kHz 單聲道緩衝(自己的快取,一次只烘焙一個,150 秒沒用就釋放)。
+//   (簡譜依記憶整理成五聲音階的單旋律,節奏簡化)
+// 真人錄音(vox.js;CC0 / CC BY / CC BY-SA,署名與剪輯紀錄見 public/credits/audio.md;暖機完成後才下載,失敗時退回合成版):
+//   阿嬤哼《望春風》、孩子哼《天黑黑》《火金姑》= 真人哼聲/童聲的取樣樂器(錄音的單音 + 迴圈,照簡譜演奏,不是合成的共振峰)
+//   誦經 = 龍山寺的長輩誦經(兩段)+ 比丘尼誦經與木魚(xserra;三段都是循環,只在原地完整播,不變調、不剪成配樂片段)、
+//   戶外的北管 =〈什牌・倒旗〉的三個自然起落的樂句、
+//   收音機的老唱片 = 林茂賢示範演唱〈豐原調〉(只留唱的部分,過 AM 窄頻)、育嬰區的錄音帶 = 大人唱的〈天黑黑〉(過卡帶)
+// 仍然合成的:音樂盒、卡帶電子琴《雨夜花》(沒有可用的器樂錄音)、收音機裡的大廣弦 + 月琴(和老唱片輪播)、嗩吶、西索米、引魂鈴、哀歌、
+//   配樂床、配樂裡的誦經片段;
+//   在閒置時間用 OfflineAudioContext 烘焙成 12~22.05kHz 單聲道緩衝(自己的快取,一次只烘焙一個,150 秒沒用就釋放)。
 //   執行期每個聲音只是一個 BufferSource + 一條定位聲道。
 //
 // 情境(本機,每位玩家各自;都先問驚嚇導演 request('ambient'),真的放了才 notify,共用它的冷卻與恐懼值):
 //   病房/小兒科/育嬰室 → 空病房裡孩子哼《天黑黑》《火金姑》:在 8~12 公尺外(常隔著牆),走近 5 公尺內就淡掉,找不到人
+//   小兒科/育嬰室/遊戲室 → 隔壁有台錄音機在放大人唱的《天黑黑》(封院那年家屬錄給孩子的帶子),很小聲,走近就停
 //   護理站的錄音機 → 自己播起《雨夜花》(卡帶抖音、掉音、嘶聲);按下錄音機就停,走遠也停
-//   太平間/納骨堂/禮拜堂 → 遠處的木魚 + 誦經(助念),離開、開打或追逐時淡出
+//   太平間/納骨堂/禮拜堂 → 遠處的誦經(助念),離開、開打或追逐時淡出
 //   戶外(下雨的院區)→ 很遠的北管鑼鼓與嗩吶、出殯的西索米樂隊、引魂鈴(間隔很長,一局只會聽到少數幾次)
 //   導演事件:lullaby → 音樂盒《望春風》(走近就發條鬆掉、停下);nurse(阿嬤)→ 老婦人哼《望春風》= 她就在附近;
 //            child → 孩子的哼唱;touqi(頭七)→ 牽亡歌風的哀歌 + 引魂鈴(配樂同時進 touqi 狀態);停電類 → 配樂進 blackout 狀態
 //   宗教與喪葬的聲音:稀少、低調、完整演出,不拿來當跳嚇,不變調取笑。
 import { A, onTick, emit, gain, filter, tone, burst, metal, rand, pick, clamp, bake, shaper, distTo, around } from './core.js';
+import { iVox, iRecord, iTape, VOICE, CLIPS, voxLoad, voxBuf, voxFailed, voxGC, voxRelease, voxState } from './vox.js';
 
 const SR = 22050; // 預設烘焙取樣率;頻寬窄的(收音機、哼唱、誦經)用更低的取樣率省記憶體(配方的 sr)
 
@@ -364,9 +372,20 @@ const RX = {
   radio_lyml: { sr: 12000, len: () => seq('lyml').len + 2, fn: (d, t) => iRadio(d, t, seq('lyml')), rms: 0.07 },
   radio_uyh: { sr: 12000, len: () => seq('uyh', { key: 64 }).len + 2, fn: (d, t) => iRadio(d, t, seq('uyh', { key: 64 })), rms: 0.07 },
   jingle: { len: () => 4, fn: (d, t) => { const N = seq('jingle'); iCassette(filter('highpass', 380, 0.8, filter('lowpass', 2800, 0.8, d)), t, N, { wow: 22 }); for (const n of N.notes) metal(d, t + n.t, n.f * 2, 0.02, 1.2, [1, 2.76, 5.4]); }, rms: 0.07 },
-  hum_thh: { sr: 16000, len: () => seq('thh', { bpm: 78 }).len + 1.5, fn: (d, t) => iHum(d, t, seq('thh', { bpm: 78 }), { vib: 14, shaky: 10, lp: 1100, f1: 330, f2: 1250, breath: 0.04, fade: 0.5 }), rms: 0.05 },
-  hum_hkk: { sr: 16000, len: () => seq('hkk', { bpm: 72 }).len + 1.5, fn: (d, t) => iHum(d, t, seq('hkk', { bpm: 72 }), { vib: 14, shaky: 10, lp: 1100, f1: 330, f2: 1250, breath: 0.04, fade: 0.5 }), rms: 0.05 },
-  hum_wcf: { sr: 16000, len: () => seq('wcf', { key: 60, bpm: 56, bars: 4 }).len + 1.5, fn: (d, t) => iHum(d, t, seq('wcf', { key: 60, bpm: 56, bars: 4 }), { vib: 34, vr: 5.9, shaky: 16, lp: 800, f1: 260, f2: 950, breath: 0.09, det: 18, port: 0.06 }), rms: 0.05 },
+  // 哼唱:真人的取樣樂器(vox.js;vox = 先載好的取樣表,暖機後才載)。fb = 取樣載入失敗時的合成版(共振峰)
+  //   孩子:G 調(錄音裡的女童剛好唱了 G 大調五聲的每個音,幾乎不用移調);阿嬤:A 調(比合成版的 C 調低三個半音 = 比較老;取樣的根音 A3/C4/D4,移調都在 ±3 半音內)
+  hum_thh: { sr: 22050, vox: 'kid', len: () => seq('thh', { bpm: 78 }).len + 2.2, fn: (d, t) => iVox(d, t + 0.6, seq('thh', { key: 67, bpm: 78 }), VOICE.kid, { fade: 0.45 }), fb: (d, t) => iHum(d, t, seq('thh', { bpm: 78 }), { vib: 14, shaky: 10, lp: 1100, f1: 330, f2: 1250, breath: 0.04, fade: 0.5 }), rms: 0.05, vrms: 0.07 },
+  hum_hkk: { sr: 22050, vox: 'kid', len: () => seq('hkk', { bpm: 72 }).len + 2.2, fn: (d, t) => iVox(d, t + 0.6, seq('hkk', { key: 67, bpm: 72 }), VOICE.kid, { fade: 0.45 }), fb: (d, t) => iHum(d, t, seq('hkk', { bpm: 72 }), { vib: 14, shaky: 10, lp: 1100, f1: 330, f2: 1250, breath: 0.04, fade: 0.5 }), rms: 0.05, vrms: 0.07 },
+  hum_wcf: { sr: 22050, vox: 'ama', len: () => seq('wcf', { bpm: 56, bars: 4 }).len + 2.2, fn: (d, t) => iVox(d, t + 0.6, seq('wcf', { key: 57, bpm: 56, bars: 4 }), VOICE.ama), fb: (d, t) => iHum(d, t, seq('wcf', { key: 60, bpm: 56, bars: 4 }), { vib: 34, vr: 5.9, shaky: 16, lp: 800, f1: 260, f2: 950, breath: 0.09, det: 18, port: 0.06 }), rms: 0.05 },
+  // 錄音片段(clip:直接用解碼好的錄音,不烘焙;loop 的迴圈點在 vox.js 的 CLIPS)。誦經、北管各有幾段,ALT 隨機挑
+  chant_a: { clip: 'chant_a', loop: true, g: 0.75 },
+  chant_b: { clip: 'chant_b', loop: true, g: 0.75 },
+  chant_c: { clip: 'chant_c', loop: true, g: 0.8 },
+  bg_1: { clip: 'bg_1', g: 1.3 }, bg_2: { clip: 'bg_2', g: 1.3 }, bg_3: { clip: 'bg_3', g: 1.3 },
+  // 錄音過播放鏈再烘焙:收音機裡的老唱片〈豐原調〉(兩段)、錄音帶裡的〈天黑黑〉
+  rec_fy1: { sr: 12000, vox: 'fy', len: () => CLIPS.fy.parts[0][1] - CLIPS.fy.parts[0][0] + 1.2, fn: (d, t) => iRecord(d, t, voxBuf('fy'), CLIPS.fy.parts[0][0], CLIPS.fy.parts[0][1] - CLIPS.fy.parts[0][0]), rms: 0.07 },
+  rec_fy2: { sr: 12000, vox: 'fy', len: () => CLIPS.fy.parts[1][1] - CLIPS.fy.parts[1][0] + 1.2, fn: (d, t) => iRecord(d, t, voxBuf('fy'), CLIPS.fy.parts[1][0], CLIPS.fy.parts[1][1] - CLIPS.fy.parts[1][0]), rms: 0.07 },
+  tape_thh: { sr: 16000, vox: 'thh', len: () => CLIPS.thh.dur + 1.4, fn: (d, t) => iTape(d, t, voxBuf('thh')), rms: 0.05 },
   sicmi: { sr: 16000, len: () => seq('jcn').len + 2, fn: (d, t) => iSicmi(d, t, seq('jcn')), rms: 0.07 },
   beiguan: { len: () => (60 / 132 / 2) * 64 + 4, fn: (d, t) => iBeiguan(d, t), rms: 0.08 },
   bell: { len: () => 9, fn: (d, t) => { for (let k = 0; k < 4; k++) handbell(d, t + k * 2.2, 0.12, 8 + k); }, rms: 0.05 },
@@ -387,7 +406,7 @@ const FQ = [];
 let busy = false;
 const now = () => (A.ctx ? A.ctx.currentTime : 0);
 const idle = (fn) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(fn, { timeout: 1500 }) : setTimeout(fn, 30)); // 等真正的閒置時間(建圖一次 2~15ms)
-function post(b, R, len) { // 循環:尾巴疊回開頭;一次性:去掉尾端靜音;最後正規化到目標 RMS(峰值限制在 0.9)
+function post(b, R, len, rms = R.rms) { // 循環:尾巴疊回開頭;一次性:去掉尾端靜音;最後正規化到目標 RMS(峰值限制在 0.9)
   const sr = b.sampleRate;
   let n = b.length;
   if (R.loop) n = Math.round(len * sr);
@@ -397,35 +416,70 @@ function post(b, R, len) { // 循環:尾巴疊回開頭;一次性:去掉尾端�
   if (R.loop) for (let i = n; i < x.length; i++) y[i - n] += x[i];
   let e = 0, pk = 0;
   for (let i = 0; i < n; i++) { e += y[i] * y[i]; const a = Math.abs(y[i]); if (a > pk) pk = a; }
-  const rms = Math.sqrt(e / n) || 1e-6, k = Math.min(R.rms / rms, 0.9 / (pk || 1));
+  const r = Math.sqrt(e / n) || 1e-6, k = Math.min(rms / r, 0.9 / (pk || 1));
   for (let i = 0; i < n; i++) y[i] *= k;
   return out;
 }
+// 要用錄音的配方:錄音載好(或確定載不到 → 用 fb)才能烘焙;還在等的先跳過,載好時再叫 pumpF
+const VWAIT = new Set();
+function canBake(key) {
+  const R = RX[key];
+  if (!R || !R.vox || voxBuf(R.vox) || voxFailed(R.vox)) return true;
+  if (!VWAIT.has(R.vox)) { VWAIT.add(R.vox); voxLoad(R.vox).then(() => { VWAIT.delete(R.vox); pumpF(); }); }
+  return false;
+}
 function pumpF() {
-  if (busy || !FQ.length || !A.ctx) return;
+  if (busy || !FQ.length || !A.ctx || !FQ.some((j) => canBake(j.key))) return;
   busy = true;
   idle(() => {
     FQ.sort((a, b) => b.pr - a.pr);
-    const { key } = FQ.shift(), e = FC.get(key), R = RX[key];
-    if (!e || !R || !A.ctx) { busy = false; pumpF(); return; }
+    const i = FQ.findIndex((j) => canBake(j.key));
+    if (i < 0 || !A.ctx) { busy = false; return; }
+    const { key } = FQ.splice(i, 1)[0], e = FC.get(key), R = RX[key];
+    if (!e || !R) { busy = false; pumpF(); return; }
+    const fn = R.vox && !voxBuf(R.vox) ? R.fb : R.fn; // 錄音載入失敗 → 合成版(沒有合成版的就不放)
+    if (!fn) { FC.delete(key); busy = false; pumpF(); return; }
+    if (fn === R.fb) FS.fallback[key] = 1;
     const len = R.len(), T = R.T ?? 0;
     let p;
     const c0 = performance.now();
-    try { p = bake(len + T + (R.loop ? 0 : 0.5), (d, t) => R.fn(d, t, len, T), 1, R.sr || SR); } catch (err) { if (import.meta.env?.DEV) console.warn('[folk]', key, err); FC.delete(key); busy = false; pumpF(); return; }
+    try { p = bake(len + T + (R.loop ? 0 : 0.5), (d, t) => fn(d, t, len, T), 1, R.sr || SR); } catch (err) { if (import.meta.env?.DEV) console.warn('[folk]', key, err); FC.delete(key); busy = false; pumpF(); return; }
     const ms = performance.now() - c0;
     FS.bakeMs += ms; FS.ms[key] = +ms.toFixed(1);
-    p.then((b) => { if (FC.get(key) === e && A.ctx) { e.b = post(b, R, len); FS.baked++; } busy = false; pumpF(); }, () => { FC.delete(key); busy = false; pumpF(); });
+    p.then((b) => {
+      if (FC.get(key) === e && A.ctx) { e.b = post(b, R, len, fn === R.fb ? R.rms : R.vrms ?? R.rms); FS.baked++; }
+      if (R.vox && !FQ.some((j) => RX[j.key] && RX[j.key].vox === R.vox)) voxRelease(R.vox); // 烘焙完、沒有別的配方要用 → 來源錄音馬上釋放
+      busy = false; pumpF();
+    }, () => { FC.delete(key); busy = false; pumpF(); });
   });
 }
-// 取得烘焙好的緩衝(沒有就排程;pr 越大越先)
+// 取得烘焙好的緩衝(沒有就排程;pr 越大越先)。clip 配方 = 直接用解碼好的錄音(暖機後才載)
 export function folkBuf(key, pr = 5) {
-  if (!RX[key] || !A.ctx || A.noBake || typeof OfflineAudioContext === 'undefined') return null;
+  const R = RX[key];
+  if (!R || !A.ctx || A.noBake || typeof OfflineAudioContext === 'undefined') return null;
   let e = FC.get(key);
-  if (!e) { e = { b: null, used: now(), live: 0 }; FC.set(key, e); FQ.push({ key, pr }); pumpF(); }
+  if (!e) {
+    e = { b: null, used: now(), live: 0 };
+    FC.set(key, e);
+    if (R.clip) voxLoad(R.clip).then((b) => { if (FC.get(key) !== e) return; if (b) { e.b = b; FS.clips++; } else FC.delete(key); });
+    else { FQ.push({ key, pr }); pumpF(); }
+  }
   e.used = now();
   return e.b;
 }
-export function folkPrebake(keys, pr = 1) { for (const k of keys) folkBuf(k, pr); }
+// 同一種聲音有幾段真人錄音的:隨機挑已載好的(不連續重複);都還在載 → null(等);全部載入失敗 → 合成版
+const ALT = { chant: ['chant_a', 'chant_b', 'chant_c'], beiguan: ['bg_1', 'bg_2', 'bg_3'] };
+const altLast = {};
+function alt(key, pr = 5) {
+  const L = ALT[key];
+  if (!L) return key;
+  const ok = [];
+  let pend = false;
+  for (const k of L) { if (folkBuf(k, pr)) ok.push(k); else if (!voxFailed(RX[k].clip)) pend = true; }
+  if (ok.length) { const f = ok.filter((k) => k !== altLast[key]), k = pick(f.length ? f : ok); altLast[key] = k; return k; }
+  return pend ? null : key;
+}
+export function folkPrebake(keys, pr = 1) { for (const k of keys) for (const kk of ALT[k] || [k]) folkBuf(kk, pr); }
 
 // ---------- 播放 ----------
 // 定位播放:o 同 emit(pos、cat、bus、room、hall、ref、roll、maxDist、gain);o.lp 低通、o.rate、o.fi/fo 淡入淡出、o.off/len 截取片段
@@ -466,10 +520,10 @@ export function stopFolk(L, sec = 1.2, wind = false) {
 function farPos(dist, ang = rand(0, Math.PI * 2)) { const L = A.L; return { x: L.x + Math.cos(ang) * dist, y: L.y + rand(0, 4), z: L.z + Math.sin(ang) * dist }; }
 
 // ---------- 情境 ----------
-export const FS = { blackUntil: -1, touqiUntil: -1, baked: 0, bakeMs: 0, ms: {}, cues: [], last: {} };
+export const FS = { blackUntil: -1, touqiUntil: -1, baked: 0, bakeMs: 0, ms: {}, cues: [], last: {}, clips: 0, fallback: {} };
 const BLACK = new Set(['blackout', 'lightsDie', 'corridorOut', 'blackoutChange', 'darkFollow']);
-const C = { H: null, off: null, next: {}, t: 0, zone: null, theme: '', chant: null, cas: null, hum: null };
-const CD = { hum: [150, 230], ama: [80, 120], cassette: [240, 380], chant: [200, 320], beiguan: [260, 400], sicmi: [480, 720], bell: [200, 320] };
+const C = { H: null, off: null, next: {}, t: 0, zone: null, theme: '', chant: null, cas: null, hum: null, tape: null };
+const CD = { hum: [150, 230], ama: [80, 120], cassette: [240, 380], chant: [200, 320], beiguan: [260, 400], sicmi: [480, 720], bell: [200, 320], tape: [360, 560] };
 const ready = (k, n) => n >= (C.next[k] ?? 0);
 const cool = (k, n) => { C.next[k] = n + rand(...CD[k]); };
 function log(k) { FS.last[k] = +now().toFixed(1); FS.cues.push(`${now().toFixed(0)}:${k}`); if (FS.cues.length > 20) FS.cues.shift(); }
@@ -495,7 +549,7 @@ function bind() {
 export function ama(pos) {
   const n = now();
   if (!ready('ama', n)) return null;
-  const L = playFolk('hum_wcf', { pos: pos || around(rand(3.5, 5.5), Math.PI + rand(-0.8, 0.8), -0.2), cat: 'scare', prio: 5, room: 0.6, hall: 0.4, ref: 1.6, g: 0.9, lp: 2400, fi: 0.6, fo: 1.2, tag: 'ama' });
+  const L = playFolk('hum_wcf', { pos: pos || around(rand(3.5, 5.5), Math.PI + rand(-0.8, 0.8), -0.2), cat: 'scare', prio: 5, room: 0.6, hall: 0.4, ref: 1.6, g: 0.9, lp: 2400, fi: FS.fallback.hum_wcf ? 0.6 : 0.08, fo: 1.2, tag: 'ama' }); // 真人版開頭是吸氣,不淡入
   if (L) { cool('ama', n); log('ama'); }
   return L;
 }
@@ -504,8 +558,15 @@ export function childHum(pos, forced = false) {
   const n = now();
   if (!forced && !ready('hum', n)) return null;
   const p = pos || around(rand(8, 12), rand(-2.2, 2.2), 0);
-  const L = playFolk(pick(['hum_thh', 'hum_hkk']), { pos: p, cat: 'scare', prio: 4, room: 0.7, hall: 0.5, ref: 3, g: 1.3, fi: 1.5, fo: 1.5, fadeD: 5, tag: 'hum' });
+  const L = playFolk(pick(['hum_thh', 'hum_hkk']), { pos: p, cat: 'scare', prio: 4, room: 0.7, hall: 0.5, ref: 3, g: 1.3, fi: 0.9, fo: 1.5, fadeD: 5, tag: 'hum' });
   if (L) { cool('hum', n); log('hum'); C.hum = L; }
+  return L;
+}
+// 錄音帶裡大人唱的《天黑黑》(封院那年家屬錄給孩子的帶子):隔壁房間 9~13 公尺外,很小聲;走近 5 公尺就淡掉,找不到那台錄音機
+export function tapeThh(pos) {
+  const n = now();
+  const L = playFolk('tape_thh', { pos: pos || around(rand(9, 13), rand(-2.4, 2.4), -0.6), cat: 'scare', prio: 3, room: 0.7, hall: 0.4, ref: 2.2, g: 0.85, lp: 3000, fi: 0.05, fo: 1.5, fadeD: 5, tag: 'tape' });
+  if (L) { cool('tape', n); cool('hum', n); log('tape'); C.tape = L; }
   return L;
 }
 // 音樂盒《望春風》:發條越來越鬆;走近 stopD 公尺就「喀」一聲停下(ghost.lullaby、互動音樂盒共用)
@@ -529,16 +590,17 @@ function cassetteAt(e) {
 function chantAt(z, lvY) {
   const r = z.rects[0], x = ((r[0] + r[2]) / 2 + 0.5) * 2, zz = ((r[1] + r[3]) / 2 + 0.5) * 2;
   const pos = { x, y: lvY + 1.2, z: zz };
-  const b = folkBuf('chant', 8);
+  const k = alt('chant', 8), b = k && folkBuf(k, 8);
   if (!b) return null;
   const h = emit({ pos, cat: 'loop', bus: 'amb', prio: 1, dur: 1e6, room: 0.8, hall: 0.6, ref: 3, roll: 1, maxDist: 40, track: false, nocap: true });
   if (!h) return null;
-  const s = A.ctx.createBufferSource();
+  const s = A.ctx.createBufferSource(), Q = RX[k].clip && CLIPS[RX[k].clip];
   s.buffer = b; s.loop = true;
+  if (Q && Q.le) { s.loopStart = Q.ls; s.loopEnd = Q.le; } // 錄音循環:檔案前後的邊界不進迴圈
   const g = gain(0, filter('lowpass', 2600, 0.6, h.in));
-  s.connect(g); s.start(h.t);
-  g.gain.setValueAtTime(0, h.t); g.gain.linearRampToValueAtTime(0.7, h.t + 5);
-  const e = FC.get('chant'); if (e) e.live++;
+  s.connect(g); s.start(h.t, Q && Q.le ? rand(Q.ls, Q.le - 2) : 0); // 從迴圈裡隨機的地方開始(每次聽到的開頭不同)
+  g.gain.setValueAtTime(0, h.t); g.gain.linearRampToValueAtTime(0.7 * (RX[k].g ?? 1), h.t + 5);
+  const e = FC.get(k); if (e) e.live++;
   log('chant');
   return { h, s, g, zone: z.id, e };
 }
@@ -554,6 +616,7 @@ function chantStop(sec = 3) {
 const RE = {
   ward: /ward|peds|nursery|playroom|icu|dorm|rehab|psych/,
   chant: /morgue|ossuary|chapel/,
+  kids: /peds|nursery|playroom/,
   outdoor: /yard|plaza|parking|playground|rooftop|cemetery|courtyard|garden|stair_ext|fire_escape|dock|ramp/,
 };
 function zoneHere() {
@@ -568,7 +631,7 @@ function scene(n) {
   const quiet = d.silent && !d.chasing && !d.bigActive && d.tension < 0.3;
   const z = zoneHere(), th = (z && z.theme) || '';
   if (th !== C.theme) { // 換區域:先烘焙這裡可能用到的(閒置時間、低優先權)
-    if (RE.ward.test(th)) folkPrebake(['hum_thh', 'hum_hkk']);
+    if (RE.ward.test(th)) folkPrebake(RE.kids.test(th) ? ['hum_thh', 'hum_hkk', 'tape_thh'] : ['hum_thh', 'hum_hkk']);
     else if (RE.chant.test(th)) folkPrebake(['chant']);
     else if (A.outdoor || RE.outdoor.test(th)) folkPrebake(['beiguan', 'bell', 'sicmi']);
   }
@@ -582,11 +645,16 @@ function scene(n) {
   if (!C.chant && z && RE.chant.test(th) && ready('chant', n) && Math.random() < 0.3 && ask(null, 0.6)) {
     const lv = A.world && A.world.layout && A.world.layout.levels && A.world.layout.levels[z.levelIndex];
     C.chant = chantAt(z, lv ? lv.y : A.L.y - 1.65);
-    if (C.chant) tell(null); else folkBuf('chant', 6);
+    if (C.chant) tell(null); else alt('chant', 6);
   }
   // 孩子的哼唱:病房類、附近沒有殭屍
-  if (RE.ward.test(th) && ready('hum', n) && Math.random() < 0.035 && !nearZombie(18)) {
+  const kidLive = LIVE.some((L) => !L.done && (L.tag === 'hum' || L.tag === 'tape'));
+  if (RE.ward.test(th) && !kidLive && ready('hum', n) && Math.random() < 0.035 && !nearZombie(18)) {
     if (!folkBuf('hum_thh', 4) || !folkBuf('hum_hkk', 4)) { /* 先烘焙,下次再放 */ } else if (ask(null, 0.8)) { if (childHum(null)) tell(null); }
+  }
+  // 小兒科/育嬰室/遊戲室:隔壁房間的錄音機在放大人唱的《天黑黑》(家屬錄給孩子的帶子),很小聲、隔著牆;走近 5 公尺就停
+  else if (RE.kids.test(th) && !kidLive && ready('tape', n) && Math.random() < 0.02 && !nearZombie(18)) {
+    if (folkBuf('tape_thh', 4) && ask(null, 0.6)) { if (tapeThh(null)) tell(null); }
   }
   // 錄音機自己播起來:附近 6~18 公尺內有錄音機(同一層)
   if (!C.cas && ready('cassette', n) && Math.random() < 0.04 && g.interact && g.interact.find) {
@@ -597,10 +665,10 @@ function scene(n) {
   // 戶外:遠方的北管、西索米、引魂鈴(很少)
   const out = A.outdoor || RE.outdoor.test(th);
   if (out && Math.random() < 0.025) {
-    const k = pick(['beiguan', 'sicmi', 'bell']);
-    if (ready(k, n) && folkBuf(k, 3) && ask(null, 0.7)) {
-      const L = playFolk(k, { pos: farPos(k === 'bell' ? rand(25, 35) : rand(55, 75)), cat: 'amb', prio: 1, room: 0.2, hall: 1.2, ref: k === 'bell' ? 10 : 28, roll: 1, maxDist: 160, g: 0.9, lp: k === 'bell' ? 5000 : 1700, fi: 3, fo: 4, tag: k });
-      if (L) { tell(null); cool(k, n); log(k); }
+    const k0 = pick(['beiguan', 'sicmi', 'bell']), k = ready(k0, n) ? alt(k0, 3) : null; // 北管 = 三段真實錄音之一
+    if (k && folkBuf(k, 3) && ask(null, 0.7)) {
+      const L = playFolk(k, { pos: farPos(k0 === 'bell' ? rand(25, 35) : rand(55, 75)), cat: 'amb', prio: 1, room: 0.2, hall: 1.2, ref: k0 === 'bell' ? 10 : 28, roll: 1, maxDist: 160, g: 0.9 * (RX[k].g ?? 1), lp: k0 === 'bell' ? 5000 : 1700, fi: RX[k].clip ? 0.05 : 3, fo: RX[k].clip ? 0.5 : 4, tag: k0 });
+      if (L) { tell(null); cool(k0, n); log(k0); }
     }
   }
 }
@@ -620,7 +688,10 @@ onTick((n) => {
   C.t = n;
   bind();
   try { scene(n); } catch (e) { if (import.meta.env?.DEV) console.warn('[folk scene]', e); }
-  if (((n | 0) % 10) === 0) for (const [k, e] of FC) if (e.b && !e.live && !PIN.has(k) && n - e.used > 150) FC.delete(k); // 150 秒沒用就釋放
+  if (((n | 0) % 10) === 0) { // 150 秒沒用就釋放(烘焙結果、解碼好的錄音)
+    for (const [k, e] of FC) if (e.b && !e.live && !PIN.has(k) && n - e.used > 150) FC.delete(k);
+    voxGC();
+  }
 });
 
 // 換地圖 / 重開:停掉所有正在播的、清掉冷卻
@@ -628,23 +699,26 @@ export function folkReset() {
   for (const L of LIVE) stopFolk(L, 0.2);
   LIVE.length = 0;
   chantStop(0.3);
-  C.cas = null; C.next = {}; C.warmT = C.warmB = false;
+  C.cas = null; C.tape = null; C.next = {}; C.warmT = C.warmB = false;
   FS.blackUntil = FS.touqiUntil = -1;
 }
 export const folkTheme = () => C.theme;
-export const folkState = () => ({ cache: [...FC].map(([k, e]) => `${k}${e.b ? `:${e.b.duration.toFixed(1)}s` : '(烘焙中)'}${e.live ? `×${e.live}` : ''}`), queued: FQ.length, live: LIVE.filter((L) => !L.done).map((L) => L.tag), chant: !!C.chant, cassette: !!C.cas, theme: C.theme, cues: FS.cues.slice(-8), ms: FS.ms, blackout: FS.blackUntil > now(), touqi: FS.touqiUntil > now(), baked: FS.baked, bakeMs: +FS.bakeMs.toFixed(1) });
-// 讓其他模組(劇情)直接放:kind 'ama' | 'child' | 'box' | 'lament' | 'bell' | 'beiguan' | 'sicmi' | 'cassette'
+export const folkState = () => ({ cache: [...FC].map(([k, e]) => `${k}${e.b ? `:${e.b.duration.toFixed(1)}s` : '(烘焙中)'}${e.live ? `×${e.live}` : ''}`), queued: FQ.length, live: LIVE.filter((L) => !L.done).map((L) => L.tag), chant: !!C.chant, cassette: !!C.cas, theme: C.theme, cues: FS.cues.slice(-8), ms: FS.ms, blackout: FS.blackUntil > now(), touqi: FS.touqiUntil > now(), baked: FS.baked, bakeMs: +FS.bakeMs.toFixed(1), clips: FS.clips, fallback: Object.keys(FS.fallback), vox: voxState() });
+// 讓其他模組(劇情)直接放:kind 'ama' | 'child' | 'tape' | 'box' | 'lament' | 'bell' | 'beiguan' | 'sicmi' | 'cassette'
 export function folkCue(kind, pos) {
   if (kind === 'ama') return !!ama(pos);
   if (kind === 'child') return !!childHum(pos, true);
+  if (kind === 'tape') return !!tapeThh(pos);
   if (kind === 'box') return !!(pos && boxAt(pos));
   if (kind === 'lament') return !!lament();
   if (kind === 'cassette' && pos) return !!cassetteAt({ pos });
-  if (RX[kind] && !RX[kind].loop) return !!playFolk(kind, { pos: pos || farPos(rand(40, 60)), cat: 'amb', prio: 2, hall: 1, ref: pos ? 2 : 20, maxDist: 160, lp: pos ? 0 : 1800, fi: 1, fo: 2 });
+  const k = alt(kind, 6);
+  if (k && RX[k] && !RX[k].loop) return !!playFolk(k, { pos: pos || farPos(rand(40, 60)), cat: 'amb', prio: 2, hall: 1, ref: pos ? 2 : 20, maxDist: 160, lp: pos ? 0 : 1800, fi: RX[k].clip ? 0.05 : 1, fo: 2, g: RX[k].g ?? 1 });
   return false;
 }
 // 收音機(ambience 的 radio 層):下一段要播的老歌(偶爾先放台呼)。回傳緩衝或 null(還在烘焙)
-const RADIO = ['radio_ssk', 'radio_dtt', 'radio_thgd', 'radio_lyml', 'radio_uyh'];
+// rec_fy = 真人唱的〈豐原調〉老唱片;其他是合成的大廣弦 + 月琴器樂
+const RADIO = ['rec_fy1', 'radio_ssk', 'radio_dtt', 'rec_fy2', 'radio_thgd', 'radio_lyml', 'radio_uyh'];
 let rIdx = (Math.random() * RADIO.length) | 0;
 export function radioNext() {
   if (Math.random() < 0.3) { const j = folkBuf('jingle', 3); if (j) return j; }
@@ -653,7 +727,7 @@ export function radioNext() {
 }
 // 片段(配樂的區域色彩):從烘焙好的旋律裡截 3~7 秒,很遠、很輕(非定位,配樂匯流排)
 export function fragment(key, o = {}) {
-  const b = folkBuf(key, 2);
+  const k = key === 'chant' ? key : alt(key, 2), b = k && folkBuf(k, 2); // 真人誦經只在原地完整地播(循環),不剪成配樂片段 → 片段用合成版
   if (!b || !A.ctx) return false;
   const len = Math.min(b.duration, rand(3, 7)), off = rand(0, Math.max(0, b.duration - len));
   const h = emit({ bus: 'music', prio: 0, room: 0.2, hall: 1, echo: 0.4, dur: len + 0.3, gain: o.g ?? 0.5 });
@@ -661,9 +735,9 @@ export function fragment(key, o = {}) {
   const p = A.ctx.createStereoPanner(); p.pan.value = rand(-0.8, 0.8);
   const lp = filter('lowpass', o.lp ?? 1800, 0.6, h.in); p.connect(lp);
   const s = A.ctx.createBufferSource(), g = gain(0, p);
-  s.buffer = b; s.playbackRate.value = o.rate ?? rand(0.97, 1.0); s.connect(g);
+  s.buffer = b; s.playbackRate.value = o.rate ?? (RX[k].clip ? 1 : rand(0.97, 1.0)); s.connect(g); // 錄音(誦經、北管)不變調
   g.gain.setValueAtTime(0, h.t); g.gain.linearRampToValueAtTime(1, h.t + 1); g.gain.setValueAtTime(1, h.t + len - 1.2); g.gain.linearRampToValueAtTime(0, h.t + len);
   s.start(h.t, off); s.stop(h.t + len + 0.05);
   return true;
 }
-export const _folk = { RX, MEL, seq, FC, LIVE, C, bed: (k) => folkBuf(k, 6) };
+export const _folk = { RX, MEL, seq, FC, LIVE, C, bed: (k) => folkBuf(k, 6), alt, radioNext, fragment }; // 測試用(window.__sfx._internal.folk)
