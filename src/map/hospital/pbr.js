@@ -48,7 +48,7 @@ export const PBR_SETS = {
   plaster_damaged: { tile: 2.4, ao: 1, avg: '#948271' },
   brick_white: { tile: 2.0, ao: 1, avg: '#8d806b' },
   gloss_paint: { tile: 1.6, ao: 1, avg: '#547c58' },
-  tile_sq: { tile: 1.5, ao: 1, avg: '#bdc3c0' },
+  tile_sq: { tile: 1.5, ao: 1, avg: '#dfe0dd' }, // 原創(tools/textures/gen_tile.py):12×12 片 / 1.5m,片界 = 格線中心(材質用 tv: 12)
   plaster_mould: { tile: 2.4, ao: 1, avg: '#75714c' },
   lino_pattern: { tile: 1.5, ao: 1, avg: '#b0834f' },
   checker_bw: { tile: 1.6, ao: 1, avg: '#868580' },
@@ -58,7 +58,7 @@ export const PBR_SETS = {
   epoxy: { tile: 3.0, ao: 1, avg: '#4f493f' },
   ceiling_tile2: { tile: 2.4, ao: 1, avg: '#f5f5f5' },
   // wave 3:原創程式生成(tools/textures/gen_ceiling.py):不規則裂紋孔礦纖板,3×3 片 / 2m,片緣斜角 + T-bar
-  ceiling_fissured: { tile: 2.0, ao: 1, avg: '#b8b4a9' },
+  ceiling_fissured: { tile: 2.0, ao: 1, avg: '#b9b5ab' },
 };
 // 新地圖註冊自己的貼圖組(public/textures/<name>/…):registerPbrSets({ name: { tile, ao, avg, alpha? } })
 export function registerPbrSets(defs) { Object.assign(PBR_SETS, defs); }

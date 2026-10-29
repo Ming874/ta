@@ -100,19 +100,8 @@ face *= 1 - dust
 barc = np.array([0.80, 0.80, 0.78], np.float32)
 col = np.where(grid[..., None], barc[None, None, :] * (0.95 + 0.05 * undul[..., None]), face)
 col = np.where(edge[..., None], col * (0.82 + 0.18 * t[..., None]), col)
-# 兩片有淡淡的舊水漬(大部分水漬由世界座標的歲月層畫)
-for k, (cx, cy, rad) in [(4, (0.55, 0.45, 0.28)), (7, (0.35, 0.6, 0.22))]:
-    ti, tj = k % T, k // T
-    yy, xx = np.mgrid[0:N, 0:N].astype(np.float32) / N * T
-    u = (xx - ti) ; v = (yy - tj)
-    m = (u >= 0) & (u < 1) & (v >= 0) & (v < 1) & ~grid
-    rr = np.sqrt((u - cx) ** 2 + (v - cy) ** 2) / rad
-    n2 = fbm((N, N), 12, 3, 99 + k)
-    rr = rr + (n2 - 0.5) * 0.35
-    ins = np.clip((1 - rr) * 4, 0, 1)
-    rim = np.clip(1 - np.abs(rr - 1) * 14, 0, 1)
-    stain = np.array([0.86, 0.78, 0.62], np.float32)
-    col = np.where(m[..., None], col * (1 - ins[..., None] * (1 - stain) * 0.6) * (1 - rim[..., None] * 0.28), col)
+# 水漬全部由世界座標的歲月層畫(src/map/hospital/wear.js):成片出現在漏水處、形狀不規則、跨片延續;
+# 貼圖裡烤死的圓形水漬每 2m 重複一次,一眼就看得出是同一個圖章 → 不畫
 
 # ---------------- 法線 ----------------
 gy, gx = np.gradient(hh * 6.0)

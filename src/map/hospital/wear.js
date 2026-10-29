@@ -99,6 +99,10 @@ export const WEAR_SETUP = /* glsl */`
 	vec4 wxNB = texture2D( tWear, wxUv * 0.33 + vec2( 0.31, 0.57 ) );
 	float wxW = clamp( vWear, 0.0, 1.0 );
 	float wxPeel = 0.0, wxWet = 0.0, wxRough = 0.0;
+	float wxPx = length( fwidth( vWPos ) ); // 一個像素幾公尺(細線反鋸齒;導數在分支外)
+	// 牆面細裂縫:中頻雜訊的等高線(對比拉高的通道 → 線細、粗細不一),另一組雜訊決定哪裡有
+	float wxCv = texture2D( tWear, wxUv * 0.23 + vec2( 0.77, 0.19 ) ).g + ( texture2D( tWear, wxUv * 1.1 + vec2( 0.4, 0.66 ) ).r - 0.5 ) * 0.06;
+	float wxCw = fwidth( wxCv );
 	{
 		// 剝落:中頻雜訊 × 每面牆的破舊度;牆腳(反潮)與牆頂(漏水)更容易剝
 		float pn = texture2D( tWear, wxUv * uWear2.y + vec2( 0.13, 0.71 ) ).g * 0.75 + wxNA.r * 0.25;
@@ -134,11 +138,52 @@ export const WEAR_ALBEDO = /* glsl */`
 			md = smoothstep( 0.66, 0.86, md ) * uWear.z * ( 0.3 + wxW );
 			wc *= mix( vec3( 1.0 ), vec3( 0.3, 0.34, 0.24 ), clamp( md, 0.0, 1.0 ) );
 			wxRough += md * 0.2 + band * 0.08;
+			// 漆面光澤不均(擦過的地方亮、粉化的地方霧)
+			wxRough += max( wxNB.r - 0.45, 0.0 ) * 0.25 * uWear.x;
+			if ( uWear.x > 0.7 ) {
+				// 病床/推車撞出來的橫向擦痕(0.6~1.1m 高,黑灰色、短、斷斷續續)
+				float sb = smoothstep( 0.55, 0.7, wxH ) * ( 1.0 - smoothstep( 0.95, 1.15, wxH ) );
+				float ss = texture2D( tWear, vec2( wxH * 1.7, wxUv.x * 0.6 ) + vec2( 0.21, 0.43 ) ).b;
+				float scw = smoothstep( 0.8, 0.93, ss ) * sb * ( 0.4 + wxW ) * smoothstep( 0.35, 0.65, wxNB.a + wxNA.g * 0.4 );
+				wc *= 1.0 - 0.32 * scw;
+				wxRough += 0.12 * scw;
+				// 拆掉的告示板/掛鐘/海報留下的「鬼影」:被蓋住的地方沒被燻黃、沒積灰 → 比四周乾淨的長方形;
+				// 框:邊上一圈灰線 + 四角釘孔;海報:四角膠帶殘膠(泛黃的小長方形)
+				float cw = 1.9, gi = floor( wxUv.x / cw ), lvl = floor( ( vWPos.y + 0.3 ) / 4.2 );
+				float gh = ntHash( vec2( gi * 1.37 + lvl * 17.1, lvl + 3.3 ) );
+				if ( gh > 0.84 ) {
+					float g2 = fract( gh * 71.3 ), g3 = fract( gh * 13.7 ), g4 = fract( gh * 5.91 ), poster = step( 0.55, fract( gh * 29.3 ) );
+					vec2 sz = vec2( 0.26 + 0.6 * g2, 0.3 + 0.55 * g3 );
+					vec2 q = vec2( wxUv.x - ( gi + 0.3 + 0.4 * g4 ) * cw, wxH - ( 1.25 + 0.45 * fract( gh * 3.7 ) ) );
+					vec2 e = abs( q ) - sz * 0.5;
+					float sd = max( e.x, e.y ), aw = max( wxPx, 0.0012 );
+					float ins = 1.0 - smoothstep( - aw, aw, sd );
+					wc = mix( wc, sqrt( wc ) * vec3( 0.985, 1.0, 1.015 ), ins * ( 0.9 - 0.35 * poster ) );
+					wxRough -= 0.05 * ins;
+					float lw = max( 0.0035, aw * 1.5 ), le = sd / lw;
+					wc *= 1.0 - 0.28 * exp( - le * le ) * ( 0.0035 / lw ) * ( 1.0 - poster );
+					vec2 hq = abs( q ) - ( sz * 0.5 - 0.028 );
+					float hole = ( 1.0 - smoothstep( 0.0025, 0.0025 + aw, length( hq ) ) ) * min( 1.0, 0.003 / aw );
+					wc *= 1.0 - 0.8 * hole * ( 1.0 - poster );
+					vec2 tq = abs( abs( q ) - ( sz * 0.5 - vec2( 0.025, 0.012 ) ) ) - vec2( 0.03, 0.014 );
+					float tape = ( 1.0 - smoothstep( - aw, aw, max( tq.x, tq.y ) ) ) * poster;
+					wc *= mix( vec3( 1.0 ), vec3( 0.93, 0.84, 0.62 ), tape * 0.75 );
+					wxRough -= 0.15 * tape;
+				}
+				// 細裂縫(油漆/灰泥牆)
+				if ( uWear2.x > 0.0 ) {
+					// 線寬 0.0025(雜訊單位);遠處像素比線寬大時加寬反鋸齒、但按覆蓋率變淡(平均顏色不變,遠處牆面不會整片變暗)
+					float cwid = wxCw * 1.1 + 0.0025;
+					float ck = ( 1.0 - smoothstep( 0.0, cwid, abs( wxCv - 0.5 ) ) ) * ( 0.0025 / cwid ) * smoothstep( 0.6, 0.78, wxNA.r * 0.55 + wxNB.g * 0.45 + wxW * 0.18 );
+					wc *= 1.0 - 0.42 * ck;
+					wxRough += 0.1 * ck;
+				}
+			}
 		} else if ( wxIsFloor > 0.5 ) {
 			// 地板:大片髒污(走道磨亮、角落積灰由頂點色處理)
 			float d = smoothstep( 0.42, 0.86, wxNA.r * 0.65 + wxNB.g * 0.35 );
 			wc *= mix( vec3( 1.0 ), vec3( 0.6, 0.56, 0.48 ), d * uWear.x * ( 0.35 + 0.65 * wxW ) );
-			wxRough += d * uWear.x * 0.12;
+			wxRough += d * uWear.x * 0.22; // 積灰的地方霧面(沒人走的地方);走道被踩亮的地方才反光
 			// 塑膠/磁磚地板:鞋跟與推床輪子的黑色擦痕(短、斜向),走道磨亮的地方粗糙度較低
 			if ( uWear2.z > 0.0 ) {
 				vec2 sp = vec2( vWPos.x * 0.83 + vWPos.z * 0.56, vWPos.z * 0.83 - vWPos.x * 0.56 );
@@ -165,18 +210,41 @@ export const WEAR_ALBEDO = /* glsl */`
 			wc *= mix( vec3( 1.0 ), vec3( 0.48, 0.38, 0.26 ), rim * uWear.y );
 			float md = smoothstep( 0.72, 0.9, wxNB.g * 0.7 + wxNA.a * 0.3 ) * uWear.z * wxW;
 			wc *= mix( vec3( 1.0 ), vec3( 0.3, 0.32, 0.25 ), md );
-			// 礦纖板:水漬只在單一片板內(一片片是分開的板子,漬痕被 T-bar 切斷),好幾圈潮線
+			// 礦纖板水漬:漏水的地方才有,而且是一片一片連著(低頻世界雜訊在每片中心取樣 → 同一區相鄰幾片一起受潮),
+			// 不是每片隨機一個圓。形狀 = 扭曲過的距離場等高線(不規則的阿米巴形),潮線 = 同一個場的幾條等高線
+			// (外圈最深、內圈較淡,水乾了好幾次);被 T-bar 切斷(每片是分開的板子);最嚴重的片有霉點。
+			// 導數在分支外先算好(textureGrad),分支內不用隱式導數。
 			if ( uTileVar > 0.5 ) {
 				vec2 tg = vWPos.xz * 1.5, tid = floor( tg ), tp = tg - tid;
+				vec2 tgx = dFdx( tg ), tgy = dFdy( tg );
+				float tpx = max( length( tgx ), length( tgy ) );
+				vec2 tcw = ( tid + 0.5 ) / 1.5;
+				float leak = textureLod( tWear, tcw * vec2( 0.09, 0.12 ), 0.0 ).r * 0.7 + textureLod( tWear, tcw * 0.21 + vec2( 0.17, 0.83 ), 0.0 ).g * 0.3;
 				float th = ntHash( tid + 3.7 );
-				if ( th > 1.0 - 0.22 * ( 0.4 + wxW ) ) {
-					vec2 tc = 0.5 + ( vec2( ntHash( tid + 9.1 ), ntHash( tid + 5.3 ) ) - 0.5 ) * 0.55;
-					float rad = 0.2 + 0.3 * fract( th * 31.7 );
-					float tr = length( ( tp - tc ) * vec2( 1.0, 0.75 + 0.5 * fract( th * 7.0 ) ) ) / rad + ( texture2D( tWear, tg * 0.37 ).g - 0.5 ) * 0.5;
-					float tins = 1.0 - smoothstep( 0.8, 1.0, tr );
-					float trim = smoothstep( 0.9, 1.0, tr ) * ( 1.0 - smoothstep( 1.0, 1.07, tr ) ) + 0.55 * smoothstep( 0.6, 0.66, tr ) * ( 1.0 - smoothstep( 0.66, 0.72, tr ) ) + 0.35 * smoothstep( 0.36, 0.4, tr ) * ( 1.0 - smoothstep( 0.4, 0.45, tr ) );
-					wc *= mix( vec3( 1.0 ), vec3( 0.88, 0.76, 0.54 ), tins * ( 0.55 + 0.3 * fract( th * 3.3 ) ) );
-					wc *= mix( vec3( 1.0 ), vec3( 0.62, 0.5, 0.34 ), trim * 0.7 );
+				float sev = leak + ( th - 0.5 ) * 0.2 + ( wxW - 0.5 ) * 0.16 + uWear.y * 0.12;
+				if ( sev > 0.64 && tpx < 0.6 ) {
+					float k = smoothstep( 0.64, 0.86, sev );
+					// 水從哪裡進來:偏向片的一角(水沿著 T-bar 流進來)
+					vec2 tc = 0.5 + ( vec2( ntHash( tid + 9.1 ), ntHash( tid + 5.3 ) ) - 0.5 ) * 0.7;
+					vec2 wq = tp - tc + ( vec2( textureGrad( tWear, tg * 0.23 + 0.1, tgx * 0.23, tgy * 0.23 ).g, textureGrad( tWear, tg * 0.23 + 0.6, tgx * 0.23, tgy * 0.23 ).g ) - 0.5 ) * 0.42;
+					float n1 = textureGrad( tWear, tg * 0.41 + vec2( 0.3, 0.7 ), tgx * 0.41, tgy * 0.41 ).r;
+					float n2 = textureGrad( tWear, tg * 1.37 + vec2( 0.52, 0.11 ), tgx * 1.37, tgy * 1.37 ).g;
+					float f = ( 0.16 + 0.5 * k ) - length( wq * vec2( 1.0, 0.75 + 0.5 * fract( th * 7.0 ) ) ) + ( n1 - 0.5 ) * 0.24 + ( n2 - 0.5 ) * 0.08;
+					float aw = max( 0.006, tpx * 0.9 ); // 潮線寬度(遠處加寬,不會閃爍)
+					float tins = smoothstep( - aw, aw, f );
+					float e0 = f / ( aw * 1.6 ), e1 = ( f - 0.075 - 0.04 * n2 ) / ( aw * 1.3 ), e2 = ( f - 0.19 - 0.05 * n1 ) / ( aw * 1.2 );
+					float rk = 0.006 / aw; // 遠處潮線加寬時按覆蓋率變淡
+					float r0 = exp( - e0 * e0 ) * rk;
+					float r1 = exp( - e1 * e1 ) * step( 0.1, 0.16 + 0.5 * k ) * rk;
+					float r2 = exp( - e2 * e2 ) * step( 0.25, 0.16 + 0.5 * k ) * rk;
+					float mot = 0.8 + 0.4 * n2;
+					wc *= mix( vec3( 1.0 ), vec3( 0.9, 0.8, 0.6 ), tins * ( 0.3 + 0.45 * k ) * mot );
+					wc *= mix( vec3( 1.0 ), vec3( 0.66, 0.53, 0.36 ), clamp( r0 * 0.8 + r1 * 0.45 + r2 * 0.3, 0.0, 1.0 ) * ( 0.55 + 0.45 * k ) );
+					// 最嚴重的:中間一圈礦物沉積變深 + 黑霉點
+					float core = smoothstep( 0.22, 0.42, f ) * smoothstep( 0.6, 1.0, k );
+					wc *= mix( vec3( 1.0 ), vec3( 0.62, 0.52, 0.4 ), core * 0.6 );
+					float spot = smoothstep( 0.72, 0.9, textureGrad( tWear, tg * 2.3 + 0.37, tgx * 2.3, tgy * 2.3 ).a ) * tins * smoothstep( 0.5, 0.9, k );
+					wc *= mix( vec3( 1.0 ), vec3( 0.26, 0.27, 0.22 ), spot * 0.8 );
 				}
 			}
 		}

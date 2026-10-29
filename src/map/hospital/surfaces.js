@@ -21,17 +21,19 @@ const PAINT = (tint, o = {}) => S('plaster_paint', 2.5, {
 });
 // 亮光漆護牆(油性漆,有碎點與擦傷)
 const GLOSS = (tint, o = {}) => S('gloss_paint', 1.6, { tint, norm: 1, sat: 0.12, rough: 0.55, n: 0.8, cav: 0.2, wear: [0.9, 0.35, 0.35, 0], ...o });
-// 方磁磚(15cm 白磚,有缺角裂痕),染色
-const TILESQ = (tint, o = {}) => S('tile_sq', 1.5, { tint, norm: 1, sat: 0.25, rough: 0.6, cav: 0.55, wear: [0.8, 0.55, 0.4, 0], ...o });
+// 方磁磚(12.5cm 舊釉面磚,原創貼圖 tools/textures/gen_tile.py),染色。tv: 12 = 每片從貼圖 12×12 片裡隨機挑一片 + 旋轉
+// → 裂縫/缺角不會每 1.5m 重複;每片些微傾斜(法線)→ 反光一片一片不同。舊磚有一層灰膜:粗糙度比新釉面高
+// 反照率:tint = 平均反照率(norm),舊白磚 ≈ 0.6(新的 0.8;手電筒近照時才不會整面燈箱似的發白)
+const TILESQ = (tint, o = {}) => S('tile_sq', 1.5, { tint, norm: 1, sat: 0.25, rough: 1.3, n: 1, cav: 0.55, tv: 12, wear: [0.8, 0.55, 0.4, 0], ...o });
 export const SURFACES = {
   // ---- 牆:油漆(各種顏色;破舊度各異) ----
   paint_green: PAINT(0x9db8a2, { fb: 'paint_green' }),
   paint_mint: PAINT(0xb2d0c0, { fb: 'paint_mint', peel: 0.65 }),
   paint_olive: PAINT(0xb2b28a, { fb: 'paint_olive', peel: 0.6, wear: [0.95, 0.85, 0.55, 0] }),
-  paint_white: PAINT(0xd6d2c6, { fb: 'paint_white' }),
-  paint_sterile: PAINT(0xdee0dc, { fb: 'paint_sterile', peel: 0.18, wear: [0.5, 0.35, 0.12, 0], rough: 0.6 }),
+  paint_white: PAINT(0xcdc9bd, { fb: 'paint_white' }), // 舊白漆 ≈ 0.6(手電筒近照不要整片發白)
+  paint_sterile: PAINT(0xd3d5d1, { fb: 'paint_sterile', peel: 0.18, wear: [0.5, 0.35, 0.12, 0], rough: 0.6 }),
   paint_gray: PAINT(0xa4acb0, { fb: 'paint_gray', peel: 0.45 }),
-  paint_cream: PAINT(0xdccfae, { fb: 'paint_cream', peel: 0.5 }),
+  paint_cream: PAINT(0xd2c6a6, { fb: 'paint_cream', peel: 0.5 }),
   paint_blue: PAINT(0xa4bcd0, { fb: 'paint_blue', peel: 0.55 }),
   paint_pink: PAINT(0xdcb4b0, { fb: 'paint_pink', peel: 0.6 }),
   paint_yellow: PAINT(0xd0c090, { fb: 'paint_cream', peel: 0.7, wear: [1, 0.9, 0.5, 0] }), // 菸燻泛黃
@@ -47,12 +49,12 @@ export const SURFACES = {
   dado_wood: S('wood_panel', 2.1, { tint: 0xb89480, sat: 0.7, rough: 0.75, cav: 0.35, wear: [0.6, 0.3, 0.25, 0] }), // 木作凸板護牆
   dado_vinyl: S('plaster_paint', 2.5, { tint: 0xbab4a2, norm: 1, sat: 0.1, rough: 0.38, n: 0.35, wear: [0.9, 0.2, 0.2, 0] }), // 塑膠護牆板
   // 磁磚
-  tile_white: TILESQ(0xe4e8e2, { fb: 'tile_white' }),
+  tile_white: TILESQ(0xcdd1c9, { fb: 'tile_white' }),
   tile_green: TILESQ(0x96c8ae, { fb: 'tile_green', sat: 0.45 }),
   tile_subway: { gen: 'tile_subway', wear: [0.8, 0.5, 0.35, 0] },
   tile_blue: TILESQ(0xa2bed2, { fb: 'tile_blue', sat: 0.4 }),
-  tile_pink: TILESQ(0xe2b8b4, { fb: 'tile_pink', sat: 0.4 }),
-  tile_cream: TILESQ(0xe0d2b4, { fb: 'tile_white', sat: 0.35 }),
+  tile_pink: TILESQ(0xd8b0ac, { fb: 'tile_pink', sat: 0.4 }),
+  tile_cream: TILESQ(0xd2c5a8, { fb: 'tile_white', sat: 0.35 }),
   tile_long: S('tile_wall', 1.27, { tint: 0xf0ece0, cav: 0.5, wear: [0.8, 0.5, 0.35, 0] }), // 細長直磚
   // 灰泥/清水模/磚/石/木/壁紙
   plaster: S('plaster_paint', 3.0, { tint: 0xd4c8ae, norm: 1, sat: 0.2, rough: 0.9, n: 0.9, peel: { set: 'paint_peeling', tile: 1.6, amt: 0.35, scale: 0.3, flake: 0.42, tint: 0xe8dcc4, under: 0x8a7e6a, n: 1 } }),
@@ -79,9 +81,9 @@ export const SURFACES = {
   facade: S('plaster', 3.8, { tint: 0xa6a298, sat: 0.3, wear: [0.6, 0.8, 0.6, 0] }),
   facade_dark: S('concrete_wall', 2.4, { tint: 0x9a968e, wear: [0.6, 0.8, 0.6, 0] }),
   // ---- 地板 ----
-  tile_ward: S('tile_ward', 1.8, { cav: 0.4, scuff: 0.8, wear: [0.9, 0, 0, 0] }),
-  tile_ward_b: S('tile_lobby', 1.4, { tint: 0xd4ccbc, cav: 0.4, scuff: 0.8, wear: [0.8, 0, 0, 0] }),
-  tile_lobby: S('tile_lobby', 2.0, { tint: 0xe4dccc, cav: 0.4, scuff: 0.8, wear: [0.8, 0, 0, 0] }),
+  tile_ward: S('tile_ward', 1.8, { cav: 0.4, rough: 0.8, scuff: 0.8, wear: [0.9, 0, 0, 0] }), // 打過蠟的塑膠地磚:灰膜下仍有一點光澤(走道被踩亮處會反光)
+  tile_ward_b: S('tile_lobby', 1.4, { tint: 0xd4ccbc, cav: 0.4, rough: 0.8, scuff: 0.8, wear: [0.8, 0, 0, 0] }),
+  tile_lobby: S('tile_lobby', 2.0, { tint: 0xe4dccc, cav: 0.4, rough: 0.8, scuff: 0.8, wear: [0.8, 0, 0, 0] }),
   terrazzo: S('terrazzo', 1.1, { rough: 0.55, tint: 0xd8d2c8, scuff: 0.8, wear: [0.7, 0, 0, 0] }),
   checker: S('checker_bw', 1.6, { tint: 0xe8e4dc, rough: 0.7, cav: 0.4, scuff: 0.8, wear: [0.9, 0, 0, 0.15] }), // 黑白棋盤(餐廳)
   linoleum: S('linoleum', 2.0, { scuff: 0.8, tint: 0xb4c4b4, sat: 0.55 }),
@@ -96,7 +98,7 @@ export const SURFACES = {
   vct: { gen: 'tile_ward_b', scuff: 0.9, wear: [0.85, 0, 0, 0] },
   rubber: S('rubber_floor', 2.0, { tint: 0x9aa4a8, gain: 1.6, rough: 0.9, wear: [0.6, 0, 0, 0] }),
   anti_skid: S('anti_skid', 1.2, { tint: 0xd8d0c8, sat: 0.4, cav: 0.5, wear: [0.9, 0, 0, 0.35] }), // 止滑磚(太平間/洗衣房/廚房)
-  tile_white_floor: S('tile_white', 1.6, { scuff: 0.8, cav: 0.45, wear: [0.8, 0, 0, 0.2] }),
+  tile_white_floor: S('tile_white', 1.6, { scuff: 0.8, rough: 0.8, cav: 0.45, wear: [0.8, 0, 0, 0.2] }),
   concrete: S('concrete', 3.0, { wear: [0.9, 0, 0, 0.15] }),
   concrete_paint: S('concrete', 3.2, { tint: 0xc8c0b0, wear: [0.9, 0, 0, 0.1] }),
   concrete_wet: S('concrete_wet', 2.0, { rough: 0.42, wear: [0.9, 0, 0, 0.8] }),
@@ -177,7 +179,7 @@ vec3 tvShade( vec2 uv ) {
   if ( h > 0.93 ) s *= vec3( 1.06, 1.06, 1.04 ); // 後來換上的新板
   else if ( h > 0.85 ) s *= vec3( 0.96, 0.9, 0.76 ); // 泛黃受潮
   else if ( h < 0.05 ) s *= vec3( 0.82, 0.8, 0.76 ); // 燻黑
-  return s;
+  return uTileVar > 6.0 ? mix( vec3( 1.0 ), s, 0.45 ) : s; // 小磁磚:色差溫和(補過的磚、髒一點的磚)
 }
 vec4 ntTex( sampler2D t, vec2 uv ) {
   vec4 res;
