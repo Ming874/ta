@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { pbrTex, onPbrFail, PBR_SETS } from './pbr.js';
 import { SURF as PROC, TRIM } from './texdefs.js';
 import { procTextures, procClone } from './proctex.js';
-import { wearTexture, WEAR_VERT_PARS, WEAR_VERT, WEAR_FRAG_PARS, WEAR_SETUP, WEAR_ALBEDO } from './wear.js';
+import { wearTexture, WEAR_VERT_PARS, WEAR_VERT, WEAR_FRAG_PARS, WEAR_SETUP, WEAR_ALBEDO, WEAR_NORMAL } from './wear.js';
+import { surfaceUniforms as SU } from '../../mats/surface.js';
 
 // 結構表面材質(牆/地板/天花板/收邊)。多數用 CC0 PBR 貼圖組,以「色調 tint + 飽和度 sat + 縮放 tile + 旋轉 rot」
 // 從同一組貼圖衍生出不同表面;沒有對應照片貼圖的(兒童壁紙、軟包、空心磚、地墊…)用程式貼圖。
@@ -20,11 +21,11 @@ const PAINT = (tint, o = {}) => S('plaster_paint', 2.5, {
   wear: o.wear ?? [0.85, 0.7, 0.45, 0], ...o,
 });
 // 亮光漆護牆(油性漆,有碎點與擦傷)
-const GLOSS = (tint, o = {}) => S('gloss_paint', 1.6, { tint, norm: 1, sat: 0.12, rough: 0.55, n: 0.8, cav: 0.2, wear: [0.9, 0.35, 0.35, 0], ...o });
+const GLOSS = (tint, o = {}) => S('gloss_paint', 1.6, { tint, norm: 1, sat: 0.12, rough: 0.55, n: 0.8, cav: 0.2, det: 0.4, wear: [0.9, 0.35, 0.35, 0], ...o });
 // 方磁磚(12.5cm 舊釉面磚,原創貼圖 tools/textures/gen_tile.py),染色。tv: 12 = 每片從貼圖 12×12 片裡隨機挑一片 + 旋轉
 // → 裂縫/缺角不會每 1.5m 重複;每片些微傾斜(法線)→ 反光一片一片不同。舊磚有一層灰膜:粗糙度比新釉面高
 // 反照率:tint = 平均反照率(norm),舊白磚 ≈ 0.6(新的 0.8;手電筒近照時才不會整面燈箱似的發白)
-const TILESQ = (tint, o = {}) => S('tile_sq', 1.5, { tint, norm: 1, sat: 0.25, rough: 1.3, n: 1, cav: 0.55, tv: 12, wear: [0.8, 0.55, 0.4, 0], ...o });
+const TILESQ = (tint, o = {}) => S('tile_sq', 1.5, { tint, norm: 1, sat: 0.25, rough: 1.3, n: 1, cav: 0.55, tv: 12, det: 0.3, wear: [0.8, 0.55, 0.4, 0], ...o });
 export const SURFACES = {
   // ---- 牆:油漆(各種顏色;破舊度各異) ----
   paint_green: PAINT(0x9db8a2, { fb: 'paint_green' }),
@@ -84,8 +85,8 @@ export const SURFACES = {
   tile_ward: S('tile_ward', 1.8, { cav: 0.4, rough: 0.8, scuff: 0.8, wear: [0.9, 0, 0, 0] }), // 打過蠟的塑膠地磚:灰膜下仍有一點光澤(走道被踩亮處會反光)
   tile_ward_b: S('tile_lobby', 1.4, { tint: 0xd4ccbc, cav: 0.4, rough: 0.8, scuff: 0.8, wear: [0.8, 0, 0, 0] }),
   tile_lobby: S('tile_lobby', 2.0, { tint: 0xe4dccc, cav: 0.4, rough: 0.8, scuff: 0.8, wear: [0.8, 0, 0, 0] }),
-  terrazzo: S('terrazzo', 1.1, { rough: 0.55, tint: 0xd8d2c8, scuff: 0.8, wear: [0.7, 0, 0, 0] }),
-  checker: S('checker_bw', 1.6, { tint: 0xe8e4dc, rough: 0.7, cav: 0.4, scuff: 0.8, wear: [0.9, 0, 0, 0.15] }), // 黑白棋盤(餐廳)
+  terrazzo: S('terrazzo', 1.1, { rough: 0.55, tint: 0xd8d2c8, scuff: 0.8, det: 0.3, wear: [0.7, 0, 0, 0] }),
+  checker: S('checker_bw', 1.6, { tint: 0xe8e4dc, rough: 0.7, cav: 0.4, scuff: 0.8, det: 0.3, wear: [0.9, 0, 0, 0.15] }), // 黑白棋盤(餐廳)
   linoleum: S('linoleum', 2.0, { scuff: 0.8, tint: 0xb4c4b4, sat: 0.55 }),
   linoleum_b: S('linoleum', 2.3, { scuff: 0.8, tint: 0xd6c6a6, sat: 0.06, rot: Math.PI / 2 }),
   linoleum_c: S('linoleum', 2.2, { scuff: 0.8, tint: 0xa8b6c8, sat: 0.08 }),
@@ -210,7 +211,7 @@ uniform vec3 uL2under;
 `;
 function structHook(shader) {
   const U = this.userData;
-  Object.assign(shader.uniforms, { uSat: U.uSat, uNoTile: U.uNoTile, uCavity: U.uCavity, uTileVar: U.uTileVar, tWear: U.tWear, uWear: U.uWear, uWear2: U.uWear2 });
+  Object.assign(shader.uniforms, { uSat: U.uSat, uNoTile: U.uNoTile, uCavity: U.uCavity, uTileVar: U.uTileVar, tWear: U.tWear, uWear: U.uWear, uWear2: U.uWear2, uSurfG: SU.uSurfG });
   if (U.L2) Object.assign(shader.uniforms, U.L2);
   const C = THREE.ShaderChunk;
   shader.vertexShader = shader.vertexShader
@@ -259,7 +260,8 @@ roughnessFactor = clamp( roughnessFactor + wxRough - wxWet * 0.85, 0.04, 1.0 );`
 	normal = normalize( tbn * mapN );
 #elif defined( USE_BUMPMAP )
 	normal = perturbNormalArb( - vViewPosition, normal, dHdxy_fwd() * ( 1.0 - wxWet * 0.85 ), faceDirection );
-#endif`)
+#endif
+` + WEAR_NORMAL)
     .replace('#include <aomap_fragment>', C.aomap_fragment.replace('texture2D( aoMap, vAoMapUv )', 'ntTex( aoMap, vAoMapUv )'));
 }
 // 有規則圖樣(磁磚、磚、石塊、棋盤、木板)的貼圖不能打亂
@@ -277,7 +279,7 @@ function wearUniforms(m, def, gen) {
   m.userData.uTileVar = { value: def?.tv ?? 0 };
   m.userData.tWear = { value: wearTexture() };
   m.userData.uWear = { value: new THREE.Vector4(w[0], w[1], w[2], w[3]) };
-  m.userData.uWear2 = { value: new THREE.Vector4(def?.peel?.amt ?? 0, def?.peel?.scale ?? 0.4, def?.scuff ?? 0, 0) };
+  m.userData.uWear2 = { value: new THREE.Vector4(def?.peel?.amt ?? 0, def?.peel?.scale ?? 0.4, def?.scuff ?? 0, def?.det ?? (def?.alphaTest ? 0 : 0.8)) }; // w = 近距離細節(釉面磚/亮面較弱)
   m.onBeforeCompile = structHook;
   m.customProgramCacheKey = () => 'struct' + (m.defines?.LAYER !== undefined ? 'L' : '');
 }

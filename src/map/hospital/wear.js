@@ -79,11 +79,13 @@ export const WEAR_VERT = /* glsl */`
 `;
 
 // ---- 片段著色器 ----
-// uWear = (髒污, 水漬/流痕, 霉, 積水);uWear2 = (剝落量, 剝落雜訊尺度, 未用, 未用)
+// uWear = (髒污, 水漬/流痕, 霉, 積水);uWear2 = (剝落量, 剝落雜訊尺度, 鞋印擦痕, 近距離細節強度)
+// uSurfG(src/mats/surface.js 共用):x = 細節開關(細節圖畫好、非低畫質)
 export const WEAR_FRAG_PARS = /* glsl */`
 uniform sampler2D tWear;
 uniform vec4 uWear;
 uniform vec4 uWear2;
+uniform vec4 uSurfG;
 varying vec3 vWPos;
 varying vec3 vWNrm;
 varying float vWear;
@@ -100,15 +102,40 @@ export const WEAR_SETUP = /* glsl */`
 	float wxW = clamp( vWear, 0.0, 1.0 );
 	float wxPeel = 0.0, wxWet = 0.0, wxRough = 0.0;
 	float wxPx = length( fwidth( vWPos ) ); // 一個像素幾公尺(細線反鋸齒;導數在分支外)
-	// 牆面細裂縫:中頻雜訊的等高線(對比拉高的通道 → 線細、粗細不一),另一組雜訊決定哪裡有
-	float wxCv = texture2D( tWear, wxUv * 0.23 + vec2( 0.77, 0.19 ) ).g + ( texture2D( tWear, wxUv * 1.1 + vec2( 0.4, 0.66 ) ).r - 0.5 ) * 0.06;
-	float wxCw = fwidth( wxCv );
+	// 牆面細裂縫:中頻雜訊的等高線(對比拉高的通道 → 線細、粗細不一),另一組雜訊決定哪裡有。
+	// 只有油漆/灰泥牆(有剝落層:uWear2.x > 0)要算;uniform 分支,裡面的 fwidth 仍然有效
+	// 近距離細節(r2):牆面貼圖 ~400 像素/公尺,0.5~2m 內手電筒照下去是一片平的;疊兩層世界座標的高頻雜訊
+	// (灰泥顆粒 / 小麻點,約 1.5cm 與 5mm)→ 反照率 ±4% + 凹凸;像素大於 3.5mm 時淡出(遠處本來就看不到)。
+	// 用已綁定的 tWear(不多佔 sampler);低畫質關閉(uSurfG.x)
+	float wxDh = 0.5, wxDk = 0.0;
+	if ( uSurfG.x > 0.5 && uWear2.w > 0.0 ) {
+		wxDh = texture2D( tWear, wxUv * 7.3 + vec2( 0.21, 0.37 ) ).g * 0.62 + texture2D( tWear, wxUv * 23.1 + vec2( 0.67, 0.11 ) ).a * 0.38;
+		wxDk = ( 1.0 - smoothstep( 0.0008, 0.0035, wxPx ) ) * uWear2.w;
+	}
+	float wxCv = 0.5, wxCw = 1.0;
+	if ( uWear2.x > 0.0 ) {
+		wxCv = texture2D( tWear, wxUv * 0.23 + vec2( 0.77, 0.19 ) ).g + ( texture2D( tWear, wxUv * 1.1 + vec2( 0.4, 0.66 ) ).r - 0.5 ) * 0.06;
+		wxCw = fwidth( wxCv );
+	}
 	{
 		// 剝落:中頻雜訊 × 每面牆的破舊度;牆腳(反潮)與牆頂(漏水)更容易剝
 		float pn = texture2D( tWear, wxUv * uWear2.y + vec2( 0.13, 0.71 ) ).g * 0.75 + wxNA.r * 0.25;
 		float edge = ( 1.0 - smoothstep( 0.0, 0.9, wxH ) ) * 0.22 + smoothstep( 2.4, 3.4, wxH ) * 0.12;
 		float th = 1.02 - uWear2.x * ( 0.25 + 0.6 * wxW * wxW ) - edge * wxW;
 		wxPeel = ( 1.0 - wxIsFloor - wxIsCeil ) * smoothstep( th, th + 0.035, pn );
+	}
+`;
+// 近距離細節的凹凸(normal_fragment_maps 之後;three 的 bumpmap 方法,導數在 uniform 分支內)
+export const WEAR_NORMAL = /* glsl */`
+	if ( uSurfG.x > 0.5 && uWear2.w > 0.0 ) {
+		vec3 dP = - vViewPosition, dSx = dFdx( dP ), dSy = dFdy( dP );
+		vec3 dR1 = cross( dSy, normal ), dR2 = cross( normal, dSx );
+		float dDet = dot( dSx, dR1 ) * faceDirection;
+		vec2 dH = vec2( dFdx( wxDh ), dFdy( wxDh ) ) * 0.0003 * wxDk * ( 1.0 - wxWet * 0.85 );
+		vec3 dG = sign( dDet ) * ( dH.x * dR1 + dH.y * dR2 );
+		float dGl = length( dG ), dDl = abs( dDet );
+		dG *= min( 1.0, 0.3 * dDl / max( dGl, 1e-20 ) );
+		if ( dDl > 1e-20 ) normal = normalize( dDl * normal - dG );
 	}
 `;
 // 顏色(color_fragment 之後)
@@ -248,6 +275,6 @@ export const WEAR_ALBEDO = /* glsl */`
 				}
 			}
 		}
-		diffuseColor.rgb *= wc;
+		diffuseColor.rgb *= wc * ( 1.0 + ( wxDh - 0.5 ) * 0.09 * wxDk );
 	}
 `;
