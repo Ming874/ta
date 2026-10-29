@@ -14,10 +14,10 @@ import { text } from './tex.js';
 import { Room } from './place.js';
 import { floorDecal, wallDecal, scatter, ctpl } from './clutter.js';
 import { litter, noiseScreens } from './lay.js';
-import { tableLong, chairOffice, shelfRack, phone, bin, deskSteel, crtMonitor, posterSheet, wallClock, tvWall } from './furniture.js';
+import { tableLong, chairShell, shelfRack, phone, bin, crtMonitor, posterSheet, wallClock, tvWall } from './furniture.js';
 import { supplyCart } from './medical.js';
 import { sarsSheet } from './sars.js';
-import { monitorWall, linenStack } from './decor.js';
+import { linenStack } from './decor.js';
 
 const V = THREE.Vector3, Box = (a, b) => new THREE.Box3(new V(...a), new V(...b));
 const rnd = (seed) => { let s = seed >>> 0 || 1; return () => ((s = (s * 16807) % 2147483647) / 2147483647); };
@@ -144,8 +144,8 @@ const zonePaint = (k) => decalRect(`r8:zone:${k}`, 128, 48, (c, w, h) => {
 // 行軍床(長邊沿 X;靠牆擺時跟牆平行)+ 被子、枕頭
 const cot8 = (k) => tpl(`r8:cot:${k}`, (b) => {
   const Lx = 1.86, W = 0.64;
-  for (const s of [-1, 1]) b.box('alu', Lx, 0.03, 0.03, 0, 0.38, s * W / 2);
-  for (const x of [-0.8, 0, 0.8]) for (const s of [-1, 1]) b.rod('alu', 0.012, [x, 0.38, s * W / 2], [x, 0.02, -s * W / 2 * 0.9], { seg: 4 });
+  for (const s of [-1, 1]) b.box('steel', Lx, 0.03, 0.03, 0, 0.38, s * W / 2);
+  for (const x of [-0.8, 0, 0.8]) for (const s of [-1, 1]) b.rod('steel', 0.012, [x, 0.38, s * W / 2], [x, 0.02, -s * W / 2 * 0.9], { seg: 4 });
   b.box('fab_canvas', Lx - 0.06, 0.012, W - 0.02, 0, 0.39, 0);
   b.box(k % 2 ? 'fab_gray' : 'fab_floral', 1.15, 0.06, W + 0.05, 0.28, 0.425, 0.01, { r: 0.025, ry: 0.05, rx: 0.03 });
   b.box('fab_white', 0.3, 0.09, 0.44, -0.74, 0.44, 0, { r: 0.04, ry: 0.12 });
@@ -155,17 +155,14 @@ const cot8 = (k) => tpl(`r8:cot:${k}`, (b) => {
 const nightStool = () => tpl('r8:nightstool', (b) => {
   b.cyl('pl_red', 0.16, 0.42, 0, 0.21, 0, { r2: 0.13, seg: 12, open: true });
   b.cyl('pl_red', 0.135, 0.025, 0, 0.43, 0, { seg: 12 });
-  b.cyl('pl_red', 0.045, 0.28, -0.06, 0.58, 0.02, { seg: 10 }); b.cyl('pl_white', 0.035, 0.04, -0.06, 0.74, 0.02, { seg: 10 });
-  b.cyl('enamel_white', 0.04, 0.07, 0.07, 0.48, -0.05, { seg: 10 }); b.tor('enamel_white', 0.022, 0.006, 0.112, 0.48, -0.05, { ry: HALF, ts: 8, rs: 4 });
-  b.cyl('pl_dark', 0.022, 0.15, 0.05, 0.465, 0.08, { axis: 'x', seg: 8 });
-  b.cyl('chrome', 0.045, 0.012, -0.02, 0.45, -0.09, { seg: 10 });
-  for (let i = 0; i < 4; i++) b.cyl('paper', 0.004, 0.028, -0.02 + Math.cos(i * 1.7) * 0.025, 0.462, -0.09 + Math.sin(i * 1.7) * 0.025, { seg: 4, rz: HALF * 0.9, ry: i * 1.7 });
+  b.cyl('pl_red', 0.045, 0.28, -0.06, 0.58, 0.02, { seg: 8 }); b.cyl('pl_white', 0.035, 0.04, -0.06, 0.74, 0.02, { seg: 8 });
+  b.cyl('pl_white', 0.04, 0.07, 0.07, 0.48, -0.05, { seg: 8 });
 });
 // 牆上的告示牌(背板 + 圖集字)
 const signPlate = (key, rect, w, h, o = {}) => tpl(`r8:plate:${key}`, (b) => {
   b.box(o.back || 'pl_white', w + 0.02, h + 0.02, 0.008, 0, h / 2, 0.004);
   b.plane(L(rect), w, h, 0, h / 2, 0.0085);
-  if (o.screws) for (const [sx, sy] of [[-1, 1], [1, 1], [-1, -1], [1, -1]]) b.cyl('steel', 0.006, 0.004, sx * (w / 2 - 0.02), h / 2 + sy * (h / 2 - 0.02), 0.01, { axis: 'z', seg: 6 });
+  if (o.screws) for (const [sx, sy] of [[-1, 1], [1, 1], [-1, -1], [1, -1]]) b.box('steel', 0.012, 0.012, 0.004, sx * (w / 2 - 0.02), h / 2 + sy * (h / 2 - 0.02), 0.01);
 });
 // 貼在牆上的紙(兩條膠帶)
 const tapedSheet = (key, rect, w, h, rz = 0) => tpl(`r8:sheet:${key}`, (b) => {
@@ -174,7 +171,7 @@ const tapedSheet = (key, rect, w, h, rz = 0) => tpl(`r8:sheet:${key}`, (b) => {
 });
 const gauge = (b, x, y, z, r, o = {}) => { // 圓形壓力錶(朝 +Z;o.ry 轉向)
   b.push(x, y, z, 0, o.ry || 0, 0);
-  b.cyl('chrome', r, 0.045, 0, 0, 0, { axis: 'z', seg: 14 });
+  b.cyl('chrome', r, 0.045, 0, 0, 0, { axis: 'z', seg: 8 });
   b.plane(L(gaugeRect()), r * 1.7, r * 1.7, 0, 0, 0.0235);
   if (o.stem) b.rod('iron', 0.012, [0, -r, -0.01], [0, -r - o.stem, -0.01], { seg: 5 });
   b.pop();
@@ -185,66 +182,63 @@ const gauge = (b, x, y, z, r, o = {}) => { // 圓形壓力錶(朝 +Z;o.ry 轉向
 // 安全閥 + 洩壓管、主蒸汽閥與包保溫布的立管(通到天花板)、側面爬梯
 const boilerKit = (ceil) => tpl(`r8:boilerkit:${ceil.toFixed(2)}`, (b) => {
   const H = 1.35, R0 = 1.0, top = H + R0;
-  for (const a of [0.55, -0.55, 1.35, -1.35]) b.box('steel', 3.52, 0.022, 0.022, 0, H + Math.cos(a) * 1.01, Math.sin(a) * 1.01);
+  for (const a of [0.55, 1.35]) b.box('steel', 3.52, 0.022, 0.022, 0, H + Math.cos(a) * 1.01, Math.sin(a) * 1.01);
   b.box('steel', 0.44, 0.26, 0.012, 0.55, H + 0.02, 1.006); b.plane(L(boilerPlate()), 0.4, 0.225, 0.55, H + 0.02, 1.013);
   // 爐前(+X 端板 x≈1.92):兩個壓力錶、水位計(兩個考克 + 玻璃管)
-  for (const zz of [-0.42, 0.42]) gauge(b, 1.96, 2.05, zz, 0.1, { ry: HALF, stem: 0.12 });
+  for (const zz of [-0.42, 0.42]) gauge(b, 1.96, 2.05, zz, 0.1, { ry: HALF });
   for (const yy of [1.2, 1.88]) b.box('iron', 0.09, 0.09, 0.09, 1.97, yy, 0.72);
-  b.cyl('glass', 0.018, 0.6, 1.97, 1.54, 0.72, { seg: 8 }); b.cyl('pl_amber', 0.013, 0.3, 1.97, 1.42, 0.72, { seg: 6 }); // 水位
+  for (const dz of [-0.02, 0.02]) b.box('steel', 0.008, 0.6, 0.008, 1.985, 1.54, 0.72 + dz); b.cyl('pl_amber', 0.014, 0.3, 1.97, 1.42, 0.72, { seg: 6 }); b.cyl('screen_dark', 0.014, 0.3, 1.97, 1.72, 0.72, { seg: 6 }); // 水位計(不用透明玻璃:透明材質會多一個獨立網格)
   b.box('iron', 0.05, 0.05, 0.05, 2.0, 1.1, 0.72); b.rod('iron', 0.012, [2.0, 1.08, 0.72], [2.05, 0.05, 0.85], { seg: 5 }); // 排水管
   // 安全閥 ×2 + 洩壓管往上
-  for (const x of [-0.75, -0.35]) { b.cyl('brass', 0.07, 0.24, x, top + 0.12, 0.3, { seg: 10 }); b.cyl('iron', 0.09, 0.05, x, top + 0.02, 0.3, { seg: 10 }); b.rod('rust', 0.035, [x, top + 0.24, 0.3], [x, ceil, 0.3], { seg: 6 }); }
+  for (const x of [-0.75, -0.35]) { b.cyl('steel', 0.07, 0.24, x, top + 0.12, 0.3, { seg: 8 }); b.cyl('iron', 0.09, 0.05, x, top + 0.02, 0.3, { seg: 8 }); b.rod('rust', 0.035, [x, top + 0.24, 0.3], [x, ceil, 0.3], { seg: 6 }); }
   // 主蒸汽閥(紅手輪)+ 保溫立管(帆布包覆、鋁皮束帶)
-  b.cyl('iron', 0.13, 0.26, 0.85, top + 0.13, 0, { seg: 12 });
+  b.cyl('iron', 0.13, 0.26, 0.85, top + 0.13, 0, { seg: 8 });
   b.cyl('iron', 0.025, 0.2, 0.85, top + 0.36, 0, { seg: 6 });
-  b.tor('enamel_red', 0.15, 0.015, 0.85, top + 0.46, 0, { rx: HALF, ts: 16, rs: 4 });
-  b.rod('plaster', 0.14, [0.85, top + 0.26, 0], [0.85, ceil, 0], { seg: 10 });
-  for (let yy = top + 0.6; yy < ceil - 0.2; yy += 0.45) b.cyl('alu', 0.145, 0.035, 0.85, yy, 0, { seg: 10 });
+  b.tor('pl_red', 0.15, 0.015, 0.85, top + 0.46, 0, { rx: HALF, ts: 12, rs: 3 });
+  b.rod('plaster', 0.14, [0.85, top + 0.26, 0], [0.85, ceil, 0], { seg: 8 });
+  for (let yy = top + 0.6; yy < ceil - 0.2; yy += 0.6) b.cyl('steel', 0.145, 0.035, 0.85, yy, 0, { seg: 8, open: true });
   // 側面爬梯(+Z 側,爐尾)
   for (const x of [-1.5, -1.12]) b.box('steel', 0.04, 2.55, 0.04, x, 1.27, 1.1);
-  for (let k = 0; k < 8; k++) b.cyl('steel', 0.012, 0.38, -1.31, 0.32 + k * 0.29, 1.1, { axis: 'x', seg: 5 });
+  for (let k = 0; k < 6; k++) b.box('steel', 0.38, 0.02, 0.02, -1.31, 0.35 + k * 0.38, 1.1);
 });
 // 燃燒機(爐前,紅色機殼 + 鼓風馬達 + 火焰觀測孔的橘光 + 控制盒指示燈 + 油管)
 const burner = () => tpl('r8:burner', (b) => {
-  b.box('enamel_red', 0.5, 0.44, 0.5, 0, 1.1, 0, { r: 0.03 });
-  b.cyl('enamel_gray', 0.14, 0.26, 0.04, 1.43, 0.08, { axis: 'z', seg: 12 });
-  b.cyl('iron', 0.2, 0.04, 0, 1.1, -0.26, { axis: 'z', seg: 14 }); // 法蘭(貼爐門)
+  b.box('pl_red', 0.5, 0.44, 0.5, 0, 1.1, 0);
+  b.box('enamel_gray', 0.24, 0.24, 0.26, 0.04, 1.44, 0.08);
+  b.cyl('iron', 0.2, 0.04, 0, 1.1, -0.26, { axis: 'z', seg: 10 }); // 法蘭(貼爐門)
   b.box('pl_dark', 0.1, 0.18, 0.22, 0.3, 1.1, 0.04);
-  led(b, 0.3, 1.14, 0.151, '#ff3a10', 0.007); led(b, 0.3, 1.08, 0.151, '#30ff60', 0.007);
-  b.plane(glow('r8ember', '#ff6a18'), 0.08, 0.055, 0, 1.0, 0.252);
-  cable(b, [[0.2, 0.9, -0.1], [0.42, 0.5, -0.15], [0.55, 0.03, -0.2], [1.2, 0.03, -0.32]], 0.011, 'rubber');
+  b.box('po_ember', 0.012, 0.012, 0.004, 0.3, 1.14, 0.151); b.box('pl_dark', 0.012, 0.012, 0.004, 0.3, 1.08, 0.151);
+  b.plane('po_ember', 0.08, 0.055, 0, 1.0, 0.252); // 火焰觀測孔(用鍋爐爐門同一個餘燼材質:這個房間不必再多一種自發光材質)
+  b.rod('rubber', 0.011, [0.2, 0.9, -0.1], [0.5, 0.03, -0.2], { seg: 4 }); b.rod('rubber', 0.011, [0.5, 0.03, -0.2], [1.2, 0.03, -0.32], { seg: 4 });
   b.meta.coll = Box([-0.27, 0, -0.27], [0.27, 1.5, 0.4]);
 });
 // 緊急發電機組(開放式:引擎、散熱水箱、發電機、控制盤、消音器 + 排氣管通天花板、地上的電瓶)。長邊沿 X,+Z 為操作面
 const genset = (ceil) => tpl(`r8:genset:${ceil.toFixed(2)}`, (b) => {
   b.box('iron', 3.0, 0.14, 1.2, 0, 0.07, 0);
   for (const s of [-1, 1]) b.box('iron', 3.0, 0.06, 0.08, 0, 0.17, s * 0.56);
-  for (const x of [-1.1, 0.1, 1.2]) for (const s of [-1, 1]) b.cyl('rubber', 0.06, 0.06, x, 0.23, s * 0.4, { seg: 8 }); // 防震墊
-  b.box('enamel_green', 1.5, 0.72, 0.78, -0.3, 0.62, 0, { r: 0.03 }); // 曲軸箱
-  b.box('enamel_green', 1.32, 0.34, 0.56, -0.3, 1.15, 0, { r: 0.03 }); // 汽缸頭
-  b.box('iron', 1.2, 0.07, 0.4, -0.3, 1.355, 0, { r: 0.01 });
+  for (const x of [-1.1, 0.1, 1.2]) for (const s of [-1, 1]) b.box('rubber', 0.1, 0.06, 0.1, x, 0.23, s * 0.4); // 防震墊
+  b.box('vinyl_green', 1.5, 0.72, 0.78, -0.3, 0.62, 0); // 曲軸箱
+  b.box('vinyl_green', 1.32, 0.34, 0.56, -0.3, 1.15, 0); // 汽缸頭
+  b.box('iron', 1.2, 0.07, 0.4, -0.3, 1.355, 0);
   b.rod('rust', 0.055, [-0.95, 1.12, -0.33], [0.35, 1.12, -0.33], { seg: 8 }); // 排氣歧管
-  b.box('enamel_dark', 0.22, 1.32, 1.05, -1.32, 0.84, 0); // 水箱
+  b.box('iron', 0.22, 1.32, 1.05, -1.32, 0.84, 0); // 水箱
   for (let i = 0; i < 9; i++) b.box('iron', 0.03, 0.03, 0.96, -1.445, 0.3 + i * 0.13, 0);
-  b.cyl('enamel_green', 0.37, 0.75, 0.88, 0.6, 0, { axis: 'x', seg: 14 }); // 發電機
-  b.cyl('iron', 0.3, 0.05, 1.28, 0.6, 0, { axis: 'x', seg: 14 });
+  b.cyl('vinyl_green', 0.37, 0.75, 0.88, 0.6, 0, { axis: 'x', seg: 10 }); // 發電機
   b.box('enamel_gray', 0.36, 0.24, 0.3, 0.86, 1.08, 0);
   // 控制盤(發電機上方,朝 +Z)
   b.box('enamel_gray', 0.56, 0.6, 0.22, 0.95, 1.55, 0.1);
   b.plane(L(genPanel()), 0.48, 0.48, 0.95, 1.57, 0.212);
-  led(b, 0.78, 1.3, 0.212, '#ffb020', 0.009); led(b, 0.86, 1.3, 0.212, '#30ff60', 0.009);
+  b.box('po_ember', 0.016, 0.016, 0.004, 0.78, 1.3, 0.212); b.box('pl_dark', 0.016, 0.016, 0.004, 0.86, 1.3, 0.212);
   b.box('iron', 0.04, 0.3, 0.04, 0.95, 1.13, 0.1);
   b.plane(L(genPlate()), 0.42, 0.145, -0.3, 0.72, 0.392);
   // 消音器 + 排氣管(往上穿天花板)
   b.rod('rust', 0.06, [-0.6, 1.2, -0.3], [-0.6, 2.05, -0.42], { seg: 8 });
-  b.cyl('rust', 0.17, 0.9, -0.6, 2.5, -0.42, { seg: 12 });
+  b.cyl('rust', 0.17, 0.9, -0.6, 2.5, -0.42, { seg: 10 });
   b.rod('rust', 0.065, [-0.6, 2.95, -0.42], [-0.6, ceil, -0.42], { seg: 8 });
-  b.cyl('plaster', 0.2, 0.04, -0.6, ceil - 0.02, -0.42, { seg: 12 }); // 穿板處補的灰泥
   // 地上的電瓶 + 電線
   b.box('pl_black', 0.34, 0.22, 0.18, 1.15, 0.11, 0.78);
   b.cyl('pl_red', 0.012, 0.02, 1.05, 0.23, 0.78, { seg: 6 }); b.cyl('pl_dark', 0.012, 0.02, 1.25, 0.23, 0.78, { seg: 6 });
-  cable(b, [[1.05, 0.24, 0.78], [1.0, 0.4, 0.62], [0.9, 0.62, 0.42]], 0.009, 'pl_red');
-  cable(b, [[1.25, 0.24, 0.78], [1.3, 0.5, 0.55], [1.2, 0.8, 0.3]], 0.009, 'rubber');
+  b.rod('pl_red', 0.009, [1.05, 0.24, 0.78], [0.9, 0.62, 0.42], { seg: 4 }); b.rod('rubber', 0.009, [1.25, 0.24, 0.78], [1.2, 0.8, 0.3], { seg: 4 });
   b.meta.coll = Box([-1.5, 0, -0.62], [1.5, 1.9, 0.9]);
 });
 // 動力盤三面(灰色烤漆櫃、名牌、電錶、指示燈、高壓警告、手寫的發電機試車通知)
@@ -253,29 +247,25 @@ const mcc = () => tpl('r8:mcc', (b) => {
     const x = -0.8 + i * 0.8;
     b.box('enamel_gray', 0.78, 1.95, 0.45, x, 1.025, 0);
     b.box('iron', 0.8, 0.05, 0.47, x, 0.025, 0);
-    b.box('enamel_gray', 0.72, 1.78, 0.02, x, 1.0, 0.235, { r: 0.004 });
+    b.box('enamel_gray', 0.72, 1.78, 0.02, x, 1.0, 0.235);
     barHandle(b, x + 0.3, 1.0, 0.245, 0.12, 'chrome', { vertical: true });
     b.plane(L(mccLabel(i)), 0.3, 0.1, x, 1.72, 0.2465);
     gauge(b, x - 0.16, 1.45, 0.246, 0.055);
-    [['#30ff60', i !== 1], ['#ff3020', i === 1], ['#ffb020', false]].forEach(([col, lit], k) => {
-      b.cyl('pl_dark', 0.02, 0.02, x + 0.04 + k * 0.08, 1.45, 0.255, { axis: 'z', seg: 8 });
-      if (lit) b.cyl(glow(`r8lamp${k}`, col), 0.013, 0.004, x + 0.04 + k * 0.08, 1.45, 0.266, { axis: 'z', seg: 8 });
-    });
+    for (let k = 0; k < 3; k++) b.box(k === (i === 1 ? 1 : 0) ? 'po_ember' : 'pl_dark', 0.03, 0.03, 0.02, x + 0.04 + k * 0.08, 1.45, 0.255); // 指示燈(亮的那顆用餘燼材質)
   }
   b.plane(L(warnSign('hv', '高壓危險', '非電氣人員勿開')), 0.3, 0.22, 0, 1.12, 0.2465);
   b.plane(L(noteRect('gentest', ['封院期間', '發電機', '每晚 22:00', '試車 10 分', '—總務 王'], { size: 10 })), 0.18, 0.24, 0.8, 1.17, 0.248, { rz: 0.05 });
-  for (const x of [-0.6, 0.0, 0.6]) b.rod('steel', 0.03, [x, 2.0, -0.05], [x, 2.7, -0.05], { seg: 6 }); // 往上的線管
   b.meta.coll = Box([-1.2, 0, -0.23], [1.2, 2.0, 0.26]);
 });
 // 軟水器(兩支藍色 FRP 桶 + 控制頭、白色鹽水桶、管線)
 const softener = () => tpl('r8:softener', (b) => {
   for (const x of [-0.4, 0.2]) {
-    b.cyl('pl_blue', 0.24, 1.36, x, 0.7, 0, { seg: 14 });
-    b.sph('pl_blue', 0.24, x, 1.38, 0, { ws: 14, hs: 5, tl: HALF });
-    b.cyl('pl_dark', 0.12, 0.2, x, 1.7, 0, { seg: 10 }); b.box('pl_gray', 0.17, 0.12, 0.07, x, 1.72, 0.13);
+    b.cyl('pl_blue', 0.24, 1.36, x, 0.7, 0, { seg: 10 });
+    b.cyl('pl_blue', 0.2, 0.06, x, 1.41, 0, { r2: 0.13, seg: 10 });
+    b.cyl('pl_dark', 0.12, 0.2, x, 1.7, 0, { seg: 8 }); b.box('pl_gray', 0.17, 0.12, 0.07, x, 1.72, 0.13);
   }
-  b.cyl('pl_white', 0.32, 0.92, 0.85, 0.46, 0.05, { seg: 14 }); b.cyl('pl_dark', 0.335, 0.035, 0.85, 0.935, 0.05, { seg: 14 });
-  b.tube('pl_gray', [[-0.4, 1.8, 0], [-0.4, 2.05, 0], [0.2, 2.05, 0], [0.2, 1.8, 0]], 0.025);
+  b.cyl('pl_white', 0.32, 0.92, 0.85, 0.46, 0.05, { seg: 10 }); b.cyl('pl_dark', 0.335, 0.035, 0.85, 0.935, 0.05, { seg: 10 });
+  for (const x of [-0.4, 0.2]) b.rod('pl_gray', 0.025, [x, 1.8, 0], [x, 2.05, 0], { seg: 6 }); b.rod('pl_gray', 0.025, [-0.4, 2.05, 0], [0.2, 2.05, 0], { seg: 6 });
   b.rod('pl_gray', 0.025, [-0.1, 2.05, 0], [-0.1, 2.05, -0.28], { seg: 6 });
   b.rod('pl_gray', 0.01, [0.2, 1.65, 0.1], [0.85, 0.95, 0.15], { seg: 4 });
   b.plane(L(noteRect('soft', ['軟水器', '每週加鹽'], { w: 64, h: 48, lines: false, col: '#222', size: 11 })), 0.16, 0.12, -0.4, 1.0, 0.243);
@@ -301,7 +291,7 @@ function boilerRoom(R) {
   if (S) { const g = R.atWall(genset(ceil - 0.05), S, 27.4, { gap: 0.2 }) || R.atWall(genset(ceil - 0.05), S, 29.6, { gap: 0.2 }); if (g) { floorDecal(R, 'stain', g.x, g.z, 2.2); R.atWall(signPlate('genst', warnSign('gen', '發電機', '運轉中勿靠近'), 0.3, 0.22, { screws: true }), S, g.tw - 1.2, { mount: 1.7 }); } }
   if (S) { R.atWall(fuelBoard(), S, 34.4, { mount: 1.15 }); R.atWall(signPlate('fire', fireSign(), 0.36, 0.22, { screws: true }), S, 32.9, { mount: 1.75 }); }
   if (N) { const m = R.atWall(mcc(), N, 28.6, { gap: 0.03 }); if (m) floorDecal(R, 'dirt', 28.6, 15.4, 1.6, { yaw: 0 }); }
-  if (W) R.atWall(softener(), W, 21.6, { gap: 0.04 });
+  void W; // [scene8] 軟水器拿掉(鍋爐房三角形預算 +5% 以內;模板留著)
   if (E) {
     const c = R.atWall(cot8(0), E, 18.9, { gap: 0.05 });
     if (c) { const q = R.local(c, 0.6, 0, 0.62); if (R.freeAt(q.x, q.z, 0.2)) R.put(nightStool(), q.x, q.z, c.yaw + 0.3, {}); }
@@ -313,23 +303,22 @@ function boilerRoom(R) {
   for (const [x, z, yaw, s] of [[33.6, 24.6, HALF, 1.8], [30.5, 25.6, HALF + 0.3, 1.8], [33.2, 21.0, 0.2, 1.5]]) floorDecal(R, 'lane', x, z, s, { yaw });
   if (N) for (const t of [21.2, 32.4]) wallDecal(R, N, t, 1.5, 'rust', 1.1);
   if (W) { wallDecal(R, W, 25.2, 1.2, 'water', 1.6); floorDecal(R, 'water', 19.0, 24.6, 1.8); }
-  litter(R, [['paper', 6], ['butt', 10], ['can', 2], ['rubble', 6], ['crumple', 3]]);
 }
 
 // ================================================================ B1 焚化爐
 // 爐口周邊:煙道(往上穿天花板)、裝料口上方的鋼罩、控制箱(溫度錶 + 燈)、灰車、靠牆的耙子與鏟子、高溫警告
 const furnaceKit = (ceil) => tpl(`r8:furnace:${ceil.toFixed(2)}`, (b) => {
   // 模板原點在爐體正面中心的地面;+Z 朝房間
-  b.cyl('rust', 0.36, ceil - 2.6, 0.6, 2.6 + (ceil - 2.6) / 2, -0.55, { seg: 14 });
-  for (let yy = 2.9; yy < ceil - 0.2; yy += 0.5) b.cyl('iron', 0.385, 0.05, 0.6, yy, -0.55, { seg: 14 });
+  b.cyl('rust', 0.36, ceil - 2.6, 0.6, 2.6 + (ceil - 2.6) / 2, -0.55, { seg: 10, open: true });
+  for (let yy = 2.9; yy < ceil - 0.2; yy += 0.5) b.cyl('iron', 0.385, 0.05, 0.6, yy, -0.55, { seg: 10, open: true });
   b.box('iron', 2.6, 1.9, 0.03, 0, 1.05, 0.015); // 爐前鋼板(耐火磚只露出上緣與兩側)
   for (const s of [-1, 1]) b.box('iron', 0.12, 2.78, 0.14, s * 1.42, 1.39, 0.07); // 鋼構立柱
   b.box('iron', 3.0, 0.12, 0.14, 0, 2.66, 0.07);
   for (const s of [-1, 1]) for (const yy of [0.5, 1.5, 2.4]) b.cyl('steel', 0.025, 0.05, s * 1.42, yy, 0.16, { axis: 'z', seg: 6 });
   b.box('iron', 1.5, 0.3, 0.42, 0, 2.05, 0.2, { r: 0.02 }); // 裝料口上方的排煙罩
   // 控制箱(右側)
-  b.box('enamel_gray', 0.5, 0.62, 0.22, 1.85, 1.45, -0.3);
-  gauge(b, 1.75, 1.55, -0.18, 0.08); led(b, 1.98, 1.58, -0.188, '#ff3010', 0.01); led(b, 1.98, 1.48, -0.188, '#ffb020', 0.01);
+  b.box('steel', 0.5, 0.62, 0.22, 1.85, 1.45, -0.3);
+  gauge(b, 1.75, 1.55, -0.18, 0.08);
   b.box('pl_dark', 0.08, 0.12, 0.03, 1.95, 1.3, -0.18);
   b.rod('steel', 0.025, [1.85, 1.76, -0.32], [1.85, ceil, -0.32], { seg: 6 });
   b.plane(L(warnSign('hot', '高溫危險', '爐門勿用手開')), 0.36, 0.27, -0.95, 1.55, 0.006);
@@ -347,7 +336,7 @@ const ashCart = () => tpl('r8:ashcart', (b) => {
 });
 // 垃圾袋的形狀:凹凸不平、底部被壓扁、上半部往束口收(位置函數 → 接縫處的重複頂點位移相同,不會裂開)
 export const bagGeo = (r, seed) => {
-  const g = new THREE.SphereGeometry(r, 9, 7), p = g.attributes.position, q = rnd(seed), a = q() * 6, c = q() * 6;
+  const g = new THREE.SphereGeometry(r, 7, 5), p = g.attributes.position, q = rnd(seed), a = q() * 6, c = q() * 6;
   for (let i = 0; i < p.count; i++) {
     let x = p.getX(i), y = p.getY(i), z = p.getZ(i);
     const n = 1 + 0.14 * Math.sin(x * 19 + a) * Math.sin(z * 17 + c) + 0.07 * Math.sin(y * 23 + a * 2);
@@ -366,7 +355,7 @@ const bagPile = (k, len, n) => tpl(`r8:bagpile:${k}`, (b) => {
     const rr = 0.22 + r() * 0.08, x = (r() - 0.5) * (len - 0.3 - row * 0.5), z = (r() - 0.5) * (0.55 - row * 0.15) + row * -0.08;
     const yb = row * 0.25 + rr * 0.42, m = r() < 0.72 ? 'po_bag_red' : 'po_bag_yellow';
     b.raw(m, bagGeo(rr, k * 131 + i), compose(x, yb, z, (r() - 0.5) * 0.4, r() * 6, (r() - 0.5) * 0.4, 1.15, 0.95, 1.0));
-    b.cyl(m, 0.014, 0.06, x + 0.02, yb + rr * 0.86, z, { r2: 0.03, seg: 5, rz: 0.4 }); // 束口
+    b.cyl(m, 0.014, 0.06, x + 0.02, yb + rr * 0.86, z, { r2: 0.03, seg: 4, rz: 0.4 }); // 束口
   }
   b.meta.coll = Box([-len / 2, 0, -0.42], [len / 2, 0.95, 0.42]);
 });
@@ -386,7 +375,7 @@ const bioBoxes = (k) => tpl(`r8:bioboxes:${k}`, (b) => {
 const scale = () => tpl('r8:scale', (b) => {
   b.box('steel', 0.8, 0.08, 0.6, 0, 0.04, 0, { r: 0.01 });
   b.box('iron', 0.06, 1.0, 0.06, 0, 0.58, -0.32);
-  b.cyl('enamel_red', 0.17, 0.09, 0, 1.15, -0.32, { axis: 'z', seg: 16 });
+  b.cyl('pl_red', 0.17, 0.09, 0, 1.15, -0.32, { axis: 'z', seg: 16 });
   b.plane(L(gaugeRect()), 0.27, 0.27, 0, 1.15, -0.274);
   b.meta.coll = Box([-0.4, 0, -0.38], [0.4, 1.3, 0.3]);
 });
@@ -492,14 +481,34 @@ function laundry(R) {
 
 // ================================================================ 3F 監控室
 // 一排錄影帶(書背朝外,手寫日期標籤)
-const vhsRow = (n, k) => tpl(`r8:vhsrow:${n}:${k}`, (b) => {
-  const r = rnd(k * 7 + n);
-  for (let i = 0; i < n; i++) {
-    if (r() < 0.12) continue;
-    const x = -n * 0.0145 + i * 0.029, lean = r() < 0.08 ? 0.25 : 0;
-    b.box('pl_black', 0.025, 0.188, 0.104, x, 0.094, 0, { rz: lean });
-    b.box('paper', 0.0255, 0.12, 0.002, x, 0.1, 0.053, { rz: lean });
+const vhsSpines = (k) => labRect(`r8:vhsspine:${k % 2}`, 256, 24, (c, w, h) => {
+  const r = rnd(k + 5); c.fillStyle = '#141414'; c.fillRect(0, 0, w, h);
+  for (let x = 0; x < w; x += 7) { if (r() < 0.1) { c.fillStyle = '#050505'; c.fillRect(x, 0, 7, h); continue; } c.fillStyle = r() < 0.15 ? '#2a2a2a' : '#1c1c1c'; c.fillRect(x, 0, 6, h); c.fillStyle = r() < 0.2 ? '#d8c890' : '#e8e4d8'; c.fillRect(x + 1, 6, 4, 11); }
+});
+// 一排錄影帶:一個盒子 + 書背貼圖(一捲一個盒子太多三角形)
+const vhsRow = (w, k) => tpl(`r8:vhsrow:${w.toFixed(2)}:${k % 2}`, (b) => {
+  b.box('pl_black', w, 0.186, 0.1, 0, 0.093, 0);
+  b.plane(L(vhsSpines(k)), w, 0.186, 0, 0.093, 0.0505);
+});
+// 第二面監視牆:鐵架 + 4×3 台平面盒子的 CRT(畫面:既有 cctv、三台 NO SIGNAL、三台雜訊)
+const crtRack = () => tpl('r8:crtrack', (b) => {
+  const cols = 4, rows = 3, cw = 0.5, rh = 0.42, w = cols * cw;
+  for (const x of [-w / 2 - 0.02, w / 2 + 0.02]) b.box('steel', 0.04, 0.9 + rows * rh, 0.5, x, (0.9 + rows * rh) / 2, 0.25);
+  for (let r = 0; r <= rows; r++) b.box('steel', w + 0.08, 0.03, 0.5, 0, 0.88 + r * rh, 0.25);
+  b.box('pl_dark', w + 0.04, 0.85, 0.48, 0, 0.425, 0.25); // 下面的錄影機櫃
+  const noise = [];
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const x = -w / 2 + cw * (c + 0.5), y = 0.9 + r * rh, idx = r * cols + c;
+    b.box(c % 2 ? 'pl_beige' : 'pl_dark', cw - 0.05, rh - 0.06, 0.24, x, y + (rh - 0.06) / 2, 0.36);
+    b.box(c % 2 ? 'pl_beige' : 'pl_dark', (cw - 0.05) * 0.7, (rh - 0.06) * 0.8, 0.2, x, y + (rh - 0.06) * 0.45, 0.16);
+    const sx = x, sy = y + (rh - 0.06) * 0.54, sz = 0.481, sw = (cw - 0.05) * 0.78, sh = (rh - 0.06) * 0.74;
+    if ([1, 6, 9].includes(idx)) b.plane(G(noSig([1, 6, 9].indexOf(idx))), sw, sh, sx, sy, sz);
+    else if ([3, 7, 11].includes(idx)) { b.plane('screen_dark', sw, sh, sx, sy, sz - 0.001); noise.push([sx, sy, sz + 0.001, sw, sh]); }
+    else if (idx === 4) b.plane('screen_dark', sw, sh, sx, sy, sz);
+    else b.plane(G(cctv(9 + idx)), sw, sh, sx, sy, sz);
   }
+  b.meta.noise = noise;
+  b.meta.coll = Box([-w / 2 - 0.05, 0, 0], [w / 2 + 0.05, 0.9 + rows * rh, 0.5]);
 });
 const tapeBox = () => tpl('r8:tapebox', (b) => {
   b.box('cardboard', 0.5, 0.32, 0.36, 0, 0.16, 0);
@@ -527,11 +536,8 @@ function monitorRoom(R) {
   const N = R.run('N'), W = R.run('W'), E = R.run('E'), S = R.run('S', (r) => r.t1 <= 94.1);
   // 第二面監視牆(北牆東段)+ 前面的值班桌
   if (N) {
-    const mw = R.atWall(monitorWall(4, 3, 3), N, 99.0, { gap: 0.02 }); // seed 3 → 用既有的 cctv 畫面(不再占圖集)
-    if (mw) {
-      noiseScreens(R, mw);
-      for (const [k, rr, cc] of [[0, 0, 1], [1, 1, 2], [2, 2, 1]]) R.putRel(tpl(`r8:nosigp:${k}`, (b) => b.plane(G(noSig(k)), 0.326, 0.238, 0, 0, 0)), mw, -1 + 0.5 * (cc + 0.5), 0.92 + rr * 0.42 + 0.194, 0.575);
-    }
+    const mw = R.atWall(crtRack(), N, 99.0, { gap: 0.02 });
+    if (mw) noiseScreens(R, mw);
     const tb = R.atWall(tableLong(2.0, 0.75, 4), N, 99.0, { gap: 0.82 });
     if (tb) {
       const put = (t, u, v, dy = 0, yaw = 0) => { const q = R.onTop(tb, u, v); R.put(t, q.x, q.z, tb.yaw + yaw, { y: q.y + dy }); };
@@ -539,22 +545,22 @@ function monitorRoom(R) {
       put(phone(1), 0.78, 0.4, 0, -0.3);
       put(ctpl('mug'), 0.6, 0.7);
       put(tapeBox(), 0.12, 0.35, 0, 0.1);
-      R.dyn(chairOffice('fab_gray', 3), tb.x + 0.2, tb.z + 0.9, Math.PI - 0.5, { mass: 12, shape: 'box' });
+      R.putChecked(chairShell('pl_gray', 2), tb.x + 0.2, tb.z + 0.85, Math.PI - 0.5, { static: true });
     }
   }
   // 錄影帶架(東牆北段):五層、每層一排日期標籤的錄影帶
   if (E) {
     const rk = R.atWall(shelfRack(1.2, 2.0, 0.35, 5, 3), E, 15.4, { gap: 0.03 });
-    if (rk) rk.t.tops.forEach((tp, i) => { if (i < 5) R.putRel(vhsRow(Math.floor((tp.x1 - tp.x0 - 0.06) / 0.029), i), rk, (tp.x0 + tp.x1) / 2, tp.y, (tp.z0 + tp.z1) / 2); });
+    if (rk) rk.t.tops.forEach((tp, i) => { if (i < 5) R.putRel(vhsRow(tp.x1 - tp.x0 - 0.08 - (i % 2) * 0.12, i), rk, (tp.x0 + tp.x1) / 2 - (i % 2) * 0.06, tp.y, (tp.z0 + tp.z1) / 2); });
   }
   if (W) R.atWall(camBoard(), W, 15.6, { mount: 1.25 });
   // 房間中間:兩張背對背的鐵桌(封院時保全組併起來輪班用),各一台 CRT、文件、椅子
   const ix = 96.6, iz = 18.5;
-  const d1 = R.tryPut(deskSteel(1.4, 0.72, 0), ix, iz + 0.37, 0, {}), d2 = d1 && R.tryPut(deskSteel(1.4, 0.72, 1), ix, iz - 0.37, Math.PI, {});
-  for (const [d, k] of [[d1, 0], [d2, 1]]) if (d) {
-    const q = R.onTop(d, k ? 0.3 : 0.7, 0.35); R.put(crtMonitor(k + 1, cctv(k ? 12 : 9)), q.x, q.z, d.yaw + (k ? 0.1 : -0.15), { y: q.y });
-    const f = R.onTop(d, k ? 0.72 : 0.25, 0.6); R.put(ctpl('file'), f.x, f.z, d.yaw + 0.3, { y: f.y });
-    R.dyn(chairOffice('fab_gray', k + 5), d.x + Math.sin(d.yaw) * 0.75, d.z + Math.cos(d.yaw) * 0.75, d.yaw + Math.PI + (k ? 0.4 : -0.3), { mass: 12, shape: 'box' });
+  const d = R.tryPut(tableLong(1.8, 0.8, 2), ix, iz, 0, {});
+  if (d) {
+    const q = R.onTop(d, 0.72, 0.4); R.put(crtMonitor(1, cctv(9)), q.x, q.z, d.yaw - 0.15, { y: q.y });
+    for (const [u, v, a] of [[0.25, 0.55, 0.3], [0.4, 0.35, -0.2]]) { const f = R.onTop(d, u, v); R.put(ctpl('file'), f.x, f.z, d.yaw + a, { y: f.y }); }
+    R.putChecked(chairShell('pl_gray', 1), d.x + 0.3, d.z + 0.75, Math.PI + 0.3, { static: true });
   }
   // 保全睡的行軍床(南牆西段,門的左手邊)
   if (S) { const c = R.atWall(cot8(1), S, 90.6, { gap: 0.05 }); if (c) { const q = R.local(c, -1.25, 0, 0.1); if (R.freeAt(q.x, q.z, 0.2)) R.put(nightStool(), q.x, q.z, c.yaw - 0.4, {}); } }
@@ -715,6 +721,13 @@ function peds(R) {
   leak(R, 93.4, 63.6);
 }
 
+// 接水的塑膠桶(水面用不透明的深色亮面:共用的 bin('bucket') 水面是透明材質,整區合併成一個獨立網格,會多一個 draw call)
+const bucket8 = (k) => tpl(`r8:bucket:${k}`, (b) => {
+  const c = k ? 'pl_red' : 'pl_blue';
+  b.lathe(c, [[0, 0.005], [0.12, 0.005], [0.15, 0.3], [0.157, 0.3], [0.13, 0.0]], 0, 0, 0, { seg: 12 });
+  b.cyl('film', 0.142, 0.004, 0, 0.21, 0, { seg: 12 });
+  b.tube('steel', [[-0.15, 0.29, 0], [-0.1, 0.42, 0], [0.1, 0.42, 0], [0.15, 0.29, 0]], 0.004, { seg: 3 });
+});
 // ================================================================ 屋頂漏水(三樓走廊、二樓南側直接在屋頂下的房間):天花板水漬、地上一灘水、接水的桶子
 function leak(R, x, z, o = {}) {
   if (!R.freeAt(x, z, 0.25)) return;
@@ -723,7 +736,7 @@ function leak(R, x, z, o = {}) {
   const rect = decal('water', 1, true);
   R.put(tpl(`r8:ceilstain:${h.toFixed(2)}`, (b) => b.plane(D(rect), 1.5, 1.5 * rect.h / rect.w, 0, h - 0.012, 0, { rx: HALF })), x + 0.1, z - 0.1, R.rng() * 6, {});
   floorDecal(R, 'water', x, z, o.pool ?? 1.6);
-  if (o.bucket !== false) R.putChecked(bin('bucket', o.k ?? 0), x + 0.05, z + 0.05, R.rng() * 6, { static: true });
+  if (o.bucket !== false) R.putChecked(bucket8(o.k ?? 0), x + 0.05, z + 0.05, R.rng() * 6, { static: true });
 }
 function f3Leaks(R) {
   for (const [x, z] of [[33.0, 25.2], [61.0, 24.8], [87.0, 25.4], [42.6, 33.0]]) leak(R, x, z, { k: Math.round(x) % 2 });
