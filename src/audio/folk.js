@@ -24,7 +24,7 @@
 //            child → 孩子的哼唱;touqi(頭七)→ 牽亡歌風的哀歌 + 引魂鈴(配樂同時進 touqi 狀態);停電類 → 配樂進 blackout 狀態
 //   宗教與喪葬的聲音:稀少、低調、完整演出,不拿來當跳嚇,不變調取笑。
 import { A, onTick, emit, gain, filter, tone, burst, metal, rand, pick, clamp, bake, shaper, distTo, around } from './core.js';
-import { iVox, iRecord, iTape, VOICE, CLIPS, voxLoad, voxBuf, voxFailed, voxGC, voxState } from './vox.js';
+import { iVox, iRecord, iTape, VOICE, CLIPS, voxLoad, voxBuf, voxFailed, voxGC, voxRelease, voxState } from './vox.js';
 
 const SR = 22050; // 預設烘焙取樣率;頻寬窄的(收音機、哼唱、誦經)用更低的取樣率省記憶體(配方的 sr)
 
@@ -444,7 +444,11 @@ function pumpF() {
     try { p = bake(len + T + (R.loop ? 0 : 0.5), (d, t) => fn(d, t, len, T), 1, R.sr || SR); } catch (err) { if (import.meta.env?.DEV) console.warn('[folk]', key, err); FC.delete(key); busy = false; pumpF(); return; }
     const ms = performance.now() - c0;
     FS.bakeMs += ms; FS.ms[key] = +ms.toFixed(1);
-    p.then((b) => { if (FC.get(key) === e && A.ctx) { e.b = post(b, R, len, fn === R.fb ? R.rms : R.vrms ?? R.rms); FS.baked++; } busy = false; pumpF(); }, () => { FC.delete(key); busy = false; pumpF(); });
+    p.then((b) => {
+      if (FC.get(key) === e && A.ctx) { e.b = post(b, R, len, fn === R.fb ? R.rms : R.vrms ?? R.rms); FS.baked++; }
+      if (R.vox && !FQ.some((j) => RX[j.key] && RX[j.key].vox === R.vox)) voxRelease(R.vox); // 烘焙完、沒有別的配方要用 → 來源錄音馬上釋放
+      busy = false; pumpF();
+    }, () => { FC.delete(key); busy = false; pumpF(); });
   });
 }
 // 取得烘焙好的緩衝(沒有就排程;pr 越大越先)。clip 配方 = 直接用解碼好的錄音(暖機後才載)
@@ -721,7 +725,7 @@ export function radioNext() {
 }
 // 片段(配樂的區域色彩):從烘焙好的旋律裡截 3~7 秒,很遠、很輕(非定位,配樂匯流排)
 export function fragment(key, o = {}) {
-  const k = alt(key, 2), b = k && folkBuf(k, 2);
+  const k = key === 'chant' ? key : alt(key, 2), b = k && folkBuf(k, 2); // 真人誦經只在原地完整地播(循環),不剪成配樂片段 → 片段用合成版
   if (!b || !A.ctx) return false;
   const len = Math.min(b.duration, rand(3, 7)), off = rand(0, Math.max(0, b.duration - len));
   const h = emit({ bus: 'music', prio: 0, room: 0.2, hall: 1, echo: 0.4, dur: len + 0.3, gain: o.g ?? 0.5 });
@@ -734,4 +738,4 @@ export function fragment(key, o = {}) {
   s.start(h.t, off); s.stop(h.t + len + 0.05);
   return true;
 }
-export const _folk = { RX, MEL, seq, FC, LIVE, C, bed: (k) => folkBuf(k, 6) };
+export const _folk = { RX, MEL, seq, FC, LIVE, C, bed: (k) => folkBuf(k, 6), alt, radioNext, fragment }; // 測試用(window.__sfx._internal.folk)

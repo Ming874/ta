@@ -86,6 +86,8 @@ export function voxGC() {
   const n = cnow();
   for (const [k, e] of VS) if (e.st === 'ok' && n - e.used > 150) { VS.delete(k); VX.bytes -= e.b.length * 4; }
 }
+// 烘焙完就用不到的來源(收音機的唱片、錄音帶、哼唱的取樣表):沒有別的配方在等它就馬上釋放(要再烘焙時從 HTTP 快取重新解碼)
+export function voxRelease(key) { const e = VS.get(key); if (e && e.st === 'ok') { VS.delete(key); VX.bytes -= e.b.length * 4; VX.rel = (VX.rel || 0) + 1; } }
 export const voxState = () => ({ ...VX, mb: +(VX.bytes / 1048576).toFixed(2), sets: [...VS].map(([k, e]) => `${k}:${e.st}`) });
 
 // ---------- 取樣哼唱樂器 ----------
