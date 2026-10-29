@@ -195,7 +195,7 @@ async function boot() {
   // 第一幀會把全部 program 同步重編一次(慢機器上 5~15 秒的凍結)→ 預編譯前先初始化
   game.initCombat?.();
   // 殭屍與常見特效材質:每種殭屍的第一個變體一建好就預編譯(與場景預編譯平行,不等它做完)
-  whenTypesReady().then(() => { performance.mark('hz:variants'); warmStage = 1; return idle(warmRuntime, 300); })
+  const warmed = whenTypesReady().then(() => { performance.mark('hz:variants'); warmStage = 1; return idle(warmRuntime, 300); })
     .catch((e) => console.warn('[warmup]', e)).finally(() => {
       warmStage = 4; game.warmed = true;
       // [motion] 商店 3D 預覽(獨立的小 context)在選單閒置時先建好、shader 先編(含環境貼圖的 PMREM):第一次開店不卡
@@ -236,6 +236,12 @@ async function boot() {
   } catch (e) { console.warn('[warmup]', e); }
   performance.measure('hz:precompile', { start: t });
   ready();
+  // [perf6] 殭屍/特效材質的離屏繪製(warmRuntime 最後一步,hz:warm)通常在開始畫面出現後 0.3~0.5 秒才落地:
+  // 第一次真的畫到這些蒙皮/特效變體時 ANGLE 在 GPU 行程編 D3D shader(實測 0.6~0.8 秒),剛開始動的選單畫面整個停住。
+  // 開始畫面前先等它做完(最多 3 秒,慢機器上殭屍變體還沒建好就不等)並等 GPU 消化,停頓留在載入畫面裡
+  await Promise.race([warmed, new Promise((r) => setTimeout(r, 3000))]);
+  await gpuDrain(game.renderer, 3000);
+  performance.mark('hz:firstframe');
   last = performance.now();
   if (!raf && !document.hidden) raf = requestAnimationFrame(frame);
   // 殭屍與常見特效材質:每種殭屍的第一個變體一建好就在閒置時段預編譯(不等全部變體、也不等貼圖下載),

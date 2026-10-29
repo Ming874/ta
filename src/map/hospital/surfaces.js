@@ -343,7 +343,12 @@ export function surf(key) {
     if (p.bump) { m.bumpMap = p.bump; m.bumpScale = pd.bump ?? 1; }
     if (pd.alphaTest) m.alphaTest = pd.alphaTest;
     if (pd.side === 2) m.side = THREE.DoubleSide;
-    if (pd.transparent) { m.transparent = true; m.depthWrite = false; m.envMapIntensity = pd.env ?? 1.5; }
+    if (pd.transparent) {
+      m.transparent = true; m.depthWrite = false; m.envMapIntensity = pd.env ?? 1.5;
+      // [perf6] 雙面透明的平面玻璃一次畫完:three 預設畫兩次(背面、正面),每次都改 side + needsUpdate → 每幀重算兩次 program 參數;
+      // 平面片沒有自己遮自己的問題,一次畫的結果相同(多片重疊處只有混合順序不同,同材質看不出差別)
+      if (m.side === THREE.DoubleSide) m.forceSinglePass = true;
+    }
     else wearUniforms(m, def || { wear: [0.7, 0.6, 0.4, 0] }, true);
   } else if (key === 'TRIM_MATTE' || key === 'TRIM_GLOSS' || key === 'TRIM_METAL') {
     const [r, mt] = { TRIM_MATTE: [0.78, 0], TRIM_GLOSS: [0.3, 0.05], TRIM_METAL: [0.42, 0.85] }[key];

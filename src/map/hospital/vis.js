@@ -15,6 +15,11 @@ export function createVis(L) {
     return a;
   });
   // 往上/往下看得到另一層的開口:上一層這格沒有樓板('o' 挑空、'%' 樓梯開口;建築外的 '_' 不算 → 戶外另外處理)
+  // [perf6] 關著的實心門(src/interact/doors.js 的門洞,兩扇都關好、沒有窗):玩家這一層的精細視線(fine)把門洞格當成牆。
+  // 其他樓層的種子(粗略、快取很久)照舊當門開著(保守)。opFine = 牆 | 關著的門;doorVer 每層一個版本號(快取鍵的一部分)
+  const doorOp = L.levels.map(() => new Uint8Array(N));
+  const opFine = opaque.map((a) => a.slice());
+  const doorVer = new Uint32Array(nL);
   const holeUp = L.levels.map((lv, li) => {
     const a = new Uint8Array(N);
     if (li + 1 < nL) for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) { const ch = L.charAt(li + 1, c, r); a[r * W + c] = ch === 'o' || ch === '%' ? 1 : 0; }
@@ -83,11 +88,11 @@ export function createVis(L) {
   // 結果:own = 這層看得到的區塊;col[j] = 同一批「格子位置」在第 j 層的區塊(其他層的結構:外牆、天井對面的窗);
   // up / down = 看得到的開口格(往上 / 往下一層的種子)
   function compute(li, c, r, fine) {
-    const key = ((li * H + r) * W + c) * 2 + (fine ? 1 : 0);
+    const key = ((li * H + r) * W + c) * 2 + (fine ? 1 + doorVer[li] * 65536 : 0);
     let res = cache.get(key);
     if (res) return res;
     raw.fill(0);
-    const op = opaque[li];
+    const op = fine ? opFine[li] : opaque[li];
     for (const [ox, oz] of fine ? SAMPLES9 : SAMPLES1) cast(op, raw, c + ox, r + oz, maxCells);
     dil.set(raw);
     for (let rr = 0; rr < H; rr++) for (let cc = 0; cc < W; cc++) {
@@ -120,7 +125,7 @@ export function createVis(L) {
   // ---- 目前的可見區塊(旗標陣列)----
   const own = new Uint8Array(nR), col = new Uint8Array(nR), other = new Uint8Array(nR);
   const mark = (arr, list) => { for (let i = 0; i < list.length; i++) arr[list[i]] = 1; };
-  let last = -1, version = 0; // 上次的(樓層, 格子, 附近樓梯)組合鍵(數字:每幀比對不配置字串)
+  let last = -1, lastDV = -1, version = 0; // 上次的(樓層, 格子, 附近樓梯)組合鍵(數字:每幀比對不配置字串)+ 那一層的門版本
   const todo = [];
   // 種子去重:每 2×2 格只取一格(固定挑區塊內第一個不透明以外的格子 → 閒置預算與即時查詢用同一格,快取命中)
   const canon = (j, k) => {
@@ -142,8 +147,8 @@ export function createVis(L) {
       let sm = 0;
       for (let i = 0; i < stairs.length; i++) sm |= 1 << (stairs[i].id & 31);
       const sk = (((li * H + r) * W + c) * 4294967296) + (sm >>> 0);
-      if (sk === last) return false;
-      last = sk;
+      if (sk === last && doorVer[li] === lastDV) return false;
+      last = sk; lastDV = doorVer[li];
       own.fill(0); col.fill(0); other.fill(0);
       // 其他樓層的種子還沒算過、這一幀的時間又用完了:那一層先整層當作看得到(多畫幾幀,不會缺),種子排進閒置佇列,下一幀再算
       const t0 = performance.now();
@@ -197,7 +202,17 @@ export function createVis(L) {
       while (todo.length && performance.now() - t0 < budget) { const [li, c, r, fine] = todo.pop(); compute(li, c, r, fine); n++; }
       return n;
     },
-    // 開門/關門等改變阻擋時(目前門一律視為透明 → 不需要)
+    // [perf6] 門洞格 (li,c,r) 是否被關著的實心門擋住;有變才改版本號(回傳 true)。下一次 update 重算玩家這一層的精細視線
+    setDoor(li, c, r, closed) {
+      if (li < 0 || li >= nL || c < 0 || r < 0 || c >= W || r >= H) return false;
+      const k = r * W + c, v = closed ? 1 : 0;
+      if (doorOp[li][k] === v) return false;
+      doorOp[li][k] = v;
+      opFine[li][k] = opaque[li][k] | v;
+      doorVer[li]++;
+      return true;
+    },
+    closedDoors() { let n = 0; for (const a of doorOp) for (let k = 0; k < N; k++) n += a[k]; return n; },
     invalidate() { cache.clear(); last = -1; },
     stats: () => ({ regions: nR, cached: cache.size }),
   };

@@ -18,8 +18,9 @@ import { surf } from './hospital/surfaces.js';
 import { setAnisotropy, pbrState } from './hospital/pbr.js';
 import { procStats } from './hospital/proctex.js';
 import { createVis } from './hospital/vis.js';
-import { createBatcher, createBatchView, createDynBatch, createCompactor, batchable, plainObj, regionSet } from './hospital/batch.js';
+import { createBatcher, createBatchView, createDynBatch, createCompactor, batchable, plainObj, regionSet, instancedDepth } from './hospital/batch.js';
 import { applySurface, hasSurface } from '../mats/surface.js';
+import { doorSeeThrough } from './hospital/leaves.js';
 
 // 聖心醫院本體:依 levels.js 的四層佈局建出結構(牆/地板/天花板/門窗/樓梯/欄杆/戶外)、材質、燈光、氛圍與腳本驚嚇。
 // 細節在 src/map/hospital/*;這裡負責組裝、樓層可見性與每幀更新。
@@ -203,8 +204,66 @@ export function* buildHospitalSteps(world, layout, scene, opts = {}) {
     one[0] = pvs.regionAt(oli, o.position.x, o.position.z);
     return pvsTest(oli, one);
   };
+  // 可推動的小道具:34m(或畫質的道具距離,取小)以外不畫;[draws] 看不到的區塊也不畫
+  const dynVisAll = (px, pz) => { const fd = Math.min(34, H.propDistance); for (const o of dynProps) { const dx = o.position.x - px, dz = o.position.z - pz; o.visible = dx * dx + dz * dz < fd * fd && (!view || dynVisible(o)); } };
+  // [draws] PVS:換格子(或樓層/戶外/樓梯附近的規則/門)才重算;tick = 這一幀也重算道具距離
+  let lastP = null;
+  const pvsStep = (li, x, y, z, outdoor, tick) => {
+    pvs.setMaxDistance(H.propDistance + 10);
+    pvsLi = li; pvsOut = outdoor;
+    const changed = pvs.update(li, x, z, nearStairs(li, x, z));
+    let sig = li * 2 + (outdoor ? 1 : 0);
+    for (let i = 0; i < vis.length; i++) sig = sig * 4 + (vis[i] ? 2 : 0) + (propVis[i] ? 1 : 0);
+    const big = changed || sig !== pvsSig;
+    if (big || tick) view.refresh(li, vis, propVis, outdoor, x, y + 1.6, z, H.propDistance, big);
+    if (big) { applyTracked(); comp?.refresh(); }
+    pvsSig = sig;
+    return big;
+  };
+  // [perf6] 活屍(動態角色)也依 PVS:主相機這次渲染時,所在區塊(腳與頭兩個高度 × 四周 0.5m)都看不到的就先藏起來(主畫面與
+  // 手電筒陰影都不畫),渲染完立刻還原 —— 遊戲邏輯、射線、伏擊姿勢看到的 visible 永遠是原本的值。
+  // 其他樓層 / 牆後 / 關著的門後的活屍不再每幀畫 4~5 + 陰影 3~5 個 draw call
+  const hiddenActors = [];
+  const actorVisible = (x, y, z) => {
+    for (const dy of [0.3, 1.5]) {
+      const oli = Math.max(0, L.levelOfY(y + dy));
+      for (const [dx, dz] of [[0, 0], [0.5, 0], [-0.5, 0], [0, 0.5], [0, -0.5]]) { one[0] = pvs.regionAt(oli, x + dx, z + dz); if (pvsTest(oli, one)) return true; }
+    }
+    return false;
+  };
+  const hideActors = (list) => {
+    if (!list || !view || !lastP) return;
+    const far2 = H.propDistance * H.propDistance; // 視線只算到道具距離 + 10m:更遠的(戶外遠處路燈下)照舊只靠視錐剔除
+    for (let i = 0; i < list.length; i++) {
+      const z = list[i], root = z?.root, p = z?.pos;
+      if (!root || !root.visible || !p) continue;
+      if ((p.x - lastP.x) ** 2 + (p.z - lastP.z) ** 2 > far2) continue;
+      if (!actorVisible(p.x, p.y, p.z)) { root.visible = false; hiddenActors.push(root); }
+    }
+  };
+  const unhideActors = () => { for (let i = 0; i < hiddenActors.length; i++) hiddenActors[i].visible = true; hiddenActors.length = 0; };
+  // [perf6] 門的狀態(src/interact/doors.js):兩扇都完全關好(不在轉動)的實心門洞,在玩家這一層的精細視線裡當牆。
+  // 主相機每次渲染前檢查(很便宜):門一開始轉動(或新一局門被重設成開著)就在這一幀重算 PVS → 門後的房間和門縫同一幀出現,不會晚一幀
+  let doorWays = null;
+  const shut = (l) => !l.anim && Math.abs(Math.atan2(Math.sin(l.group.rotation.y - l.closed), Math.cos(l.group.rotation.y - l.closed))) < 0.03;
+  const doorPoll = () => {
+    const D = H.game?.interact?.doors;
+    if (!D?.list) return false;
+    if (!doorWays) {
+      doorWays = [];
+      for (const w of D.list) {
+        if (w.leaves.length < 2 || doorSeeThrough(w.style)) continue;
+        const [li, c, r] = String(w.key).split(',').map(Number);
+        if ([li, c, r].every(Number.isFinite)) doorWays.push({ w, li, c, r });
+      }
+    }
+    let any = false;
+    for (const d of doorWays) if (pvs.setDoor(d.li, d.c, d.r, d.w.leaves.every(shut))) any = true;
+    return any;
+  };
   ctx.lateAdd = (obj) => {
     if (!view || !obj.isInstancedMesh) return;
+    instancedDepth(obj);
     const pool = obj.userData.pool;
     if (comp && pool?.owner && !pool.dyn && plainObj(obj)) { comp.drop(pool); comp.add(obj); comp.build(); comp.refresh(); } // 下載模型換掉的區塊實例池:換掉壓實清單裡的舊零件
     else if (pool?.owner || pool?.dyn) { track(obj); applyTracked(); }
@@ -265,6 +324,12 @@ export function* buildHospitalSteps(world, layout, scene, opts = {}) {
         used.push(m);
         if (!(used.length % 64)) yield* pause();
       }
+      // [perf6] 互動物件的靜態零件(src/interact/kit.js:每層 × 每種材質合併的 ix-static 網格,整層一個包圍球 → 從不剔除):
+      // 依三角形切到區塊、併進同材質的批次(和 ix-batch 同樣是 batching program,不會每幀來回切換)
+      propGroups.forEach((g, li) => {
+        for (const o of g.children) if (o.isMesh && !o.isInstancedMesh && !o.isBatchedMesh && /^ix-static:/.test(o.name) && batchable(o.material) && plainObj(o)) { Bt.addStruct(o, li, 'prop', 0.6); used.push(o); }
+      });
+      yield* pause();
       for (const g of propGroups) for (const o of g.children) {
         if (!o.isInstancedMesh || !o.count) continue;
         const pool = o.userData.pool, pi = /^pi_inst_/.test(o.name);
@@ -291,23 +356,30 @@ export function* buildHospitalSteps(world, layout, scene, opts = {}) {
       comp = createCompactor({ parent: root, test: pvsTest, vis: pvs, L });
       for (const o of keep) { const pool = o.userData.pool; if (pool?.owner && !pool.dyn && plainObj(o)) comp.add(o); else track(o); }
       comp.build();
-      view = createBatchView({ meshes: built.meshes, insts: built.insts, vis: pvs, moon: atmo.moon, dyn: dynB, comp, flash: () => H.game?.player?.flashlight || null });
+      view = createBatchView({ meshes: built.meshes, insts: built.insts, proxies: built.proxies, vis: pvs, moon: atmo.moon, dyn: dynB, comp, flash: () => H.game?.player?.flashlight || null });
       H.batches = view;
       // 主相機每次渲染前(矩陣已更新):視錐剔除 + 套用;其他相機(遮雨深度圖、離屏預熱)全部打開
       const scene0 = game?.scene || scene, cam0 = game?.camera || null;
       const prev = scene0.onBeforeRender;
       scene0.onBeforeRender = function (r, sc, cam, rt) {
         prev.call(this, r, sc, cam, rt);
-        if (cam === cam0 && (cam.layers.mask & 1)) view.cull(cam); else view.showAll();
+        unhideActors();
+        if (cam === cam0 && (cam.layers.mask & 1)) {
+          if (doorPoll() && lastP) { pvsStep(lastP.li, lastP.x, lastP.y, lastP.z, lastP.outdoor, false); dynVisAll(lastP.x, lastP.z); } // [perf6] 門開/關:這一幀就重算
+          view.cull(cam);
+          hideActors(game?.zombies);
+        } else view.showAll();
       };
       const prevA = scene0.onAfterRender;
-      scene0.onAfterRender = function (r, sc, cam) { view.restoreShadows(); prevA.call(this, r, sc, cam); };
+      scene0.onAfterRender = function (r, sc, cam) { view.restoreShadows(); unhideActors(); prevA.call(this, r, sc, cam); };
+      // [perf6] 會投影的 InstancedMesh 用自己的深度材質(不和一般網格共用 three 預設那一個 → 陰影 pass 不會每幀來回切 program)
+      scene0.traverse(instancedDepth);
       // 場景根節點不會動:關掉自動更新(否則每幀強迫全部物件重算世界矩陣);自己 updateMatrix 的物件照常更新
       scene0.matrixAutoUpdate = false;
       scene0.updateMatrix();
       scene0.updateMatrixWorld(true);
       busy += performance.now() - ts;
-      stats.batch = { ms: Math.round(busy), wall: Math.round(performance.now() - t1), steps: nY, struct: Math.round(t2), props: Math.round(t3 - t2), build: Math.round(t4 - t3), batched: built.meshes.length, instances: built.insts.length, dynBatches: dynB.meshes.length, dynItems: dynB.items.length, compact: comp.count(), fromMeshes: st.meshes, fromInstanced: st.instanced, bakedInst: st.inst, tracked: tracked.length, regions: pvs.nR };
+      stats.batch = { ms: Math.round(busy), wall: Math.round(performance.now() - t1), steps: nY, struct: Math.round(t2), props: Math.round(t3 - t2), build: Math.round(t4 - t3), batched: built.meshes.length, instances: built.insts.length, shadowProxies: built.proxies.length, proxied: built.meshes.filter((m) => m.userData.proxied).length, dynBatches: dynB.meshes.length, dynItems: dynB.items.length, compact: comp.count(), fromMeshes: st.meshes, fromInstanced: st.instanced, bakedInst: st.inst, tracked: tracked.length, regions: pvs.nR };
       console.log('[hospital] batch', JSON.stringify(stats.batch));
       return view;
     },
@@ -338,19 +410,11 @@ export function* buildHospitalSteps(world, layout, scene, opts = {}) {
       updateVisibility(li, p.x, p.z, outdoor);
       // [draws] PVS:換格子(或樓層/戶外/樓梯附近的規則改變)才重算;道具距離每 4 幀重算
       if (view) {
-        pvs.setMaxDistance(H.propDistance + 10);
-        pvsLi = li; pvsOut = outdoor;
-        const changed = pvs.update(li, p.x, p.z, nearStairs(li, p.x, p.z));
-        let sig = li * 2 + (outdoor ? 1 : 0);
-        for (let i = 0; i < vis.length; i++) sig = sig * 4 + (vis[i] ? 2 : 0) + (propVis[i] ? 1 : 0);
-        const big = changed || sig !== pvsSig;
-        if (big || ((pvsTick = (pvsTick + 1) & 3) === 0)) view.refresh(li, vis, propVis, outdoor, p.x, p.y + 1.6, p.z, H.propDistance, big);
-        if (big) { applyTracked(); comp?.refresh(); dynTick = 11; }
-        pvsSig = sig;
-        if (!big) pvs.idle(0.6);
+        lastP = { li, x: p.x, y: p.y, z: p.z, outdoor };
+        const big = pvsStep(li, p.x, p.y, p.z, outdoor, ((pvsTick = (pvsTick + 1) & 3) === 0));
+        if (big) dynTick = 11; else pvs.idle(0.6);
       }
-      // 可推動的小道具:34m(或畫質的道具距離,取小)以外不畫;[draws] 看不到的區塊也不畫
-      if ((dynTick = (dynTick + 1) % 12) === 0) { const fd = Math.min(34, H.propDistance); for (const o of dynProps) { const dx = o.position.x - p.x, dz = o.position.z - p.z; o.visible = dx * dx + dz * dz < fd * fd && (!view || dynVisible(o)); } }
+      if ((dynTick = (dynTick + 1) % 12) === 0) dynVisAll(p.x, p.z);
       // 道具區塊距離剔除(每 4 幀一次;區塊包圍球表面到眼睛的距離)。
       // 小東西在霧裡更早就看不清楚:半徑越小顯示距離越短(半徑 0.2m ≈ 1/3,4m 以上 = 完整距離)
       if ((cullTick = (cullTick + 1) & 3) === 0) {

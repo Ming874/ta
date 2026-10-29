@@ -200,6 +200,41 @@ function depthFor(mat) {
   return d;
 }
 
+// [perf6] InstancedMesh 也用自己的深度材質:three 預設讓一般網格與實例網格共用同一個陰影深度材質,
+// 兩者在陰影 pass 交錯時(場景順序)每換一次就要重算 program 參數(instancing 開/關)。實例網格改用另一組
+// (依 side / map / alphaTest 共用,program 與預熱的實例陰影代理相同,不會新編譯)。深度結果會受材質影響的(alphaTest 貼圖、位移、裁切)維持原樣
+const instDepthMats = new Map();
+export function instancedDepth(o) {
+  if (!o.isInstancedMesh || !o.castShadow || o.customDepthMaterial || Array.isArray(o.material) || !o.material) return;
+  const m = o.material;
+  if ((m.alphaTest > 0 && (m.map || m.alphaMap)) || m.alphaToCoverage || (m.displacementMap && m.displacementScale !== 0) || (m.clipShadows && m.clippingPlanes?.length)) return;
+  const k = (m.side ?? 0) + '|' + (m.shadowSide ?? '-') + '|' + (m.map ? 'M' : '') + '|' + (m.alphaTest > 0 ? m.alphaTest : '');
+  let d = instDepthMats.get(k);
+  if (!d) instDepthMats.set(k, (d = new THREE.MeshDepthMaterial()));
+  o.customDepthMaterial = d;
+}
+
+// [perf6] 陰影代理:陰影 pass 不需要表面材質(深度材質只看位置),但每個材質一個 BatchedMesh → 手電筒陰影每幀 50~65 個 draw。
+// 深度結果與材質無關的批次(沒有 alphaTest / 位移貼圖 / 裁切面)不自己投影,幾何的「位置」另外依陰影面向(side)× 圖層
+// 併成少數幾個只在陰影 pass 畫的 BatchedMesh(實例 = 同一個區塊,開關跟著主相機的可見集合 × 手電筒光錐)。
+// 主相機、遮雨深度圖、離屏預熱都不畫它:three 的陰影 pass 用「觀看的相機」測圖層(不是陰影相機),所以不能用圖層區分;
+// 改用視錐測試 —— 代理的 intersectsFrustum 只對手電筒 / 月光的陰影視錐回傳 true(主 pass 用的是 renderer 自己的視錐)。
+const SHADOW_SIDE = { [THREE.FrontSide]: THREE.BackSide, [THREE.BackSide]: THREE.FrontSide, [THREE.DoubleSide]: THREE.DoubleSide };
+function proxyKey(mat, layers) {
+  if (mat.alphaTest > 0 || mat.alphaToCoverage || (mat.displacementMap && mat.displacementScale !== 0) || (mat.clipShadows && mat.clippingPlanes?.length)) return null;
+  if (layers !== 1 && layers !== 2) return null; // 只有預設圖層 / 地板天花板(NO_FLASH_SHADOW_LAYER;主相機兩層都開)
+  return String(mat.shadowSide != null ? mat.shadowSide : SHADOW_SIDE[mat.side]);
+}
+// 代理的材質只用來告訴陰影 pass「深度材質用哪一面」(shadowSide);主相機永遠看不到它(圖層)
+const proxyCarriers = new Map(), proxyDepth = new Map();
+function proxyMats(side) {
+  let c = proxyCarriers.get(side);
+  if (!c) { c = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }); c.name = 'shadowproxy'; c.shadowSide = side; proxyCarriers.set(side, c); }
+  let d = proxyDepth.get(side);
+  if (!d) proxyDepth.set(side, (d = new THREE.MeshDepthMaterial())); // 與 three 預設陰影深度材質同參數(program 與其他批次的深度變體共用)
+  return { carrier: c, depth: d };
+}
+
 // 建構期間的快速複製(BatchedMesh.setGeometryAt 逐元素 setX/setComponent 太慢:幾百萬個索引要一秒以上)。
 // 只用在預留空間 = 幾何大小、屬性型別一致(全部 Float32、索引陣列)的情況;建完就拿掉
 function fastSetGeometryAt(geometryId, geometry) {
@@ -243,7 +278,8 @@ export function createBatcher({ L, vis }) {
   const api = {
     groups, stats,
     // 結構網格:逐三角形依「中心 + 法線外推 0.3m」所在的格子分區(牆面歸到它面向的房間)
-    addStruct(mesh, li) {
+    // kind = 'prop':整層合併好的道具網格(互動物件的靜態零件)也這樣切,之後依道具規則(距離、其他樓層)開關
+    addStruct(mesh, li, kind = 'struct', far = 1) {
       const g = mesh.geometry, P = g.attributes.position, Nn = g.attributes.normal, ix = g.index ? g.index.array : null;
       const nT = ix ? ix.length / 3 : P.count / 3;
       const spec = { color: !!g.attributes.color || !!mesh.material.vertexColors, wear: !!g.attributes.aWear };
@@ -271,7 +307,7 @@ export function createBatcher({ L, vis }) {
         if (!e2) byKey.set(kk, (e2 = { rk, tris: [] }));
         e2.tris.push(t);
       }
-      for (const { rk, tris } of byKey.values()) piece(gr, li, rk, 'struct', 1).add(g, ident ? null : mw, null, Int32Array.from(tris));
+      for (const { rk, tris } of byKey.values()) piece(gr, li, rk, kind, far).add(g, ident ? null : mw, null, Int32Array.from(tris));
       stats.meshes++; stats.tris += nT;
     },
     // 道具網格(已合併、世界座標或帶矩陣):整個物件依包圍盒分區(rk:已算好的區塊組合;undefined = 依包圍盒算)
@@ -322,9 +358,44 @@ export function createBatcher({ L, vis }) {
       const out = [], insts = [];
       let maxInst = 0;
       for (const gr of groups.values()) maxInst = Math.max(maxInst, gr.pieces.size);
+      // [perf6] 陰影代理:先算每個代理的容量(實例 / 頂點 / 索引)
+      const pk = new Map();
+      for (const gr of groups.values()) {
+        gr.pkey = gr.cast ? proxyKey(gr.mat, gr.layers) : null;
+        if (!gr.pkey) continue;
+        let e = pk.get(gr.pkey);
+        if (!e) pk.set(gr.pkey, (e = { n: 0, nv: 0, ni: 0, bm: null, layers: 0 }));
+        e.layers |= gr.layers;
+        for (const p of gr.pieces.values()) if (p.piece.nv > 0) { e.n++; e.nv += p.piece.nv; e.ni += p.piece.i.n; }
+      }
+      for (const e of pk.values()) maxInst = Math.max(maxInst, e.n);
+      const proxies = [];
+      for (const [key, e] of pk) {
+        if (!e.n) continue;
+        const side = Number(key);
+        const { carrier, depth } = proxyMats(side);
+        const bm = new THREE.BatchedMesh(e.n, e.nv, e.ni, carrier);
+        bm.name = 'shadowproxy:' + key;
+        bm.perObjectFrustumCulled = false;
+        bm.sortObjects = false;
+        bm.frustumCulled = true; // 見上:intersectsFrustum 只認陰影視錐(createBatchView 設定)
+        bm.intersectsFrustum = () => false;
+        bm.castShadow = true;
+        bm.receiveShadow = false;
+        bm.layers.mask = e.layers;
+        bm.matrixAutoUpdate = false;
+        bm.userData.shadowProxy = true;
+        bm.customDepthMaterial = depth;
+        bm.raycast = () => {};
+        bm.setGeometryAt = fastSetGeometryAt;
+        e.bm = bm;
+        proxies.push(bm);
+      }
+      const _pg = new THREE.BufferGeometry();
       for (const gr of groups.values()) {
         const list = [...gr.pieces.values()].filter((p) => p.piece.nv > 0);
         if (!list.length) continue;
+        const proxy = gr.pkey ? pk.get(gr.pkey).bm : null;
         const geos = list.map((p) => p.piece.geometry());
         let nv = 0, ni = 0;
         for (const g of geos) { nv += g.attributes.position.count; ni += g.index.count; }
@@ -340,13 +411,21 @@ export function createBatcher({ L, vis }) {
         bm.userData.batch = true;
         bm.customDepthMaterial = depthFor(gr.mat);
         bm.setGeometryAt = fastSetGeometryAt;
+        if (proxy) { bm.castShadow = false; bm.userData.proxied = true; } // 陰影改由代理畫
         geos.forEach((g, k) => {
           g.computeBoundingBox();
           g.computeBoundingSphere();
           const gid = bm.addGeometry(g);
           const iid = bm.addInstance(gid);
           const p = list[k];
-          insts.push({ bm, id: iid, regs: p.regs, li: p.li, kind: p.kind, far: p.far, sphere: g.boundingSphere.clone(), on: true });
+          let pid = -1;
+          if (proxy) { // 只有位置 + 索引(BatchedMesh 會複製進自己的緩衝區)
+            _pg.attributes = { position: g.attributes.position };
+            _pg.index = g.index;
+            _pg.boundingBox = g.boundingBox; _pg.boundingSphere = g.boundingSphere;
+            pid = proxy.addInstance(proxy.addGeometry(_pg));
+          }
+          insts.push({ bm, id: iid, regs: p.regs, li: p.li, kind: p.kind, far: p.far, sphere: g.boundingSphere.clone(), on: true, pbm: proxy, pid });
           g.dispose();
         });
         delete bm.setGeometryAt;
@@ -360,16 +439,36 @@ export function createBatcher({ L, vis }) {
         out.push(bm);
         yield;
       }
+      _pg.attributes = {}; _pg.index = null; _pg.boundingBox = null; _pg.boundingSphere = null;
+      for (const bm of proxies) {
+        delete bm.setGeometryAt;
+        const sh = sharedTextures(Math.max(64, maxInst));
+        bm._matricesTexture.dispose(); bm._matricesTexture = sh.mat;
+        bm._indirectTexture.dispose(); bm._indirectTexture = sh.ind;
+        parent.add(bm);
+        bm.updateMatrix(); bm.updateMatrixWorld(true);
+      }
       groups.clear();
-      return { meshes: out, insts };
+      return { meshes: out, insts, proxies };
     },
   };
   return api;
 }
 
 // 執行期:依可見區塊 / 樓層 / 距離 / 主相機視錐開關實例;BatchedMesh 沒有任何可見實例時整個隱藏(連 setProgram 都省掉)
-export function createBatchView({ meshes, insts, vis, moon, dyn = null, comp = null, flash = null }) {
+export function createBatchView({ meshes, insts, proxies = [], vis, moon, dyn = null, comp = null, flash = null }) {
   const moonCam = moon ? moon.shadow.camera : null;
+  // [perf6] 陰影代理只在手電筒 / 月光的陰影 pass 畫(視錐物件 = LightShadow 自己的視錐;主 pass 是 renderer 的視錐 → false)
+  const shadowFrusta = new Set();
+  if (moon) shadowFrusta.add(moon.shadow.getFrustum());
+  const inShadowFrustum = (f) => shadowFrusta.has(f);
+  for (const p of proxies) p.intersectsFrustum = inShadowFrustum;
+  { const L0 = flash ? flash() : null; if (L0?.shadow) shadowFrusta.add(L0.shadow.getFrustum()); }
+  // [perf6] 陰影代理的實例狀態(pOn:目前開著;pList:開著的清單;pStamp:這一幀要開)
+  const pOn = new Uint8Array(insts.length), pStamp = new Uint32Array(insts.length);
+  let pList = new Int32Array(insts.length), pNext = new Int32Array(insts.length), nP = 0, pFrame = 0;
+  const pIdx = new Map(proxies.map((p, i) => [p, i])), pCnt = new Int32Array(proxies.length);
+  insts.forEach((it, i) => { it.pk = it.pbm ? pIdx.get(it.pbm) : -1; if (it.pbm) { pOn[i] = 1; pList[nP++] = i; } }); // addInstance 預設可見
   const nR = vis.nR;
   const lvlOK = new Uint8Array(8), otherOK = new Uint8Array(8);
   const want = new Uint8Array(insts.length); // PVS × 樓層 × 距離(不含視錐)
@@ -387,7 +486,7 @@ export function createBatchView({ meshes, insts, vis, moon, dyn = null, comp = n
   const _lp = new THREE.Vector3(), _lt = new THREE.Vector3(), _ld = new THREE.Vector3();
   let shadowCut = false;
   // 月光陰影:這個 pass 全部實例都要畫(其他 pass 照舊)
-  for (const bm of meshes) {
+  for (const bm of meshes.concat(proxies)) {
     const proto = THREE.BatchedMesh.prototype;
     bm.onBeforeShadow = function (r, o, cam, shCam, geo, dm, grp) {
       if (shCam === moonCam) {
@@ -462,14 +561,45 @@ export function createBatchView({ meshes, insts, vis, moon, dyn = null, comp = n
       // 手電筒陰影:這一幀沒有任何可見實例落在手電筒光錐(角度 + 陰影距離)裡的批次,這次 render 不進陰影 pass
       // (castShadow 只影響陰影 pass 要不要畫它,不影響 program;render 結束時 restoreShadows() 還原)
       const L = flash ? flash() : null;
-      if (L && !mo && L.castShadow && L.intensity > 0) {
+      const cone = !!(L && L.castShadow && L.intensity > 0);
+      let far = 0, tanA = 0, secA = 0;
+      if (cone) {
         L.getWorldPosition(_lp); L.target.getWorldPosition(_lt);
         _ld.subVectors(_lt, _lp).normalize();
-        const far = L.shadow.camera.far || L.distance || 30, a = Math.min(1.5, L.angle + 0.05), tanA = Math.tan(a), secA = 1 / Math.cos(a);
+        far = L.shadow.camera.far || L.distance || 30;
+        const a = Math.min(1.5, L.angle + 0.05);
+        tanA = Math.tan(a); secA = 1 / Math.cos(a);
+      }
+      if (L && L.shadow) shadowFrusta.add(L.shadow.getFrustum());
+      // [perf6] 陰影代理:實例 = 主相機看得到 ×(手電筒開著時)在光錐裡;月光要重畫的那一幀 onBeforeShadow 會全部打開
+      if (proxies.length) {
+        pFrame++;
+        pCnt.fill(0);
+        let n2 = 0;
+        for (let k = 0; k < nOn; k++) {
+          const i = onList[k], it = insts[i];
+          if (!it.pbm) continue;
+          if (cone) {
+            const sp = it.sphere, c = sp.center, r = sp.radius;
+            const vx = c.x - _lp.x, vy = c.y - _lp.y, vz = c.z - _lp.z, t = vx * _ld.x + vy * _ld.y + vz * _ld.z;
+            if (t < -r || t > far + r) continue;
+            const d2 = vx * vx + vy * vy + vz * vz - t * t, lim = Math.max(0, t) * tanA + r * secA;
+            if (d2 > lim * lim) continue;
+          }
+          pStamp[i] = pFrame;
+          if (!pOn[i]) { pOn[i] = 1; it.pbm.setVisibleAt(it.pid, true); }
+          pCnt[it.pk]++;
+          pNext[n2++] = i;
+        }
+        for (let k = 0; k < nP; k++) { const i = pList[k]; if (pStamp[i] !== pFrame && pOn[i]) { pOn[i] = 0; insts[i].pbm.setVisibleAt(insts[i].pid, false); } }
+        const t = pList; pList = pNext; pNext = t; nP = n2;
+        for (let j = 0; j < proxies.length; j++) proxies[j].visible = pCnt[j] > 0 || mo;
+      }
+      if (cone && !mo) {
         inCone.fill(0);
         for (let k = 0; k < nOn; k++) {
           const i = onList[k], j = instBM[i];
-          if (inCone[j]) continue;
+          if (inCone[j] || !castOrig[j]) continue;
           const sp = insts[i].sphere, c = sp.center, r = sp.radius;
           const vx = c.x - _lp.x, vy = c.y - _lp.y, vz = c.z - _lp.z, t = vx * _ld.x + vy * _ld.y + vz * _ld.z;
           if (t < -r || t > far + r) continue;
@@ -491,6 +621,9 @@ export function createBatchView({ meshes, insts, vis, moon, dyn = null, comp = n
       nOn = 0;
       for (let i = 0; i < insts.length; i++) { const it = insts[i]; if (!it.on) { it.on = true; it.bm.setVisibleAt(it.id, true); } onList[nOn++] = i; }
       for (const bm of meshes) bm.visible = true;
+      nP = 0;
+      for (let i = 0; i < insts.length; i++) { const it = insts[i]; if (!it.pbm) continue; if (!pOn[i]) { pOn[i] = 1; it.pbm.setVisibleAt(it.pid, true); } pList[nP++] = i; }
+      for (const p of proxies) p.visible = true;
       dyn?.showAll();
       comp?.cull(null, true);
     },
@@ -665,6 +798,7 @@ export function createCompactor({ parent, test, vis, L }) {
         im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         if (s.instanceColor) { im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, live.length) * 3), 3); im.instanceColor.setUsage(THREE.DynamicDrawUsage); }
         im.updateMatrix();
+        instancedDepth(im);
         parent.add(im);
         gr.im = im; gr.cap = live.length; gr.list = new Int32Array(Math.max(1, live.length)); gr.n = -1;
       }

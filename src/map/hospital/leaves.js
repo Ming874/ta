@@ -71,6 +71,8 @@ const MT = (x, y, z, rx = 0, ry = 0, rz = 0) => new THREE.Matrix4().compose(new 
 
 // 各樣式的窗(公尺,從鉸鍊算起;與 doortex.js 的挖空一致)
 const WIN = (style, lw) => ({ ward: [lw * 0.3, 1.3, lw * 0.7, 1.9], fire: [lw * 0.42, 1.2, lw * 0.58, 1.75], cell: [lw * 0.38, 1.42, lw * 0.62, 1.62], swing: [lw * 0.5 - 0.17, 1.28, lw * 0.5 + 0.17, 1.62, true] }[style] || null);
+// [perf6] 關上時看得穿的門(有窗、玻璃門):室內可見性(vis.js)不把它當牆
+export const doorSeeThrough = (style) => style === 'glass' || !!WIN(style, 1);
 
 // 一扇門的幾何(門扇局部:x 0..lw 從鉸鍊、y 0..lh、z 厚度置中)→ { opaque, glass }
 function leafGeo(style, lw, lh, t, mirror = false) {
