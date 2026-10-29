@@ -2,6 +2,7 @@ import './interact.css';
 import { withKeys } from '../ui/icons.js';
 import * as THREE from 'three';
 import { ix as ixs } from '../audio.js';
+import { captions, cutEl } from '../ui/captions.js';
 
 // 互動系統的介面:按住進度條、字幕(電話/收音機/廣播)、紙條與錄音帶閱讀器、密碼鍵盤/病歷終端、保險絲盒、身上的道具。
 // HUD 元件掛在 #hud(沿用 hud.css 的 .hd / .hd-bar / .fill 樣式);全螢幕面板(閱讀器等)掛在 body。
@@ -23,7 +24,6 @@ export class IxUI {
     this.holdEl = hud.appendChild(mk('hd ix-hold hd-hide', '<span></span><div class="hd-bar"><div class="fill"></div></div>'));
     this.holdTxt = this.holdEl.children[0];
     this.holdFill = this.holdEl.querySelector('.fill');
-    this.subEl = hud.appendChild(mk('hd ix-subs'));
     this.invEl = hud.appendChild(mk('hd ix-inv hd-hide'));
     this.subs = [];
     this._hold = { on: null, k: -1 };
@@ -46,14 +46,18 @@ export class IxUI {
   }
 
   // ---------- 字幕 ----------
-  // say({ who, text, ms, color, tag }) → handle { close() };同時最多兩行,新的在下
+  // say({ who, text, ms, color, tag, critical, speak }) → handle { close() }
+  // 放在唯一的字幕區(src/ui/captions.js):有 who = 說話的字(一次一個人;同一個人的上一句變淡);沒有 who = 聲音字幕(有人在講就不出、限頻)
+  // speak = 實際說話的秒數(沒給就用 ms 估);critical = 劇情的句子(不會被擋)
   say(o) {
+    const who = o.who || '', sound = !who;
+    if (sound ? !captions.sound(o.text) : !o.critical && !captions.can(who)) return { e: null, close() {} };
     const lines = String(o.text || '').split('\n');
-    const e = mk(`ix-sub${o.tag ? ' ' + o.tag : ''}`, `${o.who ? `<b style="color:${o.color || '#cfd8d2'}">${esc(o.who)}</b>` : ''}<span>${lines.map(esc).join('<br>')}</span>`);
-    this.subEl.appendChild(e);
-    while (this.subEl.children.length > 2) this.subEl.firstChild.remove();
-    const ms = Math.max(o.ms || 0, 1400 + [...String(o.text || '')].length * 200); // 至少夠讀完(語音很快時也不會一閃就走)
-    const h = { e, t: setTimeout(() => h.close(), ms), close() { clearTimeout(h.t); if (!e.isConnected) return; e.classList.add('out'); setTimeout(() => e.remove(), 400); } };
+    const e = mk(`ix-sub${o.tag ? ' ' + o.tag : ''}${sound ? ' snd' : ''}`, `${who ? `<b style="color:${o.color || '#cfd8d2'}">${esc(who)}</b>` : ''}<span>${lines.map(esc).join('<br>')}</span>`);
+    captions.root().appendChild(e);
+    const ms = sound ? Math.min(o.ms || 2200, 2600) : Math.max(o.ms || 0, 1400 + [...String(o.text || '')].length * 200); // 至少夠讀完(語音很快時也不會一閃就走);聲音字幕短短的
+    const h = { e, t: setTimeout(() => h.close(), ms), close() { clearTimeout(h.t); captions.drop(h.q); if (!e.isConnected) return; e.classList.add('out'); setTimeout(() => e.remove(), 400); } };
+    h.q = captions.add({ el: e, who, kind: sound ? 'sound' : 'speech', critical: !!o.critical, until: performance.now() / 1000 + (o.speak ?? Math.max(0.6, ms / 1000 - 1.2)), cut: () => { clearTimeout(h.t); cutEl(e); } });
     this.subs.push(h);
     if (this.subs.length > 6) this.subs.shift();
     return h;

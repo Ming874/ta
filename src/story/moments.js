@@ -72,7 +72,7 @@ export function installMoments(game, S) {
     hold(18);
     seq(game, [
       0.6,
-      () => { try { ixs.phoneVoice?.(tape, { voice: 'woman', filter: 'radio', pos, gain: 0.8 }); } catch { /* 略 */ } game.interact?.map?.api?.say?.('錄音帶 · 小美（1999）', tape, 3600, 'radio'); S.voice?.claim?.(3.2, 9, 'tape'); },
+      () => { try { ixs.phoneVoice?.(tape, { voice: 'woman', filter: 'radio', pos, gain: 0.8 }); } catch { /* 略 */ } game.interact?.map?.api?.say?.('錄音帶 · 小美（1999）', tape, 3600, 'radio', { critical: true, speak: 3.2 }); S.voice?.claim?.(3.2, 9, 'tape'); },
       1.6,
       ['xl', tape, 3.2, { gap: 0.2, noWait: true }],
       3.2,

@@ -1,6 +1,7 @@
 import { LINES, LINE_BY_ID, GHOSTS } from './lines.js';
 import { ghost, _internal } from '../audio.js';
 import { syllabify } from '../audio/ghost.js';
+import { captions } from '../ui/captions.js';
 
 // 耳邊低語:從文字表挑一句(每局不重複)、播放雙耳合成語音、同步顯示靈異字幕。
 // say(lineId | text, { ear, subtitle, filter, priority, pos, mode, g, orbit }) → handle { id, ear, end, dur, line, kill(), stop() } | null
@@ -55,6 +56,12 @@ export class Whispers {
     if (this.busy && this.cur.prio >= prio && !o.force) return null;
     if (this.busy) { this.cur.kill?.(); this.h.subs.clear(); }
     const filter = o.filter ?? L.filter ?? null;
+    // 字幕標籤:電話/收音機 → 來源;鬼 → 「？？？」,認出之後才顯示名字(STORY.md §11.1)
+    const tag = o.tag ?? (filter ? TAG[filter] : (L.ghost && this.h.known.has(L.ghost) && GHOSTS[L.ghost]?.name ? GHOSTS[L.ghost].name : '？？？'));
+    // 一個字幕區(src/ui/captions.js):劇情/接起的電話/回憶(critical)不會被擋;其他的,別人還在講就不出聲也不出字
+    const crit = o.critical ?? (!!o.force && prio >= 9);
+    if (o.subtitle !== false && !crit && !captions.can(tag)) return null;
+    if (!crit && !o.lockOk && !filter && L.trig !== 'warn' && captions.combat()) return null; // 戰鬥中(15 m 內有活屍、被追):隨機的鬼先不講(伏擊的警告除外)
     let ear = o.ear ?? L.ear ?? 'auto';
     if (filter === 'phone' && (ear === 'auto' || ear === 'both')) ear = 'right'; // 聽筒貼在右耳
     const pa = filter === 'pa';
@@ -76,14 +83,12 @@ export class Whispers {
     this.cur = { prio, end: t + dur, kill, id: L.id };
     if (V && !o.lockOk) V.claim(dur, Math.min(8, prio), L.ghost || filter || 'ghost', L.ghost === 'zheng' ? 5 : 0); // 鬼/裝置也佔住鎖:劇情的下一句等它說完
     if (L.id) this.used.add(L.id);
-    // 字幕標籤:電話/收音機 → 來源;鬼 → 「？？？」,認出之後才顯示名字(STORY.md §11.1)
-    const tag = o.tag ?? (filter ? TAG[filter] : (L.ghost && this.h.known.has(L.ghost) && GHOSTS[L.ghost]?.name ? GHOSTS[L.ghost].name : '？？？'));
     this.count++;
     this.log.push(`${L.id || 'text'}@${ear}${filter ? '/' + filter : ''}`);
     if (this.log.length > 30) this.log.shift();
     if (o.subtitle !== false) {
       const clock = hnd && A.ctx ? () => A.ctx.currentTime : undefined;
-      this.h.subs.show({ text: L.text, ear: ear === 'world' ? 'both' : ear, filter, times: hnd ? hnd.times : timesByIndex(sy, 0.55), t0: hnd ? hnd.t0 : undefined, clock, hold: 1.8, tag, cap: pa, style: o.style });
+      this.h.subs.show({ text: L.text, ear: ear === 'world' ? 'both' : ear, filter, times: hnd ? hnd.times : timesByIndex(sy, 0.55), t0: hnd ? hnd.t0 : undefined, clock, hold: 1.8, tag, who: tag, critical: crit, cap: pa, style: o.style });
     }
     this.h.emit('whisper', { id: L.id, text: L.text, ear, filter, ghost: L.ghost || null, hint: L.hint || null });
     const me = this.cur;

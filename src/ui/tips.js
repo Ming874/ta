@@ -1,4 +1,5 @@
 import { ICON, withKeys } from './icons.js';
+import { captions } from './captions.js';
 
 // 新手提示:依情境各顯示一次(記在 localStorage,隱私模式時只記在本次),一次一張、排隊顯示。
 // [T] 或點 × 關閉目前這張;設定裡可以整個關掉或重新顯示。觸發點在 flow.js(tutorial / updateTutorial)。
@@ -74,6 +75,7 @@ export class Tips {
       if (this.t <= 0) this.dismiss();
       return;
     }
+    if (captions.live()?.critical) return; // 劇情的人在說話:提示等一下再出來(不和故事搶眼睛)
     const i = this.queue.findIndex((q) => q.wait <= 0);
     if (i < 0) return;
     const { id } = this.queue.splice(i, 1)[0];

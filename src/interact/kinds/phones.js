@@ -266,7 +266,8 @@ function makePhone(api, o) {
         this.offT += dt;
         const pp = game.player.pos;
         if (Math.hypot(pp.x - pos.x, pp.z - pos.z) > 2.8 || Math.abs(pp.y + 1.2 - pos.y) > 2.5 || game.state !== 'playing') { this.hangUp(game.state === 'playing'); return true; }
-        if (this.state === 'call' && game.time > this.callEnd && !this._ended) { // 對方說完:依 end 收尾
+        const endAt = this.talk?.endAt, end = endAt === undefined ? this.callEnd : endAt + 0.4; // 台詞排隊中(別人還在講)= Infinity:線路先開著等
+        if (this.state === 'call' && game.time > end && !this._ended) { // 對方說完:依 end 收尾
           this._ended = true;
           if (this.end === 'tone') { ixs.lineNoise(false); ixs.dialTone(true); }
           else if (this.end === 'breath') { /* 線路雜訊留著(對方還在,只是不說話) */ }

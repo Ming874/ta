@@ -278,7 +278,12 @@ class Chase {
       g.motion?.beat('chase'); // [motion] 邊緣一口紅 + 暗角收緊(追逐結束時放開)
       g.ui?.banner?.('快逃！', '他殺不死 · 跑向閃著綠光的金水商行，或甩掉他躲起來', 3200, 'red');
       const H = g.horror;
-      H?.subs?.show?.({ text: line || g.story?.chaseLine?.() || '快跑！往綠燈那邊——金水伯的店！', tag: line ? '電話' : '收音機 · 小美', cap: true, hold: 2.4 }); g.story?.voice?.claim?.(2.8, 9, 'chase'); // [story] 小美每次說的不一樣;佔住聲音的鎖
+      { // [story] 小美每次說的不一樣;放在唯一的字幕區(src/ui/captions.js),和小美其他的話同一個樣子;急事 → 蓋過別人的字;佔住聲音的鎖
+        const text = line || g.story?.chaseLine?.() || '快跑！往綠燈那邊——金水伯的店！', who = line ? '電話' : '收音機 · 小美', iu = g.interact?.ui;
+        if (iu?.say) iu.say({ who, text, ms: 3600, tag: line ? 'phone' : 'radio', color: line ? '#a9b6be' : '#9fd0ff', critical: true, speak: 2.4 });
+        else H?.subs?.show?.({ text, tag: who, cap: true, hold: 2.4, critical: true });
+        g.story?.voice?.claim?.(2.8, 9, 'chase');
+      }
       sfx.radio?.(true);
       setTimeout(() => sfx.radio?.(false), 2800);
     } else g.ui?.feed?.('追獵者出現了 · 他在追你的隊友', { icon: 'skull', color: '#ff6a5a', ms: 3500 });

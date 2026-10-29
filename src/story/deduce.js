@@ -138,16 +138,20 @@ export function installDeduce(game) {
     const ex = []; // 一句一行字幕:多行的台詞拆開依序播
     for (const [who, text, secs] of lines) { const ps = String(text).split('\n'); for (const p of ps) ex.push([who, p, ps.length > 1 ? secsOf(p) : secs]); }
     // 經過聲音的鎖,一句一句講(src/story/voice.js);講完才 cb
-    const V = voiceLock(game), token = {};
-    V.join(token);
+    // 戰鬥中(15 m 內有活屍、被追)先不講:提示(o.hint)最多等 30 秒,還在打就不講了;金水伯/小美的劇情句最多等 20 秒(排隊前等,不擋住別人的對話)
+    const V = voiceLock(game), token = {}, crit = !o.hint;
+    const calm = async (max) => { for (let w = 0; V.combat() && w < max; w += 0.5) await wait(game, 0.5); return !V.combat(); };
+    let joined = false;
+    if (!V.combat()) { V.join(token); joined = true; }
     (async () => {
       try {
+        if (!joined) { const ok = await calm(crit ? 20 : 30); if (!ok && !crit) return; V.join(token); joined = true; }
         for (const [who, text, secs] of ex) {
           await free(game, { token, maxWait: 40 });
           if (game.story?.ending?.active) break;
           const d = secs || secsOf(text);
           V.claim(d, 8, who);
-          api.speak({ who, parts: [text], voice: /小美|小美|阿嬤|女|淑芬/.test(who) ? 'woman' : /王醫師|男/.test(who) ? 'man' : 'old' }, { filter: o.filter || (/對講機|收音機|AM/.test(who) ? 'radio' : 'phone'), noHorror: true, lockOk: true });
+          api.speak({ who, parts: [text], voice: /小美|小美|阿嬤|女|淑芬/.test(who) ? 'woman' : /王醫師|男/.test(who) ? 'man' : 'old' }, { filter: o.filter || (/對講機|收音機|AM/.test(who) ? 'radio' : 'phone'), noHorror: true, lockOk: true, critical: crit });
           await wait(game, d + 0.3);
         }
       } finally { V.leave(token); }

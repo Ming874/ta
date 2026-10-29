@@ -114,7 +114,7 @@ export function installObjectives(game) {
     door207, later,
     near(x, y, z, r) { const p = game.player.pos; return Math.abs(p.y - y) < 2.2 && Math.hypot(p.x - x, p.z - z) < r; },
     at(id, unused) { const e = X()?.get?.(id); if (!e || (unused && (e.used || e.n > 0))) return null; const q = X().where(e); return { x: q.x, y: q.y, z: q.z }; },
-    talk: (lines, cb) => D()?.talk?.(lines, cb),
+    talk: (lines, cb, o) => D()?.talk?.(lines, cb, o),
     ama(text, force) {
       const h = H();
       if (!h) return false;
@@ -204,7 +204,7 @@ export function installObjectives(game) {
     if (h.deduce) return deduceHint(h.deduce, tier, s);
     const v = (x) => (typeof x === 'function' ? x(c) : x);
     const xl = v(h.xl), ama = v(h.ama);
-    if (tier === 1 && xl) { c.talk([[XL, xl, Math.max(3, xl.length / 4.5 + 0.6)]]); return true; }
+    if (tier === 1 && xl) { c.talk([[XL, xl, Math.max(3, xl.length / 4.5 + 0.6)]], null, { hint: true }); return true; }
     if (tier === 2 && ama) return c.ama(ama);
     if (tier >= 3 && h.glint) {
       const p = h.glint(c);
@@ -223,11 +223,11 @@ export function installObjectives(game) {
     const st = Dd.state(), B = QUESTION.blanks, keys = Object.keys(B);
     if (kind === 'fill' || !st.last || st.last.result === 'sheng') {
       const b = keys.find((k) => !st.fill[k]);
-      if (!b) { if (tier === 1) c.talk([[XL, '填好了，就去問阿嬤。\n二樓護理站，她的照片前面。', 3.6]]); else if (tier >= 3) { const p = s.hints.glint?.(c); if (p) { run.glint = p; run.glintT = 14; } } return true; }
+      if (!b) { if (tier === 1) c.talk([[XL, '填好了，就去問阿嬤。\n二樓護理站，她的照片前面。', 3.6]], null, { hint: true }); else if (tier >= 3) { const p = s.hints.glint?.(c); if (p) { run.glint = p; run.glintT = 14; } } return true; }
       const cat = B[b].cat, have = new Set(Dd.words());
       const card = CARDS.find((q) => !Dd.has(q.id) && (q.words || []).some((w) => WORDS[w]?.cat === cat && !have.has(w)));
       const i = keys.indexOf(b) + 1;
-      if (tier === 1) c.talk([[XL, `筆記本第 ${i} 格還空著。\n按 J，看缺的是「${CATS[cat]}`, 3.8]]);
+      if (tier === 1) c.talk([[XL, `筆記本第 ${i} 格還空著。\n按 J，看缺的是「${CATS[cat]}」。`, 3.8]], null, { hint: true });
       else if (tier === 2) c.ama(card ? `「${CATS[cat]}」……〈${card.title}〉裡面有。` : `第 ${i} 格……想想阿嬤說過的話。`);
       else { Dd.hintBlank = b; if (Dd.isOpen) Dd.open(); }
       return true;
