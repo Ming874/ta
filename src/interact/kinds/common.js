@@ -4,6 +4,8 @@ import { T, mats } from '../kit.js';
 import { noteById } from '../notes.js';
 import * as LINES from '../lines.js';
 import { MATS } from '../../physics/truth.js';
+import { captions } from '../../ui/captions.js';
+const DEV_TAG = { phone: '電話', radio: '收音機', pa: '醫院廣播', tv: '電視' }; // 沒有名字的裝置:字幕上寫來源
 
 // 各種互動物件共用的工具(由 place.js 建一個 api 物件傳給每個種類的 build):
 //  座標:spot = { li, x, y, z, yaw, nx, nz, zone, mount };物件局部座標 +Z 朝房間內、原點在牆面/地面
@@ -42,7 +44,7 @@ export function makeApi(game, ix, kit, R) {
       return null;
     },
     // 字幕(自己的)
-    say(who, text, ms, tag) { return ix.ui.say({ who, text, ms, tag, color: WHO_COLOR[who] }); },
+    say(who, text, ms, tag, o = {}) { return ix.ui.say({ who, text, ms, tag, color: WHO_COLOR[who], critical: o.critical, speak: o.speak }); },
     // 播一句台詞(可多段):回傳 { dur, stop() };filter 'phone' | 'radio' | 'pa' | 'tv';pos = 從裝置發出(否則在耳邊)
     speak(line, o = {}) {
       if (typeof line === 'string') line = api.lineById(line) || { text: line };
@@ -52,7 +54,15 @@ export function makeApi(game, ix, kit, R) {
       const hz = game.horror;
       let cancelled = false, total = 0, cur = null, sub = null;
       const stops = [];
-      let prevEnd = 0; // 一段一段依序講(前一段講完才輪到下一段;被鎖擋住時不會插隊)
+      // 一個字幕區、一次一個人(src/ui/captions.js、src/story/voice.js):
+      //   這段話(裝置:錄音帶、電話、收音機、電視、廣播)照先來後到排進聲音佇列(劇情的對話優先:先講完那一段),輪到才講,講完才換下一個;
+      //   接起來的電話例外:排到最前面(只等正在講的那一句,不插在句子中間;排隊中的對話等電話講完)
+//   劇情的句子(critical)一定會講;其他的等太久(20 秒)就整段不講了(不會拿自己的字幕跟別人疊在一起)
+//   h.endAt = 這段話講完的遊戲時間(還沒輪到 = Infinity;電話用它決定什麼時候收線)
+      const V = game.story?.voice, crit = !!o.critical, key = who || DEV_TAG[filter] || filter, tok = {};
+      let joined = false, endAt = Infinity;
+      const leave = () => { if (joined) { joined = false; V?.leave?.(tok); } };
+      let prevEnd = 0, nextI = 0; // 一段一段依序講(前一段開始講、講完才輪到下一段;被鎖擋住時不會插隊)
       parts.forEach((p, i) => {
         const d = dur(p);
         const at = total;
@@ -60,23 +70,29 @@ export function makeApi(game, ix, kit, R) {
         let waited = 0;
         const run = () => {
           if (cancelled) return;
+          if (i !== nextI) { stops.push(ix.after(0.25, run)); return; } // 前一段還沒開始講
           if (i > 0 && (game.time || 0) < prevEnd) { stops.push(ix.after(Math.max(0.05, prevEnd - (game.time || 0)), run)); return; }
-          const V = game.story?.voice; // 聲音的鎖(src/story/voice.js):有人在說話就等(最多 8 秒),開始講就佔住
-          if (V && !o.lockOk && V.busy() && waited < 8) { waited += 0.25; stops.push(ix.after(0.25, run)); return; }
-          if (V && !o.lockOk) V.claim(d, 6, who || filter);
-          prevEnd = (game.time || 0) + d + 0.35;
+          if (V && !o.lockOk && !joined) { joined = true; (filter === 'phone' && V.front ? V.front : V.join)(tok); }
+          const retry = () => { if (waited < (crit ? 40 : 20)) { waited += 0.25; stops.push(ix.after(0.25, run)); return true; } return false; };
+          if ((V && !o.lockOk && V.busy({ token: tok })) || !captions.can(key, crit)) { if (retry()) return; if (!crit) { h.stop(); return; } }
           let used = false;
-          if (hz?.whisper && !o.noHorror) { // 靈異系統的耳語/電話聲(有自己的字幕);回傳 null = 它正在說更重要的,改用我們的
-            try { const h = hz.whisper(p, { ear: o.ear || line.ear || (filter === 'phone' ? 'right' : 'both'), subtitle: true, filter, priority: 7, pos: o.pos || null, who, tag: who || undefined, lockOk: true }); if (h) { used = true; cur = h; } } catch { used = false; } // 字幕標籤 = 說話的人(收音機 · 小美、電話 · 王醫師…)
+          if (hz?.whisper && !o.noHorror) { // 靈異系統的耳語/電話聲(有自己的字幕);回傳 null = 別人還在講 → 等一下再試(不拿自己的字幕疊上去)
+            try { const w = hz.whisper(p, { ear: o.ear || line.ear || (filter === 'phone' ? 'right' : 'both'), subtitle: true, filter, priority: 7, pos: o.pos || null, who: key, tag: key, lockOk: true, critical: crit, force: crit || undefined }); if (w) { used = true; cur = w; } } catch { used = false; } // 字幕標籤 = 說話的人(收音機 · 小美、電話 · 王醫師…)
+            if (!used && hz?.whispers?.busy && retry()) return;
           }
+          if (V && !o.lockOk) V.claim(d, 6, key);
+          if (i === 0) endAt = (game.time || 0) + total;
+          nextI = i + 1;
+          prevEnd = (game.time || 0) + d + 0.35;
           if (!used) {
             cur = ixs.phoneVoice(p, { voice, filter, pos: o.pos || null, gain: o.gain });
-            sub = api.say(who, p, (d + 0.4) * 1000, filter);
+            sub = api.say(who, p, (d + 0.4) * 1000, filter, { critical: crit, speak: d });
           }
+          if (i === parts.length - 1) stops.push(ix.after(d + 0.35, leave));
         };
         if (at <= 0) run(); else stops.push(ix.after(at, run));
       });
-      const h = { dur: total, stop() { cancelled = true; for (const s of stops) s(); try { cur?.stop?.(); cur?.kill?.(); } catch { /* 已結束 */ } sub?.close(); } };
+      const h = { dur: total, get endAt() { return endAt; }, stop() { cancelled = true; endAt = Math.min(endAt, game.time || 0); for (const s of stops) s(); try { cur?.stop?.(); cur?.kill?.(); } catch { /* 已結束 */ } sub?.close(); leave(); } };
       if (!hz?.whisper && filter === 'phone' && !o.pos) { sfx.radio(true, 0.18); stops.push(ix.after(total, () => sfx.radio(false))); } // 沒有靈異系統:電話底噪
       return h;
     },

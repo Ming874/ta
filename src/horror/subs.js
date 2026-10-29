@@ -1,19 +1,17 @@
 import './horror.css';
+import { captions, cutEl } from '../ui/captions.js';
 
 // 靈異字幕(耳邊低語的字一個一個浮出,跟著合成語音的音節時間)與畫面結霜。DOM 元素只在第一次用到時建立。
 const now = () => performance.now() / 1000;
 export class GhostSubs {
   constructor() { this.el = null; this.lines = []; this.frostEl = null; this.frostK = 0; this.frostShown = -1; }
-  _root() {
-    if (!this.el) { this.el = document.createElement('div'); this.el.id = 'gh-subs'; document.body.appendChild(this.el); }
-    return this.el;
-  }
+  _root() { return (this.el = captions.root()); } // 唯一的字幕區(src/ui/captions.js)
   // o:text、ear、filter、times(每個字元相對 t0 的秒數;undefined 的字元跟著前一個)、t0、clock() → 秒、hold(說完後停留秒數)、tag(小字標籤)、cap(事件字幕樣式)
+  // o.who = 說話的人(沒有就用 tag);o.critical = 劇情的句子(不會被擋)。別人還在講 → 不出(回傳 null)
   show(o) {
+    const who = o.who ?? o.tag ?? '';
+    if (!o.critical && !captions.can(who)) return null;
     const root = this._root();
-    // 最多同時 3 行:新的一行進來時舊的變淡往上(還讀得到),不會一出現就被下一句擠掉
-    while (this.lines.length >= 3) this._drop(this.lines[0]);
-    for (const L of this.lines) L.el.classList.add('prev');
     const el = document.createElement('div');
     el.className = 'gh-line' + (o.cap ? ' cap' : '');
     if (o.ear) el.dataset.ear = o.ear;
@@ -38,11 +36,16 @@ export class GhostSubs {
     const shownAt = t0 + (times[times.length - 1] ?? 0), n = chars.length;
     const L = { el, chars, times, t0, clock, shown: 0, end: shownAt + Math.max(o.hold ?? 1.6, 1.4 + n * 0.2), out: 0 };
     this.lines.push(L);
+    // 一個字幕區:別人的字收掉、同一個人的上一句變淡(src/ui/captions.js)
+    const left = Math.max(0, (times[times.length - 1] ?? 0) - (clock() - t0));
+    L.q = captions.add({ el, who, kind: 'speech', critical: !!o.critical, until: captions.now() + left + 0.3, cut: () => this._drop(L, true) });
     return L;
   }
-  _drop(L) {
+  _drop(L, cut = false) {
     const i = this.lines.indexOf(L);
     if (i >= 0) this.lines.splice(i, 1);
+    if (cut) { cutEl(L.el); return; }
+    captions.drop(L.q);
     L.el.classList.add('out');
     setTimeout(() => L.el.remove(), 1400);
   }

@@ -1,4 +1,4 @@
-// 聖心醫院 Service Worker(只在正式版註冊,見 src/main.js installPWA)
+// 等天光 Service Worker(只在正式版註冊,見 src/main.js installPWA)
 // 每次 build 由 vite.config.js(swManifest)在檔頭寫入 self.__HZ = { build, entry, html, crit, files }:
 //   files:發佈的每個檔案 → 內容雜湊(assets/ 下的檔名本身就有雜湊,值為 1)。sw.js 因此每版都不同 → 一定會更新。
 // 快取策略(重新部署時,舊分頁與新分頁都不會拿到不相符的程式碼):

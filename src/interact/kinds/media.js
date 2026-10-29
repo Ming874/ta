@@ -12,6 +12,48 @@ function shelf(m, M, w = 0.5, y = 0.95, d = 0.3, c = 0x6b5a46) { // 牆上的小
 }
 const pickN = (list, R) => list[(R() * list.length) | 0];
 
+// 手提收音機(REDESIGN §2.4):大廳輪椅旁那台(variant 'lobby')、二樓護理站阿嬤那台(variant 'ama',地下室燒壞之後才拿得到)。
+// 撿起來交給 game.story.radio(src/story/radio.js);spec.nearId = 放在哪個東西旁邊(輪椅上的手機、護理站的錄音帶),spec.floor = 放地上
+export const handradio = {
+  build(api, s, spec = {}) {
+    const { kit, M, ix, game } = api;
+    const pool = kit.pool('handradio', (q) => {
+      q.slab(M.plastic, 0x2a2622, 0, 0, 0, 0.26, 0.15, 0.08); // 機身
+      q.box(M.matte, 0x5a5048, -0.055, 0.075, 0.041, 0.12, 0.1, 0.004); // 喇叭布面
+      for (let i = 0; i < 6; i++) q.box(M.metal, 0x8a8478, -0.055, 0.035 + i * 0.016, 0.044, 0.12, 0.004, 0.003);
+      q.box(M.gloss, 0xd8c8a0, 0.07, 0.1, 0.041, 0.09, 0.035, 0.004); // 刻度窗
+      q.cyl(M.plastic, 0x1a1816, 0.07, 0.045, 0.045, 0.018, 0.016, 10, Math.PI / 2);
+      q.box(M.metal, 0x9a948a, 0, 0.175, 0, 0.18, 0.012, 0.012); // 提把
+      for (const sx of [-1, 1]) q.box(M.metal, 0x9a948a, sx * 0.09, 0.16, 0, 0.012, 0.03, 0.012);
+      q.cyl(M.metal, 0xb0b0b0, 0.11, 0.3, -0.02, 0.004, 0.26, 6, 0, 0, -0.35); // 天線
+    }, M.plastic);
+    const near = spec.nearId ? ix.get(spec.nearId) : null;
+    let L;
+    if (near) {
+      const w = ix.where(near), lay = game.world?.layout;
+      const fy = spec.floor && lay ? lay.levels[s.li]?.y ?? w.y : w.y - 0.04;
+      L = T(w.x + (spec.dx ?? 0.5), fy, w.z + (spec.dz ?? 0), 0, api.R() * 6, 0, 1, 1, 1);
+    } else L = s.host ? api.mtx(s, s.host.x, s.host.y, s.host.z, api.R() * 6) : api.mtx(s, 0, 0, 0.45, api.R() * 6);
+    const pi = pool.add(s.li, L, spec.variant === 'ama' ? 0xd0a070 : null);
+    const dial = led(api).add(s.li, L.clone().multiply(T(0.07, 0.1, 0.044, 0, 0, 0, 0.085, 0.03, 0.002)), spec.variant === 'ama' ? 0x140c04 : 0xffb050);
+    const v = new THREE.Vector3(0, 0.1, 0).applyMatrix4(L);
+    const pos = { x: v.x, y: v.y, z: v.z };
+    const st = { taken: false };
+    const R = () => game.story?.radio;
+    return ix.register(pos, {
+      id: spec.id, kind: 'handradio', name: spec.name || '手提收音機', reach: 2.3, radius: 0.22, scope: 'map', priority: 7, // 撿走之後提示就消失(不是「已經用過了」)
+      prompt: () => (st.taken || !R()?.offer?.(spec.variant) ? null : `撿起${spec.name || '收音機'}`),
+      onUse: () => {
+        if (st.taken || !R()?.offer?.(spec.variant)) return;
+        st.taken = true; pool.set(pi, ZERO); led(api).set(dial, ZERO);
+        R()?.give?.(spec.variant || 'lobby', { pos });
+      },
+      reset: () => { st.taken = false; pool.set(pi, L); led(api).set(dial, L.clone().multiply(T(0.07, 0.1, 0.044, 0, 0, 0, 0.085, 0.03, 0.002))); },
+      light: (on) => led(api).color(dial, on ? 0xffb050 : 0x140c04), // 自己打開(阿嬤的收音機)
+    });
+  },
+};
+
 export const radio = {
   build(api, s, spec = {}) {
     const { kit, M, ix, ixs, R, game, sfx } = api;

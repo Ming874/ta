@@ -115,18 +115,23 @@ export function createCalls(h) {
     return { id: c.id, who: c.who, ghost: c.ghost || null, tag: '電話', lines, cues, dur: +(at + 1.2).toFixed(2), end: c.end || 'dead', sys: !!c.sys, ringback: c.ringback || 0, hint: c.hint || null };
   }
   // ---- 演出 ----
-  function play(script, sc, ctx) {
+  function play(script, sc, ctx, d0 = 0) {
     let stopped = false, cur = null;
+    // 一次一個人(src/story/voice.js):這通電話排到聲音佇列最前面,正在講的那一句講完(d0 秒)才開始;排隊中的對話等電話講完
+    const V = game.story?.voice, tok = {};
+    V?.front?.(tok);
+    const done = () => V?.leave?.(tok);
+    h.after(d0 + script.dur + 0.3, done);
     const D = h.director;
     const name = script.sys ? null : script.ghost && h.known.has(script.ghost) ? GHOSTS[script.ghost]?.name : null;
     const tag = (f) => (f ? (script.sys ? '電話' : `電話 · ${name || '？？？'}`) : name || '？？？'); // STORY.md §11.1:鬼先是「？？？」
-    for (const l of script.lines) h.after(l.at, () => { if (stopped) return; cur = h.whispers.say(l.text, { filter: l.filter, ear: l.ear, priority: 9, force: true, tag: tag(l.filter) }); });
-    for (const q of script.cues) h.after(q.at, () => { if (!stopped) runCue(q.kind, sc, ctx, script); });
+    for (const l of script.lines) h.after(d0 + l.at, () => { if (stopped) return; cur = h.whispers.say(l.text, { filter: l.filter, ear: l.ear, priority: 9, force: true, tag: tag(l.filter) }); });
+    for (const q of script.cues) h.after(d0 + q.at, () => { if (!stopped) runCue(q.kind, sc, ctx, script); });
     // 掛斷之後偶爾又打來(第三幕;互動系統的電話)
     if (script.ringback && Math.random() < script.ringback && D.act >= 3 && game.interact?.ringAt) {
-      h.after(script.dur + rand(5, 8), () => { if (stopped) return; S.ringback.set(ctx.id, true); game.interact.ringAt(ctx.pos || sc.p, 14); });
+      h.after(d0 + script.dur + rand(5, 8), () => { if (stopped) return; S.ringback.set(ctx.id, true); game.interact.ringAt(ctx.pos || sc.p, 14); });
     }
-    return () => { stopped = true; cur?.stop?.(); };
+    return () => { stopped = true; cur?.stop?.(); done(); };
   }
   // 腳本裡的驚嚇(都在玩家「背後」或身邊;鬼的部分只在靜默期)
   function runCue(kind, sc, ctx) {
@@ -211,16 +216,17 @@ export function createCalls(h) {
     S.used.add(c.id);
     S.count++;
     const script = build(c, sc);
-    let stop = () => {};
+    let stop = () => {}, d0 = 0;
     if (ctx.play !== false) {
       S.live?.();
-      stop = play(script, sc, ctx);
+      const V = game.story?.voice; d0 = V ? Math.min(6, Math.max(0, (V.until || 0) - (game.time || 0))) : 0; // 別人那一句還沒講完:等它
+      stop = play(script, sc, ctx, d0);
       S.live = stop;
       h.ringing = null;
       h.director.notify('call');
       h.emit('phone:answer', { id: ctx.id ?? null, call: script.id });
     }
-    return { ...script, played: ctx.play !== false, stop: () => { stop(); if (S.live === stop) S.live = null; } };
+    return { ...script, dur: script.dur + d0, played: ctx.play !== false, stop: () => { stop(); if (S.live === stop) S.live = null; } };
   }
   return { phoneCall, reset() { S.used.clear(); S.count = 0; S.ringback.clear(); S.live?.(); S.live = null; }, state: S };
 }

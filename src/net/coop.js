@@ -326,7 +326,7 @@ export class CoopMode {
     p.vx = p.vz = 0;
     g.weaponScene.visible = true;
     this.shieldT = 2;
-    this.s.hud.center('你回神了', 1800);
+    this.s.hud.center('你醒過來了', 1800);
     this.s.sendState(true);
   }
 

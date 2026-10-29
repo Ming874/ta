@@ -21,6 +21,7 @@ import { sfx, ix as ixs } from '../audio.js';
 import { settings } from '../ui/settings.js';
 import { CARDS, QUESTION, WORDS, CATS } from './clues.js';
 import { installOpening } from './opening.js';
+import { installRadio } from './radio.js';
 import { installClimax } from './climax.js';
 import { installEnding } from './ending.js';
 import { installRevive } from './revive.js';
@@ -36,16 +37,18 @@ const ZH = (text) => ({ id: null, text, ghost: 'zheng', ear: 'both' });
 
 // ---------- 步驟(動作 + 對象;不寫答案、不寫地點) ----------
 const STEPS = [
+  { id: 'h.s.radio', act: 1, text: '撿起收音機', why: '裡面有人在說話', cond: (c) => !!c.g.story?.radio?.kind,
+    hints: { glint: (c) => c.at('h.ix.radio.lobby') } },
   { id: 'h.s.shop', act: 1, text: '找到金水伯的店（一樓）', why: '休息時可以買槍和藥', cond: (c) => c.zone === 'f1_store', skip: (c) => c.g.round >= 3, // 第 3 波以後不擋路
-    hints: { xl: '金水伯的店在一樓。\n有在放〈少女的祈禱〉那間。', ama: '金水的店……在這邊。', glint: (c) => c.g.shop?.pos } },
+    hints: { xl: '金水伯的店在一樓。\n對講機在店門口。', ama: '金水的店……在這邊。', glint: (c) => c.g.shop?.pos } },
   { id: 'h.s.cyc1', act: 1, text: '撐過前兩波', why: '招魂燈把活屍叫過來了', cond: (c) => c.g.round > 2 || (c.g.round === 2 && c.g.phase !== 'fighting') }, // 阿嬤的第一句在 opening.js(第一次招魂燈熄,一定會有)
-  { id: 'h.s.find207', act: 2, text: '找到 207 號房（二樓北邊）', why: '阿嬤叫你來看那盞燈', onStart: (c) => c.later(7, () => { if (c.O.step() === 'h.s.find207' && !c.g.story?.ending?.active) c.talk([[XL, '……金水伯問的那盞燈。', 2.4], [XL, '二樓北邊。我看得到那扇窗是亮的。', 3.2]]); }), cond: (c) => { const w = c.door207(); return !!w && c.near(w.cx, w.y, w.cz, 3.2); },
-    onDone: (c) => { c.O.flag('h.where207'); if (c.g.story?.moments?.m3) c.g.story.moments.m3(); else c.later(2, () => c.talk([[XL, '那扇門……玻璃後面的燈是亮的。', 2.6], [XL, '先看門邊那台機器寫什麼。', 3.2]])); }, // M3:門後的聲音
+  { id: 'h.s.find207', act: 2, text: '找到 207 號房（二樓北邊）', why: '阿嬤叫你來看那盞燈', onStart: (c) => c.later(7, () => { if (c.O.step() === 'h.s.find207' && !c.g.story?.ending?.active) c.talk([[XL, '……金水伯問的那盞燈。', 2.4], [XL, '大新的無線電說，二樓北邊。', 3.2]]); }), cond: (c) => { const w = c.door207(); return !!w && c.near(w.cx, w.y, w.cz, 3.2); },
+    onDone: (c) => { c.O.flag('h.where207'); if (c.g.story?.moments?.m3) c.g.story.moments.m3(); else c.later(2, () => c.talk([[XL, '收音機在這扇門前面，叫得好大聲。', 3.0], [XL, '……裡面到底有什麼？', 2.4]])); }, // M3:門後的聲音
     hints: { xl: '207 在二樓。北邊那一排病房，你自己數。', ama: '207……阿嬤在那裡等你。', glint: (c) => { const w = c.door207(); return w ? { x: w.cx, y: w.y + 1.4, z: w.cz } : null; } } },
   { id: 'h.s.how207', act: 2, text: '查出 207 的門怎麼開', why: '門被電子鎖鎖住了', prog: (c) => [c.D.has('hc.15'), c.D.has('hc.27'), c.run.xlHow].filter(Boolean).length, m: 2,
-    onStart: (c) => c.later(30, () => { if (c.O.step() !== 'h.s.how207') return; c.talk([[XL, '三樓有一間監控室。', 3.2], [XL, '207 的鎖，是從那裡管的。', 2.8]], () => { c.run.xlHow = true; }); }),
+    onStart: (c) => c.later(30, () => { if (c.O.step() !== 'h.s.how207') return; c.talk([[XL, '我偷聽了三個禮拜大新的無線電。', 3.2], [XL, '他們說，207 的鎖是三樓監控室管的。', 3.4]], () => { c.run.xlHow = true; }); }),
     onDone: (c) => { c.O.flag('h.area.morgue'); c.later(1.5, () => c.talk([[XL, '要開那扇門，三樓得先有電。', 2.8], [XL, '地下室的配電盤，少了 3 支保險絲。', 3.4]])); },
-    hints: { xl: '看看門邊的讀卡機，\n還有走廊上的鐵箱子。', ama: '紅色的插頭不要拔。\n阿嬤把燈接在那裡。', glint: (c) => c.at('h.look.panel2f') } },
+    hints: { xl: '大新的無線電說過，\n207 的鎖是三樓管的。', ama: '紅色的插頭不要拔。\n阿嬤把燈接在那裡。', glint: (c) => c.at('h.look.panel2f') } },
   { id: 'h.s.fuses', act: 3, text: '到地下室找保險絲', why: '三樓沒電，207 的鎖打不開', skip: (c) => c.O.has('h.207.elock'), prog: (c) => (c.X.flags.has('h.gen.on') ? 3 : Math.min(3, c.run.fuses)), m: 3,
     hints: { xl: '保險絲在洗衣房、鍋爐房、\n還有太平間。\n太平間的冰櫃照 3、1、5 拉。', ama: '冷的那邊……三、一、五。照順序。', glint: (c) => c.at('h.ix.fuse.laundry', true) || c.at('h.ix.fuse.boiler', true) || c.at('h.ix.morgue', true) } },
   { id: 'h.s.gen', act: 3, text: '把保險絲裝回配電盤（鍋爐房）', why: '讓三樓監控室有電', skip: (c) => c.O.has('h.207.elock'), cond: (c) => c.X.flags.has('h.gen.on'),
@@ -102,6 +105,7 @@ export function installObjectives(game) {
     clue: (id, o) => D()?.addCard?.(id, o) ?? false,
     on(ev, fn) { if (!subs.has(ev)) subs.set(ev, new Set()); subs.get(ev).add(fn); return () => subs.get(ev).delete(fn); },
     hint(tier = run.tier + 1) { giveHint(BY[run.cur], tier); },
+    glintAt(p, secs = 12) { if (p) { run.glint = p; run.glintT = secs; } }, // 指一下某個東西(收音機在叫你)
     state: () => ({ cur: run.cur, done: [...run.done], flags: [...run.flags], stuck: Math.round(run.stuck), tier: run.tier, fuses: run.fuses, holdT: Math.round(run.holdT) }),
   };
   game.objectives = Object.assign(game.objectives || {}, O);
@@ -114,7 +118,7 @@ export function installObjectives(game) {
     door207, later,
     near(x, y, z, r) { const p = game.player.pos; return Math.abs(p.y - y) < 2.2 && Math.hypot(p.x - x, p.z - z) < r; },
     at(id, unused) { const e = X()?.get?.(id); if (!e || (unused && (e.used || e.n > 0))) return null; const q = X().where(e); return { x: q.x, y: q.y, z: q.z }; },
-    talk: (lines, cb) => D()?.talk?.(lines, cb),
+    talk: (lines, cb, o) => D()?.talk?.(lines, cb, o),
     ama(text, force) {
       const h = H();
       if (!h) return false;
@@ -133,7 +137,7 @@ export function installObjectives(game) {
       const t0 = game.time;
       later(1.2, () => { const q = c.at('h.ix.pillow'); if (q && !D()?.has?.('hc.30')) { run.glint = q; run.glintT = 10; } });
       later(7, () => { if (!D()?.has?.('hc.30') && c.zone === 'f2_ward_207') c.ama('枕頭……阿嬤放在枕頭裡。'); }); // 她要你拿到那一頁(靜默期才說)
-      const go = () => { O.flag('h.truck'); c.talk([[KS, '少年仔！車來囉！', 2.0], [KS, '阿伯在急診車道等你，快上車！', 3.4]]); };
+      const go = () => { O.flag('h.truck'); truckCall(); };
       let out = 0;
       X()?.tick?.((dt) => {
         if (run.evac || game.state !== 'playing') return false;
@@ -204,7 +208,7 @@ export function installObjectives(game) {
     if (h.deduce) return deduceHint(h.deduce, tier, s);
     const v = (x) => (typeof x === 'function' ? x(c) : x);
     const xl = v(h.xl), ama = v(h.ama);
-    if (tier === 1 && xl) { c.talk([[XL, xl, Math.max(3, xl.length / 4.5 + 0.6)]]); return true; }
+    if (tier === 1 && xl) { c.talk([[XL, xl, Math.max(3, xl.length / 4.5 + 0.6)]], null, { hint: true }); return true; }
     if (tier === 2 && ama) return c.ama(ama);
     if (tier >= 3 && h.glint) {
       const p = h.glint(c);
@@ -223,11 +227,11 @@ export function installObjectives(game) {
     const st = Dd.state(), B = QUESTION.blanks, keys = Object.keys(B);
     if (kind === 'fill' || !st.last || st.last.result === 'sheng') {
       const b = keys.find((k) => !st.fill[k]);
-      if (!b) { if (tier === 1) c.talk([[XL, '填好了，就去問阿嬤。\n二樓護理站，她的照片前面。', 3.6]]); else if (tier >= 3) { const p = s.hints.glint?.(c); if (p) { run.glint = p; run.glintT = 14; } } return true; }
+      if (!b) { if (tier === 1) c.talk([[XL, '填好了，就去問阿嬤。\n二樓護理站，她的照片前面。', 3.6]], null, { hint: true }); else if (tier >= 3) { const p = s.hints.glint?.(c); if (p) { run.glint = p; run.glintT = 14; } } return true; }
       const cat = B[b].cat, have = new Set(Dd.words());
       const card = CARDS.find((q) => !Dd.has(q.id) && (q.words || []).some((w) => WORDS[w]?.cat === cat && !have.has(w)));
       const i = keys.indexOf(b) + 1;
-      if (tier === 1) c.talk([[XL, `筆記本第 ${i} 格還空著。\n按 J，看缺的是「${CATS[cat]}`, 3.8]]);
+      if (tier === 1) c.talk([[XL, `筆記本第 ${i} 格還空著。\n按 J，看缺的是「${CATS[cat]}」。`, 3.8]], null, { hint: true });
       else if (tier === 2) c.ama(card ? `「${CATS[cat]}」……〈${card.title}〉裡面有。` : `第 ${i} 格……想想阿嬤說過的話。`);
       else { Dd.hintBlank = b; if (Dd.isOpen) Dd.open(); }
       return true;
@@ -292,10 +296,20 @@ export function installObjectives(game) {
     });
   }
   setCur(STEPS[0].id);
+  // 撤離:金水伯從發財車的大聲公喊(急診車道的方向;REDESIGN §2.5)
+  function truckCall() {
+    const api = X()?.map?.api, A = game.hospital?.anchors?.truck, m = A?.mesh;
+    let pos = null;
+    if (m) { const v = new THREE.Vector3(); m.getWorldPosition(v); pos = { x: v.x, y: v.y + 1.8, z: v.z }; } else if (A && Number.isFinite(A.x)) pos = { x: A.x, y: (A.y ?? 0) + 1.8, z: A.z };
+    if (!api) return;
+    try { ixs.ringStart?.('truck.horn', pos, 'bell'); X()?.after?.(0.8, () => ixs.ringStop?.('truck.horn')); } catch { /* 略 */ }
+    api.speak({ who: '發財車大聲公 · 金水伯', voice: 'old', parts: ['少年仔！車來囉！', '阿伯在急診車道，緊來！'] }, { filter: 'pa', pos, gain: 1.6, critical: true });
+  }
   // 開場、高潮、結局(EXPERIENCE_PLAN §3)
   const S = (game.story ||= {});
   S.flag = (k, v = true) => O.flag(k, v);
   voiceLock(game); // 聲音的鎖:一次只有一個人說話(CLARITY_PLAN §7.4)
+  try { installRadio(game, S); } catch (e) { console.warn('[story] radio', e); }
   try { installOpening(game, S); } catch (e) { console.warn('[story] opening', e); }
   try { installClimax(game, S); } catch (e) { console.warn('[story] climax', e); }
   try { installEnding(game, S); } catch (e) { console.warn('[story] ending', e); }

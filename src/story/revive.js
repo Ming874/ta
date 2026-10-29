@@ -120,10 +120,10 @@ export function installRevive(game, S) {
 
   function afterLines(n, r, t) {
     const L = [];
-    if (t === 'faint') L.push(['ama', '……回來就好。', 2.2, { ear: 'left', gap: 1.2 }]);
-    else L.push(['ama', SMALL[(n - 1) % SMALL.length], undefined, { ear: 'left', gap: 1.2 }]);
-    if (t === 'weak') L.push(['ama', '阿嬤的力氣……剩不多了。', 3.2, { ear: 'left', gap: 1.6 }]);
-    if (n === 1) L.push(['xl', '又倒下去了？有人在叫你耶。\n我聽到了，是一個阿嬤。', 5.2]);
+    if (t === 'faint') L.push(['ama', '……回來就好。', 2.2, { ear: 'left', gap: 1.2, many: true }]);
+    else L.push(['ama', SMALL[(n - 1) % SMALL.length], undefined, { ear: 'left', gap: 1.2, many: true }]);
+    if (t === 'weak') L.push(['ama', '阿嬤的力氣……剩不多了。', 3.2, { ear: 'left', gap: 1.6, many: true }]);
+    if (n === 1) L.push(['xl', '又倒下去了？', 1.8, { combatOk: true }], ['xl', '收音機剛剛整個沒聲音。', 2.6, { combatOk: true }], ['xl', '……是她又叫你了，對不對？', 2.8, { combatOk: true }]); // 小美聽不到阿嬤,只聽到收音機安靜(REDESIGN §7)
     else if (t === 'mid') L.push(['xl', '……她的聲音，比剛剛小了。', 3]);
     else if (t === 'weak') L.push(['xl', '……她剛剛那一聲，好遠。', 2.8]);
     seq(game, [1.4, ...L], { alive: () => game.state === 'playing' });

@@ -1,4 +1,5 @@
 import { ICON, withKeys } from './icons.js';
+import { captions } from './captions.js';
 
 // 新手提示:依情境各顯示一次(記在 localStorage,隱私模式時只記在本次),一次一張、排隊顯示。
 // [T] 或點 × 關閉目前這張;設定裡可以整個關掉或重新顯示。觸發點在 flow.js(tutorial / updateTutorial)。
@@ -22,6 +23,7 @@ export const TIP_TEXT = {
   lantern: ['招魂燈是什麼？', '大新在屋頂裝了一盞招魂燈（就像中元普渡廟口豎的燈篙）。燈一亮，活屍就被叫過來＝一波；燈熄了＝休息時間，金水伯的店會開門'],
   deduce: ['筆記本', '[J] 打開筆記本：「到目前為止」寫著你知道的事和下一步。把詞填進空格，到阿嬤的照片前按住 [E] 擲筊'],
   taboo: ['鬼月禁忌', '晚上不要吹口哨（[B]）、有人叫你名字不要回頭、路邊的紅包不要撿、被拍肩膀不要轉頭'],
+  radio: ['收音機', '[Q] 舉起／放下收音機（舉起時聽得比較清楚）· 舉起時按住 [Q] 調頻 · 放下時按住 [Q] 開／關。收音機在叫，就是活屍靠近了'],
   ama: ['阿嬤叫你', '你倒下時，阿嬤會叫你回來。難度決定她叫得動你幾次'],
 };
 
@@ -74,6 +76,7 @@ export class Tips {
       if (this.t <= 0) this.dismiss();
       return;
     }
+    if (captions.live()?.critical) return; // 劇情的人在說話:提示等一下再出來(不和故事搶眼睛)
     const i = this.queue.findIndex((q) => q.wait <= 0);
     if (i < 0) return;
     const { id } = this.queue.splice(i, 1)[0];

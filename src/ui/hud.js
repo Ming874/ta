@@ -10,6 +10,22 @@ const mk = (cls, html = '', tag = 'div') => {
   return e;
 };
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+// 訊息/撿取:同一句還在畫面上(還沒開始淡出)→ 加「×N」、重新計時,不疊兩行一樣的
+function merge(box, key, life) {
+  for (const e of box.children) {
+    if (e.dataset.k !== key) continue;
+    const a = e.getAnimations()[0], t = +(a?.currentTime ?? 0);
+    if (!a || t > life * 0.7) return false; // 快淡掉了:另起一行
+    const n = (+e.dataset.n || 1) + 1;
+    e.dataset.n = n;
+    let c = e.querySelector(':scope > .hd-x');
+    if (!c) { c = document.createElement('b'); c.className = 'hd-x'; e.insertBefore(c, e.querySelector(':scope > small')); }
+    c.textContent = ` ×${n}`;
+    a.currentTime = Math.min(t, life * 0.12);
+    return true;
+  }
+  return false;
+}
 const _v = new THREE.Vector3();
 const PICK_ICON = { ammo: ICON.ammo, med: ICON.medkit, grenade: ICON.grenade, armor: ICON.shield, heal: ICON.heal, coin: ICON.coin };
 
@@ -299,11 +315,13 @@ export class Hud {
 
   // 右側訊息列(多人時連線代理也會用):o = { color, icon, html }
   feed(text, o = {}) {
+    const life = o.ms || 4200, key = String(text);
+    if (merge(this.feedEl, key, life)) return; // 同一句還在畫面上:合併成「×2」並重新計時(不疊兩行一樣的)
     const e = mk('hd-msg', `${o.icon && ICON[o.icon] ? ICON[o.icon] : ''}${o.html ? text : esc(text)}`);
+    e.dataset.k = key;
     if (o.color) e.style.setProperty('--c', o.color);
     this.feedEl.appendChild(e);
-    while (this.feedEl.children.length > 6) this.feedEl.firstChild.remove();
-    const life = o.ms || 4200;
+    while (this.feedEl.children.length > 4) this.feedEl.firstChild.remove(); // 最多 4 行(一次太多訊息讀不完)
     e.animate([{ opacity: 0, transform: 'translateX(1.5em)' }, { opacity: 1, transform: 'none', offset: 0.06 }, { opacity: 1, offset: 0.85 }, { opacity: 0, transform: 'translateX(.8em)' }], { duration: life, easing: 'ease-out', fill: 'forwards' })
       .onfinish = () => e.remove();
   }
@@ -322,10 +340,13 @@ export class Hud {
 
   // 撿取訊息;o = { sub, icon:'ammo'|'med'|'grenade'|..., panel:'ammo'|'health'|... }
   pickup(text, color = '#ffc35a', o = {}) {
+    const key = `${text}|${o.sub || ''}`;
+    if (merge(this.pickEl, key, 2000)) { if (o.panel) this.flashPanel(o.panel, color); return; } // 同一個東西連續撿:合併成「×2」
     const e = mk('hd-pk', `${o.icon && PICK_ICON[o.icon] ? PICK_ICON[o.icon] : ''}${esc(text)}${o.sub ? `<small>${esc(o.sub)}</small>` : ''}`);
+    e.dataset.k = key;
     e.style.color = color;
     this.pickEl.appendChild(e);
-    while (this.pickEl.children.length > 4) this.pickEl.firstChild.remove();
+    while (this.pickEl.children.length > 3) this.pickEl.firstChild.remove();
     e.animate([
       { opacity: 0, transform: 'translateY(1em) scale(.9)' }, { opacity: 1, transform: 'scale(1.06)', offset: 0.1 }, { transform: 'scale(1)', offset: 0.18 },
       { opacity: 1, offset: 0.72 }, { opacity: 0, transform: 'translateY(-2.4em)' },

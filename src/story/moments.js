@@ -20,6 +20,7 @@ export function installMoments(game, S) {
   const fresh = () => ({ m2: false, m3: false, m4: false, m6: false, m6T: 0, in207: 0, look: 0, quiet: 0, wasSilent: false });
   let run = fresh();
   const flag = (k) => { try { S.flag?.(k); } catch { X.flags.set(k, true); } };
+  const Rd = () => game.story?.radio, C = { combatOk: true };
   const hold = (sec) => { try { H()?.director?.hold?.(sec); } catch { /* 略 */ } }; // 大時刻裡靈異導演不放別的驚嚇、不開追逐
   S.moments = { get run() { return run; }, m3: () => m3(), m4: () => m4(), m6: () => m6() };
 
@@ -71,14 +72,18 @@ export function installMoments(game, S) {
     const tape = '……還醒著的夜貓子，收到請回答。';
     hold(18);
     seq(game, [
-      0.6,
-      () => { try { ixs.phoneVoice?.(tape, { voice: 'woman', filter: 'radio', pos, gain: 0.8 }); } catch { /* 略 */ } game.interact?.map?.api?.say?.('錄音帶 · 小美（1999）', tape, 3600, 'radio'); S.voice?.claim?.(3.2, 9, 'tape'); },
+      () => { Rd()?.screech?.(1); }, // 收音機在這扇門前面叫到最大聲 → 突然一片死寂 → 門裡的錄音帶(REDESIGN §2.4.9)
+      1.4,
+      () => { Rd()?.hush?.(2.4); },
+      1.2,
+      () => { try { ixs.phoneVoice?.(tape, { voice: 'woman', filter: 'radio', pos, gain: 0.8 }); } catch { /* 略 */ } game.interact?.map?.api?.say?.('錄音帶 · 小美（1999）', tape, 3600, 'radio', { critical: true, speak: 3.2 }); S.voice?.claim?.(3.2, 9, 'tape'); },
       1.6,
-      ['xl', tape, 3.2, { gap: 0.2, noWait: true }],
+      ['xl', tape, 3.2, { ...C, gap: 0.2, noWait: true }],
       3.2,
-      ['xl', '……那是我的聲音。', 2.2],
-      ['xl', '為什麼我的聲音，會在那個房間裡？', 3.4, { gap: 4 }],
-      ['xl', '……先看門邊那台機器寫什麼。', 3],
+      ['xl', '……那是我的聲音。', 2.2, C],
+      ['xl', '為什麼我的聲音，會在那個房間裡？', 3.4, { ...C, gap: 4 }],
+      ['xl', '收音機在這扇門前面，叫得好大聲。', 3.0, C],
+      ['xl', '……裡面到底有什麼？', 2.4, C],
       () => flag('h.m3'),
     ]);
   }
@@ -99,8 +104,9 @@ export function installMoments(game, S) {
       3.6,
       ['pa', '{暱稱}，請到一樓大廳。', 2.6, { gap: 0.4 }],
       ['pa', '你的阿嬤在等你。', 2.2, { gap: 1.6 }],
-      ['xl', '不要去。', 1.6, { gap: 0.6 }],
-      ['xl', '柱子上寫的字，你看到了吧。', 2.8],
+      ['xl', '不要去。', 1.6, { ...C, gap: 0.6 }],
+      ['xl', '它以前叫一個護理長下樓，', 2.6, C],
+      ['xl', '現在叫你。……不要去。', 2.6, C],
       () => flag('h.m4'),
     ]);
   }
@@ -114,13 +120,17 @@ export function installMoments(game, S) {
     flag('h.m6');
     hold(18);
     seq(game, [
-      1.2,
-      () => { try { sfx.radio?.(true, 0.25); X.after(3.6, () => sfx.radio?.(false)); } catch { /* 略 */ } },
-      3.8,
-      ['xl', '……那是我的工作證。', 2.4, { gap: 1.2 }],
-      ['xl', '那個沒有名字的病人……', 2.6, { gap: 1.4 }],
-      ['xl', '……是我？', 1.6, { gap: 4 }],
-      ['xl', '她守了十四個晚上的人，是我。', 3.2],
+      () => { Rd()?.clear?.(45); }, // 一走進去,收音機的雜訊完全消失(REDESIGN §2.4.9)
+      1.6,
+      ['xl', '……收音機，突然好清楚。', 2.4, C],
+      ['xl', '……我好像看得到了。這個房間。', 3.0, C],
+      ['xl', '床、檯燈、一張椅子。', 2.6, C],
+      ['xl', '床頭那張卡……', 2.0, { ...C, gap: 1.2 }],
+      ['xl', '……那是我的工作證。', 2.4, { ...C, gap: 1.2 }],
+      ['xl', '那個沒有名字的病人……', 2.6, { ...C, gap: 1.4 }],
+      ['xl', '……是我？', 1.6, { ...C, gap: 4 }],
+      ['xl', '她守了十四個晚上的人，是我。', 3.2, C],
+      () => X.after(24, () => seq(game, [['xl', '收音機一靠近他們就會叫。', 2.8], ['xl', '207 這裡，叫得最大聲。', 2.6, { gap: 1.2 }], ['xl', '他們身上的針……跟我的血有關，對不對？', 3.6]])),
     ]);
   }
 

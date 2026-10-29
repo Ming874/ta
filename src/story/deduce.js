@@ -15,7 +15,7 @@ import { MAP, QUESTION, WORDS, CARD, CARDS, NOTE_CARD, WHISPER, LOOK, TALK, THRO
 import { Book } from './book.js';
 import * as THREE from 'three';
 import { sfx, ghost } from '../audio.js';
-import { secsOf, voiceLock, free, wait, seq } from './voice.js';
+import { secsOf, voiceLock, free, wait, seq, line, radioReady } from './voice.js';
 
 const KEY = 'hz.deduce.v1';
 const load = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch { return {}; } };
@@ -96,7 +96,7 @@ export function installDeduce(game) {
         const s = S(), first = !s.solved;
         s.solved = true; save();
         game.ui?.banner?.(nm, '對了。……阿孫，你好聰明。', 4200, 'gold');
-        if (silent) seq(game, [['ama', '對了。……阿孫，你好聰明。', undefined, { ear: 'both' }]]); // 排隊
+        if (silent) seq(game, [['ama', '對了。……阿孫，你好聰明。', undefined, { ear: 'both', many: true }]]); // 排隊
         try { sfx.folk('bell', pos); } catch { /* 還沒烘焙好 */ }
         ix()?.flags?.set?.('h.q.solved', true);
         ix()?.flags?.set?.('meta.deduce.hospital.solved', true);
@@ -138,16 +138,30 @@ export function installDeduce(game) {
     const ex = []; // 一句一行字幕:多行的台詞拆開依序播
     for (const [who, text, secs] of lines) { const ps = String(text).split('\n'); for (const p of ps) ex.push([who, p, ps.length > 1 ? secsOf(p) : secs]); }
     // 經過聲音的鎖,一句一句講(src/story/voice.js);講完才 cb
-    const V = voiceLock(game), token = {};
-    V.join(token);
+    // 戰鬥中(15 m 內有活屍、被追)先不講:提示(o.hint)最多等 30 秒,還在打就不講了;金水伯/小美的劇情句最多等 20 秒(排隊前等,不擋住別人的對話)
+    const V = voiceLock(game), token = {}, crit = !o.hint;
+    const calm = async (max) => { for (let w = 0; V.combat() && w < max; w += 0.5) await wait(game, 0.5); return !V.combat(); };
+    let joined = false;
+    if (!V.combat()) { V.join(token); joined = true; }
     (async () => {
       try {
+        if (!joined) { const ok = await calm(crit ? 20 : 30); if (!ok && !crit) return; V.join(token); joined = true; }
         for (const [who, text, secs] of ex) {
           await free(game, { token, maxWait: 40 });
           if (game.story?.ending?.active) break;
+          if (!crit && V.busy({ token })) break; // 提示等了 40 秒還輪不到:不講了
+          // 小美只從收音機出來(src/story/radio.js):提示在聽不到時丟掉;劇情句等收音機(最多 120 秒,先讓出佇列)
+          if (/小美/.test(who) && game.story?.radio) {
+            if (!game.story.radio.hear()) { if (!crit) break; if (!(await radioReady(game, V, token))) continue; }
+            const d1 = secs || secsOf(text);
+            V.claim(d1, 8, 'xl');
+            const said = line(game, 'xl', text, { secs: d1, optional: !crit });
+            if (said) await wait(game, said + 0.3);
+            continue;
+          }
           const d = secs || secsOf(text);
           V.claim(d, 8, who);
-          api.speak({ who, parts: [text], voice: /小美|小美|阿嬤|女|淑芬/.test(who) ? 'woman' : /王醫師|男/.test(who) ? 'man' : 'old' }, { filter: o.filter || (/對講機|收音機|AM/.test(who) ? 'radio' : 'phone'), noHorror: true, lockOk: true });
+          api.speak({ who, parts: [text], voice: /小美|小美|阿嬤|女|淑芬/.test(who) ? 'woman' : /王醫師|男/.test(who) ? 'man' : 'old' }, { filter: o.filter || (/對講機|收音機|AM/.test(who) ? 'radio' : 'phone'), noHorror: true, lockOk: true, critical: crit });
           await wait(game, d + 0.3);
         }
       } finally { V.leave(token); }
@@ -155,6 +169,11 @@ export function installDeduce(game) {
     })();
   }
   D.talk = talk;
+  // 金水伯只從店門口的對講機說話(REDESIGN §2.5):讓對講機響,接了才講;沒有對講機系統就照舊
+  function kimsui(id, lines, cb) {
+    const parts = lines.flatMap(([, text]) => String(text).split('\n'));
+    if (game.story?.kimsui) game.story.kimsui(id, parts, cb); else talk(lines, cb);
+  }
 
   // ---------- 207 的門自己打開(聖筊;替全隊) ----------
   const door207 = () => ix()?.doors?.list?.find((w) => w.lock?.door === 'f2_ward_207') || null;
@@ -228,11 +247,11 @@ export function installDeduce(game) {
     if (game.phase === 'shop' && run.lastPh !== 'shop') {
       run.shops++;
       if (game.story?.busy?.()) { run.lastPh = game.phase; return; } // 王醫師的電話、結局:金水伯這一次先不講
-      if (run.shops >= 2 && !D.has('hc.21') && !run.k1 && game.objectives?.done?.('h.s.cyc1') !== false) { run.k1 = true; X.after(6, () => talk(TALK.kimsui1, () => D.addCard('hc.21', { by: 'call' }))); }
-      else if (run.shops >= 2 && D.has('hc.21') && !run.k2 && ['hc.07', 'hc.08', 'hc.09'].some(D.has) && !S().k2) { run.k2 = true; X.after(6, () => talk(TALK.kimsui2, () => { S().k2 = true; save(); D.addWords(['w.xiaoling']); game.ui?.feed?.('＋線索〈金水伯：那一扇窗〉 · 新的詞 1 個', { color: '#e3c98a', ms: 4200 }); })); }
+      if (run.shops >= 2 && !D.has('hc.21') && !run.k1 && game.objectives?.done?.('h.s.cyc1') !== false) { run.k1 = true; X.after(6, () => kimsui('k.1', TALK.kimsui1, () => D.addCard('hc.21', { by: 'call' }))); }
+      else if (run.shops >= 2 && D.has('hc.21') && !run.k2 && ['hc.07', 'hc.08', 'hc.09'].some(D.has) && !S().k2) { run.k2 = true; X.after(6, () => kimsui('k.2', TALK.kimsui2, () => { S().k2 = true; save(); D.addWords(['w.xiaoling']); game.ui?.feed?.('＋線索〈金水伯：那一扇窗〉 · 新的詞 1 個', { color: '#e3c98a', ms: 4200 }); })); }
       if (D.solved() && !run.opened207 && run.shops === 1) X.after(4, () => unlock207(true)); // 以前聖筊過:第一次靜默 207 的電子鎖自己解開
       // 金水伯認出你(他說的永遠是真的;他只是不講自己的心情)
-      if (run.shops >= 3 && D.has('hc.21') && !S().k3 && !run.k3 && game.round >= 5) { run.k3 = true; X.after(9, () => talk(TALK.kimsui3, () => { S().k3 = true; save(); })); }
+      if (run.shops >= 3 && D.has('hc.21') && !S().k3 && !run.k3 && game.round >= 5) { run.k3 = true; X.after(9, () => kimsui('k.3', TALK.kimsui3, () => { S().k3 = true; save(); })); }
     }
     run.lastPh = game.phase;
     // 207 門口(3 m 內、靜默期):「燈莫關。伊驚烏。」(hc.22)
